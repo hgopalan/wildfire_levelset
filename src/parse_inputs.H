@@ -13,8 +13,6 @@ struct InputParameters {
 
     // Time & output
     int reinit_int;
-    int reinit_iters;
-    amrex::Real reinit_dtau;
     int nsteps;
     amrex::Real cfl;
     int plot_int;

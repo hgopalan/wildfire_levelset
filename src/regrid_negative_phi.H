@@ -9,6 +9,7 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_MultiFabUtil.H>
+#include <AMReX_ParallelDescriptor.H>
 #include <AMReX_Print.H>
 #include <algorithm>
 #include <limits>
@@ -103,16 +104,44 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
+
     amrex::Print() << "Regridding for negative phi with tag threshold = " << tag_phi_threshold << "\n";
+
     BoxList tagged_cells;
+    int counter=0;
+    for (MFIter mfi(coarse_phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const& phi_arr = coarse_phi.const_array(mfi);
+        amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+            if (phi_arr(i, j, k, 0) < tag_phi_threshold) {
+                // Tag only this individual cell, not the entire box
+                tagged_cells.push_back(Box(IntVect(AMREX_D_DECL(i, j, k)),
+                                        IntVect(AMREX_D_DECL(i, j, k))));
+                counter=counter+1;
+            }
+        });
+    }
+
+
+    // Each rank tags only its own boxes (rank-local).
+    /*BoxList tagged_cells;
+    int counter=0;
     for (MFIter mfi(coarse_phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         if (coarse_phi[mfi].min(bx, 0) < tag_phi_threshold) {
+            counter=counter+1;
             tagged_cells.push_back(bx);
         }
-    }
-    amrex::Print() << "Number of tagged coarse boxes: " << tagged_cells.size() << "\n";
-    if (tagged_cells.isEmpty()) {
+    }*/
+    amrex::Print() << "Number of tagged coarse boxes (local): " << counter << "\n";
+    // Globally reduce the tag count so ALL ranks make the same branching decision.
+    // Without this, ranks with no local tags would return early while others
+    // proceed to collective MPI calls (e.g. DistributionMapping), causing a deadlock.
+    int num_tagged = static_cast<int>(tagged_cells.size());
+    amrex::ParallelDescriptor::ReduceIntSum(num_tagged);
+    amrex::Print() << "Number of tagged coarse boxes (global): " << num_tagged << "\n";
+
+    if (num_tagged == 0) {
         if (has_fine_level) {
             has_fine_level = false;
             fine_geom.reset();
@@ -123,7 +152,8 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
-    amrex::Print() << "Refining " << tagged_cells.size() << " coarse boxes with refine ratio " << refine_ratio << "\n";
+
+    amrex::Print() << "Refining " << num_tagged << " coarse boxes (global) with refine ratio " << refine_ratio << "\n";
     BoxList fine_bl;
     for (const Box& bx : tagged_cells) {
         fine_bl.push_back(amrex::refine(bx, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio))));
@@ -132,6 +162,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     BoxArray new_fine_ba(fine_bl);
     new_fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
     amrex::Print() << "Number of fine boxes after merging: " << new_fine_ba.size() << "\n";
+
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
 
@@ -146,7 +177,12 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     }
     new_fine_ba = BoxArray(clipped_bl);
     amrex::Print() << "Number of fine boxes after clipping to fine domain: " << new_fine_ba.size() << "\n";
-    if (new_fine_ba.size() == 0) {
+
+    // Globally reduce to check if any valid boxes remain after clipping.
+    int num_clipped = static_cast<int>(new_fine_ba.size());
+    amrex::ParallelDescriptor::ReduceIntMax(num_clipped);
+
+    if (num_clipped == 0) {
         if (has_fine_level) {
             has_fine_level = false;
             fine_geom.reset();
@@ -157,6 +193,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
+
     amrex::Print() << "Creating fine level with domain " << fine_domain << " and " << new_fine_ba.size() << " boxes\n";
     const auto old_prob_lo = coarse_geom.ProbLoArray();
     const auto old_prob_hi = coarse_geom.ProbHiArray();
@@ -167,8 +204,15 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     Geometry new_fine_geom(fine_domain, &rb, coord, old_periodic.data());
     DistributionMapping new_fine_dm(new_fine_ba);
     amrex::Print() << "New fine level geometry: domain = " << new_fine_geom.Domain()
-                   << ", prob_lo = " << new_fine_geom.ProbLo()
-                   << ", prob_hi = " << new_fine_geom.ProbHi() << "\n";
+                << ", prob_lo = ("
+                << new_fine_geom.ProbLo(0) << ", "
+                << new_fine_geom.ProbLo(1) << ", "
+                << new_fine_geom.ProbLo(2) << ")"
+                << ", prob_hi = ("
+                << new_fine_geom.ProbHi(0) << ", "
+                << new_fine_geom.ProbHi(1) << ", "
+                << new_fine_geom.ProbHi(2) << ")\n";
+
     std::unique_ptr<MultiFab> old_fine_phi = std::move(fine_phi);
     std::unique_ptr<MultiFab> old_fine_vel = std::move(fine_vel);
 

@@ -17,7 +17,7 @@ static void init_phi_sphere(MultiFab& phi, const Geometry& geom,
                                (y - cy)*(y - cy) +
                                (z - cz)* (z - cz)
                                ) - radius;
-            p(i,j,k) = d; // negative inside the sphere
+            p(i,j,k) = std::max(-1.0,std::min(d,1.0)); // negative inside the sphere
         });
     }
 }

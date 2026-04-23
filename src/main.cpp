@@ -134,14 +134,29 @@ int main(int argc, char* argv[])
                         << " : phi_min = " << phi_min
                         << " , phi_max = " << phi_max << "\n";
 
-            if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0)) {
-                amrex::Print() << "Reinitializing at step " << step << "\n";
-                reinitialize_phi(phi, geom, inputs.reinit_iters, inputs.reinit_dtau);
-                if (has_fine_level) {
-                    reinitialize_phi(*fine_phi, *fine_geom, inputs.reinit_iters, inputs.reinit_dtau);
-                    synchronize_coarse_phi_from_fine(phi, *fine_phi, inputs.amr_refine_ratio);
-                }
+        if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0)) {
+            amrex::Print() << "Reinitializing at step " << step << "\n";
+
+            // --- Coarse level: dtau and iters from coarse dx ---
+            {
+                const auto dx = geom.CellSize();
+                Real dx_min   = std::min({dx[0], dx[1], dx[2]});
+                Real dtau     = 0.1 * dx_min;               // CFL = 0.5 for forward-Euler + Godunov
+                int  niters   = static_cast<int>(std::ceil(ng_phi / 0.5)); // = 6 for ng_phi=3
+                reinitialize_phi(phi, geom, niters, dtau);
+                amrex::Print() << "Reinitialized coarse level phi\n" << " with dtau = " << dtau << " and niters = " << niters << "\n";
             }
+            
+            // --- Fine level: dtau and iters from fine dx (finer spacing → smaller dtau) ---
+            if (has_fine_level) {
+                const auto dx_f = fine_geom->CellSize();
+                Real dx_min_f   = std::min({dx_f[0], dx_f[1], dx_f[2]});
+                Real dtau_f     = 0.5 * dx_min_f;           // same CFL, but scales with fine dx
+                int  niters_f   = static_cast<int>(std::ceil(ng_phi / 0.5)); // same band depth in cells
+                reinitialize_phi(*fine_phi, *fine_geom, niters_f, dtau_f);
+                synchronize_coarse_phi_from_fine(phi, *fine_phi, inputs.amr_refine_ratio);
+            }
+        }
 
             time += dt_step;
 

@@ -38,46 +38,83 @@ Real weno3_reconstruct(Real fm1, Real f0, Real fp1)
 }
 
 // ================================================================
-// Godunov |grad phi| operator using WENO3 reconstruction
+// Godunov |grad phi| operator — WENO3 with WENO1 fallback when phi is unbounded
 // ================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Real godunov_norm_grad_phi(const amrex::Array4<Real const>& phi,
+Real godunov_norm_grad_phi(const Array4<Real const>& phi,
                            int i, int j, int k,
-                           const amrex::GpuArray<Real,AMREX_SPACEDIM>& dx)
+                           const GpuArray<Real,AMREX_SPACEDIM>& dx)
 {
-    // Grid-aware epsilon for regularization (prevents near-zero gradient issues)
-    const Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
+    // Grid-aware epsilon for regularization
+    Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
 
-    // WENO3 reconstructed upwind derivatives in each direction.
-    // For each direction, two one-sided estimates are computed:
-    //   px_right: Godunov "positive" (forward-biased) derivative, using stencil (i-1, i, i+1)
-    //   px_left:  Godunov "negative" (backward-biased) derivative, using stencil (i-2, i-1, i)
-    // The Godunov upwind selection then picks the appropriate one-sided value.
+    // ----------------------------------------------------------------
+    // Detect unbounded phi: check all stencil values (WENO3 needs ±2 cells).
+    // If any value is NaN/Inf or beyond the threshold, drop to WENO1.
+    // ----------------------------------------------------------------
+    constexpr Real phi_bound = Real(1.5);
 
-    // X direction
-    const Real px_right = weno3_reconstruct(phi(i-1,j,k), phi(i,j,k), phi(i+1,j,k)) / dx[0];
-    const Real px_left  = weno3_reconstruct(phi(i-2,j,k), phi(i-1,j,k), phi(i,j,k)) / dx[0];
+    auto is_bad = [&](Real v) -> bool {
+        return !std::isfinite(v) || std::abs(v) > phi_bound;
+    };
 
-    // Y direction
-    const Real py_right = weno3_reconstruct(phi(i,j-1,k), phi(i,j,k), phi(i,j+1,k)) / dx[1];
-    const Real py_left  = weno3_reconstruct(phi(i,j-2,k), phi(i,j-1,k), phi(i,j,k)) / dx[1];
+    bool fallback =
+        is_bad(phi(i-2,j,k)) || is_bad(phi(i-1,j,k)) ||
+        is_bad(phi(i,  j,k)) ||
+        is_bad(phi(i+1,j,k)) || is_bad(phi(i+2,j,k)) ||
+        is_bad(phi(i,j-2,k)) || is_bad(phi(i,j-1,k)) ||
+        is_bad(phi(i,j+1,k)) || is_bad(phi(i,j+2,k));
+#if (AMREX_SPACEDIM==3)
+    fallback = fallback ||
+        is_bad(phi(i,j,k-2)) || is_bad(phi(i,j,k-1)) ||
+        is_bad(phi(i,j,k+1)) || is_bad(phi(i,j,k+2));
+#endif
 
-    // Z direction
-    const Real pz_right = weno3_reconstruct(phi(i,j,k-1), phi(i,j,k), phi(i,j,k+1)) / dx[2];
-    const Real pz_left  = weno3_reconstruct(phi(i,j,k-2), phi(i,j,k-1), phi(i,j,k)) / dx[2];
+    Real px_right, px_left;
+    Real py_right, py_left;
+#if (AMREX_SPACEDIM==3)
+    Real pz_right, pz_left;
+#endif
 
-    // Godunov upwind selection: keep only contributing sides
-    const Real px_p = amrex::max(px_right, Real(0.0));
-    const Real px_n = amrex::min(px_left,  Real(0.0));
-    const Real py_p = amrex::max(py_right, Real(0.0));
-    const Real py_n = amrex::min(py_left,  Real(0.0));
-    const Real pz_p = amrex::max(pz_right, Real(0.0));
-    const Real pz_n = amrex::min(pz_left,  Real(0.0));
+    if (fallback) {
+        // ---- WENO1: plain first-order one-sided differences ----
+        px_right = (phi(i+1,j,k) - phi(i,  j,k)) / dx[0];   // D+x
+        px_left  = (phi(i,  j,k) - phi(i-1,j,k)) / dx[0];   // D-x
+        py_right = (phi(i,j+1,k) - phi(i,j,  k)) / dx[1];   // D+y
+        py_left  = (phi(i,j,  k) - phi(i,j-1,k)) / dx[1];   // D-y
+#if (AMREX_SPACEDIM==3)
+        pz_right = (phi(i,j,k+1) - phi(i,j,k  )) / dx[2];   // D+z
+        pz_left  = (phi(i,j,k  ) - phi(i,j,k-1)) / dx[2];   // D-z
+#endif
+    } else {
+        // ---- WENO3: blended high-order reconstruction ----
+        px_right = weno3_reconstruct(phi(i-1,j,k), phi(i,j,k), phi(i+1,j,k)) / dx[0];
+        px_left  = weno3_reconstruct(phi(i-2,j,k), phi(i-1,j,k), phi(i,j,k)) / dx[0];
+        py_right = weno3_reconstruct(phi(i,j-1,k), phi(i,j,k), phi(i,j+1,k)) / dx[1];
+        py_left  = weno3_reconstruct(phi(i,j-2,k), phi(i,j-1,k), phi(i,j,k)) / dx[1];
+#if (AMREX_SPACEDIM==3)
+        pz_right = weno3_reconstruct(phi(i,j,k-1), phi(i,j,k), phi(i,j,k+1)) / dx[2];
+        pz_left  = weno3_reconstruct(phi(i,j,k-2), phi(i,j,k-1), phi(i,j,k)) / dx[2];
+#endif
+    }
 
-    const Real gx = px_p*px_p + px_n*px_n;
-    const Real gy = py_p*py_p + py_n*py_n;
-    const Real gz = pz_p*pz_p + pz_n*pz_n;
+    // Godunov upwind selection
+    Real px_p = amrex::max(px_right, Real(0.0));
+    Real px_n = amrex::min(px_left,  Real(0.0));
+    Real py_p = amrex::max(py_right, Real(0.0));
+    Real py_n = amrex::min(py_left,  Real(0.0));
+#if (AMREX_SPACEDIM==3)
+    Real pz_p = amrex::max(pz_right, Real(0.0));
+    Real pz_n = amrex::min(pz_left,  Real(0.0));
+#endif
 
-    // Add epsilon regularization to smooth the gradient magnitude
+    Real gx = px_p*px_p + px_n*px_n;
+    Real gy = py_p*py_p + py_n*py_n;
+#if (AMREX_SPACEDIM==3)
+    Real gz = pz_p*pz_p + pz_n*pz_n;
     return std::sqrt(gx + gy + gz + eps*eps);
+#else
+    return std::sqrt(gx + gy + eps*eps);
+#endif
 }
+
