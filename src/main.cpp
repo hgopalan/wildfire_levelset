@@ -21,6 +21,9 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
                            int i, int j, int k,
                            const GpuArray<Real,AMREX_SPACEDIM>& dx)
 {
+    // Grid-aware epsilon for regularization (prevents near-zero gradient issues)
+    Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
+
     // Forward/backward differences
     Real px_pos = (phi(i+1,j,k) - phi(i,j,k)) / dx[0];
     Real px_neg = (phi(i,j,k) - phi(i-1,j,k)) / dx[0];
@@ -31,17 +34,21 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     Real pz_pos = (phi(i,j,k+1) - phi(i,j,k)) / dx[2];
     Real pz_neg = (phi(i,j,k) - phi(i,j,k-1)) / dx[2];
 
-    // Godunov choices for reinitialization
-    Real gx = (px_pos > 0.0 ? px_pos*px_pos : 0.0)
-            + (px_neg < 0.0 ? px_neg*px_neg : 0.0);
+    // Godunov choices: clamp using max/min to select only contributing upwind directions
+    // (explicit max/min formulation improves GPU vectorization over ternary operators)
+    Real px_p = amrex::max(px_pos, Real(0.0));
+    Real px_n = amrex::min(px_neg, Real(0.0));
+    Real py_p = amrex::max(py_pos, Real(0.0));
+    Real py_n = amrex::min(py_neg, Real(0.0));
+    Real pz_p = amrex::max(pz_pos, Real(0.0));
+    Real pz_n = amrex::min(pz_neg, Real(0.0));
 
-    Real gy = (py_pos > 0.0 ? py_pos*py_pos : 0.0)
-            + (py_neg < 0.0 ? py_neg*py_neg : 0.0);
+    Real gx = px_p*px_p + px_n*px_n;
+    Real gy = py_p*py_p + py_n*py_n;
+    Real gz = pz_p*pz_p + pz_n*pz_n;
 
-    Real gz = (pz_pos > 0.0 ? pz_pos*pz_pos : 0.0)
-            + (pz_neg < 0.0 ? pz_neg*pz_neg : 0.0);
-
-    return std::sqrt(gx + gy + gz);
+    // Add epsilon regularization to smooth the gradient magnitude
+    return std::sqrt(gx + gy + gz + eps*eps);
 }
 
 // ============================================================================
