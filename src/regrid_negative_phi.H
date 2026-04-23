@@ -38,11 +38,13 @@ static bool regrid_negative_phi(MultiFab& phi,
     MultiFab::Copy(old_vel, vel, 0, 0, 3, 1);
 
     ba.refine(refine_ratio);
+    // Keep processor ownership aligned with the pre-refinement layout so that
+    // coarse-to-fine transfer can use matching local MFIter indices.
     dm = DistributionMapping(old_phi.DistributionMap().ProcessorMap());
 
     const Box new_domain = amrex::refine(old_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
-    RealBox rb({old_prob_lo[0], old_prob_lo[1], old_prob_lo[2]},
-               {old_prob_hi[0], old_prob_hi[1], old_prob_hi[2]});
+    RealBox rb({AMREX_D_DECL(old_prob_lo[0], old_prob_lo[1], old_prob_lo[2])},
+               {AMREX_D_DECL(old_prob_hi[0], old_prob_hi[1], old_prob_hi[2])});
     Geometry new_geom(new_domain, &rb, coord, old_periodic.data());
 
     phi.define(ba, dm, 1, ng_phi);
