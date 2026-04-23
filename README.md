@@ -1,13 +1,6 @@
 # wildfire_levelset
 
-This repository contains a small AMReX-based C++ level-set solver for wildfire-front style advection with periodic plotfile output.
-
-## What this code does
-
-- Builds one executable: `levelset`
-- Initializes a signed-distance sphere in a 3D box
-- Advects and periodically reinitializes the level-set field
-- Writes AMReX plotfiles (`plt0000`, `plt0050`, etc.)
+This repository contains a small AMReX-based C++ level-set solver for wildfire-front style advection based on the community fire model. The fuel and moisture databases are not added yet. Work is on-going to add a non-uniform wind field read from files for one way-coupling. A future work will use a two-way coupling with ERF by modifying the surface heat fluxes. 
 
 ## Prerequisites
 
