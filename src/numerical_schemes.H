@@ -52,7 +52,7 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // Detect unbounded phi: check all stencil values (WENO3 needs ±2 cells).
     // If any value is NaN/Inf or beyond the threshold, drop to WENO1.
     // ----------------------------------------------------------------
-    constexpr Real phi_bound = Real(1.5);
+    constexpr Real phi_bound = Real(1.1);
 
     auto is_bad = [&](Real v) -> bool {
         return !std::isfinite(v) || std::abs(v) > phi_bound;
