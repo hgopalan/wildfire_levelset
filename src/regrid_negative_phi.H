@@ -20,6 +20,9 @@ static bool regrid_negative_phi(MultiFab& phi,
                                 int max_refinements,
                                 int& refinement_count)
 {
+    // Trigger global refinement when tagged cells satisfy phi < tag_phi_threshold.
+    // Returns true if refinement is performed, otherwise false (including when
+    // max_refinements has already been reached).
     if (refinement_count >= max_refinements) { return false; }
     if (refine_ratio <= 1) { return false; }
 
@@ -38,8 +41,8 @@ static bool regrid_negative_phi(MultiFab& phi,
     MultiFab::Copy(old_vel, vel, 0, 0, 3, 1);
 
     ba.refine(refine_ratio);
-    // Keep processor ownership aligned with the pre-refinement layout so that
-    // coarse-to-fine transfer can use matching local MFIter indices.
+    // Preserve processor-map ordering from the coarse layout so MFIter-local
+    // indexing remains compatible during coarse-to-fine value injection.
     dm = DistributionMapping(old_phi.DistributionMap().ProcessorMap());
 
     const Box new_domain = amrex::refine(old_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
