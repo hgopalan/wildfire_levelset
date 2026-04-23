@@ -23,8 +23,9 @@ static void initialize_fine_from_coarse(const MultiFab& coarse_phi,
     BoxArray coarse_from_fine_ba = fine_phi.boxArray();
     coarse_from_fine_ba.coarsen(refine_ratio);
 
-    MultiFab coarse_phi_on_fine_dm(coarse_from_fine_ba, fine_phi.DistributionMap(), 1, 0);
-    MultiFab coarse_vel_on_fine_dm(coarse_from_fine_ba, fine_vel.DistributionMap(), 3, 0);
+    const DistributionMapping& fine_level_dm = fine_phi.DistributionMap();
+    MultiFab coarse_phi_on_fine_dm(coarse_from_fine_ba, fine_level_dm, 1, 0);
+    MultiFab coarse_vel_on_fine_dm(coarse_from_fine_ba, fine_level_dm, 3, 0);
     coarse_phi_on_fine_dm.ParallelCopy(coarse_phi, 0, 0, 1, 0, 0);
     coarse_vel_on_fine_dm.ParallelCopy(coarse_vel, 0, 0, 3, 0, 0);
 
@@ -70,9 +71,9 @@ static void synchronize_coarse_phi_from_fine(MultiFab& coarse_phi,
 
 static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size)
 {
-    const long long fine_max_grid_ll = static_cast<long long>(refine_ratio) *
-                                       static_cast<long long>(max_grid_size);
-    return static_cast<int>(std::max(1LL, std::min(fine_max_grid_ll,
+    const long long fine_max_grid_size_ll = static_cast<long long>(refine_ratio) *
+                                            static_cast<long long>(max_grid_size);
+    return static_cast<int>(std::max(1LL, std::min(fine_max_grid_size_ll,
                                                    static_cast<long long>(std::numeric_limits<int>::max()))));
 }
 
