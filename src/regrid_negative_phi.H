@@ -103,7 +103,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
-
+    amrex::Print() << "Regridding for negative phi with tag threshold = " << tag_phi_threshold << "\n";
     BoxList tagged_cells;
     for (MFIter mfi(coarse_phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -111,7 +111,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
             tagged_cells.push_back(bx);
         }
     }
-
+    amrex::Print() << "Number of tagged coarse boxes: " << tagged_cells.size() << "\n";
     if (tagged_cells.isEmpty()) {
         if (has_fine_level) {
             has_fine_level = false;
@@ -123,15 +123,15 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
-
+    amrex::Print() << "Refining " << tagged_cells.size() << " coarse boxes with refine ratio " << refine_ratio << "\n";
     BoxList fine_bl;
     for (const Box& bx : tagged_cells) {
         fine_bl.push_back(amrex::refine(bx, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio))));
     }
-
+    amrex::Print() << "Number of fine boxes before merging: " << fine_bl.size() << "\n";
     BoxArray new_fine_ba(fine_bl);
     new_fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
-
+    amrex::Print() << "Number of fine boxes after merging: " << new_fine_ba.size() << "\n";
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
 
@@ -145,7 +145,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
     }
     new_fine_ba = BoxArray(clipped_bl);
-
+    amrex::Print() << "Number of fine boxes after clipping to fine domain: " << new_fine_ba.size() << "\n";
     if (new_fine_ba.size() == 0) {
         if (has_fine_level) {
             has_fine_level = false;
@@ -157,7 +157,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         }
         return false;
     }
-
+    amrex::Print() << "Creating fine level with domain " << fine_domain << " and " << new_fine_ba.size() << " boxes\n";
     const auto old_prob_lo = coarse_geom.ProbLoArray();
     const auto old_prob_hi = coarse_geom.ProbHiArray();
     const auto old_periodic = coarse_geom.isPeriodicArray();
@@ -166,7 +166,9 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
                {AMREX_D_DECL(old_prob_hi[0], old_prob_hi[1], old_prob_hi[2])});
     Geometry new_fine_geom(fine_domain, &rb, coord, old_periodic.data());
     DistributionMapping new_fine_dm(new_fine_ba);
-
+    amrex::Print() << "New fine level geometry: domain = " << new_fine_geom.Domain()
+                   << ", prob_lo = " << new_fine_geom.ProbLo()
+                   << ", prob_hi = " << new_fine_geom.ProbHi() << "\n";
     std::unique_ptr<MultiFab> old_fine_phi = std::move(fine_phi);
     std::unique_ptr<MultiFab> old_fine_vel = std::move(fine_vel);
 

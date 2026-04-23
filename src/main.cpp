@@ -113,12 +113,14 @@ int main(int argc, char* argv[])
                                                    fine_geom,
                                                    fine_phi,
                                                    fine_vel);
+                amrex::Print() << "Regrid at step " << step << (refined ? " (refined)" : " (no refinement)") << "\n";
                 if (refined) {
                     fill_boundary_extrap(phi, geom);
                     if (has_fine_level) {
                         fill_boundary_extrap(*fine_phi, *fine_geom);
                     }
                 }
+                amrex::Print() << "After regrid: has_fine_level = " << has_fine_level << "\n";
             }
 
             dt = compute_dt(vel, geom, inputs.cfl);
