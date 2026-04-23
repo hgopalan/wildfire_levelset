@@ -144,6 +144,107 @@ static void build_rhs_weno5z(const MultiFab& phi,
         });
     }
 }
+// ======================= First-order extrapolation boundary fill ======================
+static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
+{
+    // Fill interior ghost cells for MPI exchange between ranks.
+    // Since is_periodic is {0,0,0}, this does not copy across periodic boundaries.
+    mf.FillBoundary(geom.periodicity());
+
+    const auto& domain = geom.Domain();
+
+    for (MFIter mfi(mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        const Box& gbx = mfi.fabbox(); // includes ghost cells
+        auto const arr = mf.array(mfi);
+
+        // Get domain bounds
+        int dom_ilo = domain.smallEnd(0);
+        int dom_ihi = domain.bigEnd(0);
+        int dom_jlo = domain.smallEnd(1);
+        int dom_jhi = domain.bigEnd(1);
+        int dom_klo = domain.smallEnd(2);
+        int dom_khi = domain.bigEnd(2);
+
+        // Get box bounds
+        int bx_ilo = bx.smallEnd(0);
+        int bx_ihi = bx.bigEnd(0);
+        int bx_jlo = bx.smallEnd(1);
+        int bx_jhi = bx.bigEnd(1);
+        int bx_klo = bx.smallEnd(2);
+        int bx_khi = bx.bigEnd(2);
+
+        int gbx_ilo = gbx.smallEnd(0);
+        int gbx_ihi = gbx.bigEnd(0);
+        int gbx_jlo = gbx.smallEnd(1);
+        int gbx_jhi = gbx.bigEnd(1);
+        int gbx_klo = gbx.smallEnd(2);
+        int gbx_khi = gbx.bigEnd(2);
+
+        int ncomp = mf.nComp();
+
+        // X-lo boundary
+        if (bx_ilo == dom_ilo) {
+            ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
+                           IntVect(dom_ilo-1, gbx_jhi, gbx_khi)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(dom_ilo,j,k,n);
+                       });
+        }
+
+        // X-hi boundary
+        if (bx_ihi == dom_ihi) {
+            ParallelFor(Box(IntVect(dom_ihi+1, gbx_jlo, gbx_klo),
+                           IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(dom_ihi,j,k,n);
+                       });
+        }
+
+        // Y-lo boundary
+        if (bx_jlo == dom_jlo) {
+            ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
+                           IntVect(gbx_ihi, dom_jlo-1, gbx_khi)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(i,dom_jlo,k,n);
+                       });
+        }
+
+        // Y-hi boundary
+        if (bx_jhi == dom_jhi) {
+            ParallelFor(Box(IntVect(gbx_ilo, dom_jhi+1, gbx_klo),
+                           IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(i,dom_jhi,k,n);
+                       });
+        }
+
+        // Z-lo boundary
+        if (bx_klo == dom_klo) {
+            ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
+                           IntVect(gbx_ihi, gbx_jhi, dom_klo-1)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(i,j,dom_klo,n);
+                       });
+        }
+
+        // Z-hi boundary
+        if (bx_khi == dom_khi) {
+            ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, dom_khi+1),
+                           IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
+                       ncomp,
+                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+                           arr(i,j,k,n) = arr(i,j,dom_khi,n);
+                       });
+        }
+    }
+}
+
 // ======================= Build RHS with WENO5-Z ====================
 static void build_rhs_weno5z_old(const MultiFab& phi,
                              const MultiFab& vel,
@@ -155,9 +256,8 @@ static void build_rhs_weno5z_old(const MultiFab& phi,
 
     rhs.setVal(0.0);
 
-    // Fill ghost cells of phi for stencils
-    const auto& peri = geom.periodicity();
-    const_cast<MultiFab&>(phi).FillBoundary(peri);
+    // Fill ghost cells of phi for stencils using first-order extrapolation
+    fill_boundary_extrap(const_cast<MultiFab&>(phi), geom);
 
     for (MFIter mfi(rhs, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
@@ -234,8 +334,6 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
     MultiFab phi2(ba, dm, 1, 3);
     MultiFab rhs(ba, dm, 1, 0);
 
-    const auto& peri = geom.periodicity();
-
 
     // ---------- Stage 1 ----------
     build_rhs_weno5z(phi, vel, rhs, geom);
@@ -248,7 +346,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q1(i,j,k) = p(i,j,k) + dt * r(i,j,k);
         });
     }
-    phi1.FillBoundary(peri);
+    fill_boundary_extrap(phi1, geom);
 
     // ---------- Stage 2 ----------
     build_rhs_weno5z(phi1, vel, rhs, geom);
@@ -262,7 +360,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q2(i,j,k) = 0.75 * p(i,j,k) + 0.25 * ( q1c(i,j,k) + dt * r(i,j,k) );
         });
     }
-    phi2.FillBoundary(peri);
+    fill_boundary_extrap(phi2, geom);
 
     // ---------- Stage 3 ----------
     build_rhs_weno5z(phi2, vel, rhs, geom);
@@ -351,15 +449,15 @@ static void reinitialize_phi(MultiFab& phi,
     // phi0 must have 1 ghost cell for ∇phi operations
     MultiFab phi0(phi.boxArray(), phi.DistributionMap(), 1, 1);
     MultiFab::Copy(phi0, phi, 0, 0, 1, 1);
-    phi0.FillBoundary(geom.periodicity());
+    fill_boundary_extrap(phi0, geom);
 
     // rhs needs same ghost depth as phi to allow growntilebox(1)
     MultiFab rhs(phi.boxArray(), phi.DistributionMap(), 1, 1);
 
     for (int it = 0; it < n_iters; ++it) {
 
-        // Ensure ghost cells of phi are fresh each iteration
-        phi.FillBoundary(geom.periodicity());
+        // Ensure ghost cells of phi are fresh each iteration using first-order extrapolation
+        fill_boundary_extrap(phi, geom);
 
         for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const Box& bx = mfi.growntilebox(1); // SAFE for ±1 stencil
@@ -494,8 +592,8 @@ static void advect_levelset_upwind(MultiFab& phi,
     const auto dx = geom.CellSize();
     GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
 
-    // One ghost cell for upwind stencils
-    phi.FillBoundary(geom.periodicity());
+    // One ghost cell for upwind stencils; fill using first-order extrapolation
+    fill_boundary_extrap(phi, geom);
 
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
@@ -547,9 +645,6 @@ int main(int argc, char* argv[])
         int n_cell_z    = n_cell; pp.query("n_cell_z", n_cell_z);
 
         int max_grid    = 32;   pp.query("max_grid_size", max_grid);
-        int is_per_x    = 1;    pp.query("is_periodic_x", is_per_x);
-        int is_per_y    = 1;    pp.query("is_periodic_y", is_per_y);
-        int is_per_z    = 1;    pp.query("is_periodic_z", is_per_z);
 
         Real plo_x = 0.0, plo_y = 0.0, plo_z = 0.0;
         Real phi_x = 1.0, phi_y = 1.0, phi_z = 1.0;
@@ -596,7 +691,7 @@ int main(int argc, char* argv[])
         Box domain(dom_lo, dom_hi);
 
         RealBox rb({plo_x, plo_y, plo_z}, {phi_x, phi_y, phi_z});
-        Array<int,AMREX_SPACEDIM> is_periodic{is_per_x, is_per_y, is_per_z};
+        Array<int,AMREX_SPACEDIM> is_periodic{0, 0, 0};
         Geometry geom(domain, &rb, 0, is_periodic.data());
 
         // ---------------- Grids & distribution -----------------
