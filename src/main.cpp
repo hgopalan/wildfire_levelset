@@ -68,6 +68,7 @@ int main(int argc, char* argv[])
         else {
             amrex::Abort("Invalid source_type: " + inputs.source_type);
         }
+        fill_boundary_extrap(phi, geom);
         init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
 
         // ---------------- dt from CFL --------------------------
@@ -90,6 +91,10 @@ int main(int argc, char* argv[])
 
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
+            fill_boundary_extrap(phi, geom);
+            if (has_fine_level) {
+                fill_boundary_extrap(*fine_phi, *fine_geom);
+            }
             const Real dt_step = dt;
             advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step);
             if (has_fine_level) {
