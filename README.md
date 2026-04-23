@@ -6,20 +6,37 @@ This repository contains a small AMReX-based C++ level-set solver for wildfire-f
 
 - C++17 compiler
 - CMake (3.20+)
-- An installed AMReX build discoverable by CMake (`AMReXConfig.cmake`)
+- Git
 
 > Note: This project currently assumes a 3D setup (`x/y/z` parameters are used throughout).
+
+## Clone
+
+Clone the repository with submodules so the pinned AMReX source is available locally:
+
+```bash
+git clone --recurse-submodules https://github.com/hgopalan/wildfire_levelset.git
+cd wildfire_levelset
+```
+
+If you already cloned the repository without submodules, initialize them from the repository root:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## Build
 
 From the repository root:
 
 ```bash
-cmake -S . -B build -DAMReX_DIR=/path/to/amrex/install/lib/cmake/AMReX
+cmake -S . -B build
 cmake --build build -j
 ```
 
-If AMReX is already on your `CMAKE_PREFIX_PATH`, the `-DAMReX_DIR=...` flag can be omitted.
+This project prefers the vendored `external/amrex` submodule and builds it as part of the top-level CMake configure. The build is currently configured for a 3D AMReX setup.
+
+If you intentionally want to use an already installed AMReX instead, configure CMake with `-DLEVELSET_USE_VENDORED_AMREX=OFF` and provide `AMReX_DIR` or `CMAKE_PREFIX_PATH` as needed.
 
 ## Run
 
