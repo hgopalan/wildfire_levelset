@@ -123,12 +123,12 @@ int main(int argc, char* argv[])
             if (has_fine_level) {
                 dt = std::min(dt, compute_dt(*fine_vel, *fine_geom, inputs.cfl));
             }
-            Real philomax = phi.min(0);
-            Real phihimax = phi.max(0);
+            Real phi_min = phi.min(0);
+            Real phi_max = phi.max(0);
 
             amrex::Print() << "Step " << step
-                        << " : phi_min = " << philomax
-                        << " , phi_max = " << phihimax << "\n";
+                        << " : phi_min = " << phi_min
+                        << " , phi_max = " << phi_max << "\n";
 
             if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0)) {
                 amrex::Print() << "Reinitializing at step " << step << "\n";

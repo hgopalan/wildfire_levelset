@@ -60,6 +60,14 @@ static void synchronize_coarse_phi_from_fine(MultiFab& coarse_phi,
     amrex::average_down(fine_phi, coarse_phi, 0, 1, rr);
 }
 
+static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size)
+{
+    const long long fine_max_grid_ll = static_cast<long long>(refine_ratio) *
+                                       static_cast<long long>(max_grid_size);
+    return static_cast<int>(std::max(1LL, std::min(fine_max_grid_ll,
+                                                   static_cast<long long>(std::numeric_limits<int>::max()))));
+}
+
 static bool regrid_negative_phi(const MultiFab& coarse_phi,
                                 const MultiFab& coarse_vel,
                                 const Geometry& coarse_geom,
@@ -114,11 +122,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
 
     BoxArray new_fine_ba(fine_bl);
     new_fine_ba.simplify();
-    const long long fine_max_grid_ll = static_cast<long long>(refine_ratio) *
-                                       static_cast<long long>(max_grid_size);
-    const int fine_max_grid = static_cast<int>(std::max(1LL, std::min(fine_max_grid_ll,
-                                                                       static_cast<long long>(std::numeric_limits<int>::max()))));
-    new_fine_ba.maxSize(fine_max_grid);
+    new_fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
 
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
