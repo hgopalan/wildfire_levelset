@@ -111,10 +111,6 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
            // pout(i,j,k) = (1.0/3.0) * p(i,j,k) + (2.0/3.0) * ( q2c(i,j,k) + dt * r(i,j,k) );
 
         Real newphi = (1.0/3.0) * p(i,j,k) + (2.0/3.0) * ( q2c(i,j,k) + dt * r(i,j,k) );
-
-        // Clip non-positive values:
-        if (newphi < 0.0) newphi = 0.0;
-
         pout(i,j,k) = newphi;
 
         });

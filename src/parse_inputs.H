@@ -28,6 +28,8 @@ struct InputParameters {
 
     // Sphere parameters
     amrex::Real cx, cy, cz, radius;
+    // Box Size 
+    amrex::Real bx, by, bz;
 };
 
 void parse_inputs(InputParameters& inputs);

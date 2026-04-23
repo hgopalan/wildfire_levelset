@@ -43,8 +43,12 @@ void parse_inputs(InputParameters& p)
     p.source_type = "sphere";    pp.query("source_type", p.source_type);
 
     // ---------------- Inputs: sphere ------------------------
-    p.cx = 0.5;                  pp.query("sphere_center_x", p.cx);
-    p.cy = 0.5;                  pp.query("sphere_center_y", p.cy);
-    p.cz = 0.5;                  pp.query("sphere_center_z", p.cz);
+    p.cx = 0.5;                  pp.query("center_x", p.cx);
+    p.cy = 0.5;                  pp.query("center_y", p.cy);
+    p.cz = 0.5;                  pp.query("center_z", p.cz);
     p.radius = 0.25;             pp.query("sphere_radius",   p.radius);
+
+    p.bx = 32;                 pp.query("box_size_x", p.bx);
+    p.by = 32;                 pp.query("box_size_y", p.by);
+    p.bz = 32;                 pp.query("box_size_z", p.bz);
 }

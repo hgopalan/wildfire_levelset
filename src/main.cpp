@@ -61,7 +61,13 @@ int main(int argc, char* argv[])
         if (inputs.source_type == "sphere") {
             init_phi_sphere(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
         }
-        init_velocity_constant(vel, inputs.ux, inputs.uy, inputs.uz);
+        else if(inputs.source_type == "box") {
+            init_phi_box(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+        }
+        else {
+            amrex::Abort("Invalid source_type: " + inputs.source_type);
+        }
+        init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
 
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);
