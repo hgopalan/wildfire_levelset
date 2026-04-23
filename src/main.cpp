@@ -2,7 +2,7 @@
 #include <AMReX_Array4.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
-#include <AMReX_GPULaunch.H>
+#include <AMReX_GpuLaunch.H>
 #include <AMReX_PlotFileUtil.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_DistributionMapping.H>
