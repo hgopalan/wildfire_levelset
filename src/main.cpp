@@ -83,15 +83,7 @@ int main(int argc, char* argv[])
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
             advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
-
-            // Regrid every N steps: keep only boxes with phi < 0
-            if (inputs.regrid_int > 0 && (step % inputs.regrid_int == 0)) {
-                amrex::Print() << "Regridding (negative phi) at step " << step << "\n";
-                regrid_negative_phi(phi, vel, geom, ng_phi);
-                // Recompute dt after regrid in case vel layout changed
-                dt = compute_dt(vel, geom, inputs.cfl);
-            }
-
+            dt = compute_dt(vel, geom, inputs.cfl);
             Real philomax = phi.min(0);
             Real phihimax = phi.max(0);
 

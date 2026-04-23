@@ -15,7 +15,6 @@ struct InputParameters {
     int reinit_int;
     int reinit_iters;
     amrex::Real reinit_dtau;
-    int regrid_int;       // regrid every this many steps (0 = disabled)
     int nsteps;
     amrex::Real cfl;
     int plot_int;

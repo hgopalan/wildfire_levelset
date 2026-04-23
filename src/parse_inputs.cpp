@@ -29,7 +29,6 @@ void parse_inputs(InputParameters& p)
     p.reinit_int   = 20;         pp.query("reinit_int",   p.reinit_int);
     p.reinit_iters = 20;         pp.query("reinit_iters", p.reinit_iters);
     p.reinit_dtau  = 0.5;        pp.query("reinit_dtau",  p.reinit_dtau);
-    p.regrid_int   = 0;          pp.query("regrid_int",   p.regrid_int);
     p.nsteps       = 300;        pp.query("nsteps",       p.nsteps);
     p.cfl          = 0.5;        pp.query("cfl",          p.cfl);
     p.plot_int     = 50;         pp.query("plot_int",     p.plot_int);
