@@ -20,12 +20,20 @@ static void initialize_fine_from_coarse(const MultiFab& coarse_phi,
                                         MultiFab& fine_vel,
                                         int refine_ratio)
 {
+    BoxArray coarse_from_fine_ba = fine_phi.boxArray();
+    coarse_from_fine_ba.coarsen(refine_ratio);
+
+    MultiFab coarse_phi_on_fine_dm(coarse_from_fine_ba, fine_phi.DistributionMap(), 1, 0);
+    MultiFab coarse_vel_on_fine_dm(coarse_from_fine_ba, fine_vel.DistributionMap(), 3, 0);
+    coarse_phi_on_fine_dm.ParallelCopy(coarse_phi, 0, 0, 1, 0, 0);
+    coarse_vel_on_fine_dm.ParallelCopy(coarse_vel, 0, 0, 3, 0, 0);
+
     for (MFIter mfi(fine_phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const p_fine = fine_phi.array(mfi);
         auto const v_fine = fine_vel.array(mfi);
-        auto const p_coarse = coarse_phi.const_array(mfi);
-        auto const v_coarse = coarse_vel.const_array(mfi);
+        auto const p_coarse = coarse_phi_on_fine_dm.const_array(mfi);
+        auto const v_coarse = coarse_vel_on_fine_dm.const_array(mfi);
 
         const int rr = refine_ratio;
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
@@ -158,8 +166,8 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
 
     if (old_fine_phi && old_fine_vel) {
         // Preserve existing fine-level values in regions that remain refined.
-        fine_phi->ParallelCopy(*old_fine_phi, 0, 0, 1, ng_phi);
-        fine_vel->ParallelCopy(*old_fine_vel, 0, 0, 3, 1);
+        fine_phi->ParallelCopy(*old_fine_phi, 0, 0, 1, 0, 0);
+        fine_vel->ParallelCopy(*old_fine_vel, 0, 0, 3, 0, 0);
     }
 
     fine_ba = new_fine_ba;

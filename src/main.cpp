@@ -73,6 +73,7 @@ int main(int argc, char* argv[])
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
+        Real time = 0.0;
         bool has_fine_level = false;
         BoxArray fine_ba;
         DistributionMapping fine_dm;
@@ -89,9 +90,10 @@ int main(int argc, char* argv[])
 
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
+            const Real dt_step = dt;
+            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step);
             if (has_fine_level) {
-                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt);
+                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step);
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
 
@@ -150,12 +152,14 @@ int main(int argc, char* argv[])
                     Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
                                                                        inputs.amr_refine_ratio,
                                                                        inputs.amr_refine_ratio))};
-                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, step*dt, isteps, ref_ratio);
+                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time + dt_step, isteps, ref_ratio);
                 } else {
-                    WriteSingleLevelPlotfile(buf, phi, names, geom, step*dt, step);
+                    WriteSingleLevelPlotfile(buf, phi, names, geom, time + dt_step, step);
                 }
                 amrex::Print() << "Wrote " << buf << "\n";
             }
+
+            time += dt_step;
         }
 
         // ---------------- Final write --------------------------
@@ -171,9 +175,9 @@ int main(int argc, char* argv[])
                                                                    inputs.amr_refine_ratio,
                                                                    inputs.amr_refine_ratio))};
                 WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms,
-                                        inputs.nsteps*dt, isteps, ref_ratio);
+                                        time, isteps, ref_ratio);
             } else {
-                WriteSingleLevelPlotfile(buf, phi, names, geom, inputs.nsteps*dt, inputs.nsteps);
+                WriteSingleLevelPlotfile(buf, phi, names, geom, time, inputs.nsteps);
             }
             amrex::Print() << "Wrote final " << buf << "\n";
         }
