@@ -11,6 +11,7 @@
 #include <AMReX_MultiFabUtil.H>
 #include <AMReX_Print.H>
 #include <algorithm>
+#include <limits>
 #include <memory>
 
 static void initialize_fine_from_coarse(const MultiFab& coarse_phi,
@@ -49,6 +50,14 @@ static void synchronize_coarse_from_fine(MultiFab& coarse_phi,
     const IntVect rr(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio));
     amrex::average_down(fine_phi, coarse_phi, 0, 1, rr);
     amrex::average_down(fine_vel, coarse_vel, 0, 3, rr);
+}
+
+static void synchronize_coarse_phi_from_fine(MultiFab& coarse_phi,
+                                             const MultiFab& fine_phi,
+                                             int refine_ratio)
+{
+    const IntVect rr(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio));
+    amrex::average_down(fine_phi, coarse_phi, 0, 1, rr);
 }
 
 static bool regrid_negative_phi(const MultiFab& coarse_phi,
@@ -105,7 +114,11 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
 
     BoxArray new_fine_ba(fine_bl);
     new_fine_ba.simplify();
-    new_fine_ba.maxSize(std::max(1, refine_ratio * max_grid_size));
+    const long long fine_max_grid_ll = static_cast<long long>(refine_ratio) *
+                                       static_cast<long long>(max_grid_size);
+    const int fine_max_grid = static_cast<int>(std::max(1LL, std::min(fine_max_grid_ll,
+                                                                       static_cast<long long>(std::numeric_limits<int>::max()))));
+    new_fine_ba.maxSize(fine_max_grid);
 
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
@@ -140,6 +153,7 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     initialize_fine_from_coarse(coarse_phi, coarse_vel, *fine_phi, *fine_vel, refine_ratio);
 
     if (old_fine_phi && old_fine_vel) {
+        // Preserve existing fine-level values in regions that remain refined.
         fine_phi->ParallelCopy(*old_fine_phi, 0, 0, 1, ng_phi);
         fine_vel->ParallelCopy(*old_fine_vel, 0, 0, 3, 1);
     }

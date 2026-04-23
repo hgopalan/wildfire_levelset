@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
                 reinitialize_phi(phi, geom, inputs.reinit_iters, inputs.reinit_dtau);
                 if (has_fine_level) {
                     reinitialize_phi(*fine_phi, *fine_geom, inputs.reinit_iters, inputs.reinit_dtau);
-                    synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
+                    synchronize_coarse_phi_from_fine(phi, *fine_phi, inputs.amr_refine_ratio);
                 }
             }
 
