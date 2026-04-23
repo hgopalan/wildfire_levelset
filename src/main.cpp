@@ -13,40 +13,6 @@
 
 using namespace amrex;
 
-// ======================= WENO5-Z helpers ===========================
-static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Real weno5z_left(Real vm2, Real vm1, Real v0, Real vp1, Real vp2)
-{
-    // Candidate polys at i+1/2 (left-biased)
-    Real p0 = ( 2.0*vm2 - 7.0*vm1 + 11.0*v0 ) / 6.0;
-    Real p1 = ( -1.0*vm1 + 5.0*v0 + 2.0*vp1 ) / 6.0;
-    Real p2 = ( 2.0*v0 + 5.0*vp1 - 1.0*vp2 ) / 6.0;
-
-    // Smoothness indicators β_k
-    Real b0 = (13.0/12.0) * (vm2 - 2.0*vm1 + v0) * (vm2 - 2.0*vm1 + v0)
-            + 0.25 * (vm2 - 4.0*vm1 + 3.0*v0) * (vm2 - 4.0*vm1 + 3.0*v0);
-
-    Real b1 = (13.0/12.0) * (vm1 - 2.0*v0 + vp1) * (vm1 - 2.0*v0 + vp1)
-            + 0.25 * (vm1 - vp1) * (vm1 - vp1);
-
-    Real b2 = (13.0/12.0) * (v0 - 2.0*vp1 + vp2) * (v0 - 2.0*vp1 + vp2)
-            + 0.25 * (3.0*v0 - 4.0*vp1 + vp2) * (3.0*v0 - 4.0*vp1 + vp2);
-
-    // WENO-Z: tau5 = |β0 - β2|
-    Real tau5 = amrex::Math::abs(b0 - b2);
-    const Real eps = 1e-12;        // small number to avoid /0
-    const Real d0 = 0.1, d1 = 0.6, d2 = 0.3; // linear weights
-
-    Real a0 = d0 * (1.0 + tau5 / (b0 + eps));
-    Real a1 = d1 * (1.0 + tau5 / (b1 + eps));
-    Real a2 = d2 * (1.0 + tau5 / (b2 + eps));
-
-    Real sum = a0 + a1 + a2;
-    a0 /= sum; a1 /= sum; a2 /= sum;
-
-    return a0*p0 + a1*p1 + a2*p2;
-}
-
 // ================================================================
 // Godunov |grad phi| operator
 // ================================================================
@@ -76,15 +42,6 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
             + (pz_neg < 0.0 ? pz_neg*pz_neg : 0.0);
 
     return std::sqrt(gx + gy + gz);
-}
-
-// Right-biased value at i+1/2 from the "right" side.
-// Implemented via mirrored call to the left-biased routine.
-static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Real weno5z_right(Real vm1, Real v0, Real vp1, Real vp2, Real vp3)
-{
-    // Mirror: (vp3, vp2, vp1, v0, vm1) acts like "left" in reversed indexing.
-    return weno5z_left(vp3, vp2, vp1, v0, vm1);
 }
 
 // ============================================================================
@@ -144,8 +101,16 @@ static void build_rhs_weno5z(const MultiFab& phi,
         });
     }
 }
-// ======================= First-order extrapolation boundary fill ======================
-static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
+// ======================= Upwind-aware boundary fill ======================
+// Fills ghost cells using at least first-order (linear) extrapolation for
+// improved stability with WENO5-Z (which requires 3 ghost cells).
+// When vel is provided, applies direction-aware treatment:
+//   - outflow boundaries: linear extrapolation (flow carries info out, stable)
+//   - inflow  boundaries: constant (zeroth-order) extrapolation (hold boundary value)
+// When vel is nullptr (e.g., during reinitialization), linear extrapolation
+// is applied unconditionally.
+static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom,
+                                  const MultiFab* vel = nullptr)
 {
     // Fill interior ghost cells for MPI exchange between ranks.
     // Since is_periodic is {0,0,0}, this does not copy across periodic boundaries.
@@ -183,13 +148,27 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
 
         int ncomp = mf.nComp();
 
+        // Use an empty Array4 as a dummy when vel is not provided.
+        // The have_vel flag prevents dereferencing it in that case.
+        Array4<Real const> varr = (vel != nullptr)
+            ? vel->const_array(mfi)
+            : Array4<Real const>{};
+        bool have_vel = (vel != nullptr);
+
         // X-lo boundary
         if (bx_ilo == dom_ilo) {
             ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
                            IntVect(dom_ilo-1, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(dom_ilo,j,k,n);
+                           // Clamp j/k to interior when reading velocity ghost cells
+                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
+                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
+                           // Outflow at x-lo: u_x < 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(dom_ilo, jc, kc, 0) < 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(dom_ilo,j,k,n) + Real(dom_ilo-i)*(arr(dom_ilo,j,k,n) - arr(dom_ilo+1,j,k,n))
+                               : arr(dom_ilo,j,k,n);
                        });
         }
 
@@ -199,7 +178,13 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(dom_ihi,j,k,n);
+                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
+                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
+                           // Outflow at x-hi: u_x > 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(dom_ihi, jc, kc, 0) > 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(dom_ihi,j,k,n) + Real(i-dom_ihi)*(arr(dom_ihi,j,k,n) - arr(dom_ihi-1,j,k,n))
+                               : arr(dom_ihi,j,k,n);
                        });
         }
 
@@ -209,7 +194,13 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
                            IntVect(gbx_ihi, dom_jlo-1, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(i,dom_jlo,k,n);
+                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
+                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
+                           // Outflow at y-lo: u_y < 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(ic, dom_jlo, kc, 1) < 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(i,dom_jlo,k,n) + Real(dom_jlo-j)*(arr(i,dom_jlo,k,n) - arr(i,dom_jlo+1,k,n))
+                               : arr(i,dom_jlo,k,n);
                        });
         }
 
@@ -219,7 +210,13 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(i,dom_jhi,k,n);
+                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
+                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
+                           // Outflow at y-hi: u_y > 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(ic, dom_jhi, kc, 1) > 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(i,dom_jhi,k,n) + Real(j-dom_jhi)*(arr(i,dom_jhi,k,n) - arr(i,dom_jhi-1,k,n))
+                               : arr(i,dom_jhi,k,n);
                        });
         }
 
@@ -229,7 +226,13 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
                            IntVect(gbx_ihi, gbx_jhi, dom_klo-1)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(i,j,dom_klo,n);
+                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
+                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
+                           // Outflow at z-lo: u_z < 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(ic, jc, dom_klo, 2) < 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(i,j,dom_klo,n) + Real(dom_klo-k)*(arr(i,j,dom_klo,n) - arr(i,j,dom_klo+1,n))
+                               : arr(i,j,dom_klo,n);
                        });
         }
 
@@ -239,84 +242,15 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           arr(i,j,k,n) = arr(i,j,dom_khi,n);
+                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
+                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
+                           // Outflow at z-hi: u_z > 0; default to linear when no vel
+                           bool outflow = !have_vel || varr(ic, jc, dom_khi, 2) > 0.0;
+                           arr(i,j,k,n) = outflow
+                               ? arr(i,j,dom_khi,n) + Real(k-dom_khi)*(arr(i,j,dom_khi,n) - arr(i,j,dom_khi-1,n))
+                               : arr(i,j,dom_khi,n);
                        });
         }
-    }
-}
-
-// ======================= Build RHS with WENO5-Z ====================
-static void build_rhs_weno5z_old(const MultiFab& phi,
-                             const MultiFab& vel,
-                             MultiFab& rhs,
-                             const Geometry& geom)
-{
-    const auto dx = geom.CellSize();
-    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
-
-    rhs.setVal(0.0);
-
-    // Fill ghost cells of phi for stencils using first-order extrapolation
-    fill_boundary_extrap(const_cast<MultiFab&>(phi), geom);
-
-    for (MFIter mfi(rhs, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const Box& tbx = mfi.tilebox();
-        auto const p = phi.const_array(mfi);
-        auto const v = vel.const_array(mfi);
-        auto const f = rhs.array(mfi);
-
-        ParallelFor(tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Velocity components (constant per cell in your setup)
-            Real ux = v(i,j,k,0);
-            Real uy = v(i,j,k,1);
-            Real uz = v(i,j,k,2);
-
-            // Flux splitting
-            Real upx = std::max(ux, 0.0);
-            Real umx = std::min(ux, 0.0);
-
-            Real upy = std::max(uy, 0.0);
-            Real umy = std::min(uy, 0.0);
-
-            Real upz = std::max(uz, 0.0);
-            Real umz = std::min(uz, 0.0);
-
-            // ---------- X-direction: F_{i+1/2} and F_{i-1/2} ----------
-            Real phiL_p = weno5z_left( p(i-2,j,k), p(i-1,j,k), p(i,j,k), p(i+1,j,k), p(i+2,j,k) );
-            Real phiR_p = weno5z_right( p(i-1,j,k), p(i,j,k), p(i+1,j,k), p(i+2,j,k), p(i+3,j,k) );
-            Real Fx_p   = upx * phiL_p + umx * phiR_p;
-
-            Real phiL_m = weno5z_left( p(i-3,j,k), p(i-2,j,k), p(i-1,j,k), p(i,j,k), p(i+1,j,k) );
-            Real phiR_m = weno5z_right( p(i-2,j,k), p(i-1,j,k), p(i,j,k), p(i+1,j,k), p(i+2,j,k) );
-            Real Fx_m   = upx * phiL_m + umx * phiR_m;
-
-            Real dFdx = (Fx_p - Fx_m) / gdx[0];
-
-            // ---------- Y-direction ----------
-            Real phiL_p_y = weno5z_left( p(i,j-2,k), p(i,j-1,k), p(i,j,k), p(i,j+1,k), p(i,j+2,k) );
-            Real phiR_p_y = weno5z_right( p(i,j-1,k), p(i,j,k), p(i,j+1,k), p(i,j+2,k), p(i,j+3,k) );
-            Real Fy_p     = upy * phiL_p_y + umy * phiR_p_y;
-
-            Real phiL_m_y = weno5z_left( p(i,j-3,k), p(i,j-2,k), p(i,j-1,k), p(i,j,k), p(i,j+1,k) );
-            Real phiR_m_y = weno5z_right( p(i,j-2,k), p(i,j-1,k), p(i,j,k), p(i,j+1,k), p(i,j+2,k) );
-            Real Fy_m     = upy * phiL_m_y + umy * phiR_m_y;
-
-            Real dFdy = (Fy_p - Fy_m) / gdx[1];
-
-            // ---------- Z-direction ----------
-            Real phiL_p_z = weno5z_left( p(i,j,k-2), p(i,j,k-1), p(i,j,k), p(i,j,k+1), p(i,j,k+2) );
-            Real phiR_p_z = weno5z_right( p(i,j,k-1), p(i,j,k), p(i,j,k+1), p(i,j,k+2), p(i,j,k+3) );
-            Real Fz_p     = upz * phiL_p_z + umz * phiR_p_z;
-
-            Real phiL_m_z = weno5z_left( p(i,j,k-3), p(i,j,k-2), p(i,j,k-1), p(i,j,k), p(i,j,k+1) );
-            Real phiR_m_z = weno5z_right( p(i,j,k-2), p(i,j,k-1), p(i,j,k), p(i,j,k+1), p(i,j,k+2) );
-            Real Fz_m     = upz * phiL_m_z + umz * phiR_m_z;
-
-            Real dFdz = (Fz_p - Fz_m) / gdx[2];
-
-            // φ_t = - (∂F/∂x + ∂F/∂y + ∂F/∂z)
-            f(i,j,k) = - (dFdx + dFdy + dFdz);
-        });
     }
 }
 
@@ -346,7 +280,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q1(i,j,k) = p(i,j,k) + dt * r(i,j,k);
         });
     }
-    fill_boundary_extrap(phi1, geom);
+    fill_boundary_extrap(phi1, geom, &vel);
 
     // ---------- Stage 2 ----------
     build_rhs_weno5z(phi1, vel, rhs, geom);
@@ -360,7 +294,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q2(i,j,k) = 0.75 * p(i,j,k) + 0.25 * ( q1c(i,j,k) + dt * r(i,j,k) );
         });
     }
-    fill_boundary_extrap(phi2, geom);
+    fill_boundary_extrap(phi2, geom, &vel);
 
     // ---------- Stage 3 ----------
     build_rhs_weno5z(phi2, vel, rhs, geom);
@@ -394,44 +328,6 @@ Real smoothed_sign(Real phi0, Real eps)
 }
 
 
-
-// Distance from point P to line segment A->B (clamped projection)
-static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Real distance_point_to_segment(Real px, Real py, Real pz,
-                               Real ax, Real ay, Real az,
-                               Real bx, Real by, Real bz)
-{
-    Real vx = bx - ax;
-    Real vy = by - ay;
-    Real vz = bz - az;
-
-    Real wx = px - ax;
-    Real wy = py - ay;
-    Real wz = pz - az;
-
-    Real vv = vx*vx + vy*vy + vz*vz;
-
-    // Handle degenerate (A==B): distance to point A
-    if (vv <= 1.0e-30) {
-        Real dx = wx, dy = wy, dz = wz;
-        return std::sqrt(dx*dx + dy*dy + dz*dz);
-    }
-
-    Real t = (wx*vx + wy*vy + wz*vz) / vv;
-    t = std::max(0.0, std::min(1.0, t));
-
-    Real cx = ax + t * vx;
-    Real cy = ay + t * vy;
-    Real cz = az + t * vz;
-
-    Real dx = px - cx;
-    Real dy = py - cy;
-    Real dz = pz - cz;
-
-    return std::sqrt(dx*dx + dy*dy + dz*dz);
-}
-
-
 // ================================================================
 // Corrected reinitialization routine
 // ================================================================
@@ -456,7 +352,7 @@ static void reinitialize_phi(MultiFab& phi,
 
     for (int it = 0; it < n_iters; ++it) {
 
-        // Ensure ghost cells of phi are fresh each iteration using first-order extrapolation
+        // Ensure ghost cells of phi are fresh each iteration using linear extrapolation
         fill_boundary_extrap(phi, geom);
 
         for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -525,32 +421,6 @@ static void init_velocity_constant(MultiFab& vel, Real ux, Real uy, Real uz)
     }
 }
 
-// ======================= Upwind advection RHS: u · ∇phi =========================
-static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Real upwind_u_dot_grad_phi(Array4<Real const> const& phi,
-                           Array4<Real const> const& vel,
-                           int i, int j, int k,
-                           const GpuArray<Real,AMREX_SPACEDIM>& dx)
-{
-    Real ux = vel(i,j,k,0);
-    Real uy = vel(i,j,k,1);
-    Real uz = vel(i,j,k,2);
-
-    Real dphidx = (ux > 0.0)
-                  ? (phi(i,j,k) - phi(i-1,j,k)) / dx[0]
-                  : (phi(i+1,j,k) - phi(i,j,k)) / dx[0];
-
-    Real dphidy = (uy > 0.0)
-                  ? (phi(i,j,k) - phi(i,j-1,k)) / dx[1]
-                  : (phi(i,j+1,k) - phi(i,j,k)) / dx[1];
-
-    Real dphidz = (uz > 0.0)
-                  ? (phi(i,j,k) - phi(i,j,k-1)) / dx[2]
-                  : (phi(i,j,k+1) - phi(i,j,k)) / dx[2];
-
-    return ux * dphidx + uy * dphidy + uz * dphidz;
-}
-
 // ======================= Compute dt from CFL and max|u| =========================
 static Real compute_dt(const MultiFab& vel, const Geometry& geom, Real cfl)
 {
@@ -581,53 +451,6 @@ static Real compute_dt(const MultiFab& vel, const Geometry& geom, Real cfl)
         return 1.0; // stationary flow: generous dt
     }
     return cfl * dmin / umax;
-}
-
-// ======================= Single-step upwind advection ===========================
-static void advect_levelset_upwind(MultiFab& phi,
-                                   const MultiFab& vel,
-                                   const Geometry& geom,
-                                   Real dt)
-{
-    const auto dx = geom.CellSize();
-    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
-
-    // One ghost cell for upwind stencils; fill using first-order extrapolation
-    fill_boundary_extrap(phi, geom);
-
-    for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const Box& tbx = mfi.tilebox();
-        auto const p = phi.array(mfi);
-
-        ParallelFor(tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            Real val = p(i,j,k);
-            p(i,j,k) = (val < 0.0) ? 0.0 : val;    // clamp to non-negative
-        });
-    }
-
-    MultiFab rhs(phi.boxArray(), phi.DistributionMap(), 1, 0);
-
-    for (MFIter mfi(rhs, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const Box& tbx = mfi.tilebox();
-
-        auto const p  = phi.const_array(mfi);
-        auto const v  = vel.const_array(mfi);
-        auto const f  = rhs.array(mfi);
-
-        ParallelFor(tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            f(i,j,k) = - upwind_u_dot_grad_phi(p, v, i, j, k, gdx);
-        });
-    }
-
-    for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const Box& tbx = mfi.tilebox();
-        auto const p = phi.array(mfi);
-        auto const f = rhs.const_array(mfi);
-
-        ParallelFor(tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            p(i,j,k) += dt * f(i,j,k);
-        });
-    }
 }
 
 // ======================= Main ================================================
@@ -700,7 +523,7 @@ int main(int argc, char* argv[])
         DistributionMapping dm(ba);
 
         // ---------------- Fields: phi (1 comp), vel (3 comps) --
-        const int ng_phi = 3; // one ghost cell for upwind stencil
+        const int ng_phi = 3; // 3 ghost cells for stencil operations (WENO5-Z flux divergence uses up to ±3 cells)
         MultiFab phi(ba, dm, 1, ng_phi);
         MultiFab vel(ba, dm, 3, 1);
 
@@ -728,7 +551,6 @@ int main(int argc, char* argv[])
 
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= nsteps; ++step) {
-            //advect_levelset_upwind(phi, vel, geom, dt);
             advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
             Real philomax = phi.min(0);
             Real phihimax = phi.max(0);
