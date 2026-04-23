@@ -19,6 +19,7 @@ using namespace amrex;
 #include "reinitialization.H"
 #include "advection.H"
 #include "velocity_field.H"
+#include "parse_inputs.H"  
 
 
 
@@ -27,68 +28,27 @@ int main(int argc, char* argv[])
 {
     amrex::Initialize(argc, argv);
     {
-        ParmParse pp;
-
-        // ---------------- Inputs: grid & domain ----------------
-        // You can specify either n_cell (cubic) or n_cell_x/y/z
-        int n_cell      = 64;   pp.query("n_cell", n_cell);
-        int n_cell_x    = n_cell; pp.query("n_cell_x", n_cell_x);
-        int n_cell_y    = n_cell; pp.query("n_cell_y", n_cell_y);
-        int n_cell_z    = n_cell; pp.query("n_cell_z", n_cell_z);
-
-        int max_grid    = 32;   pp.query("max_grid_size", max_grid);
-
-        Real plo_x = 0.0, plo_y = 0.0, plo_z = 0.0;
-        Real phi_x = 1.0, phi_y = 1.0, phi_z = 1.0;
-        pp.query("prob_lo_x", plo_x);
-        pp.query("prob_lo_y", plo_y);
-        pp.query("prob_lo_z", plo_z);
-        pp.query("prob_hi_x", phi_x);
-        pp.query("prob_hi_y", phi_y);
-        pp.query("prob_hi_z", phi_z);
-
-        // ---------------- Inputs: time & output ----------------
-        int reinit_int = 20;
-        int reinit_iters = 20;
-        Real reinit_dtau = 0.5;
-
-        pp.query("reinit_int", reinit_int);
-        pp.query("reinit_iters", reinit_iters);
-        pp.query("reinit_dtau", reinit_dtau);
-        int nsteps    = 300;    pp.query("nsteps", nsteps);
-        Real cfl      = 0.5;    pp.query("cfl", cfl);
-        int plot_int  = 50;     pp.query("plot_int", plot_int);
-
-        // ---------------- Inputs: velocity ---------------------
-        Real ux = 0.25, uy = 0.0, uz = 0.0;
-        pp.query("u_x", ux);
-        pp.query("u_y", uy);
-        pp.query("u_z", uz);
-
-
-        // ---------------- Inputs: source selection ----------------
-        std::string source_type = "sphere"; // "line" or "sphere"
-        pp.query("source_type", source_type);
-
-        // ---------------- Inputs: sphere -----------------------
-        Real cx = 0.5, cy = 0.5, cz = 0.5, radius = 0.25;
-        pp.query("sphere_center_x", cx);
-        pp.query("sphere_center_y", cy);
-        pp.query("sphere_center_z", cz);
-        pp.query("sphere_radius",   radius);
+        // --- new: parse all inputs in one place
+        InputParameters inputs;
+        parse_inputs(inputs);
 
         // ---------------- Geometry setup -----------------------
         IntVect dom_lo(0, 0, 0);
-        IntVect dom_hi(n_cell_x-1, n_cell_y-1, n_cell_z-1);
+        IntVect dom_hi(inputs.n_cell_x-1, inputs.n_cell_y-1, inputs.n_cell_z-1);
         Box domain(dom_lo, dom_hi);
 
-        RealBox rb({plo_x, plo_y, plo_z}, {phi_x, phi_y, phi_z});
+        RealBox rb({inputs.plo_x, inputs.plo_y, inputs.plo_z},
+                   {inputs.phi_x, inputs.phi_y, inputs.phi_z});
+        
+
         Array<int,AMREX_SPACEDIM> is_periodic{0, 0, 0};
         Geometry geom(domain, &rb, 0, is_periodic.data());
 
+
+
         // ---------------- Grids & distribution -----------------
         BoxArray ba(domain);
-        ba.maxSize(max_grid);
+        ba.maxSize(inputs.max_grid);
         DistributionMapping dm(ba);
 
         // ---------------- Fields: phi (1 comp), vel (3 comps) --
@@ -96,21 +56,17 @@ int main(int argc, char* argv[])
         MultiFab phi(ba, dm, 1, ng_phi);
         MultiFab vel(ba, dm, 3, 1);
 
-        // ---------------- Initialize ---------------------------
-        //init_phi_sphere(phi, geom, cx, cy, cz, radius);
 
         // ---------------- Initialize ---------------------------
-        if (source_type == "sphere") {
-
-            // Fallback: sphere SDF (old behavior)
-            init_phi_sphere(phi, geom, cx, cy, cz, radius);
+        if (inputs.source_type == "sphere") {
+            init_phi_sphere(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
         }
-
-        init_velocity_constant(vel, ux, uy, uz);
+        init_velocity_constant(vel, inputs.ux, inputs.uy, inputs.uz);
 
         // ---------------- dt from CFL --------------------------
-        Real dt = compute_dt(vel, geom, cfl);
+        Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
+
 
         // ---------------- Write initial plotfile ---------------
         {
@@ -119,7 +75,7 @@ int main(int argc, char* argv[])
         }
 
         // ---------------- Time stepping ------------------------
-        for (int step = 1; step <= nsteps; ++step) {
+        for (int step = 1; step <= inputs.nsteps; ++step) {
             advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
             Real philomax = phi.min(0);
             Real phihimax = phi.max(0);
@@ -130,13 +86,13 @@ int main(int argc, char* argv[])
             
             #include "plot_results.H"
         }
-        
+
         // ---------------- Final write --------------------------
         {
             char buf[64];
-            std::snprintf(buf, sizeof(buf), "plt%04d", nsteps);
+            std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
             Vector<std::string> names = {"phi"};
-            WriteSingleLevelPlotfile(buf, phi, names, geom, nsteps*dt, nsteps);
+            WriteSingleLevelPlotfile(buf, phi, names, geom, inputs.nsteps*dt, inputs.nsteps);
             amrex::Print() << "Wrote final " << buf << "\n";
         }
     }

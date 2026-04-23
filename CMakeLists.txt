@@ -11,7 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(AMReX REQUIRED)
 
-add_executable(levelset src/main.cpp)
+add_executable(levelset 
+               src/main.cpp
+               src/parse_inputs.cpp                
+              )
 target_link_libraries(levelset PRIVATE AMReX::amrex)
 
 # Recommended warnings
