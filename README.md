@@ -49,6 +49,12 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `reinit_int=20`
   - `reinit_iters=20`
   - `reinit_dtau=0.5`
+- Dynamic AMR for negative `phi`:
+  - `amr_enable_negative_phi_refine=1`
+  - `amr_regrid_int=10`
+  - `amr_refine_ratio=2`
+  - `amr_max_refinements=1`
+  - `amr_tag_phi_threshold=0.0` (cells with `phi < threshold` trigger refinement)
 - Velocity:
   - `u_x=0.25`, `u_y=0.0`, `u_z=0.0`
 - Initial source:

@@ -50,4 +50,16 @@ void parse_inputs(InputParameters& p)
     p.bx = 32;                 pp.query("box_size_x", p.bx);
     p.by = 32;                 pp.query("box_size_y", p.by);
     p.bz = 32;                 pp.query("box_size_z", p.bz);
+
+    // ---------------- Inputs: dynamic AMR for negative phi -----
+    p.amr_enable_negative_phi_refine = 1;
+    pp.query("amr_enable_negative_phi_refine", p.amr_enable_negative_phi_refine);
+    p.amr_regrid_int = 10;
+    pp.query("amr_regrid_int", p.amr_regrid_int);
+    p.amr_refine_ratio = 2;
+    pp.query("amr_refine_ratio", p.amr_refine_ratio);
+    p.amr_max_refinements = 1;
+    pp.query("amr_max_refinements", p.amr_max_refinements);
+    p.amr_tag_phi_threshold = 0.0;
+    pp.query("amr_tag_phi_threshold", p.amr_tag_phi_threshold);
 }
