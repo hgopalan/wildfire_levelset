@@ -14,7 +14,46 @@
 using namespace amrex;
 
 // ================================================================
-// Godunov |grad phi| operator
+// WENO3 one-sided reconstruction helper
+// Returns the WENO3 reconstructed derivative (left or right) in one direction.
+// f0, f1, f2 are three consecutive cell values; the reconstruction targets
+// the interface between f1 and f2 (right-biased) or f0 and f1 (left-biased).
+//
+// For a right-biased (positive upwind) reconstruction:
+//   stencil 0: uses f0, f1  -> q0 = f1 - f0  (divided by dx, caller does that)
+//   stencil 1: uses f1, f2  -> q1 = f2 - f1
+// Ideal weights: C0 = 1/3, C1 = 2/3
+// ================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real weno3_reconstruct(Real fm1, Real f0, Real fp1)
+{
+    // Smoothness indicators for the two 2-point stencils
+    constexpr Real weno_eps = Real(1.0e-6);
+    Real beta0 = (f0  - fm1) * (f0  - fm1);
+    Real beta1 = (fp1 - f0)  * (fp1 - f0);
+
+    // Ideal weights
+    constexpr Real C0 = Real(1.0/3.0);
+    constexpr Real C1 = Real(2.0/3.0);
+
+    // Un-normalised weights
+    Real alpha0 = C0 / ((weno_eps + beta0) * (weno_eps + beta0));
+    Real alpha1 = C1 / ((weno_eps + beta1) * (weno_eps + beta1));
+    Real alpha_sum = alpha0 + alpha1;
+
+    // Normalised weights
+    Real w0 = alpha0 / alpha_sum;
+    Real w1 = alpha1 / alpha_sum;
+
+    // Candidate stencil reconstructions (finite differences, not divided by dx)
+    Real q0 = f0  - fm1;   // stencil 0: left pair
+    Real q1 = fp1 - f0;    // stencil 1: right pair
+
+    return w0 * q0 + w1 * q1;
+}
+
+// ================================================================
+// Godunov |grad phi| operator using WENO3 reconstruction
 // ================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real godunov_norm_grad_phi(const Array4<Real const>& phi,
@@ -24,24 +63,31 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // Grid-aware epsilon for regularization (prevents near-zero gradient issues)
     Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
 
-    // Forward/backward differences
-    Real px_pos = (phi(i+1,j,k) - phi(i,j,k)) / dx[0];
-    Real px_neg = (phi(i,j,k) - phi(i-1,j,k)) / dx[0];
+    // WENO3 reconstructed upwind derivatives in each direction.
+    // For each direction, two one-sided estimates are computed:
+    //   px_right: Godunov "positive" (forward-biased) derivative, using stencil (i-1, i, i+1)
+    //   px_left:  Godunov "negative" (backward-biased) derivative, using stencil (i-2, i-1, i)
+    // The Godunov upwind selection then picks the appropriate one-sided value.
 
-    Real py_pos = (phi(i,j+1,k) - phi(i,j,k)) / dx[1];
-    Real py_neg = (phi(i,j,k) - phi(i,j-1,k)) / dx[1];
+    // X direction
+    Real px_right = weno3_reconstruct(phi(i-1,j,k), phi(i,j,k), phi(i+1,j,k)) / dx[0];
+    Real px_left  = weno3_reconstruct(phi(i-2,j,k), phi(i-1,j,k), phi(i,j,k)) / dx[0];
 
-    Real pz_pos = (phi(i,j,k+1) - phi(i,j,k)) / dx[2];
-    Real pz_neg = (phi(i,j,k) - phi(i,j,k-1)) / dx[2];
+    // Y direction
+    Real py_right = weno3_reconstruct(phi(i,j-1,k), phi(i,j,k), phi(i,j+1,k)) / dx[1];
+    Real py_left  = weno3_reconstruct(phi(i,j-2,k), phi(i,j-1,k), phi(i,j,k)) / dx[1];
 
-    // Godunov choices: clamp using max/min to select only contributing upwind directions
-    // (explicit max/min formulation improves GPU vectorization over ternary operators)
-    Real px_p = amrex::max(px_pos, Real(0.0));
-    Real px_n = amrex::min(px_neg, Real(0.0));
-    Real py_p = amrex::max(py_pos, Real(0.0));
-    Real py_n = amrex::min(py_neg, Real(0.0));
-    Real pz_p = amrex::max(pz_pos, Real(0.0));
-    Real pz_n = amrex::min(pz_neg, Real(0.0));
+    // Z direction
+    Real pz_right = weno3_reconstruct(phi(i,j,k-1), phi(i,j,k), phi(i,j,k+1)) / dx[2];
+    Real pz_left  = weno3_reconstruct(phi(i,j,k-2), phi(i,j,k-1), phi(i,j,k)) / dx[2];
+
+    // Godunov upwind selection: keep only contributing sides
+    Real px_p = amrex::max(px_right, Real(0.0));
+    Real px_n = amrex::min(px_left,  Real(0.0));
+    Real py_p = amrex::max(py_right, Real(0.0));
+    Real py_n = amrex::min(py_left,  Real(0.0));
+    Real pz_p = amrex::max(pz_right, Real(0.0));
+    Real pz_n = amrex::min(pz_left,  Real(0.0));
 
     Real gx = px_p*px_p + px_n*px_n;
     Real gy = py_p*py_p + py_n*py_n;
@@ -108,16 +154,10 @@ static void build_rhs_weno5z(const MultiFab& phi,
         });
     }
 }
-// ======================= Upwind-aware boundary fill ======================
-// Fills ghost cells using at least first-order (linear) extrapolation for
-// improved stability with WENO5-Z (which requires 3 ghost cells).
-// When vel is provided, applies direction-aware treatment:
-//   - outflow boundaries: linear extrapolation (flow carries info out, stable)
-//   - inflow  boundaries: constant (zeroth-order) extrapolation (hold boundary value)
-// When vel is nullptr (e.g., during reinitialization), linear extrapolation
-// is applied unconditionally.
-static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom,
-                                  const MultiFab* vel = nullptr)
+// ======================= Outflow boundary fill ======================
+// Fills ghost cells using linear extrapolation (outflow treatment) for phi.
+// Linear extrapolation is applied unconditionally for all boundaries.
+static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
 {
     // Fill interior ghost cells for MPI exchange between ranks.
     // Since is_periodic is {0,0,0}, this does not copy across periodic boundaries.
@@ -155,107 +195,69 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom,
 
         int ncomp = mf.nComp();
 
-        // Use an empty Array4 as a dummy when vel is not provided.
-        // The have_vel flag prevents dereferencing it in that case.
-        Array4<Real const> varr = (vel != nullptr)
-            ? vel->const_array(mfi)
-            : Array4<Real const>{};
-        bool have_vel = (vel != nullptr);
-
-        // X-lo boundary
+        // X-lo boundary: linear extrapolation (outflow)
         if (bx_ilo == dom_ilo) {
             ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
                            IntVect(dom_ilo-1, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           // Clamp j/k to interior when reading velocity ghost cells
-                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
-                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
-                           // Outflow at x-lo: u_x < 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(dom_ilo, jc, kc, 0) < 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(dom_ilo,j,k,n) + Real(dom_ilo-i)*(arr(dom_ilo,j,k,n) - arr(dom_ilo+1,j,k,n))
-                               : arr(dom_ilo,j,k,n);
+                           arr(i,j,k,n) = arr(dom_ilo,j,k,n)
+                               + Real(dom_ilo-i)*(arr(dom_ilo,j,k,n) - arr(dom_ilo+1,j,k,n));
                        });
         }
 
-        // X-hi boundary
+        // X-hi boundary: linear extrapolation (outflow)
         if (bx_ihi == dom_ihi) {
             ParallelFor(Box(IntVect(dom_ihi+1, gbx_jlo, gbx_klo),
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
-                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
-                           // Outflow at x-hi: u_x > 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(dom_ihi, jc, kc, 0) > 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(dom_ihi,j,k,n) + Real(i-dom_ihi)*(arr(dom_ihi,j,k,n) - arr(dom_ihi-1,j,k,n))
-                               : arr(dom_ihi,j,k,n);
+                           arr(i,j,k,n) = arr(dom_ihi,j,k,n)
+                               + Real(i-dom_ihi)*(arr(dom_ihi,j,k,n) - arr(dom_ihi-1,j,k,n));
                        });
         }
 
-        // Y-lo boundary
+        // Y-lo boundary: linear extrapolation (outflow)
         if (bx_jlo == dom_jlo) {
             ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
                            IntVect(gbx_ihi, dom_jlo-1, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
-                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
-                           // Outflow at y-lo: u_y < 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(ic, dom_jlo, kc, 1) < 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(i,dom_jlo,k,n) + Real(dom_jlo-j)*(arr(i,dom_jlo,k,n) - arr(i,dom_jlo+1,k,n))
-                               : arr(i,dom_jlo,k,n);
+                           arr(i,j,k,n) = arr(i,dom_jlo,k,n)
+                               + Real(dom_jlo-j)*(arr(i,dom_jlo,k,n) - arr(i,dom_jlo+1,k,n));
                        });
         }
 
-        // Y-hi boundary
+        // Y-hi boundary: linear extrapolation (outflow)
         if (bx_jhi == dom_jhi) {
             ParallelFor(Box(IntVect(gbx_ilo, dom_jhi+1, gbx_klo),
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
-                           int kc = k < dom_klo ? dom_klo : (k > dom_khi ? dom_khi : k);
-                           // Outflow at y-hi: u_y > 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(ic, dom_jhi, kc, 1) > 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(i,dom_jhi,k,n) + Real(j-dom_jhi)*(arr(i,dom_jhi,k,n) - arr(i,dom_jhi-1,k,n))
-                               : arr(i,dom_jhi,k,n);
+                           arr(i,j,k,n) = arr(i,dom_jhi,k,n)
+                               + Real(j-dom_jhi)*(arr(i,dom_jhi,k,n) - arr(i,dom_jhi-1,k,n));
                        });
         }
 
-        // Z-lo boundary
+        // Z-lo boundary: linear extrapolation (outflow)
         if (bx_klo == dom_klo) {
             ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, gbx_klo),
                            IntVect(gbx_ihi, gbx_jhi, dom_klo-1)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
-                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
-                           // Outflow at z-lo: u_z < 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(ic, jc, dom_klo, 2) < 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(i,j,dom_klo,n) + Real(dom_klo-k)*(arr(i,j,dom_klo,n) - arr(i,j,dom_klo+1,n))
-                               : arr(i,j,dom_klo,n);
+                           arr(i,j,k,n) = arr(i,j,dom_klo,n)
+                               + Real(dom_klo-k)*(arr(i,j,dom_klo,n) - arr(i,j,dom_klo+1,n));
                        });
         }
 
-        // Z-hi boundary
+        // Z-hi boundary: linear extrapolation (outflow)
         if (bx_khi == dom_khi) {
             ParallelFor(Box(IntVect(gbx_ilo, gbx_jlo, dom_khi+1),
                            IntVect(gbx_ihi, gbx_jhi, gbx_khi)),
                        ncomp,
                        [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
-                           int ic = i < dom_ilo ? dom_ilo : (i > dom_ihi ? dom_ihi : i);
-                           int jc = j < dom_jlo ? dom_jlo : (j > dom_jhi ? dom_jhi : j);
-                           // Outflow at z-hi: u_z > 0; default to linear when no vel
-                           bool outflow = !have_vel || varr(ic, jc, dom_khi, 2) > 0.0;
-                           arr(i,j,k,n) = outflow
-                               ? arr(i,j,dom_khi,n) + Real(k-dom_khi)*(arr(i,j,dom_khi,n) - arr(i,j,dom_khi-1,n))
-                               : arr(i,j,dom_khi,n);
+                           arr(i,j,k,n) = arr(i,j,dom_khi,n)
+                               + Real(k-dom_khi)*(arr(i,j,dom_khi,n) - arr(i,j,dom_khi-1,n));
                        });
         }
     }
@@ -287,7 +289,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q1(i,j,k) = p(i,j,k) + dt * r(i,j,k);
         });
     }
-    fill_boundary_extrap(phi1, geom, &vel);
+    fill_boundary_extrap(phi1, geom);
 
     // ---------- Stage 2 ----------
     build_rhs_weno5z(phi1, vel, rhs, geom);
@@ -301,7 +303,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
             q2(i,j,k) = 0.75 * p(i,j,k) + 0.25 * ( q1c(i,j,k) + dt * r(i,j,k) );
         });
     }
-    fill_boundary_extrap(phi2, geom, &vel);
+    fill_boundary_extrap(phi2, geom);
 
     // ---------- Stage 3 ----------
     build_rhs_weno5z(phi2, vel, rhs, geom);
