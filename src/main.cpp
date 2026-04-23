@@ -141,6 +141,8 @@ int main(int argc, char* argv[])
                 }
             }
 
+            time += dt_step;
+
             if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "plt%04d", step);
@@ -152,14 +154,12 @@ int main(int argc, char* argv[])
                     Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
                                                                        inputs.amr_refine_ratio,
                                                                        inputs.amr_refine_ratio))};
-                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time + dt_step, isteps, ref_ratio);
+                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time, isteps, ref_ratio);
                 } else {
-                    WriteSingleLevelPlotfile(buf, phi, names, geom, time + dt_step, step);
+                    WriteSingleLevelPlotfile(buf, phi, names, geom, time, step);
                 }
                 amrex::Print() << "Wrote " << buf << "\n";
             }
-
-            time += dt_step;
         }
 
         // ---------------- Final write --------------------------
