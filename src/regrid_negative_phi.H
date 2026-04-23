@@ -130,12 +130,21 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     }
 
     BoxArray new_fine_ba(fine_bl);
-    new_fine_ba.simplify();
     new_fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
 
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
-    new_fine_ba &= fine_domain;
+
+    // Clip to fine_domain without relying on BoxArray::operator&=(Box),
+    // which is not available in some AMReX versions.
+    BoxList clipped_bl;
+    for (int i = 0; i < new_fine_ba.size(); ++i) {
+        Box clipped = new_fine_ba[i] & fine_domain;
+        if (clipped.ok()) {
+            clipped_bl.push_back(clipped);
+        }
+    }
+    new_fine_ba = BoxArray(clipped_bl);
 
     if (new_fine_ba.size() == 0) {
         if (has_fine_level) {
