@@ -10,6 +10,7 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <memory>
 
 using namespace amrex;
 #include "numerical_schemes.H"
@@ -72,7 +73,13 @@ int main(int argc, char* argv[])
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
-        int refinement_count = 0;
+        Real time = 0.0;
+        bool has_fine_level = false;
+        BoxArray fine_ba;
+        DistributionMapping fine_dm;
+        std::unique_ptr<Geometry> fine_geom;
+        std::unique_ptr<MultiFab> fine_phi;
+        std::unique_ptr<MultiFab> fine_vel;
 
 
         // ---------------- Write initial plotfile ---------------
@@ -83,32 +90,76 @@ int main(int argc, char* argv[])
 
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
+            const Real dt_step = dt;
+            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step);
+            if (has_fine_level) {
+                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step);
+                synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
+            }
 
             if (inputs.amr_enable_negative_phi_refine == 1 &&
                 inputs.amr_regrid_int > 0 &&
                 (step % inputs.amr_regrid_int) == 0)
             {
-                bool refined = regrid_negative_phi(phi, vel, ba, dm, geom,
+                bool refined = regrid_negative_phi(phi, vel, geom,
                                                    ng_phi,
                                                    inputs.amr_refine_ratio,
                                                    inputs.amr_tag_phi_threshold,
                                                    inputs.amr_max_refinements,
-                                                   refinement_count);
+                                                   inputs.max_grid,
+                                                   has_fine_level,
+                                                   fine_ba,
+                                                   fine_dm,
+                                                   fine_geom,
+                                                   fine_phi,
+                                                   fine_vel);
                 if (refined) {
                     fill_boundary_extrap(phi, geom);
+                    if (has_fine_level) {
+                        fill_boundary_extrap(*fine_phi, *fine_geom);
+                    }
                 }
             }
 
             dt = compute_dt(vel, geom, inputs.cfl);
-            Real philomax = phi.min(0);
-            Real phihimax = phi.max(0);
+            if (has_fine_level) {
+                dt = std::min(dt, compute_dt(*fine_vel, *fine_geom, inputs.cfl));
+            }
+            Real phi_min = phi.min(0);
+            Real phi_max = phi.max(0);
 
             amrex::Print() << "Step " << step
-                        << " : phi_min = " << philomax
-                        << " , phi_max = " << phihimax << "\n";
-            
-            #include "plot_results.H"
+                        << " : phi_min = " << phi_min
+                        << " , phi_max = " << phi_max << "\n";
+
+            if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0)) {
+                amrex::Print() << "Reinitializing at step " << step << "\n";
+                reinitialize_phi(phi, geom, inputs.reinit_iters, inputs.reinit_dtau);
+                if (has_fine_level) {
+                    reinitialize_phi(*fine_phi, *fine_geom, inputs.reinit_iters, inputs.reinit_dtau);
+                    synchronize_coarse_phi_from_fine(phi, *fine_phi, inputs.amr_refine_ratio);
+                }
+            }
+
+            time += dt_step;
+
+            if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "plt%04d", step);
+                Vector<std::string> names = {"phi"};
+                if (has_fine_level) {
+                    Vector<const MultiFab*> plot_data = {&phi, fine_phi.get()};
+                    Vector<Geometry> geoms = {geom, *fine_geom};
+                    Vector<int> isteps = {step, step};
+                    Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
+                                                                       inputs.amr_refine_ratio,
+                                                                       inputs.amr_refine_ratio))};
+                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time, isteps, ref_ratio);
+                } else {
+                    WriteSingleLevelPlotfile(buf, phi, names, geom, time, step);
+                }
+                amrex::Print() << "Wrote " << buf << "\n";
+            }
         }
 
         // ---------------- Final write --------------------------
@@ -116,7 +167,18 @@ int main(int argc, char* argv[])
             char buf[64];
             std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
             Vector<std::string> names = {"phi"};
-            WriteSingleLevelPlotfile(buf, phi, names, geom, inputs.nsteps*dt, inputs.nsteps);
+            if (has_fine_level) {
+                Vector<const MultiFab*> plot_data = {&phi, fine_phi.get()};
+                Vector<Geometry> geoms = {geom, *fine_geom};
+                Vector<int> isteps = {inputs.nsteps, inputs.nsteps};
+                Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
+                                                                   inputs.amr_refine_ratio,
+                                                                   inputs.amr_refine_ratio))};
+                WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms,
+                                        time, isteps, ref_ratio);
+            } else {
+                WriteSingleLevelPlotfile(buf, phi, names, geom, time, inputs.nsteps);
+            }
             amrex::Print() << "Wrote final " << buf << "\n";
         }
     }
