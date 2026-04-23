@@ -72,6 +72,7 @@ int main(int argc, char* argv[])
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
+        int refinement_count = 0;
 
 
         // ---------------- Write initial plotfile ---------------
@@ -83,6 +84,22 @@ int main(int argc, char* argv[])
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
             advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
+
+            if (inputs.amr_enable_negative_phi_refine == 1 &&
+                inputs.amr_regrid_int > 0 &&
+                (step % inputs.amr_regrid_int) == 0)
+            {
+                bool refined = regrid_negative_phi(phi, vel, ba, dm, geom,
+                                                   ng_phi,
+                                                   inputs.amr_refine_ratio,
+                                                   inputs.amr_tag_phi_threshold,
+                                                   inputs.amr_max_refinements,
+                                                   refinement_count);
+                if (refined) {
+                    fill_boundary_extrap(phi, geom);
+                }
+            }
+
             dt = compute_dt(vel, geom, inputs.cfl);
             Real philomax = phi.min(0);
             Real phihimax = phi.max(0);
