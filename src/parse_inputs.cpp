@@ -76,4 +76,9 @@ void parse_inputs(InputParameters& p)
     p.rothermel.slope_y   = 0.0;      pp.query("rothermel.slope_y",   p.rothermel.slope_y);
     p.rothermel.wind_conv = 196.85;   pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     p.rothermel.ros_conv  = 0.00508;  pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
+
+    // -------- FARSITE ellipse model parameters --------
+    p.farsite.enable = 1;                        pp.query("farsite.enable", p.farsite.enable);
+    p.farsite.length_to_width_ratio = 3.0;       pp.query("farsite.length_to_width_ratio", p.farsite.length_to_width_ratio);
+    p.farsite.phi_threshold = 0.1;               pp.query("farsite.phi_threshold", p.farsite.phi_threshold);
 }
