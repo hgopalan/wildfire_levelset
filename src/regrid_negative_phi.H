@@ -157,20 +157,32 @@ namespace
         }
 
         const int io_rank = amrex::ParallelDescriptor::IOProcessorNumber();
+        const int nprocs = amrex::ParallelDescriptor::NProcs();
+        
         std::vector<int> recv_counts =
             amrex::ParallelDescriptor::Gather(static_cast<int>(local_box_data.size()), io_rank);
-        std::vector<int> displacements;
+        
+        // Initialize recv_counts and displacements on ALL ranks for Gatherv
+        // Some MPI implementations require these arrays to be properly sized on all ranks
+        if (!amrex::ParallelDescriptor::IOProcessor()) {
+            recv_counts.resize(nprocs, 0);
+        }
+        
+        std::vector<int> displacements(nprocs, 0);
         std::vector<int> gathered_box_data;
 
         if (amrex::ParallelDescriptor::IOProcessor()) {
-            displacements.resize(recv_counts.size(), 0);
             int total_count = 0;
-            for (int rank_idx = 0; rank_idx < static_cast<int>(recv_counts.size()); ++rank_idx) {
+            for (int rank_idx = 0; rank_idx < nprocs; ++rank_idx) {
                 displacements[rank_idx] = total_count;
                 total_count += recv_counts[rank_idx];
             }
             gathered_box_data.resize(total_count);
         }
+        
+        // Broadcast recv_counts and displacements to all ranks for safety
+        amrex::ParallelDescriptor::Bcast(recv_counts.data(), nprocs, io_rank);
+        amrex::ParallelDescriptor::Bcast(displacements.data(), nprocs, io_rank);
 
         amrex::ParallelDescriptor::Gatherv(local_box_data.data(),
                                            static_cast<int>(local_box_data.size()),
