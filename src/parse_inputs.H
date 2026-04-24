@@ -60,11 +60,15 @@ struct InputParameters {
     // Rothermel fire spread model parameters
     RothermelParams rothermel;
     
-    // FARSITE ellipse model parameters
+    // FARSITE ellipse model parameters (Richards 1990)
     struct FARSITEParams {
         amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 3.0)
         amrex::Real phi_threshold;           // threshold for identifying fire front (default: 0.1)
         int enable;                          // 1 to enable FARSITE, 0 to disable
+        // Richards' (1990) elliptical expansion coefficients
+        amrex::Real coeff_a;                 // head fire coefficient (default: 1.0)
+        amrex::Real coeff_b;                 // flank fire coefficient (default: 0.5)
+        amrex::Real coeff_c;                 // backing fire coefficient (default: 0.2)
     } farsite;
 };
 

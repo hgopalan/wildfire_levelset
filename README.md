@@ -2,7 +2,7 @@
 
 This repository contains a small AMReX-based C++ level-set solver for wildfire-front style advection based on the community fire model. The fuel and moisture databases are not added yet. Work is on-going to add a non-uniform wind field read from files for one way-coupling. A future work will use a two-way coupling with ERF by modifying the surface heat fluxes.
 
-The code now includes Richard's FARSITE (Fire Area Simulator) ellipse model, which computes fire spread using an elliptical pattern based on wind conditions and fuel characteristics. The FARSITE model identifies locations where the level-set function phi ≈ 0 (fire front) and computes spread displacements that are stored in a separate MultiFab for visualization and analysis. 
+The code now includes Richards' (1990) FARSITE (Fire Area Simulator) elliptical expansion model, which computes fire spread using an elliptical pattern with coefficients a, b, and c for directional spread rates based on wind conditions and fuel characteristics. The model identifies locations where the level-set function phi ≈ 0 (fire front) and computes directional spread displacements that are stored in a separate MultiFab for visualization and analysis. 
 
 ## Prerequisites
 
@@ -130,6 +130,9 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `farsite.enable=1` (1 to enable FARSITE ellipse model, 0 to disable)
   - `farsite.length_to_width_ratio=3.0` (L/W ratio of fire spread ellipse)
   - `farsite.phi_threshold=0.1` (threshold for identifying fire front, cells with |phi| < threshold)
+  - `farsite.coeff_a=1.0` (head fire coefficient for elliptical expansion)
+  - `farsite.coeff_b=0.5` (flank fire coefficient for elliptical expansion)
+  - `farsite.coeff_c=0.2` (backing fire coefficient for elliptical expansion)
 
 ### Example: Running with different fuel models
 
