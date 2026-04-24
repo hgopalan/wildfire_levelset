@@ -74,11 +74,23 @@ int main(int argc, char* argv[])
 
 
         // ---------------- Initialize ---------------------------
+        // When FARSITE is enabled and level set is skipped, use indicator initialization
+        // (phi = 1 inside, phi = 0 outside) instead of signed distance
+        bool use_indicator = (inputs.farsite.enable == 1 && inputs.skip_levelset == 1);
+        
         if (inputs.source_type == "sphere") {
-            init_phi_sphere(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
+            if (use_indicator) {
+                init_phi_sphere_indicator(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
+            } else {
+                init_phi_sphere(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
+            }
         }
         else if(inputs.source_type == "box") {
-            init_phi_box(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+            if (use_indicator) {
+                init_phi_box_indicator(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+            } else {
+                init_phi_box(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+            }
         }
         else {
             amrex::Abort("Invalid source_type: " + inputs.source_type);
