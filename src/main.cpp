@@ -74,6 +74,9 @@ Real farsite_combined_factor(Real wind_speed_mph, Real slope_degrees,
     // The effective wind speed accounts for terrain-induced draft
     
     // Wind factor (simplified)
+    // Note: This is a simplified formulation. Full FARSITE uses more complex
+    // wind-fuel-moisture relationships. The coefficient 0.05 provides a moderate
+    // exponential increase in spread rate with wind speed.
     Real phi_w = wind_speed_mph > 0.01 ? 
                  std::exp(Real(0.05) * wind_speed_mph) : Real(1.0);
     
@@ -261,6 +264,8 @@ static void build_rhs_weno5z(const MultiFab& phi,
                     // Modify ROS with L/W ratio and combined effects
                     // The L/W ratio affects the elliptical spread pattern
                     // Higher L/W means faster spread in wind direction
+                    // The coefficient 0.3 is an empirical factor to moderate the L/W ratio
+                    // influence on the spread rate (prevents over-acceleration)
                     R = wind_mag * combined_factor * (Real(1.0) + (LW_ratio - Real(1.0)) * Real(0.3));
 
                 } else {
@@ -582,6 +587,7 @@ static void init_terrain(MultiFab& terrain, const Geometry& geom,
 
 // ======================= Initialize terrain from elevation data ===================
 // For more complex terrain, compute slope and aspect from elevation gradients
+// NOTE: Requires elevation MultiFab with at least 1 ghost cell for centered differences
 static void init_terrain_from_elevation(MultiFab& terrain, const MultiFab& elevation,
                                         const Geometry& geom)
 {
@@ -595,6 +601,7 @@ static void init_terrain_from_elevation(MultiFab& terrain, const MultiFab& eleva
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // Compute elevation gradients (centered differences)
+            // Note: This requires ghost cells to be filled for boundary cells
             Real dz_dx = (e(i+1,j,k) - e(i-1,j,k)) / (2.0 * gdx[0]);
             Real dz_dy = (e(i,j+1,k) - e(i,j-1,k)) / (2.0 * gdx[1]);
             
@@ -603,7 +610,8 @@ static void init_terrain_from_elevation(MultiFab& terrain, const MultiFab& eleva
             Real slope_deg = slope_rad * 180.0 / M_PI;
             
             // Aspect (radians): direction of steepest uphill slope
-            // 0 = East, π/2 = North, π = West, 3π/2 = South
+            // atan2 returns values in [-π, π]
+            // 0 = East, π/2 = North, ±π = West, -π/2 = South
             Real aspect_rad = std::atan2(dz_dy, dz_dx);
             
             t(i,j,k,0) = slope_deg;
@@ -691,7 +699,7 @@ int main(int argc, char* argv[])
         bool use_terrain_effects = false;
         bool use_farsite_model = false;
         Real terrain_slope = 0.0;      // slope in degrees
-        Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North)
+        Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North, 180=West, 270=South)
         
         pp.query("use_terrain_effects", use_terrain_effects);
         pp.query("use_farsite_model", use_farsite_model);
