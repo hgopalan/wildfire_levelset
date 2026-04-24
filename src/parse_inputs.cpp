@@ -114,6 +114,7 @@ void parse_inputs(InputParameters& p)
 
     // -------- FARSITE ellipse model parameters (Richards 1990) --------
     p.farsite.enable = 1;                        pp.query("farsite.enable", p.farsite.enable);
+    p.farsite.use_anderson_LW = 0;               pp.query("farsite.use_anderson_LW", p.farsite.use_anderson_LW);
     p.farsite.length_to_width_ratio = 3.0;       pp.query("farsite.length_to_width_ratio", p.farsite.length_to_width_ratio);
     p.farsite.phi_threshold = 0.1;               pp.query("farsite.phi_threshold", p.farsite.phi_threshold);
     p.farsite.coeff_a = 1.0;                     pp.query("farsite.coeff_a", p.farsite.coeff_a);
