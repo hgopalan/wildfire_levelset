@@ -35,6 +35,7 @@ int main(int argc, char* argv[])
         parse_inputs(inputs);
 
         // ---------------- Geometry setup -----------------------
+#if (AMREX_SPACEDIM == 3)
         IntVect dom_lo(0, 0, 0);
         IntVect dom_hi(inputs.n_cell_x-1, inputs.n_cell_y-1, inputs.n_cell_z-1);
         Box domain(dom_lo, dom_hi);
@@ -42,8 +43,17 @@ int main(int argc, char* argv[])
         RealBox rb({inputs.plo_x, inputs.plo_y, inputs.plo_z},
                    {inputs.phi_x, inputs.phi_y, inputs.phi_z});
         
-
         Array<int,AMREX_SPACEDIM> is_periodic{0, 0, 0};
+#else
+        IntVect dom_lo(0, 0);
+        IntVect dom_hi(inputs.n_cell_x-1, inputs.n_cell_y-1);
+        Box domain(dom_lo, dom_hi);
+
+        RealBox rb({inputs.plo_x, inputs.plo_y},
+                   {inputs.phi_x, inputs.phi_y});
+        
+        Array<int,AMREX_SPACEDIM> is_periodic{0, 0};
+#endif
         Geometry geom(domain, &rb, 0, is_periodic.data());
 
 
@@ -104,6 +114,8 @@ int main(int argc, char* argv[])
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
 
+            // Grid tagging is disabled in 2D mode
+#if (AMREX_SPACEDIM == 3)
             if (inputs.amr_enable_negative_phi_refine == 1 &&
                 inputs.amr_regrid_int > 0 &&
                 (step % inputs.amr_regrid_int) == 0)
@@ -130,6 +142,7 @@ int main(int argc, char* argv[])
                 }
                 amrex::Print() << "After regrid: has_fine_level = " << has_fine_level << "\n";
             }
+#endif  // AMREX_SPACEDIM == 3
 
             dt = compute_dt(vel, geom, inputs.cfl);
             if (has_fine_level) {
@@ -148,7 +161,11 @@ int main(int argc, char* argv[])
             // --- Coarse level: dtau and iters from coarse dx ---
             {
                 const auto dx = geom.CellSize();
+#if (AMREX_SPACEDIM == 3)
                 Real dx_min   = std::min({dx[0], dx[1], dx[2]});
+#else
+                Real dx_min   = std::min(dx[0], dx[1]);
+#endif
                 Real dtau     = 0.1 * dx_min;               // CFL = 0.5 for forward-Euler + Godunov
                 int  niters   = static_cast<int>(std::ceil(ng_phi / 0.5)); // = 6 for ng_phi=3
                 reinitialize_phi(phi, geom, niters, dtau);
@@ -158,7 +175,11 @@ int main(int argc, char* argv[])
             // --- Fine level: dtau and iters from fine dx (finer spacing → smaller dtau) ---
             if (has_fine_level) {
                 const auto dx_f = fine_geom->CellSize();
+#if (AMREX_SPACEDIM == 3)
                 Real dx_min_f   = std::min({dx_f[0], dx_f[1], dx_f[2]});
+#else
+                Real dx_min_f   = std::min(dx_f[0], dx_f[1]);
+#endif
                 Real dtau_f     = 0.5 * dx_min_f;           // same CFL, but scales with fine dx
                 int  niters_f   = static_cast<int>(std::ceil(ng_phi / 0.5)); // same band depth in cells
                 reinitialize_phi(*fine_phi, *fine_geom, niters_f, dtau_f);

@@ -16,10 +16,15 @@ static void reinitialize_phi(MultiFab& phi,
                              Real dtau)
 {
     const auto dx = geom.CellSize();
+#if (AMREX_SPACEDIM == 3)
     GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
-
     // Epsilon proportional to smallest dx
     Real eps = std::min(dx[0], std::min(dx[1], dx[2])) * 1.0;
+#else
+    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1]};
+    // Epsilon proportional to smallest dx
+    Real eps = std::min(dx[0], dx[1]) * 1.0;
+#endif
 
     // phi0 must have 1 ghost cell for ∇phi operations
     MultiFab phi0(phi.boxArray(), phi.DistributionMap(), 1, 1);

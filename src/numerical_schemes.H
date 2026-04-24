@@ -46,7 +46,11 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
                            const GpuArray<Real,AMREX_SPACEDIM>& dx)
 {
     // Grid-aware epsilon for regularization
+#if (AMREX_SPACEDIM == 3)
     Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
+#else
+    Real eps = Real(1.0e-8) * amrex::min(dx[0], dx[1]);
+#endif
 
     // ----------------------------------------------------------------
     // Detect unbounded phi: check all stencil values (WENO3 needs ±2 cells).
