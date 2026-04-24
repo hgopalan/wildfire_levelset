@@ -121,8 +121,14 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
     - `rothermel.S_e=0.010` (effective mineral content, fraction)
     - `rothermel.rho_p=32.0` (particle density, lb/ft³)
   - Terrain parameters:
-    - `rothermel.slope_x=0.0` (terrain slope in x-direction, tan(angle))
-    - `rothermel.slope_y=0.0` (terrain slope in y-direction, tan(angle))
+    - `rothermel.slope_x=0.0` (constant terrain slope in x-direction, tan(angle))
+    - `rothermel.slope_y=0.0` (constant terrain slope in y-direction, tan(angle))
+    - `rothermel.terrain_file=""` (path to terrain file with X Y Z format for spatially-varying slopes)
+      - When provided, slopes are computed from terrain data at each grid cell
+      - Terrain file format: ASCII file with 3 columns (X Y Z), one data point per line
+      - Lines starting with '#' are treated as comments
+      - Slopes are computed using inverse distance weighting interpolation
+      - **Note:** When terrain_file is specified, it takes precedence over constant slope_x/slope_y values
   - Unit conversion factors:
     - `rothermel.wind_conv=196.85` (converts simulation velocity to ft/min)
     - `rothermel.ros_conv=0.00508` (converts ft/min to simulation units)
@@ -145,7 +151,30 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
 
 # Use brush with slope
 ./build/levelset rothermel.fuel_model=FM5 rothermel.slope_x=0.2
+
+# Use terrain file for spatially-varying slopes
+./build/levelset rothermel.terrain_file=my_terrain.txt
 ```
+
+### Example: Creating a terrain file
+
+The terrain file should be an ASCII file with three columns (X, Y, Z) representing the spatial coordinates and elevation:
+
+```
+# Terrain data for wildfire simulation
+# X Y Z (coordinates and elevation)
+0.0 0.0 100.0
+0.0 0.5 105.0
+0.0 1.0 110.0
+0.5 0.0 102.0
+0.5 0.5 107.0
+0.5 1.0 112.0
+1.0 0.0 104.0
+1.0 0.5 109.0
+1.0 1.0 114.0
+```
+
+The terrain slopes (∂z/∂x and ∂z/∂y) are automatically computed at each grid cell using inverse distance weighting interpolation and central differences. The slope factor φ_s in the Rothermel model is then calculated as `φ_s = 5.275 * tan²(slope)` where `tan(slope) = √(slope_x² + slope_y²)`.
 
 ## Output
 
