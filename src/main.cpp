@@ -22,6 +22,7 @@ using namespace amrex;
 #include "velocity_field.H"
 #include "parse_inputs.H"
 #include "regrid_negative_phi.H"
+#include "farsite_ellipse.H"
 
 
 
@@ -66,6 +67,9 @@ int main(int argc, char* argv[])
         const int ng_phi = 3; // 3 ghost cells for stencil operations (WENO5-Z flux divergence uses up to ±3 cells)
         MultiFab phi(ba, dm, 1, ng_phi);
         MultiFab vel(ba, dm, 3, 1);
+        
+        // FARSITE spread field: stores x,y,z displacement (3 components in 3D, 2 in 2D)
+        MultiFab farsite_spread(ba, dm, AMREX_SPACEDIM, 0);
 
 
         // ---------------- Initialize ---------------------------
@@ -107,12 +111,15 @@ int main(int argc, char* argv[])
         {
             Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
-                , "velz"
+                , "velz", "farsite_dx", "farsite_dy", "farsite_dz"
+#else
+                , "farsite_dx", "farsite_dy"
 #endif
             };
-            MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+            MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
             MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
             MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+            MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
             WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
         }
 
@@ -130,6 +137,9 @@ int main(int argc, char* argv[])
                 advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel);
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
+
+            // Compute FARSITE ellipse spread
+            compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite);
 
             // Grid tagging is disabled in 2D mode
 #if (AMREX_SPACEDIM == 3)
@@ -211,16 +221,21 @@ int main(int argc, char* argv[])
                 std::snprintf(buf, sizeof(buf), "plt%04d", step);
                 Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
-                    , "velz"
+                    , "velz", "farsite_dx", "farsite_dy", "farsite_dz"
+#else
+                    , "farsite_dx", "farsite_dy"
 #endif
                 };
                 if (has_fine_level) {
-                    MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                     MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
                     MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                    MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab::Copy(coarse_plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
+                    MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                     MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
                     MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
+                    // Note: farsite_spread is only computed on coarse level, fill with zeros for fine level
+                    fine_plotmf.setVal(0.0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM);
                     Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
                     Vector<Geometry> geoms = {geom, *fine_geom};
                     Vector<int> isteps = {step, step};
@@ -229,9 +244,10 @@ int main(int argc, char* argv[])
                                                                        inputs.amr_refine_ratio))};
                     WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time, isteps, ref_ratio);
                 } else {
-                    MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                     MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
                     MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                    MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
                     WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
                 }
                 amrex::Print() << "Wrote " << buf << "\n";
@@ -244,16 +260,21 @@ int main(int argc, char* argv[])
             std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
             Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
-                , "velz"
+                , "velz", "farsite_dx", "farsite_dy", "farsite_dz"
+#else
+                , "farsite_dx", "farsite_dy"
 #endif
             };
             if (has_fine_level) {
-                MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                 MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
                 MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab::Copy(coarse_plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
+                MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                 MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
                 MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
+                // Note: farsite_spread is only computed on coarse level, fill with zeros for fine level
+                fine_plotmf.setVal(0.0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM);
                 Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
                 Vector<Geometry> geoms = {geom, *fine_geom};
                 Vector<int> isteps = {inputs.nsteps, inputs.nsteps};
@@ -263,9 +284,10 @@ int main(int argc, char* argv[])
                 WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms,
                                         time, isteps, ref_ratio);
             } else {
-                MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
                 MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
                 MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
                 WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
             }
             amrex::Print() << "Wrote final " << buf << "\n";
