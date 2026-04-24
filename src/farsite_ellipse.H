@@ -26,7 +26,7 @@ static void compute_farsite_spread(const MultiFab& phi,
                                    MultiFab& farsite_spread,
                                    const Geometry& geom,
                                    Real dt,
-                                   const RothermelParams& rp,
+                                   [[maybe_unused]] const RothermelParams& rp,
                                    const InputParameters::FARSITEParams& fp)
 {
     if (fp.enable == 0) {
@@ -41,10 +41,11 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    const Real LW_ratio = fp.length_to_width_ratio;
+    // const Real LW_ratio = fp.length_to_width_ratio;  // Reserved for future ellipse implementation
 
     // Simplified Rothermel computation for FARSITE
     // Basic rate of spread (simplified - should use full Rothermel if needed)
+    // const RothermelParams& rp is reserved for future full Rothermel integration
     const Real R0 = 1.0; // Base rate in simulation units
 
     // Compute spread for each cell
@@ -109,19 +110,18 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
             );
 
-            // Wind direction (unit vector)
-            Real wx = (wind_mag > 1.0e-10) ? ux / wind_mag : 0.0;
-            Real wy = (wind_mag > 1.0e-10) ? uy / wind_mag : 0.0;
-#if (AMREX_SPACEDIM == 3)
-            Real wz = (wind_mag > 1.0e-10) ? uz / wind_mag : 0.0;
-#endif
+            // Future work: Wind direction unit vectors for more accurate ellipse orientation
+            // Real wx = (wind_mag > 1.0e-10) ? ux / wind_mag : 0.0;
+            // Real wy = (wind_mag > 1.0e-10) ? uy / wind_mag : 0.0;
+            // Real wz = (wind_mag > 1.0e-10) ? uz / wind_mag : 0.0;
 
             // Simplified rate of spread (head fire direction)
             // In full implementation, use complete Rothermel model
             Real R_head = R0 * (1.0 + 0.5 * wind_mag);  // Simplified wind effect
 
-            // Ellipse semi-axes (Richards 1990 FARSITE model)
-            Real a = R_head * dt;  // semi-major axis (downwind direction)
+            // Future work: Use ellipse semi-axes for more accurate directional spread
+            // Real a = R_head * dt;  // semi-major axis (downwind direction)
+            // Real b = a / LW_ratio;  // semi-minor axis (crosswind direction)
 
             // Spread distance in the direction of the fire normal
             // This represents where the fire front will move

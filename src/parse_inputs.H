@@ -62,7 +62,7 @@ struct InputParameters {
     
     // FARSITE ellipse model parameters
     struct FARSITEParams {
-        amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 1.0 for circle)
+        amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 3.0)
         amrex::Real phi_threshold;           // threshold for identifying fire front (default: 0.1)
         int enable;                          // 1 to enable FARSITE, 0 to disable
     } farsite;
