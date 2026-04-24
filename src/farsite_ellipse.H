@@ -140,10 +140,10 @@ static void compute_farsite_spread(const MultiFab& phi,
             Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
             
             // Richards' (1990) elliptical expansion model
-            // Compute ellipse semi-axes for directional spread
-            Real a = coeff_a * R_head * dt;   // head fire semi-major axis (maximum spread)
-            Real b = coeff_b * R_head * dt;   // flank fire semi-axis (crosswind)
-            Real c = coeff_c * R_head * dt;   // backing fire (upwind direction)
+            // Compute spread distances for each direction (not geometric ellipse axes)
+            Real head_spread = coeff_a * R_head * dt;    // head fire (downwind, maximum spread)
+            Real flank_spread = coeff_b * R_head * dt;   // flank fire (crosswind)
+            Real backing_spread = coeff_c * R_head * dt; // backing fire (upwind, minimum spread)
             
             // Determine wind direction (unit vector)
             Real wx = 0.0, wy = 0.0;
@@ -166,28 +166,34 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
             
             // Richards' elliptical spread rate formula
-            // R(theta) depends on angle from head fire direction
+            // Spread rate R(theta) depends on angle from head fire (wind) direction
+            // The formula interpolates between directional spread rates based on cos(theta)
             Real spread_dist = 0.0;
             
             if (wind_mag > 1.0e-10) {
-                // With wind: use elliptical expansion
-                // Head fire (theta=0, cos_theta=1): spread_dist = a
-                // Flank fire (theta=90, cos_theta=0): spread_dist = b  
-                // Backing fire (theta=180, cos_theta=-1): spread_dist = c
+                // With wind: use elliptical expansion based on angle to wind
+                // The interpolation follows an elliptical pattern:
+                //   theta=0°   (cos=1):  full head fire spread
+                //   theta=90°  (cos=0):  full flank fire spread  
+                //   theta=180° (cos=-1): full backing fire spread
                 
                 if (cos_theta > 0.0) {
-                    // Forward hemisphere (0 to 90 degrees)
-                    // Interpolate between head (a) and flank (b) spread
-                    spread_dist = a * cos_theta + b * std::sqrt(1.0 - cos_theta * cos_theta);
-                } else {
-                    // Backward hemisphere (90 to 180 degrees)
-                    // Interpolate between flank (b) and backing (c) spread
+                    // Forward hemisphere (0° to 90°): interpolate head to flank
+                    // Formula: R = head_spread * cos(θ) + flank_spread * sin(θ)
+                    // This represents the ellipse equation in polar coordinates
                     Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
-                    spread_dist = b * sin_theta - c * cos_theta;
+                    spread_dist = head_spread * cos_theta + flank_spread * sin_theta;
+                } else {
+                    // Backward hemisphere (90° to 180°): interpolate flank to backing
+                    // Formula: R = flank_spread * sin(θ) + backing_spread * |cos(θ)|
+                    // Note: we use -cos_theta since cos is negative in this range
+                    Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
+                    spread_dist = flank_spread * sin_theta - backing_spread * cos_theta;
                 }
             } else {
-                // No wind: use backing rate uniformly (or base rate)
-                spread_dist = c;
+                // No wind: uniform spread in all directions using base rate
+                // Without wind, there's no preferred direction, so use uniform expansion
+                spread_dist = R_head * dt;
             }
 
             // Compute new position (displacement from current position)
