@@ -36,7 +36,7 @@ using namespace amrex;
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
 // combined with Rothermel (1972) ROS
 // ============================================================================
-static void compute_farsite_spread(const MultiFab& phi,
+static void compute_farsite_spread(MultiFab& phi,
                                    const MultiFab& vel,
                                    MultiFab& farsite_spread,
                                    const Geometry& geom,
@@ -57,6 +57,14 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
+    
+    // Dynamic arrays to collect positions where phi < threshold
+    std::vector<Real> xarray;
+    std::vector<Real> yarray;
+    
+    // Get physical domain information for coordinate conversion
+    const Real* prob_lo = geom.ProbLo();
+    
     const int use_anderson_LW = fp.use_anderson_LW;
     
     // Richards' (1990) elliptical expansion coefficients
@@ -254,6 +262,66 @@ static void compute_farsite_spread(const MultiFab& phi,
             spread(i,j,k,2) = spread_dist * nz;
 #endif
         });
+    }
+    
+    // Second pass: collect positions where phi < threshold and add spread
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const p = phi.const_array(mfi);
+        auto spread = farsite_spread.array(mfi);
+        
+        // Loop over cells (on CPU) to collect positions
+        const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        
+        for (int k = lo.z; k <= hi.z; ++k) {
+        for (int j = lo.y; j <= hi.y; ++j) {
+        for (int i = lo.x; i <= hi.x; ++i) {
+            Real phi_val = p(i,j,k);
+            
+            // If phi < threshold, add position + spread to arrays
+            if (phi_val < phi_thresh) {
+                // Convert cell indices to physical coordinates
+                Real x_cell = prob_lo[0] + (i + 0.5) * gdx[0];
+                Real y_cell = prob_lo[1] + (j + 0.5) * gdx[1];
+                
+                // Add spread displacement to get new position
+                Real x_new = x_cell + spread(i,j,k,0);
+                Real y_new = y_cell + spread(i,j,k,1);
+                
+                xarray.push_back(x_new);
+                yarray.push_back(y_new);
+            }
+        }
+        }
+        }
+    }
+    
+    // Set phi to zero everywhere
+    phi.setVal(0.0);
+    
+    // Set phi at collected positions to a value much smaller than threshold
+    const Real phi_new = phi_thresh * (-10.0);  // Much smaller (more negative) than threshold
+    
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto p = phi.array(mfi);
+        
+        // Loop over all collected positions
+        for (size_t idx = 0; idx < xarray.size(); ++idx) {
+            Real x_pos = xarray[idx];
+            Real y_pos = yarray[idx];
+            
+            // Convert physical coordinates back to cell indices
+            int i = static_cast<int>((x_pos - prob_lo[0]) / gdx[0]);
+            int j = static_cast<int>((y_pos - prob_lo[1]) / gdx[1]);
+            int k = 0;  // For 2D, k is always 0
+            
+            // Check if the cell is in this box
+            if (bx.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
+                p(i,j,k) = phi_new;
+            }
+        }
     }
 }
 
