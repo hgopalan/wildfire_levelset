@@ -16,7 +16,13 @@
 #include <memory>
 #include <vector>
 
-static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size);
+static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size)
+{
+    const long long fine_max_grid_size_ll = static_cast<long long>(refine_ratio) *
+                                            static_cast<long long>(max_grid_size);
+    return static_cast<int>(std::max(1LL, std::min(fine_max_grid_size_ll,
+                                                   static_cast<long long>(std::numeric_limits<int>::max()))));
+}
 
 namespace
 {
@@ -124,7 +130,9 @@ namespace
             }
         }
 
-        int global_box_data_size = static_cast<int>(global_box_data.size());
+        int global_box_data_size = amrex::ParallelDescriptor::IOProcessor()
+                                       ? static_cast<int>(global_box_data.size())
+                                       : 0;
         amrex::ParallelDescriptor::Bcast(&global_box_data_size, 1, io_rank);
         if (!amrex::ParallelDescriptor::IOProcessor()) {
             global_box_data.resize(global_box_data_size);
@@ -195,14 +203,6 @@ static void synchronize_coarse_phi_from_fine(MultiFab& coarse_phi,
 {
     const IntVect rr(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio));
     amrex::average_down(fine_phi, coarse_phi, 0, 1, rr);
-}
-
-static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size)
-{
-    const long long fine_max_grid_size_ll = static_cast<long long>(refine_ratio) *
-                                            static_cast<long long>(max_grid_size);
-    return static_cast<int>(std::max(1LL, std::min(fine_max_grid_size_ll,
-                                                   static_cast<long long>(std::numeric_limits<int>::max()))));
 }
 
 static bool regrid_negative_phi(const MultiFab& coarse_phi,
