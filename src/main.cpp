@@ -105,8 +105,15 @@ int main(int argc, char* argv[])
 
         // ---------------- Write initial plotfile ---------------
         {
-            Vector<std::string> names = {"phi"};
-            WriteSingleLevelPlotfile("plt0000", phi, names, geom, 0.0, 0);
+            Vector<std::string> names = {"phi", "velx", "vely"
+#if (AMREX_SPACEDIM == 3)
+                , "velz"
+#endif
+            };
+            MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+            MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
+            MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+            WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
         }
 
         // ---------------- Time stepping ------------------------
@@ -202,9 +209,19 @@ int main(int argc, char* argv[])
             if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "plt%04d", step);
-                Vector<std::string> names = {"phi"};
+                Vector<std::string> names = {"phi", "velx", "vely"
+#if (AMREX_SPACEDIM == 3)
+                    , "velz"
+#endif
+                };
                 if (has_fine_level) {
-                    Vector<const MultiFab*> plot_data = {&phi, fine_phi.get()};
+                    MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
+                    MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                    MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
+                    MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
+                    Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
                     Vector<Geometry> geoms = {geom, *fine_geom};
                     Vector<int> isteps = {step, step};
                     Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
@@ -212,7 +229,10 @@ int main(int argc, char* argv[])
                                                                        inputs.amr_refine_ratio))};
                     WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time, isteps, ref_ratio);
                 } else {
-                    WriteSingleLevelPlotfile(buf, phi, names, geom, time, step);
+                    MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                    MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
+                    MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                    WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
                 }
                 amrex::Print() << "Wrote " << buf << "\n";
             }
@@ -222,9 +242,19 @@ int main(int argc, char* argv[])
         {
             char buf[64];
             std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
-            Vector<std::string> names = {"phi"};
+            Vector<std::string> names = {"phi", "velx", "vely"
+#if (AMREX_SPACEDIM == 3)
+                , "velz"
+#endif
+            };
             if (has_fine_level) {
-                Vector<const MultiFab*> plot_data = {&phi, fine_phi.get()};
+                MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
+                MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
+                MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
+                Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
                 Vector<Geometry> geoms = {geom, *fine_geom};
                 Vector<int> isteps = {inputs.nsteps, inputs.nsteps};
                 Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
@@ -233,7 +263,10 @@ int main(int argc, char* argv[])
                 WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms,
                                         time, isteps, ref_ratio);
             } else {
-                WriteSingleLevelPlotfile(buf, phi, names, geom, time, inputs.nsteps);
+                MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM, 0);
+                MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
+                MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
             }
             amrex::Print() << "Wrote final " << buf << "\n";
         }
