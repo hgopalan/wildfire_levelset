@@ -148,8 +148,8 @@ int main(int argc, char* argv[])
             if (inputs.skip_levelset == 0) {
                 // Traditional level set advection
                 advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
-            } else {
-                // FARSITE ellipse spread (only when skip_levelset == 1)
+            } else if (inputs.farsite.enable == 1) {
+                // FARSITE ellipse spread (only when skip_levelset == 1 and farsite.enable == 1)
                 compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
             }
 
