@@ -92,10 +92,55 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `source_type=sphere`
   - `sphere_center_x/y/z=0.5`
   - `sphere_radius=0.25`
+- Rothermel fire spread model:
+  - `rothermel.fuel_model=FM4` (Use standard fuel model from database: FM1-FM13)
+    - FM1: Short Grass (1 ft)
+    - FM2: Timber (Grass and Understory)
+    - FM3: Tall Grass (2.5 ft)
+    - FM4: Chaparral (6 ft) - **default**
+    - FM5: Brush (2 ft)
+    - FM6: Dormant Brush, Hardwood Slash
+    - FM7: Southern Rough
+    - FM8: Closed Timber Litter
+    - FM9: Hardwood Litter
+    - FM10: Timber (Litter and Understory)
+    - FM11: Light Logging Slash
+    - FM12: Medium Logging Slash
+    - FM13: Heavy Logging Slash
+  - Can also use aliases: `1`, `SHORT_GRASS`, `GRASS`, `CHAPARRAL`, `BRUSH`, etc.
+  - Individual fuel parameters can be overridden:
+    - `rothermel.w0=0.230` (oven-dry fuel load, lb/ft²)
+    - `rothermel.sigma=2000.0` (surface-area-to-volume ratio, ft⁻¹)
+    - `rothermel.delta=6.0` (fuel bed depth, ft)
+    - `rothermel.M_f=0.08` (fuel moisture content, fraction)
+    - `rothermel.M_x=0.20` (moisture of extinction, fraction)
+    - `rothermel.h_heat=8000.0` (heat content, BTU/lb)
+    - `rothermel.S_T=0.0555` (total mineral content, fraction)
+    - `rothermel.S_e=0.010` (effective mineral content, fraction)
+    - `rothermel.rho_p=32.0` (particle density, lb/ft³)
+  - Terrain parameters:
+    - `rothermel.slope_x=0.0` (terrain slope in x-direction, tan(angle))
+    - `rothermel.slope_y=0.0` (terrain slope in y-direction, tan(angle))
+  - Unit conversion factors:
+    - `rothermel.wind_conv=196.85` (converts simulation velocity to ft/min)
+    - `rothermel.ros_conv=0.00508` (converts ft/min to simulation units)
 - FARSITE ellipse model (Richards 1990):
   - `farsite.enable=1` (1 to enable FARSITE ellipse model, 0 to disable)
   - `farsite.length_to_width_ratio=3.0` (L/W ratio of fire spread ellipse)
   - `farsite.phi_threshold=0.1` (threshold for identifying fire front, cells with |phi| < threshold)
+
+### Example: Running with different fuel models
+
+```bash
+# Use tall grass fuel model
+./build/levelset rothermel.fuel_model=FM3
+
+# Use chaparral with custom moisture
+./build/levelset rothermel.fuel_model=CHAPARRAL rothermel.M_f=0.12
+
+# Use brush with slope
+./build/levelset rothermel.fuel_model=FM5 rothermel.slope_x=0.2
+```
 
 ## Output
 
