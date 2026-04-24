@@ -125,9 +125,9 @@ int main(int argc, char* argv[])
                 fill_boundary_extrap(*fine_phi, *fine_geom);
             }
             const Real dt_step = dt;
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step);
+            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel);
             if (has_fine_level) {
-                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step);
+                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel);
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
 
