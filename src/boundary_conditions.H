@@ -25,7 +25,8 @@
 // nondeterministic crashes.
 static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
 {
-    // Sanity-check ghost width in debug builds.
+    // Sanity-check: at least one ghost cell layer must be present.
+    // (AMREX_ASSERT is active unless AMREX_ASSERT_OFF is defined.)
     AMREX_ASSERT(mf.nGrow() >= 1);
 
     // Fill interior ghost cells via MPI exchange between ranks.
