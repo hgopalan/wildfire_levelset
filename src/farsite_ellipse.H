@@ -318,7 +318,11 @@ static void compute_farsite_spread(MultiFab& phi,
         ParallelFor(npts, [=] AMREX_GPU_DEVICE (int idx) noexcept {
             Real x_pos = px[idx];
             Real y_pos = py[idx];
-
+            amrex::Print() << "Stamping phi at (" << x_pos << ", " << y_pos
+#if (AMREX_SPACEDIM == 3)
+                << ", " << pz[idx]
+#endif
+                << ")\n";
             int ii = static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
             int jj = static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
 #if (AMREX_SPACEDIM == 3)
@@ -327,11 +331,7 @@ static void compute_farsite_spread(MultiFab& phi,
 #else
             int kk = 0;
 #endif
-        amrex::Print() << "Updating phi at (" << ii << ", " << jj << ", " << kk << ") to " << phi_new << "\n";
-        amrex::Print() << "Checking if (" << ii << ", " << jj << ", " << kk << ") is in box: "
-                     << "lo=(" << bx.loVect() << "), hi=(" << bx.hiVect() << ")\n";
             if (bx.contains(IntVect(AMREX_D_DECL(ii, jj, kk)))) {
-                amrex::Print() << "Setting phi(" << ii << ", " << jj << ", " << kk << ") = " << phi_new << "\n";
                 p(ii, jj, kk) = phi_new;
             }
         });

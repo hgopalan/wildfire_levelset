@@ -9,7 +9,7 @@ prob_hi_y = 5000.0
 
 # Time & output
 nsteps = 2
-cfl    = 1.0
+cfl    = 25.0
 plot_int = 5000
 
 # Velocity
