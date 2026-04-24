@@ -1,2 +1,4 @@
 build/
 plt*/
+build_rel/
+Backtrace.*
