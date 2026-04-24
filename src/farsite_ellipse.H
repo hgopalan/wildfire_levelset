@@ -61,6 +61,9 @@ static void compute_farsite_spread(MultiFab& phi,
     // Dynamic arrays to collect positions where phi < threshold
     std::vector<Real> xarray;
     std::vector<Real> yarray;
+#if (AMREX_SPACEDIM == 3)
+    std::vector<Real> zarray;
+#endif
     
     // Get physical domain information for coordinate conversion
     const Real* prob_lo = geom.ProbLo();
@@ -291,6 +294,12 @@ static void compute_farsite_spread(MultiFab& phi,
                 
                 xarray.push_back(x_new);
                 yarray.push_back(y_new);
+                
+#if (AMREX_SPACEDIM == 3)
+                Real z_cell = prob_lo[2] + (k + 0.5) * gdx[2];
+                Real z_new = z_cell + spread(i,j,k,2);
+                zarray.push_back(z_new);
+#endif
             }
         }
         }
@@ -301,7 +310,8 @@ static void compute_farsite_spread(MultiFab& phi,
     phi.setVal(0.0);
     
     // Set phi at collected positions to a value much smaller than threshold
-    const Real phi_new = phi_thresh * (-10.0);  // Much smaller (more negative) than threshold
+    const Real PHI_RESET_MULTIPLIER = -10.0;  // Much smaller (more negative) than threshold
+    const Real phi_new = phi_thresh * PHI_RESET_MULTIPLIER;
     
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -313,9 +323,15 @@ static void compute_farsite_spread(MultiFab& phi,
             Real y_pos = yarray[idx];
             
             // Convert physical coordinates back to cell indices
-            int i = static_cast<int>((x_pos - prob_lo[0]) / gdx[0]);
-            int j = static_cast<int>((y_pos - prob_lo[1]) / gdx[1]);
+            // Use rounding to handle the 0.5 cell-center offset correctly
+            int i = static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
+            int j = static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
+#if (AMREX_SPACEDIM == 3)
+            Real z_pos = zarray[idx];
+            int k = static_cast<int>(std::round((z_pos - prob_lo[2]) / gdx[2] - 0.5));
+#else
             int k = 0;  // For 2D, k is always 0
+#endif
             
             // Check if the cell is in this box
             if (bx.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
