@@ -328,6 +328,8 @@ static void compute_farsite_spread(MultiFab& phi,
             int kk = 0;
 #endif
         amrex::Print() << "Updating phi at (" << ii << ", " << jj << ", " << kk << ") to " << phi_new << "\n";
+        amrex::Print() << "Checking if (" << ii << ", " << jj << ", " << kk << ") is in box: "
+                     << "lo=(" << bx.loVect() << "), hi=(" << bx.hiVect() << ")\n";
             if (bx.contains(IntVect(AMREX_D_DECL(ii, jj, kk)))) {
                 amrex::Print() << "Setting phi(" << ii << ", " << jj << ", " << kk << ") = " << phi_new << "\n";
                 p(ii, jj, kk) = phi_new;
