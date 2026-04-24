@@ -51,7 +51,7 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    const Real LW_ratio = fp.length_to_width_ratio;
+    // const Real LW_ratio = fp.length_to_width_ratio;  // Not used with Richards' coefficients a,b,c
     
     // Richards' (1990) elliptical expansion coefficients
     const Real coeff_a = fp.coeff_a;  // head fire coefficient
@@ -141,9 +141,9 @@ static void compute_farsite_spread(const MultiFab& phi,
             
             // Richards' (1990) elliptical expansion model
             // Compute ellipse semi-axes for directional spread
-            Real a = coeff_a * R_head * dt;  // head fire semi-major axis (maximum spread)
-            Real b = a / LW_ratio;            // flank fire semi-minor axis (crosswind)
-            Real c = coeff_c * R_head * dt;  // backing fire (upwind direction)
+            Real a = coeff_a * R_head * dt;   // head fire semi-major axis (maximum spread)
+            Real b = coeff_b * R_head * dt;   // flank fire semi-axis (crosswind)
+            Real c = coeff_c * R_head * dt;   // backing fire (upwind direction)
             
             // Determine wind direction (unit vector)
             Real wx = 0.0, wy = 0.0;
