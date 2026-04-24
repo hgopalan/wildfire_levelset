@@ -8,7 +8,7 @@ prob_hi_y = 5000.0
 
 
 # Time & output
-nsteps = 2000
+nsteps = 3000
 cfl    = 0.5
 plot_int = 5000
 
@@ -16,6 +16,7 @@ plot_int = 5000
 u_x = 1.0
 u_y = 0.00
 u_z = 0.00
+velocity_file = "velocity_data.txt"
 
 # Sphere SDF
 source_type=sphere 
