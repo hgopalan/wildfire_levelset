@@ -40,7 +40,7 @@ center_z = 10.0
 sphere_radius = 25.0
 
 # -------------------- Rothermel Fire Model --------------------
-rothermel.fuel_model = anderson_4
+rothermel.fuel_model = FM4
 
 # Same terrain slope as Anderson test
 rothermel.slope_x = 0.15

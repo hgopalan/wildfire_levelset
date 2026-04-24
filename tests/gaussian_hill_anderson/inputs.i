@@ -51,7 +51,7 @@ sphere_radius = 25.0
 # -------------------- Rothermel Fire Model --------------------
 # Using Anderson fuel model 4 (Chaparral)
 # This is a common fuel type for hillside fires
-rothermel.fuel_model = anderson_4
+rothermel.fuel_model = FM4
 
 # Gaussian hill terrain parameters
 # Simplified constant slope approximation
