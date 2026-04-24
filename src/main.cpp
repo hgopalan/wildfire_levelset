@@ -114,13 +114,11 @@ int main(int argc, char* argv[])
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
 
+            // Grid tagging is disabled in 2D mode
+#if (AMREX_SPACEDIM == 3)
             if (inputs.amr_enable_negative_phi_refine == 1 &&
                 inputs.amr_regrid_int > 0 &&
-                (step % inputs.amr_regrid_int) == 0
-#if (AMREX_SPACEDIM == 2)
-                && false  // Disable grid tagging in 2D
-#endif
-                )
+                (step % inputs.amr_regrid_int) == 0)
             {
                 bool refined = regrid_negative_phi(phi, vel, geom,
                                                    ng_phi,
@@ -144,6 +142,7 @@ int main(int argc, char* argv[])
                 }
                 amrex::Print() << "After regrid: has_fine_level = " << has_fine_level << "\n";
             }
+#endif  // AMREX_SPACEDIM == 3
 
             dt = compute_dt(vel, geom, inputs.cfl);
             if (has_fine_level) {
