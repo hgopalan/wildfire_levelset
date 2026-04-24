@@ -31,6 +31,11 @@
 
 using namespace amrex;
 
+// Constant for phi reset multiplier
+// When resetting phi at fire front positions, multiply threshold by this value
+// to get a value much smaller (more negative) than the threshold
+constexpr Real PHI_RESET_MULTIPLIER = -10.0;
+
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
@@ -310,7 +315,6 @@ static void compute_farsite_spread(MultiFab& phi,
     phi.setVal(0.0);
     
     // Set phi at collected positions to a value much smaller than threshold
-    const Real PHI_RESET_MULTIPLIER = -10.0;  // Much smaller (more negative) than threshold
     const Real phi_new = phi_thresh * PHI_RESET_MULTIPLIER;
     
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
