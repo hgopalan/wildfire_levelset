@@ -114,14 +114,19 @@ void LW_ratio_to_richards_coefficients(amrex::Real LW_ratio,
 // Rothermel (1972): Slope factor φ_s from Equation 51
 // φ_s = 5.275 * β^(-0.3) * (tan(θ))^2
 //
-// This version uses a simplified coefficient for typical fuel packing ratios
-// (β ≈ 0.005-0.01), which gives a multiplier of ~10-12.
+// This simplified version omits the β^(-0.3) term (fuel packing ratio adjustment),
+// using only the base coefficient 5.275. For typical fuel packing ratios
+// (β ≈ 0.005-0.01), the full formula gives coefficients of ~10-12. This
+// simplified version provides a conservative estimate suitable for general use.
+//
+// For accurate results with specific fuel properties, use the full implementation
+// in rothermel_model.H which includes the β^(-0.3) adjustment.
 //
 // Parameters:
 //   slope_degrees: Terrain slope in degrees
 //
 // Returns:
-//   Slope factor φ_s (dimensionless)
+//   Slope factor φ_s (dimensionless, simplified version)
 // ============================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real rothermel_slope_factor(amrex::Real slope_degrees)
@@ -131,9 +136,8 @@ amrex::Real rothermel_slope_factor(amrex::Real slope_degrees)
     Real slope_rad = slope_degrees * Real(M_PI) / Real(180.0);
     Real tan_slope = std::tan(slope_rad);
     
-    // Using simplified coefficient of 5.275 for typical fuels
-    // In the full Rothermel model, this is adjusted based on
-    // fuel bed packing ratio β
+    // Using base coefficient of 5.275 without β^(-0.3) adjustment
+    // This is a simplified version - see rothermel_model.H for full formula
     Real phi_s = Real(5.275) * tan_slope * tan_slope;
     
     return phi_s;

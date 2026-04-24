@@ -56,7 +56,7 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    const int use_anderson = fp.use_anderson_LW;
+    const int use_anderson_LW = fp.use_anderson_LW;
     
     // Richards' (1990) elliptical expansion coefficients
     // These may be overridden by Anderson L/W ratio if enabled
@@ -151,7 +151,7 @@ static void compute_farsite_spread(const MultiFab& phi,
             Real local_coeff_b = coeff_b;
             Real local_coeff_c = coeff_c;
             
-            if (use_anderson == 1) {
+            if (use_anderson_LW == 1) {
                 // Convert wind speed to mph for Anderson formula
                 // wind_conv converts from sim units to ft/min
                 // ft/min to mph: multiply by 60/5280 = 0.01136364
