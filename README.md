@@ -186,13 +186,17 @@ To run FARSITE ellipse model with a fixed initial phi (skipping level set evolut
 ./build/levelset skip_levelset=1 farsite.enable=1
 ```
 
-This mode is useful for analyzing FARSITE spread patterns based on initial fire geometry without the complexity of level set advection. The phi field remains at its initial configuration throughout the simulation, while FARSITE computes directional spread rates at each timestep.
+This mode is useful for analyzing FARSITE spread patterns based on initial fire geometry without the complexity of level set advection. When both `skip_levelset=1` and `farsite.enable=1` are set, the phi field is initialized as an indicator function (phi = 1 inside the fire region, phi = 0 outside) instead of a signed distance function. The phi field remains at its initial configuration throughout the simulation, while FARSITE computes directional spread rates at each timestep.
+
+**Note:** In normal level set mode (`skip_levelset=0`), phi is initialized as a signed distance function (negative inside, positive outside). The indicator function initialization (phi = 1 inside, phi = 0 outside) is only used when both FARSITE is enabled and level set is skipped.
 
 ## Output
 
 - Plotfiles are written in the run directory as `plt####`.
 - These can be opened with AMReX/ParaView workflows or other tools that support AMReX plotfile format.
 - Each plotfile contains:
-  - `phi`: Level-set function (negative inside burned region, positive outside)
+  - `phi`: Level-set function 
+    - In normal mode (`skip_levelset=0`): signed distance function (negative inside burned region, positive outside)
+    - In FARSITE-only mode (`skip_levelset=1` and `farsite.enable=1`): indicator function (1 inside burned region, 0 outside)
   - `velx`, `vely`, `velz`: Velocity field components
   - `farsite_dx`, `farsite_dy`, `farsite_dz`: FARSITE ellipse spread displacements (when enabled)
