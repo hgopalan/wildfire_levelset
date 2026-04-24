@@ -35,6 +35,7 @@ void parse_inputs(InputParameters& p)
     p.ux = 0.25;                 pp.query("u_x", p.ux);
     p.uy = 0.0;                  pp.query("u_y", p.uy);
     p.uz = 0.0;                  pp.query("u_z", p.uz);
+    p.velocity_file = "";        pp.query("velocity_file", p.velocity_file);
 
     // ---------------- Inputs: source selection --------------
     p.source_type = "sphere";    pp.query("source_type", p.source_type);
