@@ -9,7 +9,7 @@
 // 2. Uses Rothermel (1972) to compute base rate of spread (ROS)
 // 3. Applies Richards' elliptical expansion with coefficients:
 //    - a: head fire coefficient (downwind, maximum spread)
-//    - b: flank fire coefficient (crosswind spread, derived from L/W ratio)
+//    - b: flank fire coefficient (crosswind spread)
 //    - c: backing fire coefficient (upwind, minimum spread)
 // 4. Computes directional spread based on angle between fire normal and wind
 // ============================================================================
