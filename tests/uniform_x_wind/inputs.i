@@ -8,18 +8,18 @@ prob_lo_y = -20.0
 prob_hi_y = 20.0
 prob_lo_z = -20.0  
 prob_hi_z = 20.0
-amr_enable_negative_phi_refine = 1
-amr_regrid_int = 100
+amr_enable_negative_phi_refine = 0
+amr_regrid_int = 25
 amr_refine_ratio = 2
 amr_max_refinements = 1
 
 # Time & output
 nsteps = 200
-cfl    = 0.1
-plot_int = 100
+cfl    = 0.25
+plot_int = 5
 
 # Velocity
-u_x = 0.1
+u_x = 1.0
 u_y = 0.00
 u_z = 0.00
 
@@ -32,4 +32,4 @@ sphere_radius   = 5.0
 
 
 # ---------------- Level Set Reinitialization ----------------
-reinit_int   = -1
+reinit_int   = 5
