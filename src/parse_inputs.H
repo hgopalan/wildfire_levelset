@@ -72,6 +72,9 @@ struct InputParameters {
         amrex::Real coeff_b;                 // flank fire coefficient (default: 0.5)
         amrex::Real coeff_c;                 // backing fire coefficient (default: 0.2)
     } farsite;
+    
+    // Skip level set evolution option
+    int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
 };
 
 void parse_inputs(InputParameters& inputs);

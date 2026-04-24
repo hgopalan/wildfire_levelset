@@ -143,10 +143,14 @@ int main(int argc, char* argv[])
                 fill_boundary_extrap(*fine_phi, *fine_geom);
             }
             const Real dt_step = dt;
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
-            if (has_fine_level) {
-                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel, terrain_slopes.get());
-                synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
+            
+            // Conditionally skip level set advection if skip_levelset is enabled
+            if (inputs.skip_levelset == 0) {
+                advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
+                if (has_fine_level) {
+                    advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel, terrain_slopes.get());
+                    synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
+                }
             }
 
             // Compute FARSITE ellipse spread
@@ -193,7 +197,7 @@ int main(int argc, char* argv[])
                         << " : phi_min = " << phi_min
                         << " , phi_max = " << phi_max << "\n";
 
-        if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0)) {
+        if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0) && inputs.skip_levelset == 0) {
             amrex::Print() << "Reinitializing at step " << step << "\n";
 
             // --- Coarse level: dtau and iters from coarse dx ---

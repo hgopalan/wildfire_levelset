@@ -139,6 +139,8 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `farsite.coeff_a=1.0` (head fire coefficient for elliptical expansion)
   - `farsite.coeff_b=0.5` (flank fire coefficient for elliptical expansion)
   - `farsite.coeff_c=0.2` (backing fire coefficient for elliptical expansion)
+- Level set control:
+  - `skip_levelset=0` (1 to skip level set advection and use initial phi throughout simulation, 0 for normal operation with evolving level set)
 
 ### Example: Running with different fuel models
 
@@ -175,6 +177,16 @@ The terrain file should be an ASCII file with three columns (X, Y, Z) representi
 ```
 
 The terrain slopes (∂z/∂x and ∂z/∂y) are automatically computed at each grid cell using inverse distance weighting interpolation and central differences. The slope factor φ_s in the Rothermel model is then calculated as `φ_s = 5.275 * tan²(slope)` where `tan(slope) = √(slope_x² + slope_y²)`.
+
+### Example: Using FARSITE with fixed initial phi
+
+To run FARSITE ellipse model with a fixed initial phi (skipping level set evolution):
+
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1
+```
+
+This mode is useful for analyzing FARSITE spread patterns based on initial fire geometry without the complexity of level set advection. The phi field remains at its initial configuration throughout the simulation, while FARSITE computes directional spread rates at each timestep.
 
 ## Output
 
