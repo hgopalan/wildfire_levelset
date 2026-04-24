@@ -122,4 +122,7 @@ void parse_inputs(InputParameters& p)
     p.farsite.coeff_a = 1.0;                     pp.query("farsite.coeff_a", p.farsite.coeff_a);
     p.farsite.coeff_b = 0.5;                     pp.query("farsite.coeff_b", p.farsite.coeff_b);
     p.farsite.coeff_c = 0.2;                     pp.query("farsite.coeff_c", p.farsite.coeff_c);
+
+    // -------- Skip level set option --------
+    p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
 }
