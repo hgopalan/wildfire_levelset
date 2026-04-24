@@ -72,6 +72,7 @@ static void compute_farsite_spread(const MultiFab& phi,
     const Real B = rc.B;
     const Real beta_ratio_E = rc.beta_ratio_E;
     const Real phi_s_const = rc.phi_s;  // Constant phi_s for backward compatibility
+    const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
 
@@ -154,10 +155,11 @@ static void compute_farsite_spread(const MultiFab& phi,
             Real phi_s;
             if (use_terrain) {
                 // Compute phi_s from terrain slopes at this cell
+                // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                phi_s = std::max(Real(5.275) * tan_phi_sq, Real(0.0));
+                phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
             } else {
                 // Use constant phi_s from RothermelComputed
                 phi_s = phi_s_const;
