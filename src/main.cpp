@@ -13,6 +13,11 @@
 
 using namespace amrex;
 
+// Math constants for portability
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 // ================================================================
 // Fire Spread Model Constants and Functions
 // ================================================================
