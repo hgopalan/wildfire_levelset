@@ -2,3 +2,4 @@ build/
 plt*/
 build_rel/
 Backtrace.*
+phi_*.dat
