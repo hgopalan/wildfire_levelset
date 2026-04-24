@@ -8,7 +8,7 @@ prob_hi_y = 5000.0
 
 
 # Time & output
-nsteps = 1000
+nsteps = 5000
 cfl    = 0.25
 plot_int = 5000
 
@@ -29,5 +29,4 @@ sphere_radius   = 50.0
 reinit_int   = -1
 farsite.phi_threshold = 5.0
 farsite.use_anderson_LW = 1
-rothermel.slope_x = 0.15  
-rothermel.slope_y = 0.0    
+rothermel.terrain_file = gaussian_hill_topography.csv
