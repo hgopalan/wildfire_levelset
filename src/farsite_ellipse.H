@@ -17,13 +17,6 @@
 
 using namespace amrex;
 
-// Structure to hold FARSITE ellipse parameters
-struct FARSITEParams {
-    amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 1.0 for circle)
-    amrex::Real phi_threshold;           // threshold for identifying fire front (default: 0.1)
-    int enable;                          // 1 to enable FARSITE, 0 to disable
-};
-
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richard's FARSITE model
@@ -34,7 +27,7 @@ static void compute_farsite_spread(const MultiFab& phi,
                                    const Geometry& geom,
                                    Real dt,
                                    const RothermelParams& rp,
-                                   const FARSITEParams& fp)
+                                   const InputParameters::FARSITEParams& fp)
 {
     if (fp.enable == 0) {
         return;  // FARSITE disabled
@@ -51,10 +44,6 @@ static void compute_farsite_spread(const MultiFab& phi,
     const Real LW_ratio = fp.length_to_width_ratio;
 
     // Simplified Rothermel computation for FARSITE
-    // In a full implementation, this would use the complete Rothermel model
-    const Real wind_conv = rp.wind_conv;
-    const Real ros_conv = rp.ros_conv;
-    
     // Basic rate of spread (simplified - should use full Rothermel if needed)
     const Real R0 = 1.0; // Base rate in simulation units
 
@@ -130,21 +119,9 @@ static void compute_farsite_spread(const MultiFab& phi,
             // Simplified rate of spread (head fire direction)
             // In full implementation, use complete Rothermel model
             Real R_head = R0 * (1.0 + 0.5 * wind_mag);  // Simplified wind effect
-            Real R_back = R0 * 0.5;  // Back fire (reduced rate)
-
-            // Head-to-back ratio for ellipse
-            Real HB = (R_back > 1.0e-10) ? R_head / R_back : 1.0;
-            
-            // Effective wind direction for ellipse (aligned with wind or gradient)
-            Real eff_wind_x = (wind_mag > 1.0e-10) ? wx : nx;
-            Real eff_wind_y = (wind_mag > 1.0e-10) ? wy : ny;
-#if (AMREX_SPACEDIM == 3)
-            Real eff_wind_z = (wind_mag > 1.0e-10) ? wz : nz;
-#endif
 
             // Ellipse semi-axes (Richards 1990 FARSITE model)
             Real a = R_head * dt;  // semi-major axis (downwind direction)
-            Real b = a / LW_ratio;  // semi-minor axis (crosswind direction)
 
             // Spread distance in the direction of the fire normal
             // This represents where the fire front will move
