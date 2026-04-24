@@ -98,30 +98,32 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
             Real sum_weights = Real(0.0);
             Real sum_u = Real(0.0);
             Real sum_v = Real(0.0);
-            Real power = Real(2.0);  // IDW power parameter
             Real epsilon = Real(1.0e-10);  // Small value to avoid division by zero
+            bool exact_match = false;
             
             for (int n = 0; n < n_points; ++n) {
-                Real dist = std::sqrt((x - x_ptr[n]) * (x - x_ptr[n]) + 
-                                     (y - y_ptr[n]) * (y - y_ptr[n]));
+                Real dx_val = x - x_ptr[n];
+                Real dy_val = y - y_ptr[n];
+                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
                 
                 // If very close to a data point, use its value directly
-                if (dist < epsilon) {
+                if (dist_sq < epsilon * epsilon) {
                     v(i,j,k,0) = u_ptr[n];
                     v(i,j,k,1) = v_ptr[n];
                     v(i,j,k,2) = Real(0.0);
-                    sum_weights = Real(-1.0);  // Flag to skip averaging
+                    exact_match = true;
                     break;
                 }
                 
-                Real weight = Real(1.0) / std::pow(dist, power);
+                // For power=2, weight = 1/dist^2 = 1/dist_sq (no sqrt needed)
+                Real weight = Real(1.0) / dist_sq;
                 sum_weights += weight;
                 sum_u += weight * u_ptr[n];
                 sum_v += weight * v_ptr[n];
             }
             
-            // Apply weighted average if not already set
-            if (sum_weights > Real(0.0)) {
+            // Apply weighted average if not an exact match
+            if (!exact_match) {
                 v(i,j,k,0) = sum_u / sum_weights;
                 v(i,j,k,1) = sum_v / sum_weights;
                 v(i,j,k,2) = Real(0.0);
