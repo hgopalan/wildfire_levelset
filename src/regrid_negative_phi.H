@@ -14,6 +14,133 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <vector>
+
+static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size);
+
+namespace
+{
+    constexpr int box_int_count = 2 * AMREX_SPACEDIM;
+
+    void append_box_bounds(std::vector<int>& box_data, const Box& bx)
+    {
+        for (int dir = 0; dir < AMREX_SPACEDIM; ++dir) {
+            box_data.push_back(bx.smallEnd(dir));
+        }
+        for (int dir = 0; dir < AMREX_SPACEDIM; ++dir) {
+            box_data.push_back(bx.bigEnd(dir));
+        }
+    }
+
+    Box box_from_bounds(const std::vector<int>& box_data, int offset)
+    {
+        IntVect lo(AMREX_D_DECL(box_data[offset + 0],
+                                box_data[offset + 1],
+                                box_data[offset + 2]));
+        IntVect hi(AMREX_D_DECL(box_data[offset + AMREX_SPACEDIM + 0],
+                                box_data[offset + AMREX_SPACEDIM + 1],
+                                box_data[offset + AMREX_SPACEDIM + 2]));
+        return Box(lo, hi);
+    }
+
+    BoxArray build_global_fine_boxarray(const BoxList& local_tagged_cells,
+                                        int refine_ratio,
+                                        int max_grid_size,
+                                        const Box& fine_domain)
+    {
+        if (amrex::ParallelDescriptor::NProcs() == 1) {
+            BoxList fine_bl;
+            for (const Box& bx : local_tagged_cells) {
+                fine_bl.push_back(amrex::refine(bx,
+                                                IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio))));
+            }
+
+            BoxArray fine_ba(fine_bl);
+            fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
+
+            BoxList clipped_bl;
+            for (int i = 0; i < fine_ba.size(); ++i) {
+                Box clipped = fine_ba[i] & fine_domain;
+                if (clipped.ok()) {
+                    clipped_bl.push_back(clipped);
+                }
+            }
+
+            return BoxArray(clipped_bl);
+        }
+
+        std::vector<int> local_box_data;
+        local_box_data.reserve(local_tagged_cells.size() * box_int_count);
+        for (const Box& bx : local_tagged_cells) {
+            append_box_bounds(local_box_data, bx);
+        }
+
+        const int io_rank = amrex::ParallelDescriptor::IOProcessorNumber();
+        std::vector<int> recv_counts =
+            amrex::ParallelDescriptor::Gather(static_cast<int>(local_box_data.size()), io_rank);
+        std::vector<int> displacements;
+        std::vector<int> gathered_box_data;
+
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            displacements.resize(recv_counts.size(), 0);
+            int total_count = 0;
+            for (int rank = 0; rank < static_cast<int>(recv_counts.size()); ++rank) {
+                displacements[rank] = total_count;
+                total_count += recv_counts[rank];
+            }
+            gathered_box_data.resize(total_count);
+        }
+
+        amrex::ParallelDescriptor::Gatherv(local_box_data.data(),
+                                           static_cast<int>(local_box_data.size()),
+                                           gathered_box_data.data(),
+                                           recv_counts,
+                                           displacements,
+                                           io_rank);
+
+        std::vector<int> global_box_data;
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            BoxList fine_bl;
+            for (int offset = 0; offset < static_cast<int>(gathered_box_data.size()); offset += box_int_count) {
+                fine_bl.push_back(amrex::refine(box_from_bounds(gathered_box_data, offset),
+                                                IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio))));
+            }
+
+            BoxArray fine_ba(fine_bl);
+            fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
+
+            BoxList clipped_bl;
+            for (int i = 0; i < fine_ba.size(); ++i) {
+                Box clipped = fine_ba[i] & fine_domain;
+                if (clipped.ok()) {
+                    clipped_bl.push_back(clipped);
+                }
+            }
+
+            BoxArray clipped_ba(clipped_bl);
+            global_box_data.reserve(clipped_ba.size() * box_int_count);
+            for (int i = 0; i < clipped_ba.size(); ++i) {
+                append_box_bounds(global_box_data, clipped_ba[i]);
+            }
+        }
+
+        int global_box_data_size = static_cast<int>(global_box_data.size());
+        amrex::ParallelDescriptor::Bcast(&global_box_data_size, 1, io_rank);
+        if (!amrex::ParallelDescriptor::IOProcessor()) {
+            global_box_data.resize(global_box_data_size);
+        }
+        if (global_box_data_size > 0) {
+            amrex::ParallelDescriptor::Bcast(global_box_data.data(), global_box_data_size, io_rank);
+        }
+
+        BoxList final_bl;
+        for (int offset = 0; offset < global_box_data_size; offset += box_int_count) {
+            final_bl.push_back(box_from_bounds(global_box_data, offset));
+        }
+
+        return BoxArray(final_bl);
+    }
+}
 
 static void initialize_fine_from_coarse(const MultiFab& coarse_phi,
                                         const MultiFab& coarse_vel,
@@ -154,29 +281,13 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
     }
 
     amrex::Print() << "Refining " << num_tagged << " coarse boxes (global) with refine ratio " << refine_ratio << "\n";
-    BoxList fine_bl;
-    for (const Box& bx : tagged_cells) {
-        fine_bl.push_back(amrex::refine(bx, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio))));
-    }
-    amrex::Print() << "Number of fine boxes before merging: " << fine_bl.size() << "\n";
-    BoxArray new_fine_ba(fine_bl);
-    new_fine_ba.maxSize(compute_fine_max_grid_size(refine_ratio, max_grid_size));
-    amrex::Print() << "Number of fine boxes after merging: " << new_fine_ba.size() << "\n";
-
     const Box coarse_domain = coarse_geom.Domain();
     const Box fine_domain = amrex::refine(coarse_domain, IntVect(AMREX_D_DECL(refine_ratio, refine_ratio, refine_ratio)));
-
-    // Clip to fine_domain without relying on BoxArray::operator&=(Box),
-    // which is not available in some AMReX versions.
-    BoxList clipped_bl;
-    for (int i = 0; i < new_fine_ba.size(); ++i) {
-        Box clipped = new_fine_ba[i] & fine_domain;
-        if (clipped.ok()) {
-            clipped_bl.push_back(clipped);
-        }
-    }
-    new_fine_ba = BoxArray(clipped_bl);
-    amrex::Print() << "Number of fine boxes after clipping to fine domain: " << new_fine_ba.size() << "\n";
+    BoxArray new_fine_ba = build_global_fine_boxarray(tagged_cells,
+                                                      refine_ratio,
+                                                      max_grid_size,
+                                                      fine_domain);
+    amrex::Print() << "Number of fine boxes after global merge/clip: " << new_fine_ba.size() << "\n";
 
     // Globally reduce to check if any valid boxes remain after clipping.
     int num_clipped = static_cast<int>(new_fine_ba.size());
