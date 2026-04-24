@@ -98,7 +98,7 @@ static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
             Real z = plo[2] + (k + 0.5) * dx[2];
             Real d = std::sqrt((x - cx)*(x - cx) +
                                (y - cy)*(y - cy) +
-                               (z - cz)* (z - cz)
+                               (z - cz)*(z - cz)
                                );
 #else
             (void)k;  // Suppress unused parameter warning
