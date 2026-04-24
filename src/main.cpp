@@ -79,7 +79,17 @@ int main(int argc, char* argv[])
             amrex::Abort("Invalid source_type: " + inputs.source_type);
         }
         fill_boundary_extrap(phi, geom);
+        
+        // Initialize velocity field
+#if (AMREX_SPACEDIM == 2)
+        if (!inputs.velocity_file.empty()) {
+            init_velocity_from_file(vel, geom, inputs.velocity_file);
+        } else {
+            init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+        }
+#else
         init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+#endif
 
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);

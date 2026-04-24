@@ -19,6 +19,7 @@ struct InputParameters {
 
     // Velocity
     amrex::Real ux, uy, uz;
+    std::string velocity_file;
 
     // Source selection
     std::string source_type;
