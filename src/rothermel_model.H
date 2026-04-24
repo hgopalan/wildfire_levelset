@@ -25,7 +25,7 @@ struct RothermelComputed {
 // ============================================================================
 // Compute Rothermel (1972) fire spread parameters
 // ============================================================================
-static RothermelComputed compute_rothermel_params(const RothermelParams& rp)
+inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 {
     using namespace amrex;
     
