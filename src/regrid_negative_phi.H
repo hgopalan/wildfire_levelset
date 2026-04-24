@@ -34,12 +34,12 @@ namespace
 
     Box box_from_bounds(const std::vector<int>& box_data, int offset)
     {
-        IntVect lo(AMREX_D_DECL(box_data[offset + 0],
-                                box_data[offset + 1],
-                                box_data[offset + 2]));
-        IntVect hi(AMREX_D_DECL(box_data[offset + AMREX_SPACEDIM + 0],
-                                box_data[offset + AMREX_SPACEDIM + 1],
-                                box_data[offset + AMREX_SPACEDIM + 2]));
+        IntVect lo = IntVect::TheZeroVector();
+        IntVect hi = IntVect::TheZeroVector();
+        for (int dir = 0; dir < AMREX_SPACEDIM; ++dir) {
+            lo[dir] = box_data[offset + dir];
+            hi[dir] = box_data[offset + AMREX_SPACEDIM + dir];
+        }
         return Box(lo, hi);
     }
 
@@ -84,9 +84,9 @@ namespace
         if (amrex::ParallelDescriptor::IOProcessor()) {
             displacements.resize(recv_counts.size(), 0);
             int total_count = 0;
-            for (int rank = 0; rank < static_cast<int>(recv_counts.size()); ++rank) {
-                displacements[rank] = total_count;
-                total_count += recv_counts[rank];
+            for (int rank_idx = 0; rank_idx < static_cast<int>(recv_counts.size()); ++rank_idx) {
+                displacements[rank_idx] = total_count;
+                total_count += recv_counts[rank_idx];
             }
             gathered_box_data.resize(total_count);
         }
