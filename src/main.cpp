@@ -23,6 +23,7 @@ using namespace amrex;
 #include "parse_inputs.H"
 #include "regrid_negative_phi.H"
 #include "farsite_ellipse.H"
+#include "terrain_slope.H"
 
 
 
@@ -95,6 +96,16 @@ int main(int argc, char* argv[])
         init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
 #endif
 
+        // Initialize terrain slopes if terrain file is provided
+        std::unique_ptr<MultiFab> terrain_slopes;
+        if (!inputs.rothermel.terrain_file.empty()) {
+            // Create MultiFab for slopes (2 components: slope_x, slope_y)
+            terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
+            compute_slopes_from_terrain(*terrain_slopes, geom, inputs.rothermel.terrain_file);
+            amrex::Print() << "Initialized terrain slopes from file: " 
+                          << inputs.rothermel.terrain_file << "\n";
+        }
+
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
@@ -132,14 +143,14 @@ int main(int argc, char* argv[])
                 fill_boundary_extrap(*fine_phi, *fine_geom);
             }
             const Real dt_step = dt;
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel);
+            advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
             if (has_fine_level) {
-                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel);
+                advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel, terrain_slopes.get());
                 synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
             }
 
             // Compute FARSITE ellipse spread
-            compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite);
+            compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
 
             // Grid tagging is disabled in 2D mode
 #if (AMREX_SPACEDIM == 3)

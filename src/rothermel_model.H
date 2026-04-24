@@ -18,6 +18,7 @@ struct RothermelComputed {
     amrex::Real C;               // Wind factor coefficient C (Eq. 47)
     amrex::Real B;               // Wind factor coefficient B (Eq. 48)
     amrex::Real phi_s;           // Slope factor (Eq. 51)
+    amrex::Real beta;            // Packing ratio (for terrain-based phi_s calculation)
     amrex::Real wind_conv;       // Unit conversion for wind
     amrex::Real ros_conv;        // Unit conversion for ROS
 };
@@ -98,6 +99,9 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     // Slope factor (Eq. 51)
     const Real tan_phi_sq = rp.slope_x * rp.slope_x + rp.slope_y * rp.slope_y;
     rc.phi_s = std::max(5.275 * std::pow(beta, -0.3) * tan_phi_sq, 0.0);
+    
+    // Store beta for terrain-based phi_s calculation
+    rc.beta = beta;
 
     // Unit-conversion scalars for the GPU kernel
     rc.wind_conv = rp.wind_conv;
