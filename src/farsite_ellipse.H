@@ -1,9 +1,17 @@
 // ============================================================================
 // FARSITE Ellipse Model (Richards 1990)
 // ============================================================================
-// This implements Richard's FARSITE elliptical fire spread model.
-// The model finds locations where phi ≈ 0 (fire front) and uses an ellipse
-// equation to compute where the spread will be at the next time step.
+// This implements Richards' (1990) elliptical fire spread model with 
+// coefficients a, b, and c for directional spread rates.
+//
+// The model:
+// 1. Finds locations where phi ≈ 0 (fire front)
+// 2. Uses Rothermel (1972) to compute base rate of spread (ROS)
+// 3. Applies Richards' elliptical expansion with coefficients:
+//    - a: head fire coefficient (downwind, maximum spread)
+//    - b: flank fire coefficient (crosswind spread, derived from L/W ratio)
+//    - c: backing fire coefficient (upwind, minimum spread)
+// 4. Computes directional spread based on angle between fire normal and wind
 // ============================================================================
 
 #ifndef FARSITE_ELLIPSE_H
@@ -20,7 +28,8 @@ using namespace amrex;
 
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
-// ellipse-based spread using Richard's FARSITE model with Rothermel ROS
+// ellipse-based spread using Richards' (1990) model with coefficients a, b, c
+// combined with Rothermel (1972) ROS
 // ============================================================================
 static void compute_farsite_spread(const MultiFab& phi,
                                    const MultiFab& vel,
@@ -42,7 +51,12 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    // const Real LW_ratio = fp.length_to_width_ratio;  // Reserved for future ellipse implementation
+    const Real LW_ratio = fp.length_to_width_ratio;
+    
+    // Richards' (1990) elliptical expansion coefficients
+    const Real coeff_a = fp.coeff_a;  // head fire coefficient
+    const Real coeff_b = fp.coeff_b;  // flank fire coefficient
+    const Real coeff_c = fp.coeff_c;  // backing fire coefficient
 
     // Compute Rothermel (1972) fire spread parameters
     const RothermelComputed rc = compute_rothermel_params(rp);
@@ -124,14 +138,57 @@ static void compute_farsite_spread(const MultiFab& phi,
 
             // Rate of spread using full Rothermel model [ft/min] → simulation units
             Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
-
-            // Future work: Use ellipse semi-axes for more accurate directional spread
-            // Real a = R_head * dt;  // semi-major axis (downwind direction)
-            // Real b = a / LW_ratio;  // semi-minor axis (crosswind direction)
-
-            // Spread distance in the direction of the fire normal
-            // This represents where the fire front will move
-            Real spread_dist = R_head * dt;
+            
+            // Richards' (1990) elliptical expansion model
+            // Compute ellipse semi-axes for directional spread
+            Real a = coeff_a * R_head * dt;  // head fire semi-major axis (maximum spread)
+            Real b = a / LW_ratio;            // flank fire semi-minor axis (crosswind)
+            Real c = coeff_c * R_head * dt;  // backing fire (upwind direction)
+            
+            // Determine wind direction (unit vector)
+            Real wx = 0.0, wy = 0.0;
+#if (AMREX_SPACEDIM == 3)
+            Real wz = 0.0;
+#endif
+            if (wind_mag > 1.0e-10) {
+                wx = ux / wind_mag;
+                wy = uy / wind_mag;
+#if (AMREX_SPACEDIM == 3)
+                wz = uz / wind_mag;
+#endif
+            }
+            
+            // Compute angle between fire normal and wind direction
+            // cos(theta) = dot(normal, wind)
+            Real cos_theta = nx * wx + ny * wy;
+#if (AMREX_SPACEDIM == 3)
+            cos_theta += nz * wz;
+#endif
+            
+            // Richards' elliptical spread rate formula
+            // R(theta) depends on angle from head fire direction
+            Real spread_dist = 0.0;
+            
+            if (wind_mag > 1.0e-10) {
+                // With wind: use elliptical expansion
+                // Head fire (theta=0, cos_theta=1): spread_dist = a
+                // Flank fire (theta=90, cos_theta=0): spread_dist = b  
+                // Backing fire (theta=180, cos_theta=-1): spread_dist = c
+                
+                if (cos_theta > 0.0) {
+                    // Forward hemisphere (0 to 90 degrees)
+                    // Interpolate between head (a) and flank (b) spread
+                    spread_dist = a * cos_theta + b * std::sqrt(1.0 - cos_theta * cos_theta);
+                } else {
+                    // Backward hemisphere (90 to 180 degrees)
+                    // Interpolate between flank (b) and backing (c) spread
+                    Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
+                    spread_dist = b * sin_theta - c * cos_theta;
+                }
+            } else {
+                // No wind: use backing rate uniformly (or base rate)
+                spread_dist = c;
+            }
 
             // Compute new position (displacement from current position)
             spread(i,j,k,0) = spread_dist * nx;
