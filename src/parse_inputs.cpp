@@ -1,5 +1,6 @@
 // parse_inputs.cpp
 #include "parse_inputs.H"
+#include "fuel_database.H"
 #include <AMReX_ParmParse.H>
 
 using namespace amrex;
@@ -62,20 +63,54 @@ void parse_inputs(InputParameters& p)
     p.amr_tag_phi_threshold = 0.0;
     pp.query("amr_tag_phi_threshold", p.amr_tag_phi_threshold);
 
-    // -------- Rothermel fire spread model (Southern California chaparral defaults) --------
-    p.rothermel.w0        = 0.230;    pp.query("rothermel.w0",        p.rothermel.w0);
-    p.rothermel.sigma     = 1739.0;   pp.query("rothermel.sigma",     p.rothermel.sigma);
-    p.rothermel.delta     = 2.0;      pp.query("rothermel.delta",     p.rothermel.delta);
-    p.rothermel.M_f       = 0.08;     pp.query("rothermel.M_f",       p.rothermel.M_f);
-    p.rothermel.M_x       = 0.30;     pp.query("rothermel.M_x",       p.rothermel.M_x);
-    p.rothermel.h_heat    = 8000.0;   pp.query("rothermel.h_heat",    p.rothermel.h_heat);
-    p.rothermel.S_T       = 0.0555;   pp.query("rothermel.S_T",       p.rothermel.S_T);
-    p.rothermel.S_e       = 0.010;    pp.query("rothermel.S_e",       p.rothermel.S_e);
-    p.rothermel.rho_p     = 32.0;     pp.query("rothermel.rho_p",     p.rothermel.rho_p);
-    p.rothermel.slope_x   = 0.0;      pp.query("rothermel.slope_x",   p.rothermel.slope_x);
-    p.rothermel.slope_y   = 0.0;      pp.query("rothermel.slope_y",   p.rothermel.slope_y);
-    p.rothermel.wind_conv = 196.85;   pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
-    p.rothermel.ros_conv  = 0.00508;  pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
+    // -------- Rothermel fire spread model --------
+    // Check if user wants to use a fuel model from the database
+    std::string fuel_model_name = "";
+    pp.query("rothermel.fuel_model", fuel_model_name);
+    
+    // Set defaults (custom Southern California chaparral from original code)
+    p.rothermel.w0        = 0.230;
+    p.rothermel.sigma     = 1739.0;
+    p.rothermel.delta     = 2.0;
+    p.rothermel.M_f       = 0.08;
+    p.rothermel.M_x       = 0.30;
+    p.rothermel.h_heat    = 8000.0;
+    p.rothermel.S_T       = 0.0555;
+    p.rothermel.S_e       = 0.010;
+    p.rothermel.rho_p     = 32.0;
+    p.rothermel.slope_x   = 0.0;
+    p.rothermel.slope_y   = 0.0;
+    p.rothermel.wind_conv = 196.85;
+    p.rothermel.ros_conv  = 0.00508;
+    
+    // Apply fuel model from database if specified
+    if (!fuel_model_name.empty()) {
+        FuelModel model;
+        if (lookup_fuel_model(fuel_model_name, model)) {
+            Print() << "Using fuel model: " << model.name << " - " << model.description << "\n";
+            apply_fuel_model(model, p.rothermel);
+            print_fuel_model_info(model);
+        } else {
+            Print() << "WARNING: Fuel model '" << fuel_model_name << "' not found in database.\n";
+            Print() << "         Using default values (custom Southern California chaparral).\n";
+            print_available_fuel_models();
+        }
+    }
+    
+    // Allow individual parameter overrides (these take precedence over fuel model)
+    pp.query("rothermel.w0",        p.rothermel.w0);
+    pp.query("rothermel.sigma",     p.rothermel.sigma);
+    pp.query("rothermel.delta",     p.rothermel.delta);
+    pp.query("rothermel.M_f",       p.rothermel.M_f);
+    pp.query("rothermel.M_x",       p.rothermel.M_x);
+    pp.query("rothermel.h_heat",    p.rothermel.h_heat);
+    pp.query("rothermel.S_T",       p.rothermel.S_T);
+    pp.query("rothermel.S_e",       p.rothermel.S_e);
+    pp.query("rothermel.rho_p",     p.rothermel.rho_p);
+    pp.query("rothermel.slope_x",   p.rothermel.slope_x);
+    pp.query("rothermel.slope_y",   p.rothermel.slope_y);
+    pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
+    pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
 
     // -------- FARSITE ellipse model parameters --------
     p.farsite.enable = 1;                        pp.query("farsite.enable", p.farsite.enable);
