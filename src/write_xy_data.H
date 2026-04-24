@@ -71,8 +71,10 @@ static void write_negative_phi_xy(const MultiFab& phi,
         all_data.resize(total_count * 2);
     }
     
-    MPI_Gatherv(local_data.data(), local_data.size(), MPI_DOUBLE,
-                all_data.data(), counts.data(), displacements.data(), MPI_DOUBLE,
+    MPI_Gatherv(local_data.data(), local_data.size(), 
+                ParallelDescriptor::Mpi_typemap<Real>::type(),
+                all_data.data(), counts.data(), displacements.data(), 
+                ParallelDescriptor::Mpi_typemap<Real>::type(),
                 ParallelDescriptor::IOProcessorNumber(),
                 ParallelDescriptor::Communicator());
     
@@ -128,6 +130,9 @@ static void write_negative_phi_envelope(const MultiFab& phi,
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
                         // Check if this cell is on the envelope by checking neighbors
+                        // A cell is on the envelope if:
+                        // 1. It has phi < 0 AND
+                        // 2. At least one neighbor has phi >= 0 OR it's at domain boundary
                         bool on_envelope = false;
                         
                         // Check 4 neighbors in 2D (or 6 in 3D, but we only need x-y for output)
@@ -135,25 +140,25 @@ static void write_negative_phi_envelope(const MultiFab& phi,
                         if (i > bx.smallEnd(0)) {
                             if (phi_arr(i-1,j,k,0) >= 0.0) on_envelope = true;
                         } else {
-                            on_envelope = true; // Boundary cell
+                            on_envelope = true; // At domain boundary
                         }
                         // Right neighbor
                         if (i < bx.bigEnd(0)) {
                             if (phi_arr(i+1,j,k,0) >= 0.0) on_envelope = true;
                         } else {
-                            on_envelope = true; // Boundary cell
+                            on_envelope = true; // At domain boundary
                         }
                         // Bottom neighbor
                         if (j > bx.smallEnd(1)) {
                             if (phi_arr(i,j-1,k,0) >= 0.0) on_envelope = true;
                         } else {
-                            on_envelope = true; // Boundary cell
+                            on_envelope = true; // At domain boundary
                         }
                         // Top neighbor
                         if (j < bx.bigEnd(1)) {
                             if (phi_arr(i,j+1,k,0) >= 0.0) on_envelope = true;
                         } else {
-                            on_envelope = true; // Boundary cell
+                            on_envelope = true; // At domain boundary
                         }
                         
                         if (on_envelope) {
@@ -195,8 +200,10 @@ static void write_negative_phi_envelope(const MultiFab& phi,
         all_data.resize(total_count * 2);
     }
     
-    MPI_Gatherv(local_data.data(), local_data.size(), MPI_DOUBLE,
-                all_data.data(), counts.data(), displacements.data(), MPI_DOUBLE,
+    MPI_Gatherv(local_data.data(), local_data.size(), 
+                ParallelDescriptor::Mpi_typemap<Real>::type(),
+                all_data.data(), counts.data(), displacements.data(), 
+                ParallelDescriptor::Mpi_typemap<Real>::type(),
                 ParallelDescriptor::IOProcessorNumber(),
                 ParallelDescriptor::Communicator());
     
