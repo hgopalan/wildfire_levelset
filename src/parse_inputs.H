@@ -65,6 +65,7 @@ struct InputParameters {
         amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 3.0)
         amrex::Real phi_threshold;           // threshold for identifying fire front (default: 0.1)
         int enable;                          // 1 to enable FARSITE, 0 to disable
+        int use_anderson_LW;                 // 1 to use Anderson (1983) L/W ratio based on wind speed, 0 to use fixed coefficients
         // Richards' (1990) elliptical expansion coefficients
         amrex::Real coeff_a;                 // head fire coefficient (default: 1.0)
         amrex::Real coeff_b;                 // flank fire coefficient (default: 0.5)

@@ -4,6 +4,10 @@
 // This implements Richards' (1990) elliptical fire spread model with 
 // coefficients a, b, and c for directional spread rates.
 //
+// The model can use either:
+// 1. Fixed Richards' coefficients (a, b, c) from input parameters
+// 2. Anderson (1983) L/W ratio based on wind speed, converted to coefficients
+//
 // The model:
 // 1. Finds locations where phi ≈ 0 (fire front)
 // 2. Uses Rothermel (1972) to compute base rate of spread (ROS)
@@ -23,6 +27,7 @@
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "fire_models.H"
 
 using namespace amrex;
 
@@ -51,12 +56,13 @@ static void compute_farsite_spread(const MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    // const Real LW_ratio = fp.length_to_width_ratio;  // Not used with Richards' coefficients a,b,c
+    const int use_anderson_LW = fp.use_anderson_LW;
     
     // Richards' (1990) elliptical expansion coefficients
-    const Real coeff_a = fp.coeff_a;  // head fire coefficient
-    const Real coeff_b = fp.coeff_b;  // flank fire coefficient
-    const Real coeff_c = fp.coeff_c;  // backing fire coefficient
+    // These may be overridden by Anderson L/W ratio if enabled
+    Real coeff_a = fp.coeff_a;  // head fire coefficient
+    Real coeff_b = fp.coeff_b;  // flank fire coefficient
+    Real coeff_c = fp.coeff_c;  // backing fire coefficient
 
     // Compute Rothermel (1972) fire spread parameters
     const RothermelComputed rc = compute_rothermel_params(rp);
@@ -139,11 +145,33 @@ static void compute_farsite_spread(const MultiFab& phi,
             // Rate of spread using full Rothermel model [ft/min] → simulation units
             Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
             
+            // Determine elliptical coefficients
+            // If Anderson L/W mode is enabled, compute coefficients from wind speed
+            Real local_coeff_a = coeff_a;
+            Real local_coeff_b = coeff_b;
+            Real local_coeff_c = coeff_c;
+            
+            if (use_anderson_LW == 1) {
+                // Convert wind speed to mph for Anderson formula
+                // wind_conv converts from sim units to ft/min
+                // ft/min to mph: multiply by 60/5280 = 0.01136364
+                Real U_mph = U_ftmin * Real(0.01136364);
+                
+                // Compute Anderson (1983) L/W ratio based on wind speed
+                Real LW_ratio = anderson_LW_ratio(U_mph);
+                
+                // Convert L/W ratio to Richards' coefficients
+                LW_ratio_to_richards_coefficients(LW_ratio, 
+                                                 local_coeff_a, 
+                                                 local_coeff_b, 
+                                                 local_coeff_c);
+            }
+            
             // Richards' (1990) elliptical expansion model
             // Compute spread distances for each direction (not geometric ellipse axes)
-            Real head_spread = coeff_a * R_head * dt;    // head fire (downwind, maximum spread)
-            Real flank_spread = coeff_b * R_head * dt;   // flank fire (crosswind)
-            Real backing_spread = coeff_c * R_head * dt; // backing fire (upwind, minimum spread)
+            Real head_spread = local_coeff_a * R_head * dt;    // head fire (downwind, maximum spread)
+            Real flank_spread = local_coeff_b * R_head * dt;   // flank fire (crosswind)
+            Real backing_spread = local_coeff_c * R_head * dt; // backing fire (upwind, minimum spread)
             
             // Determine wind direction (unit vector)
             Real wx = 0.0, wy = 0.0;
