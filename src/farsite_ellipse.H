@@ -14,19 +14,20 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
+#include "rothermel_model.H"
 
 using namespace amrex;
 
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
-// ellipse-based spread using Richard's FARSITE model
+// ellipse-based spread using Richard's FARSITE model with Rothermel ROS
 // ============================================================================
 static void compute_farsite_spread(const MultiFab& phi,
                                    const MultiFab& vel,
                                    MultiFab& farsite_spread,
                                    const Geometry& geom,
                                    Real dt,
-                                   [[maybe_unused]] const RothermelParams& rp,
+                                   const RothermelParams& rp,
                                    const InputParameters::FARSITEParams& fp)
 {
     if (fp.enable == 0) {
@@ -43,10 +44,15 @@ static void compute_farsite_spread(const MultiFab& phi,
     const Real phi_thresh = fp.phi_threshold;
     // const Real LW_ratio = fp.length_to_width_ratio;  // Reserved for future ellipse implementation
 
-    // Simplified Rothermel computation for FARSITE
-    // Basic rate of spread (simplified - should use full Rothermel if needed)
-    // const RothermelParams& rp is reserved for future full Rothermel integration
-    const Real R0 = 1.0; // Base rate in simulation units
+    // Compute Rothermel (1972) fire spread parameters
+    const RothermelComputed rc = compute_rothermel_params(rp);
+    const Real R0 = rc.R0;
+    const Real C = rc.C;
+    const Real B = rc.B;
+    const Real beta_ratio_E = rc.beta_ratio_E;
+    const Real phi_s = rc.phi_s;
+    const Real wind_conv = rc.wind_conv;
+    const Real ros_conv = rc.ros_conv;
 
     // Compute spread for each cell
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
@@ -103,21 +109,21 @@ static void compute_farsite_spread(const MultiFab& phi,
             Real uz = v(i,j,k,2);
 #endif
 
-            // Wind speed magnitude
+            // Wind speed magnitude in simulation units
             Real wind_mag = std::sqrt(ux*ux + uy*uy
 #if (AMREX_SPACEDIM == 3)
                 + uz*uz
 #endif
             );
 
-            // Future work: Wind direction unit vectors for more accurate ellipse orientation
-            // Real wx = (wind_mag > 1.0e-10) ? ux / wind_mag : 0.0;
-            // Real wy = (wind_mag > 1.0e-10) ? uy / wind_mag : 0.0;
-            // Real wz = (wind_mag > 1.0e-10) ? uz / wind_mag : 0.0;
+            // Convert wind speed to Rothermel units (ft/min)
+            Real U_ftmin = wind_mag * wind_conv;
 
-            // Simplified rate of spread (head fire direction)
-            // In full implementation, use complete Rothermel model
-            Real R_head = R0 * (1.0 + 0.5 * wind_mag);  // Simplified wind effect
+            // Wind factor φ_w (Rothermel Eq. 47)
+            Real phi_w = (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : 0.0;
+
+            // Rate of spread using full Rothermel model [ft/min] → simulation units
+            Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
 
             // Future work: Use ellipse semi-axes for more accurate directional spread
             // Real a = R_head * dt;  // semi-major axis (downwind direction)
