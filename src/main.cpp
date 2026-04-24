@@ -27,7 +27,6 @@ using namespace amrex;
 #include "compute_rothermel_R.H"
 
 
-
 // ======================= Main ================================================
 int main(int argc, char* argv[])
 {
@@ -59,6 +58,16 @@ int main(int argc, char* argv[])
 #endif
     Geometry geom(domain, &rb, 0, is_periodic.data());
 
+        // ---------------- Inputs: terrain ----------------------
+        bool use_terrain_effects = false;
+        bool use_farsite_model = false;
+        Real terrain_slope = 0.0;      // slope in degrees
+        Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North)
+        
+        pp.query("use_terrain_effects", use_terrain_effects);
+        pp.query("use_farsite_model", use_farsite_model);
+        pp.query("terrain_slope", terrain_slope);
+        pp.query("terrain_aspect", terrain_aspect);
 
     // ---------------- Grids & distribution -----------------
     BoxArray ba(domain);
