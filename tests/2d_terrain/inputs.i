@@ -9,11 +9,11 @@ prob_hi_y = 5000.0
 
 # Time & output
 nsteps = 2
-cfl    = 25.0
+cfl    = 250000.0
 plot_int = 5000
 
 # Velocity
-u_x = 1.0
+u_x = 5.0
 u_y = 0.00
 u_z = 0.00
 velocity_file = "turbulent_field_2d.csv"
@@ -22,7 +22,7 @@ velocity_file = "turbulent_field_2d.csv"
 source_type=sphere 
 center_x = 2500.0
 center_y = 2500.0
-sphere_radius   = 250.0
+sphere_radius   = 25.0
 
 
 # ---------------- Level Set Reinitialization ----------------

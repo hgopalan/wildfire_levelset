@@ -243,7 +243,11 @@ static void compute_farsite_spread(MultiFab& phi,
 #endif
         });
     }
-
+    amrex::Print() << "Max farsite_spread (x): " << farsite_spread.max(0) << "\n";
+    amrex::Print() << "Max farsite_spread (y): " << farsite_spread.max(1) << "\n";
+    #if (AMREX_SPACEDIM == 3)
+    amrex::Print() << "Max farsite_spread (z): " << farsite_spread.max(2) << "\n";
+    #endif
     // -------------------------------------------------------------------------
     // Synchronize so the GPU kernel results are visible on the host before
     // we read phi and farsite_spread in the collection loop below.
@@ -283,6 +287,10 @@ static void compute_farsite_spread(MultiFab& phi,
     // Reset phi everywhere, then stamp new fire-front positions
     // -------------------------------------------------------------------------
     phi.setVal(0.0);
+    amrex::Print()<<"Min-Max of xarray is:"<<*std::min_element(xarray.begin(), xarray.end())<<" to "
+                        <<*std::max_element(xarray.begin(), xarray.end())<<"\n";
+    amrex::Print()<<"Min-Max of yarray is:"<<*std::min_element(yarray.begin(), yarray.end())<<" to "
+                        <<*std::max_element(yarray.begin(), yarray.end())<<"\n";
 
     const Real phi_new = PHI_RESET_MULTIPLIER;
     const int  npts    = static_cast<int>(xarray.size());
@@ -318,11 +326,6 @@ static void compute_farsite_spread(MultiFab& phi,
         ParallelFor(npts, [=] AMREX_GPU_DEVICE (int idx) noexcept {
             Real x_pos = px[idx];
             Real y_pos = py[idx];
-            amrex::Print() << "Stamping phi at (" << x_pos << ", " << y_pos
-#if (AMREX_SPACEDIM == 3)
-                << ", " << pz[idx]
-#endif
-                << ")\n";
             int ii = static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
             int jj = static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
 #if (AMREX_SPACEDIM == 3)
