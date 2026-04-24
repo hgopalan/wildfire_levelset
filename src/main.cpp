@@ -21,7 +21,6 @@ using namespace amrex;
 #include "advection.H"
 #include "velocity_field.H"
 #include "parse_inputs.H"
-#include "regrid_negative_phi.H"
 #include "farsite_ellipse.H"
 #include "terrain_slope.H"
 
@@ -122,12 +121,6 @@ int main(int argc, char* argv[])
         Real dt = compute_dt(vel, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
         Real time = 0.0;
-        bool has_fine_level = false;
-        BoxArray fine_ba;
-        DistributionMapping fine_dm;
-        std::unique_ptr<Geometry> fine_geom;
-        std::unique_ptr<MultiFab> fine_phi;
-        std::unique_ptr<MultiFab> fine_vel;
 
 
         // ---------------- Write initial plotfile ---------------
@@ -149,59 +142,17 @@ int main(int argc, char* argv[])
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= inputs.nsteps; ++step) {
             fill_boundary_extrap(phi, geom);
-            if (has_fine_level) {
-                // Fill fine ghost cells from coarse data first, then apply boundary conditions
-                fill_fine_ghost_from_coarse(*fine_phi, phi, *fine_geom, geom, inputs.amr_refine_ratio);
-                fill_boundary_extrap(*fine_phi, *fine_geom);
-            }
             const Real dt_step = dt;
             
             // Conditionally skip level set advection if skip_levelset is enabled
             if (inputs.skip_levelset == 0) {
                 advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
-                if (has_fine_level) {
-                    advect_levelset_weno5z_rk3(*fine_phi, *fine_vel, *fine_geom, dt_step, inputs.rothermel, terrain_slopes.get());
-                    synchronize_coarse_from_fine(phi, vel, *fine_phi, *fine_vel, inputs.amr_refine_ratio);
-                }
             }
 
             // Compute FARSITE ellipse spread
             compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
 
-            // Grid tagging is disabled in 2D mode
-#if (AMREX_SPACEDIM == 3)
-            if (inputs.amr_enable_negative_phi_refine == 1 &&
-                inputs.amr_regrid_int > 0 &&
-                (step % inputs.amr_regrid_int) == 0)
-            {
-                bool refined = regrid_negative_phi(phi, vel, geom,
-                                                   ng_phi,
-                                                   inputs.amr_refine_ratio,
-                                                   inputs.amr_tag_phi_threshold,
-                                                   inputs.amr_max_refinements,
-                                                   inputs.max_grid,
-                                                   has_fine_level,
-                                                   fine_ba,
-                                                   fine_dm,
-                                                   fine_geom,
-                                                   fine_phi,
-                                                   fine_vel);
-                amrex::Print() << "Regrid at step " << step << (refined ? " (refined)" : " (no refinement)") << "\n";
-                if (refined) {
-                    fill_boundary_extrap(phi, geom);
-                    if (has_fine_level) {
-                        fill_fine_ghost_from_coarse(*fine_phi, phi, *fine_geom, geom, inputs.amr_refine_ratio);
-                        fill_boundary_extrap(*fine_phi, *fine_geom);
-                    }
-                }
-                amrex::Print() << "After regrid: has_fine_level = " << has_fine_level << "\n";
-            }
-#endif  // AMREX_SPACEDIM == 3
-
             dt = compute_dt(vel, geom, inputs.cfl);
-            if (has_fine_level) {
-                dt = std::min(dt, compute_dt(*fine_vel, *fine_geom, inputs.cfl));
-            }
             Real phi_min = phi.min(0);
             Real phi_max = phi.max(0);
 
@@ -223,21 +174,7 @@ int main(int argc, char* argv[])
                 Real dtau     = 0.1 * dx_min;               // CFL = 0.5 for forward-Euler + Godunov
                 int  niters   = static_cast<int>(std::ceil(ng_phi / 0.5)); // = 6 for ng_phi=3
                 reinitialize_phi(phi, geom, niters, dtau);
-                amrex::Print() << "Reinitialized coarse level phi\n" << " with dtau = " << dtau << " and niters = " << niters << "\n";
-            }
-            
-            // --- Fine level: dtau and iters from fine dx (finer spacing → smaller dtau) ---
-            if (has_fine_level) {
-                const auto dx_f = fine_geom->CellSize();
-#if (AMREX_SPACEDIM == 3)
-                Real dx_min_f   = std::min({dx_f[0], dx_f[1], dx_f[2]});
-#else
-                Real dx_min_f   = std::min(dx_f[0], dx_f[1]);
-#endif
-                Real dtau_f     = 0.5 * dx_min_f;           // same CFL, but scales with fine dx
-                int  niters_f   = static_cast<int>(std::ceil(ng_phi / 0.5)); // same band depth in cells
-                reinitialize_phi(*fine_phi, *fine_geom, niters_f, dtau_f);
-                synchronize_coarse_phi_from_fine(phi, *fine_phi, inputs.amr_refine_ratio);
+                amrex::Print() << "Reinitialized phi with dtau = " << dtau << " and niters = " << niters << "\n";
             }
         }
 
@@ -253,30 +190,11 @@ int main(int argc, char* argv[])
                     , "farsite_dx", "farsite_dy"
 #endif
                 };
-                if (has_fine_level) {
-                    MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                    MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
-                    MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                    MultiFab::Copy(coarse_plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
-                    MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                    MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
-                    MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
-                    // Note: farsite_spread is only computed on coarse level, fill with zeros for fine level
-                    fine_plotmf.setVal(0.0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM);
-                    Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
-                    Vector<Geometry> geoms = {geom, *fine_geom};
-                    Vector<int> isteps = {step, step};
-                    Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
-                                                                       inputs.amr_refine_ratio,
-                                                                       inputs.amr_refine_ratio))};
-                    WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms, time, isteps, ref_ratio);
-                } else {
-                    MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                    MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
-                    MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                    MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
-                    WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
-                }
+                MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
+                MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
+                MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+                MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
+                WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
                 amrex::Print() << "Wrote " << buf << "\n";
             }
         }
@@ -292,31 +210,11 @@ int main(int argc, char* argv[])
                 , "farsite_dx", "farsite_dy"
 #endif
             };
-            if (has_fine_level) {
-                MultiFab coarse_plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                MultiFab::Copy(coarse_plotmf, phi, 0, 0, 1, 0);
-                MultiFab::Copy(coarse_plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                MultiFab::Copy(coarse_plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
-                MultiFab fine_plotmf(fine_ba, fine_dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                MultiFab::Copy(fine_plotmf, *fine_phi, 0, 0, 1, 0);
-                MultiFab::Copy(fine_plotmf, *fine_vel, 0, 1, AMREX_SPACEDIM, 0);
-                // Note: farsite_spread is only computed on coarse level, fill with zeros for fine level
-                fine_plotmf.setVal(0.0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM);
-                Vector<const MultiFab*> plot_data = {&coarse_plotmf, &fine_plotmf};
-                Vector<Geometry> geoms = {geom, *fine_geom};
-                Vector<int> isteps = {inputs.nsteps, inputs.nsteps};
-                Vector<IntVect> ref_ratio = {IntVect(AMREX_D_DECL(inputs.amr_refine_ratio,
-                                                                   inputs.amr_refine_ratio,
-                                                                   inputs.amr_refine_ratio))};
-                WriteMultiLevelPlotfile(buf, 2, plot_data, names, geoms,
-                                        time, isteps, ref_ratio);
-            } else {
-                MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
-                MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
-                MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
-                MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
-                WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
-            }
+            MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 0);
+            MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
+            MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
+            MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
+            WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
             amrex::Print() << "Wrote final " << buf << "\n";
         }
     }
