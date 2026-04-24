@@ -35,7 +35,7 @@ cmake --build build --parallel
 mpirun -n 4 ./build/levelset tests/regrid_finite_check/inputs.i
 ```
 
-Use any number of MPI ranks ≥ 2 to stress the parallel regridding paths.
+Use any number of MPI ranks ≥ 1 to stress the parallel regridding paths.
 
 ## Verification criteria
 
