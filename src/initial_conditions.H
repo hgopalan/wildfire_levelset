@@ -2,6 +2,9 @@
 static void init_phi_sphere(MultiFab& phi, const Geometry& geom,
                             Real cx, Real cy, Real cz, Real radius)
 {
+#if (AMREX_SPACEDIM == 2)
+    (void)cz;  // Suppress unused parameter warning in 2D
+#endif
     const auto dx  = geom.CellSize();
     const auto plo = geom.ProbLo();
 
