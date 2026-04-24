@@ -51,13 +51,6 @@ struct InputParameters {
     // Box Size 
     amrex::Real bx, by, bz;
 
-    // Dynamic AMR-style refinement for negative phi
-    int amr_enable_negative_phi_refine;
-    int amr_regrid_int;
-    int amr_refine_ratio;
-    int amr_max_refinements;
-    amrex::Real amr_tag_phi_threshold;
-
     // Rothermel fire spread model parameters
     RothermelParams rothermel;
     
