@@ -27,3 +27,4 @@ sphere_radius   = 50.0
 
 # ---------------- Level Set Reinitialization ----------------
 reinit_int   = 10
+farsite.phi_threshold = 5.0
