@@ -14,6 +14,80 @@
 using namespace amrex;
 
 // ================================================================
+// Fire Spread Model Constants and Functions
+// ================================================================
+
+// Anderson (1983) L/W ratio calculation based on wind speed
+// Used in FARSITE model for elliptical fire shape
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real anderson_LW_ratio(Real wind_speed_mph)
+{
+    // Anderson (1983): L/W = 0.936 * exp(0.2566 * U) + 0.461 * exp(-0.1548 * U) - 0.397
+    // where U is wind speed at midflame height in mph
+    // For U = 0, L/W = 1.0 (circular fire)
+    // This relationship is used in FARSITE
+    
+    if (wind_speed_mph < 0.01) {
+        return Real(1.0); // Nearly circular for no wind
+    }
+    
+    Real LW = Real(0.936) * std::exp(Real(0.2566) * wind_speed_mph) 
+            + Real(0.461) * std::exp(Real(-0.1548) * wind_speed_mph) 
+            - Real(0.397);
+    
+    // Ensure physically reasonable bounds
+    return amrex::max(Real(1.0), amrex::min(LW, Real(8.0)));
+}
+
+// Rothermel slope correction factor
+// Accounts for terrain slope effects on fire spread
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real rothermel_slope_factor(Real slope_degrees)
+{
+    // Rothermel (1972): Slope factor φ_s
+    // φ_s = 5.275 * β^(-0.3) * (tan(θ))^2
+    // Simplified version using tan^2(slope) approximation
+    // For typical fuel packing ratios β ≈ 0.005-0.01, the coefficient is ~10-12
+    
+    Real slope_rad = slope_degrees * Real(M_PI) / Real(180.0);
+    Real tan_slope = std::tan(slope_rad);
+    
+    // Using simplified coefficient of 5.275 for typical fuels
+    // In practice, this should be adjusted based on fuel bed properties
+    Real phi_s = Real(5.275) * tan_slope * tan_slope;
+    
+    return phi_s;
+}
+
+// FARSITE combined wind and slope factor
+// Accounts for both wind and terrain effects on spread rate
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real farsite_combined_factor(Real wind_speed_mph, Real slope_degrees, 
+                             Real wind_dir_rad, Real slope_aspect_rad)
+{
+    // FARSITE combines wind and slope effects vectorially
+    // The effective wind speed accounts for terrain-induced draft
+    
+    // Wind factor (simplified)
+    Real phi_w = wind_speed_mph > 0.01 ? 
+                 std::exp(Real(0.05) * wind_speed_mph) : Real(1.0);
+    
+    // Slope factor from Rothermel
+    Real phi_s = rothermel_slope_factor(slope_degrees);
+    
+    // Vectorial combination based on wind direction and slope aspect
+    // If wind and slope are aligned, effects add; if opposed, they partially cancel
+    Real dir_diff = wind_dir_rad - slope_aspect_rad;
+    Real alignment = std::cos(dir_diff);
+    
+    // Combined factor (simplified formulation)
+    // In full FARSITE, this involves more complex vector addition
+    Real combined = Real(1.0) + phi_w + phi_s * amrex::max(Real(0.0), alignment);
+    
+    return amrex::max(Real(1.0), combined);
+}
+
+// ================================================================
 // WENO3 one-sided reconstruction helper
 // Returns the WENO3 reconstructed derivative (left or right) in one direction.
 // f0, f1, f2 are three consecutive cell values; the reconstruction targets
@@ -98,19 +172,26 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
 }
 
 // ============================================================================
-// UPDATED: Build RHS with WENO5-Z using Eq. (2) with wind magnitude R and Laplacian
+// UPDATED: Build RHS with WENO5-Z using fire spread models
+// Includes Anderson L/W ratio and terrain effects (Rothermel/FARSITE)
 // ============================================================================
 static void build_rhs_weno5z(const MultiFab& phi,
                              const MultiFab& vel,
+                             const MultiFab& terrain,
                              MultiFab& rhs,
-                             const Geometry& geom)
+                             const Geometry& geom,
+                             bool use_terrain_effects,
+                             bool use_farsite_model)
 {
     const auto dx = geom.CellSize();
     GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
 
     // Artificial viscosity ε per Eq. (2); use a single uniform value across the domain.
-    // Paper default ~0.4 is common operationally. [1](https://nrel-my.sharepoint.com/personal/hgopalan_nrel_gov/Documents/Microsoft%20Copilot%20Chat%20Files/gmd-2024-124.pdf)
+    // Paper default ~0.4 is common operationally.
     constexpr Real eps_visc = 0.4;
+
+    // Conversion factor: m/s to mph for Anderson L/W ratio
+    constexpr Real ms_to_mph = 2.23694;
 
     // Helper: discrete Laplacian Δφ (second-order)
     auto laplacian_phi = [=] AMREX_GPU_HOST_DEVICE (Array4<const Real> const& p,
@@ -125,31 +206,72 @@ static void build_rhs_weno5z(const MultiFab& phi,
 #endif
     };
 
-    // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R = ‖u‖ (wind magnitude). [1](https://nrel-my.sharepoint.com/personal/hgopalan_nrel_gov/Documents/Microsoft%20Copilot%20Chat%20Files/gmd-2024-124.pdf)
+    // RHS with fire spread model corrections
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx  = mfi.validbox();
         auto const p   = phi.const_array(mfi);
         auto const v   = vel.const_array(mfi);
+        auto const t   = terrain.const_array(mfi);
         auto       fr  = rhs.array(mfi);
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // |∇φ| using your existing Godunov/WENO5 routine (structure preserved)
+            // |∇φ| using existing Godunov/WENO5 routine
             Real grad_norm = godunov_norm_grad_phi(p, i, j, k, gdx);
 
             // Laplacian Δφ
             Real lap = laplacian_phi(p, i, j, k);
 
-            // Wind speed magnitude R
+            // Wind velocity components
             Real ux = v(i,j,k,0);
             Real uy = v(i,j,k,1);
 #if (AMREX_SPACEDIM==3)
             Real uz = v(i,j,k,2);
-            Real R  = std::sqrt(ux*ux + uy*uy + uz*uz);
+            Real wind_mag = std::sqrt(ux*ux + uy*uy + uz*uz);
 #else
-            Real R  = std::sqrt(ux*ux + uy*uy);
+            Real uz = 0.0;
+            Real wind_mag = std::sqrt(ux*ux + uy*uy);
 #endif
 
-            // Final RHS (keeps your WENO5 & RK3 integrators intact)
+            // Base rate of spread (ROS)
+            Real R = wind_mag;
+
+            // Apply terrain and wind effects if enabled
+            if (use_terrain_effects) {
+                // Terrain data: t(i,j,k,0) = slope (degrees), t(i,j,k,1) = aspect (radians)
+                Real slope_deg = t(i,j,k,0);
+                Real aspect_rad = t(i,j,k,1);
+
+                // Wind direction (radians)
+                Real wind_dir = std::atan2(uy, ux);
+
+                if (use_farsite_model) {
+                    // FARSITE model: Anderson L/W ratio + combined wind/slope effects
+                    Real wind_mph = wind_mag * ms_to_mph;
+                    Real LW_ratio = anderson_LW_ratio(wind_mph);
+
+                    // Combined wind and slope factor
+                    Real combined_factor = farsite_combined_factor(wind_mph, slope_deg, 
+                                                                   wind_dir, aspect_rad);
+
+                    // Modify ROS with L/W ratio and combined effects
+                    // The L/W ratio affects the elliptical spread pattern
+                    // Higher L/W means faster spread in wind direction
+                    R = wind_mag * combined_factor * (Real(1.0) + (LW_ratio - Real(1.0)) * Real(0.3));
+
+                } else {
+                    // Rothermel model: slope correction only
+                    Real slope_factor = rothermel_slope_factor(slope_deg);
+                    
+                    // Apply slope correction to base ROS
+                    // Slope factor increases spread uphill, decreases downhill
+                    Real dir_diff = wind_dir - aspect_rad;
+                    Real uphill_component = std::cos(dir_diff);
+                    
+                    R = wind_mag * (Real(1.0) + slope_factor * amrex::max(Real(0.0), uphill_component));
+                }
+            }
+
+            // Final RHS with fire spread model corrections
             fr(i,j,k) = - R * (grad_norm - eps_visc * lap);
         });
     }
@@ -266,8 +388,11 @@ static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
 // ======================= WENO5-Z advection + RK3 ==================
 static void advect_levelset_weno5z_rk3(MultiFab& phi,
                                        const MultiFab& vel,
+                                       const MultiFab& terrain,
                                        const Geometry& geom,
-                                       Real dt)
+                                       Real dt,
+                                       bool use_terrain_effects,
+                                       bool use_farsite_model)
 {
     const auto& ba = phi.boxArray();
     const auto& dm = phi.DistributionMap();
@@ -279,7 +404,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
 
 
     // ---------- Stage 1 ----------
-    build_rhs_weno5z(phi, vel, rhs, geom);
+    build_rhs_weno5z(phi, vel, terrain, rhs, geom, use_terrain_effects, use_farsite_model);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p  = phi.const_array(mfi);
@@ -292,7 +417,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
     fill_boundary_extrap(phi1, geom);
 
     // ---------- Stage 2 ----------
-    build_rhs_weno5z(phi1, vel, rhs, geom);
+    build_rhs_weno5z(phi1, vel, terrain, rhs, geom, use_terrain_effects, use_farsite_model);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p   = phi.const_array(mfi);
@@ -306,7 +431,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
     fill_boundary_extrap(phi2, geom);
 
     // ---------- Stage 3 ----------
-    build_rhs_weno5z(phi2, vel, rhs, geom);
+    build_rhs_weno5z(phi2, vel, terrain, rhs, geom, use_terrain_effects, use_farsite_model);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p   = phi.const_array(mfi);
@@ -430,6 +555,58 @@ static void init_velocity_constant(MultiFab& vel, Real ux, Real uy, Real uz)
     }
 }
 
+// ======================= Initialize terrain data ==================================
+// Terrain data has 2 components: 
+//   comp 0: slope (degrees)
+//   comp 1: aspect (radians, 0 = East, π/2 = North)
+static void init_terrain(MultiFab& terrain, const Geometry& geom,
+                        Real slope_degrees, Real aspect_degrees)
+{
+    Real aspect_rad = aspect_degrees * M_PI / 180.0;
+    
+    for (MFIter mfi(terrain); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const t = terrain.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            t(i,j,k,0) = slope_degrees;  // slope in degrees
+            t(i,j,k,1) = aspect_rad;     // aspect in radians
+        });
+    }
+}
+
+// ======================= Initialize terrain from elevation data ===================
+// For more complex terrain, compute slope and aspect from elevation gradients
+static void init_terrain_from_elevation(MultiFab& terrain, const MultiFab& elevation,
+                                        const Geometry& geom)
+{
+    const auto dx = geom.CellSize();
+    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
+    
+    for (MFIter mfi(terrain); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const t = terrain.array(mfi);
+        auto const e = elevation.const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            // Compute elevation gradients (centered differences)
+            Real dz_dx = (e(i+1,j,k) - e(i-1,j,k)) / (2.0 * gdx[0]);
+            Real dz_dy = (e(i,j+1,k) - e(i,j-1,k)) / (2.0 * gdx[1]);
+            
+            // Slope (degrees)
+            Real slope_rad = std::atan(std::sqrt(dz_dx*dz_dx + dz_dy*dz_dy));
+            Real slope_deg = slope_rad * 180.0 / M_PI;
+            
+            // Aspect (radians): direction of steepest uphill slope
+            // 0 = East, π/2 = North, π = West, 3π/2 = South
+            Real aspect_rad = std::atan2(dz_dy, dz_dx);
+            
+            t(i,j,k,0) = slope_deg;
+            t(i,j,k,1) = aspect_rad;
+        });
+    }
+}
+
 // ======================= Compute dt from CFL and max|u| =========================
 static Real compute_dt(const MultiFab& vel, const Geometry& geom, Real cfl)
 {
@@ -505,6 +682,16 @@ int main(int argc, char* argv[])
         pp.query("u_y", uy);
         pp.query("u_z", uz);
 
+        // ---------------- Inputs: terrain ----------------------
+        bool use_terrain_effects = false;
+        bool use_farsite_model = false;
+        Real terrain_slope = 0.0;      // slope in degrees
+        Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North)
+        
+        pp.query("use_terrain_effects", use_terrain_effects);
+        pp.query("use_farsite_model", use_farsite_model);
+        pp.query("terrain_slope", terrain_slope);
+        pp.query("terrain_aspect", terrain_aspect);
 
         // ---------------- Inputs: source selection ----------------
         std::string source_type = "sphere"; // "line" or "sphere"
@@ -531,10 +718,11 @@ int main(int argc, char* argv[])
         ba.maxSize(max_grid);
         DistributionMapping dm(ba);
 
-        // ---------------- Fields: phi (1 comp), vel (3 comps) --
+        // ---------------- Fields: phi (1 comp), vel (3 comps), terrain (2 comps) --
         const int ng_phi = 3; // 3 ghost cells for stencil operations (WENO5-Z flux divergence uses up to ±3 cells)
         MultiFab phi(ba, dm, 1, ng_phi);
         MultiFab vel(ba, dm, 3, 1);
+        MultiFab terrain(ba, dm, 2, 1); // 2 components: slope (degrees), aspect (radians)
 
         // ---------------- Initialize ---------------------------
         //init_phi_sphere(phi, geom, cx, cy, cz, radius);
@@ -547,6 +735,23 @@ int main(int argc, char* argv[])
         }
 
         init_velocity_constant(vel, ux, uy, uz);
+        init_terrain(terrain, geom, terrain_slope, terrain_aspect);
+        
+        // Print fire spread model configuration
+        amrex::Print() << "Fire spread model configuration:\n";
+        if (use_terrain_effects) {
+            if (use_farsite_model) {
+                amrex::Print() << "  Using FARSITE model with Anderson L/W ratio\n";
+                amrex::Print() << "  Terrain slope: " << terrain_slope << " degrees\n";
+                amrex::Print() << "  Terrain aspect: " << terrain_aspect << " degrees\n";
+            } else {
+                amrex::Print() << "  Using Rothermel model with terrain effects\n";
+                amrex::Print() << "  Terrain slope: " << terrain_slope << " degrees\n";
+                amrex::Print() << "  Terrain aspect: " << terrain_aspect << " degrees\n";
+            }
+        } else {
+            amrex::Print() << "  Using basic model (no terrain effects)\n";
+        }
 
         // ---------------- dt from CFL --------------------------
         Real dt = compute_dt(vel, geom, cfl);
@@ -560,7 +765,8 @@ int main(int argc, char* argv[])
 
         // ---------------- Time stepping ------------------------
         for (int step = 1; step <= nsteps; ++step) {
-            advect_levelset_weno5z_rk3 (phi, vel, geom, dt);
+            advect_levelset_weno5z_rk3(phi, vel, terrain, geom, dt, 
+                                      use_terrain_effects, use_farsite_model);
             Real philomax = phi.min(0);
             Real phihimax = phi.max(0);
 
