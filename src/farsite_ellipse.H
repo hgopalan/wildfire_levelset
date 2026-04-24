@@ -62,19 +62,19 @@ static void compute_farsite_spread(MultiFab& phi,
 #endif
 
     const Real phi_thresh = fp.phi_threshold;
-    
+
     // Dynamic arrays to collect positions where phi < threshold
     std::vector<Real> xarray;
     std::vector<Real> yarray;
 #if (AMREX_SPACEDIM == 3)
     std::vector<Real> zarray;
 #endif
-    
+
     // Get physical domain information for coordinate conversion
     const Real* prob_lo = geom.ProbLo();
-    
+
     const int use_anderson_LW = fp.use_anderson_LW;
-    
+
     // Richards' (1990) elliptical expansion coefficients
     // These may be overridden by Anderson L/W ratio if enabled
     Real coeff_a = fp.coeff_a;  // head fire coefficient
@@ -88,17 +88,19 @@ static void compute_farsite_spread(MultiFab& phi,
     const Real B = rc.B;
     const Real beta_ratio_E = rc.beta_ratio_E;
     const Real phi_s_const = rc.phi_s;  // Constant phi_s for backward compatibility
-    const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
+    const Real beta = rc.beta;          // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
-    const Real ros_conv = rc.ros_conv;
+    const Real ros_conv  = rc.ros_conv;
 
-    // Compute spread for each cell
+    // -------------------------------------------------------------------------
+    // First pass: compute elliptical spread vector at each fire-front cell
+    // -------------------------------------------------------------------------
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const p = phi.const_array(mfi);
-        auto const v = vel.const_array(mfi);
-        auto spread = farsite_spread.array(mfi);
-        
+        auto const p  = phi.const_array(mfi);
+        auto const v  = vel.const_array(mfi);
+        auto spread   = farsite_spread.array(mfi);
+
         // Get slopes array if terrain file was provided
         const bool use_terrain = (slopes != nullptr);
         Array4<const Real> s;
@@ -109,7 +111,7 @@ static void compute_farsite_spread(MultiFab& phi,
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // Check if this cell is near the fire front (phi ≈ 0)
             Real phi_val = p(i,j,k);
-            
+
             // Initialize spread to zero
 #if (AMREX_SPACEDIM == 3)
             spread(i,j,k,0) = 0.0;
@@ -170,49 +172,39 @@ static void compute_farsite_spread(MultiFab& phi,
             // Slope factor φ_s: use terrain-based if available, otherwise constant
             Real phi_s;
             if (use_terrain) {
-                // Compute phi_s from terrain slopes at this cell
                 // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
-                Real slope_x = s(i,j,k,0);
-                Real slope_y = s(i,j,k,1);
+                Real slope_x    = s(i,j,k,0);
+                Real slope_y    = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
                 phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
             } else {
-                // Use constant phi_s from RothermelComputed
                 phi_s = phi_s_const;
             }
 
             // Rate of spread using full Rothermel model [ft/min] → simulation units
             Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
-            
+
             // Determine elliptical coefficients
-            // If Anderson L/W mode is enabled, compute coefficients from wind speed
             Real local_coeff_a = coeff_a;
             Real local_coeff_b = coeff_b;
             Real local_coeff_c = coeff_c;
-            
+
             if (use_anderson_LW == 1) {
-                // Convert wind speed to mph for Anderson formula
-                // wind_conv converts from sim units to ft/min
                 // ft/min to mph: multiply by 60/5280 = 0.01136364
-                Real U_mph = U_ftmin * Real(0.01136364);
-                
-                // Compute Anderson (1983) L/W ratio based on wind speed
+                Real U_mph   = U_ftmin * Real(0.01136364);
                 Real LW_ratio = anderson_LW_ratio(U_mph);
-                
-                // Convert L/W ratio to Richards' coefficients
-                LW_ratio_to_richards_coefficients(LW_ratio, 
-                                                 local_coeff_a, 
-                                                 local_coeff_b, 
-                                                 local_coeff_c);
+                LW_ratio_to_richards_coefficients(LW_ratio,
+                                                  local_coeff_a,
+                                                  local_coeff_b,
+                                                  local_coeff_c);
             }
-            
+
             // Richards' (1990) elliptical expansion model
-            // Compute spread distances for each direction (not geometric ellipse axes)
-            Real head_spread = local_coeff_a * R_head * dt;    // head fire (downwind, maximum spread)
-            Real flank_spread = local_coeff_b * R_head * dt;   // flank fire (crosswind)
-            Real backing_spread = local_coeff_c * R_head * dt; // backing fire (upwind, minimum spread)
-            
-            // Determine wind direction (unit vector)
+            Real head_spread    = local_coeff_a * R_head * dt;
+            Real flank_spread   = local_coeff_b * R_head * dt;
+            Real backing_spread = local_coeff_c * R_head * dt;
+
+            // Wind unit vector
             Real wx = 0.0, wy = 0.0;
 #if (AMREX_SPACEDIM == 3)
             Real wz = 0.0;
@@ -224,46 +216,26 @@ static void compute_farsite_spread(MultiFab& phi,
                 wz = uz / wind_mag;
 #endif
             }
-            
-            // Compute angle between fire normal and wind direction
+
             // cos(theta) = dot(normal, wind)
             Real cos_theta = nx * wx + ny * wy;
 #if (AMREX_SPACEDIM == 3)
             cos_theta += nz * wz;
 #endif
-            
-            // Richards' elliptical spread rate formula
-            // Spread rate R(theta) depends on angle from head fire (wind) direction
-            // The formula interpolates between directional spread rates based on cos(theta)
+
             Real spread_dist = 0.0;
-            
             if (wind_mag > 1.0e-10) {
-                // With wind: use elliptical expansion based on angle to wind
-                // The interpolation follows an elliptical pattern:
-                //   theta=0°   (cos=1):  full head fire spread
-                //   theta=90°  (cos=0):  full flank fire spread  
-                //   theta=180° (cos=-1): full backing fire spread
-                
                 if (cos_theta > 0.0) {
-                    // Forward hemisphere (0° to 90°): interpolate head to flank
-                    // Formula: R = head_spread * cos(θ) + flank_spread * sin(θ)
-                    // This represents the ellipse equation in polar coordinates
                     Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
                     spread_dist = head_spread * cos_theta + flank_spread * sin_theta;
                 } else {
-                    // Backward hemisphere (90° to 180°): interpolate flank to backing
-                    // Formula: R = flank_spread * sin(θ) + backing_spread * |cos(θ)|
-                    // Note: we use -cos_theta since cos is negative in this range
                     Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
                     spread_dist = flank_spread * sin_theta - backing_spread * cos_theta;
                 }
             } else {
-                // No wind: uniform spread in all directions using base rate
-                // Without wind, there's no preferred direction, so use uniform expansion
                 spread_dist = R_head * dt;
             }
 
-            // Compute new position (displacement from current position)
             spread(i,j,k,0) = spread_dist * nx;
             spread(i,j,k,1) = spread_dist * ny;
 #if (AMREX_SPACEDIM == 3)
@@ -271,38 +243,34 @@ static void compute_farsite_spread(MultiFab& phi,
 #endif
         });
     }
-    
+
+    // -------------------------------------------------------------------------
+    // Synchronize so the GPU kernel results are visible on the host before
+    // we read phi and farsite_spread in the collection loop below.
+    // -------------------------------------------------------------------------
+    Gpu::streamSynchronize();
+
+    // -------------------------------------------------------------------------
     // Second pass: collect positions where phi < threshold and add spread
+    // -------------------------------------------------------------------------
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const p = phi.const_array(mfi);
-        auto spread = farsite_spread.array(mfi);
-        
-        // Loop over cells (on CPU) to collect positions
+        auto const p      = phi.const_array(mfi);
+        auto const spread = farsite_spread.const_array(mfi);
+
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
-        
+
         for (int k = lo.z; k <= hi.z; ++k) {
         for (int j = lo.y; j <= hi.y; ++j) {
         for (int i = lo.x; i <= hi.x; ++i) {
-            Real phi_val = p(i,j,k);
-            
-            // If phi < threshold, add position + spread to arrays
-            if (phi_val < phi_thresh) {
-                // Convert cell indices to physical coordinates
-                Real x_cell = prob_lo[0] + (i + 0.5) * gdx[0];
-                Real y_cell = prob_lo[1] + (j + 0.5) * gdx[1];
-                
-                // Add spread displacement to get new position
-                Real x_new = x_cell + spread(i,j,k,0);
-                Real y_new = y_cell + spread(i,j,k,1);
-                
+            if (p(i,j,k) < phi_thresh) {
+                Real x_new = prob_lo[0] + (i + 0.5) * gdx[0] + spread(i,j,k,0);
+                Real y_new = prob_lo[1] + (j + 0.5) * gdx[1] + spread(i,j,k,1);
                 xarray.push_back(x_new);
                 yarray.push_back(y_new);
-                
 #if (AMREX_SPACEDIM == 3)
-                Real z_cell = prob_lo[2] + (k + 0.5) * gdx[2];
-                Real z_new = z_cell + spread(i,j,k,2);
+                Real z_new = prob_lo[2] + (k + 0.5) * gdx[2] + spread(i,j,k,2);
                 zarray.push_back(z_new);
 #endif
             }
@@ -310,42 +278,64 @@ static void compute_farsite_spread(MultiFab& phi,
         }
         }
     }
-    
-    // Set phi to zero everywhere
+
+    // -------------------------------------------------------------------------
+    // Reset phi everywhere, then stamp new fire-front positions
+    // -------------------------------------------------------------------------
     phi.setVal(0.0);
-    
-    // Set phi at collected positions to a value much smaller than threshold
+
     const Real phi_new = phi_thresh * PHI_RESET_MULTIPLIER;
-    amrex::Print() << "Updating phi at " << xarray.size() << " positions based on FARSITE spread\n";
+    const int  npts    = static_cast<int>(xarray.size());
+    amrex::Print() << "Updating phi at " << npts << " positions based on FARSITE spread\n";
+
+    // FIX: PODVector (Gpu::DeviceVector) does not support iterator-range
+    // construction.  Allocate by size, then async-copy from host to device.
+    Gpu::DeviceVector<Real> d_xarray(npts);
+    Gpu::DeviceVector<Real> d_yarray(npts);
+#if (AMREX_SPACEDIM == 3)
+    Gpu::DeviceVector<Real> d_zarray(npts);
+#endif
+
+    Gpu::copyAsync(Gpu::hostToDevice, xarray.begin(), xarray.end(), d_xarray.begin());
+    Gpu::copyAsync(Gpu::hostToDevice, yarray.begin(), yarray.end(), d_yarray.begin());
+#if (AMREX_SPACEDIM == 3)
+    Gpu::copyAsync(Gpu::hostToDevice, zarray.begin(), zarray.end(), d_zarray.begin());
+#endif
+    Gpu::streamSynchronize();  // ensure copies are complete before ParallelFor
+
+    const Real* px = d_xarray.dataPtr();
+    const Real* py = d_yarray.dataPtr();
+#if (AMREX_SPACEDIM == 3)
+    const Real* pz = d_zarray.dataPtr();
+#endif
+
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto p = phi.array(mfi);
-        
-        // Loop over all collected positions
-        for (size_t idx = 0; idx < xarray.size(); ++idx) {
-            Real x_pos = xarray[idx];
-            Real y_pos = yarray[idx];
-            amrex::Print() << "Updating phi at position (" << x_pos << ", " << y_pos
-            << std::endl;
-            
-            // Convert physical coordinates back to cell indices
-            // Use rounding to handle the 0.5 cell-center offset correctly
-            int i = static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
-            int j = static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
+
+        // ParallelFor over collected points — write goes through the correct
+        // (device) execution path in GPU builds.
+        ParallelFor(npts, [=] AMREX_GPU_DEVICE (int idx) noexcept {
+            Real x_pos = px[idx];
+            Real y_pos = py[idx];
+
+            int ii = static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
+            int jj = static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
 #if (AMREX_SPACEDIM == 3)
-            Real z_pos = zarray[idx];
-            int k = static_cast<int>(std::round((z_pos - prob_lo[2]) / gdx[2] - 0.5));
+            Real z_pos = pz[idx];
+            int kk = static_cast<int>(std::round((z_pos - prob_lo[2]) / gdx[2] - 0.5));
 #else
-            int k = 0;  // For 2D, k is always 0
+            int kk = 0;
 #endif
-            amrex::Print() << "Mapped to cell indices (" << i << ", " << j << ", " << k << ")\n";
-            // Check if the cell is in this box
-            if (bx.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
-                p(i,j,k) = phi_new;
-                amrex::Print() << "Updated phi at cell (" << i << ", " << j << ", " << k << ") to " << phi_new << "\n";
+        amrex::Print() << "Updating phi at (" << ii << ", " << jj << ", " << kk << ") to " << phi_new << "\n";
+            if (bx.contains(IntVect(AMREX_D_DECL(ii, jj, kk)))) {
+                amrex::Print() << "Setting phi(" << ii << ", " << jj << ", " << kk << ") = " << phi_new << "\n";
+                p(ii, jj, kk) = phi_new;
             }
-        }
+        });
     }
+
+    amrex::Print() << "Phi update complete for " << npts << " FARSITE positions\n";
 }
 
 #endif // FARSITE_ELLIPSE_H
