@@ -19,7 +19,7 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
     set(AMReX_SPACEDIM "3" CACHE STRING "AMReX spatial dimensions for wildfire_levelset" FORCE)
     message(STATUS "Building for 3D (AMReX_SPACEDIM=3)")
   endif()
-  set(AMReX_MPI OFF CACHE BOOL "Build AMReX without MPI" FORCE)
+  #set(AMReX_MPI OFF CACHE BOOL "Build AMReX without MPI" FORCE)
   set(AMReX_OMP OFF CACHE BOOL "Build AMReX without OpenMP" FORCE)
   set(AMReX_GPU_BACKEND NONE CACHE STRING "Build AMReX without a GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)

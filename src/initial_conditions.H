@@ -107,7 +107,7 @@ static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                );
 #endif
             // Indicator function: 1 inside, 0 outside
-            p(i,j,k) = (d < radius) ? 1.0 : 0.0;
+            p(i,j,k) = (d < radius) ? -1.0 : 1.0;
         });
     }
 }

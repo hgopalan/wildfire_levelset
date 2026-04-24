@@ -8,8 +8,8 @@ prob_hi_y = 5000.0
 
 
 # Time & output
-nsteps = 5000
-cfl    = 0.25
+nsteps = 2
+cfl    = 1.0
 plot_int = 5000
 
 # Velocity
@@ -22,11 +22,12 @@ velocity_file = "turbulent_field_2d.csv"
 source_type=sphere 
 center_x = 2500.0
 center_y = 2500.0
-sphere_radius   = 50.0
+sphere_radius   = 250.0
 
 
 # ---------------- Level Set Reinitialization ----------------
 reinit_int   = -1
-farsite.phi_threshold = 5.0
+farsite.phi_threshold = 0.0
 farsite.use_anderson_LW = 1
 rothermel.terrain_file = gaussian_hill_topography.csv
+skip_levelset = 1

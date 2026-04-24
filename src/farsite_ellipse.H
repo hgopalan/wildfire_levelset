@@ -316,7 +316,7 @@ static void compute_farsite_spread(MultiFab& phi,
     
     // Set phi at collected positions to a value much smaller than threshold
     const Real phi_new = phi_thresh * PHI_RESET_MULTIPLIER;
-    
+    amrex::Print() << "Updating phi at " << xarray.size() << " positions based on FARSITE spread\n";
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto p = phi.array(mfi);
@@ -325,6 +325,8 @@ static void compute_farsite_spread(MultiFab& phi,
         for (size_t idx = 0; idx < xarray.size(); ++idx) {
             Real x_pos = xarray[idx];
             Real y_pos = yarray[idx];
+            amrex::Print() << "Updating phi at position (" << x_pos << ", " << y_pos
+            << std::endl;
             
             // Convert physical coordinates back to cell indices
             // Use rounding to handle the 0.5 cell-center offset correctly
@@ -336,10 +338,11 @@ static void compute_farsite_spread(MultiFab& phi,
 #else
             int k = 0;  // For 2D, k is always 0
 #endif
-            
+            amrex::Print() << "Mapped to cell indices (" << i << ", " << j << ", " << k << ")\n";
             // Check if the cell is in this box
             if (bx.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
                 p(i,j,k) = phi_new;
+                amrex::Print() << "Updated phi at cell (" << i << ", " << j << ", " << k << ") to " << phi_new << "\n";
             }
         }
     }
