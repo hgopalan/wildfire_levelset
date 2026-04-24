@@ -45,27 +45,32 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
     
     const Box& coarse_domain = coarse_geom.Domain();
     
-    // We need to fill fine ghost cells that are outside the fine valid region
-    // with data interpolated from the coarse level. We use the entire coarse
-    // domain to ensure we have all necessary data.
+    // To handle parallel data properly, we need to use a MultiFab that can
+    // span processors. We create a coarse MultiFab with ghost cells that
+    // can be filled using ParallelCopy.
     
-    // Create a single FArrayBox covering the entire coarse domain
-    FArrayBox global_coarse_fab(coarse_domain, ncomp);
-    global_coarse_fab.setVal(0.0);
+    // Calculate how many coarse ghost cells we need to cover the fine ghost cells
+    int coarse_ngrow = (ngrow + refine_ratio - 1) / refine_ratio;
     
-    // Copy data from coarse_mf to global_coarse_fab
-    for (MFIter mfi(coarse_mf); mfi.isValid(); ++mfi) {
-        const Box& valid = mfi.validbox();
-        global_coarse_fab.copy(coarse_mf[mfi], valid, 0, valid, 0, ncomp);
-    }
+    // Create a temporary coarse MultiFab with ghost cells on the same distribution
+    // as the fine level, so we can access coarse data locally
+    BoxArray coarse_from_fine_ba = fine_mf.boxArray();
+    coarse_from_fine_ba.coarsen(refine_ratio);
     
-    auto global_coarse_arr = global_coarse_fab.const_array();
+    MultiFab coarse_on_fine_dm(coarse_from_fine_ba, fine_mf.DistributionMap(), ncomp, coarse_ngrow);
+    
+    // Use ParallelCopy to get coarse data onto the fine distribution, including ghost cells
+    coarse_on_fine_dm.ParallelCopy(coarse_mf, 0, 0, ncomp, 0, coarse_ngrow);
+    
+    // Fill any remaining ghost cells that might be needed at boundaries
+    coarse_on_fine_dm.FillBoundary(coarse_geom.periodicity());
     
     // For each fine box, fill ghost cells from coarse data
     for (MFIter mfi(fine_mf); mfi.isValid(); ++mfi) {
         const Box& fine_valid = mfi.validbox();
         const Box& fine_grown = mfi.fabbox();  // includes ghost cells
         auto fine_arr = fine_mf.array(mfi);
+        auto coarse_arr = coarse_on_fine_dm.const_array(mfi);
         
         // Fill ghost cells that are outside the fine valid region
         // using piecewise constant injection from coarse
@@ -88,7 +93,7 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
             // Check if coarse cell is within the coarse domain
             // (ghost cells outside domain are handled by boundary conditions later)
             if (coarse_domain.contains(IntVect(AMREX_D_DECL(ic, jc, kc)))) {
-                fine_arr(i, j, k, n) = global_coarse_arr(ic, jc, kc, n);
+                fine_arr(i, j, k, n) = coarse_arr(ic, jc, kc, n);
             }
         });
     }
