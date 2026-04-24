@@ -211,6 +211,8 @@ int main(int argc, char* argv[])
       }
     }
       // ---------------- Final write --------------------------
+      // Only write final if it wasn't already written at plot_int
+      if (inputs.plot_int <= 0 || (inputs.nsteps % inputs.plot_int != 0))
       {
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
