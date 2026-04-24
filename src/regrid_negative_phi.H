@@ -14,7 +14,9 @@
 #include <AMReX_FillPatchUtil.H>
 #include <AMReX_Interpolater.H>
 #include <AMReX_PhysBCFunct.H>
+#include <AMReX_Math.H>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -42,9 +44,7 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
     const int ngrow = fine_mf.nGrow();
     
     if (ngrow == 0) return;  // No ghost cells to fill
-    
-    const Box& coarse_domain = coarse_geom.Domain();
-    
+
     // To handle parallel data properly, we need to use a MultiFab that can
     // span processors. We create a coarse MultiFab with ghost cells that
     // can be filled using ParallelCopy.
@@ -67,11 +67,13 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
     
     // For each fine box, fill ghost cells from coarse data
     for (MFIter mfi(fine_mf); mfi.isValid(); ++mfi) {
-        const Box& fine_valid = mfi.validbox();
-        const Box& fine_grown = mfi.fabbox();  // includes ghost cells
+        const Box fine_valid = mfi.validbox();
+        const Box fine_grown = mfi.fabbox();  // includes ghost cells
         auto fine_arr = fine_mf.array(mfi);
         auto coarse_arr = coarse_on_fine_dm.const_array(mfi);
-        
+        // Capture the actual FAB box so the GPU kernel can bounds-check it
+        const Box cbox = coarse_on_fine_dm[mfi].box();
+
         // Fill ghost cells that are outside the fine valid region
         // using piecewise constant injection from coarse
         const int rr = refine_ratio;
@@ -80,20 +82,19 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
             if (fine_valid.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
                 return;  // This is a valid cell, not a ghost cell
             }
-            
-            // Map fine index to coarse index
-            int ic = i / rr;
-            int jc = j / rr;
-            int kc = k / rr;
-            // Handle negative indices properly for integer division
-            if (i < 0) ic = (i - rr + 1) / rr;
-            if (j < 0) jc = (j - rr + 1) / rr;
-            if (k < 0) kc = (k - rr + 1) / rr;
-            
-            // Check if coarse cell is within the coarse domain
-            // (ghost cells outside domain are handled by boundary conditions later)
-            if (coarse_domain.contains(IntVect(AMREX_D_DECL(ic, jc, kc)))) {
-                fine_arr(i, j, k, n) = coarse_arr(ic, jc, kc, n);
+
+            // Use AMReX-safe coarsening (floor division, handles negative indices)
+            const IntVect ivf(AMREX_D_DECL(i, j, k));
+            const IntVect ivc = amrex::coarsen(ivf, rr);
+
+            // Bounds-check against the coarse FAB box before reading
+            if (cbox.contains(ivc)) {
+                const amrex::Real v = coarse_arr(ivc, n);
+                // Replace non-finite values with a safe fallback
+                fine_arr(i, j, k, n) = amrex::Math::isfinite(v) ? v : amrex::Real(0.0);
+            } else {
+                // Uncovered or out-of-bounds coarse cell: use safe fallback
+                fine_arr(i, j, k, n) = amrex::Real(0.0);
             }
         });
     }
@@ -258,17 +259,51 @@ static void initialize_fine_from_coarse(const MultiFab& coarse_phi,
         auto const v_fine = fine_vel.array(mfi);
         auto const p_coarse = coarse_phi_on_fine_dm.const_array(mfi);
         auto const v_coarse = coarse_vel_on_fine_dm.const_array(mfi);
+        // Capture FAB boxes for bounds checking inside the GPU kernel
+        const Box p_cbox = coarse_phi_on_fine_dm[mfi].box();
+        const Box v_cbox = coarse_vel_on_fine_dm[mfi].box();
 
         const int rr = refine_ratio;
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            const int ic = i / rr;
-            const int jc = j / rr;
-            const int kc = k / rr;
+            // Use AMReX-safe coarsening (floor division, handles negative indices)
+            const IntVect ivf(AMREX_D_DECL(i, j, k));
+            const IntVect ivc = amrex::coarsen(ivf, rr);
 
-            p_fine(i,j,k) = p_coarse(ic,jc,kc);
-            v_fine(i,j,k,0) = v_coarse(ic,jc,kc,0);
-            v_fine(i,j,k,1) = v_coarse(ic,jc,kc,1);
-            v_fine(i,j,k,2) = v_coarse(ic,jc,kc,2);
+            if (p_cbox.contains(ivc)) {
+                const amrex::Real p = p_coarse(ivc, 0);
+                p_fine(i,j,k) = amrex::Math::isfinite(p) ? p : amrex::Real(0.0);
+            } else {
+                p_fine(i,j,k) = amrex::Real(0.0);
+            }
+
+            if (v_cbox.contains(ivc)) {
+                const amrex::Real u = v_coarse(ivc, 0);
+                const amrex::Real v = v_coarse(ivc, 1);
+                const amrex::Real w = v_coarse(ivc, 2);
+                v_fine(i,j,k,0) = amrex::Math::isfinite(u) ? u : amrex::Real(0.0);
+                v_fine(i,j,k,1) = amrex::Math::isfinite(v) ? v : amrex::Real(0.0);
+                v_fine(i,j,k,2) = amrex::Math::isfinite(w) ? w : amrex::Real(0.0);
+            } else {
+                v_fine(i,j,k,0) = amrex::Real(0.0);
+                v_fine(i,j,k,1) = amrex::Real(0.0);
+                v_fine(i,j,k,2) = amrex::Real(0.0);
+            }
+        });
+    }
+}
+
+// Replace any non-finite (NaN/Inf) values in a MultiFab with a deterministic fallback.
+// Ghost cells are included where accessible (growntilebox).
+static void sanitize_multifab(MultiFab& mf, int ncomp, amrex::Real fallback = amrex::Real(0.0))
+{
+    for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const Box bx = mfi.growntilebox();
+        auto arr = mf.array(mfi);
+        ParallelFor(bx, ncomp, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+            const amrex::Real v = arr(i, j, k, n);
+            if (!amrex::Math::isfinite(v)) {
+                arr(i, j, k, n) = fallback;
+            }
         });
     }
 }
@@ -423,6 +458,10 @@ static bool regrid_negative_phi(const MultiFab& coarse_phi,
         fine_phi->ParallelCopy(*old_fine_phi, 0, 0, 1, 0, 0);
         fine_vel->ParallelCopy(*old_fine_vel, 0, 0, 3, 0, 0);
     }
+
+    // Final fail-safe: scrub any non-finite values introduced by data transfers
+    sanitize_multifab(*fine_phi, 1, amrex::Real(0.0));
+    sanitize_multifab(*fine_vel, 3, amrex::Real(0.0));
 
     fine_ba = new_fine_ba;
     fine_dm = new_fine_dm;
