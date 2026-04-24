@@ -284,7 +284,7 @@ static void compute_farsite_spread(MultiFab& phi,
     // -------------------------------------------------------------------------
     phi.setVal(0.0);
 
-    const Real phi_new = phi_thresh * PHI_RESET_MULTIPLIER;
+    const Real phi_new = PHI_RESET_MULTIPLIER;
     const int  npts    = static_cast<int>(xarray.size());
     amrex::Print() << "Updating phi at " << npts << " positions based on FARSITE spread\n";
 
