@@ -93,6 +93,8 @@ int main(int argc, char* argv[])
         for (int step = 1; step <= inputs.nsteps; ++step) {
             fill_boundary_extrap(phi, geom);
             if (has_fine_level) {
+                // Fill fine ghost cells from coarse data first, then apply boundary conditions
+                fill_fine_ghost_from_coarse(*fine_phi, phi, *fine_geom, geom, inputs.amr_refine_ratio);
                 fill_boundary_extrap(*fine_phi, *fine_geom);
             }
             const Real dt_step = dt;
@@ -122,6 +124,7 @@ int main(int argc, char* argv[])
                 if (refined) {
                     fill_boundary_extrap(phi, geom);
                     if (has_fine_level) {
+                        fill_fine_ghost_from_coarse(*fine_phi, phi, *fine_geom, geom, inputs.amr_refine_ratio);
                         fill_boundary_extrap(*fine_phi, *fine_geom);
                     }
                 }

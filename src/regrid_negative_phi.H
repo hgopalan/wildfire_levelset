@@ -11,6 +11,9 @@
 #include <AMReX_MultiFabUtil.H>
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_Print.H>
+#include <AMReX_FillPatchUtil.H>
+#include <AMReX_Interpolater.H>
+#include <AMReX_PhysBCFunct.H>
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -22,6 +25,93 @@ static int compute_fine_max_grid_size(int refine_ratio, int max_grid_size)
                                             static_cast<long long>(max_grid_size);
     return static_cast<int>(std::max(1LL, std::min(fine_max_grid_size_ll,
                                                    static_cast<long long>(std::numeric_limits<int>::max()))));
+}
+
+// Fill fine level ghost cells from coarse level data using piecewise constant interpolation.
+// This is needed for fine-coarse interfaces where FillBoundary cannot fill ghost cells.
+static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
+                                        const MultiFab& coarse_mf,
+                                        const Geometry& fine_geom,
+                                        const Geometry& coarse_geom,
+                                        int refine_ratio)
+{
+    // First, fill ghost cells between fine boxes on the same level
+    fine_mf.FillBoundary(fine_geom.periodicity());
+    
+    const int ncomp = fine_mf.nComp();
+    const int ngrow = fine_mf.nGrow();
+    
+    if (ngrow == 0) return;  // No ghost cells to fill
+    
+    // Create a coarsened version of the fine BoxArray (with ghost cells)
+    // to determine what coarse data we need
+    BoxArray fine_ba_grown = fine_mf.boxArray();
+    fine_ba_grown.grow(ngrow);
+    BoxArray coarse_ba = fine_ba_grown;
+    coarse_ba.coarsen(refine_ratio);
+    
+    // Clip to coarse domain
+    const Box& coarse_domain = coarse_geom.Domain();
+    BoxList coarse_bl;
+    for (int i = 0; i < coarse_ba.size(); ++i) {
+        Box clipped = coarse_ba[i] & coarse_domain;
+        if (clipped.ok()) {
+            coarse_bl.push_back(clipped);
+        }
+    }
+    if (coarse_bl.isEmpty()) return;
+    
+    BoxArray coarse_ba_clipped(coarse_bl);
+    DistributionMapping coarse_dm(coarse_ba_clipped);
+    
+    // Create a temporary MultiFab on the coarse grid with the data we need
+    MultiFab coarse_tmp(coarse_ba_clipped, coarse_dm, ncomp, 0);
+    coarse_tmp.ParallelCopy(coarse_mf, 0, 0, ncomp, 0, 0);
+    
+    // Now copy the coarse data to a single global fab that covers everything
+    // This avoids nested MFIter
+    Box global_coarse_box = coarse_bl.minimalBox();
+    FArrayBox global_coarse_fab(global_coarse_box, ncomp);
+    global_coarse_fab.setVal(0.0);
+    
+    // Copy from coarse_tmp to global_coarse_fab
+    for (MFIter mfi(coarse_tmp); mfi.isValid(); ++mfi) {
+        const Box& valid = mfi.validbox();
+        global_coarse_fab.copy(coarse_tmp[mfi], valid, 0, valid, 0, ncomp);
+    }
+    
+    auto global_coarse_arr = global_coarse_fab.const_array();
+    
+    // For each fine box, fill ghost cells from coarse data
+    for (MFIter mfi(fine_mf); mfi.isValid(); ++mfi) {
+        const Box& fine_valid = mfi.validbox();
+        const Box& fine_grown = mfi.fabbox();  // includes ghost cells
+        auto fine_arr = fine_mf.array(mfi);
+        
+        // Fill ghost cells that are outside the fine valid region
+        // using piecewise constant injection from coarse
+        const int rr = refine_ratio;
+        ParallelFor(fine_grown, ncomp, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept {
+            // Only fill if this is a ghost cell (outside fine valid box)
+            if (fine_valid.contains(IntVect(AMREX_D_DECL(i, j, k)))) {
+                return;  // This is a valid cell, not a ghost cell
+            }
+            
+            // Map fine index to coarse index
+            int ic = i / rr;
+            int jc = j / rr;
+            int kc = k / rr;
+            // Handle negative indices properly for integer division
+            if (i < 0) ic = (i - rr + 1) / rr;
+            if (j < 0) jc = (j - rr + 1) / rr;
+            if (k < 0) kc = (k - rr + 1) / rr;
+            
+            // Check if coarse cell is within our global coarse fab
+            if (global_coarse_box.contains(IntVect(AMREX_D_DECL(ic, jc, kc)))) {
+                fine_arr(i, j, k, n) = global_coarse_arr(ic, jc, kc, n);
+            }
+        });
+    }
 }
 
 namespace
