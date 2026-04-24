@@ -1,14 +1,14 @@
 # Grid & domain
-n_cell_x = 64
+n_cell_x = 128
 n_cell_y = 64
 n_cell_z = 64
 prob_lo_x = -20.0  
-prob_hi_x = 20.0
+prob_hi_x = 40.0
 prob_lo_y = -20.0  
 prob_hi_y = 20.0
 prob_lo_z = -20.0  
 prob_hi_z = 20.0
-amr_enable_negative_phi_refine = 0
+amr_enable_negative_phi_refine = 1
 amr_regrid_int = 100
 amr_refine_ratio = 2
 amr_max_refinements = 1
@@ -19,7 +19,7 @@ cfl    = 0.1
 plot_int = 100
 
 # Velocity
-u_x = 0.5
+u_x = 0.1
 u_y = 0.00
 u_z = 0.00
 
@@ -32,4 +32,4 @@ sphere_radius   = 5.0
 
 
 # ---------------- Level Set Reinitialization ----------------
-reinit_int   = 10
+reinit_int   = -1
