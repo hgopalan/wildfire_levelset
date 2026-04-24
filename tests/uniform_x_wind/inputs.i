@@ -8,10 +8,6 @@ prob_lo_y = -20.0
 prob_hi_y = 20.0
 prob_lo_z = -20.0  
 prob_hi_z = 20.0
-amr_enable_negative_phi_refine = 0
-amr_regrid_int = 25
-amr_refine_ratio = 2
-amr_max_refinements = 1
 
 # Time & output
 nsteps = 200

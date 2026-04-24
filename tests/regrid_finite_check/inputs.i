@@ -1,4 +1,4 @@
-# Regression test: verify regrid_negative_phi produces finite phi after regridding.
+# Simple test: verify level 0 calculations produce finite phi values.
 #
 # Run with: mpirun -n 4 ./levelset tests/regrid_finite_check/inputs.i
 # (or any number of MPI ranks >= 1)
@@ -17,13 +17,7 @@ prob_hi_y =  10.0
 prob_lo_z = -10.0
 prob_hi_z =  10.0
 
-# Enable AMR regridding — this exercises the fail-safe paths
-amr_enable_negative_phi_refine = 1
-amr_regrid_int      = 5
-amr_refine_ratio    = 2
-amr_max_refinements = 1
-
-# Short run: enough steps to trigger at least one regrid
+# Short run: enough steps to verify basic functionality
 nsteps   = 20
 cfl      = 0.1
 plot_int = -1
@@ -40,5 +34,5 @@ center_y      = 0.0
 center_z      = 0.0
 sphere_radius = 3.0
 
-# Reinitialization disabled so we isolate the regrid path
+# Reinitialization disabled to keep test simple
 reinit_int = -1

@@ -1,17 +1,9 @@
-# Regression test: `regrid_finite_check`
+# Simple test: finite phi values
 
 ## Purpose
 
-Verifies that `regrid_negative_phi` never produces non-finite (`NaN` / `±Inf`)
-values in `fine_phi` or `fine_vel` after regridding, even when running in
-parallel across multiple MPI ranks.
-
-This test exercises the fail-safes introduced in `src/regrid_negative_phi.H`:
-
-- `amrex::coarsen` used for safe fine→coarse index mapping.
-- FAB-box bounds checking before reading coarse arrays.
-- `amrex::Math::isfinite` guards replacing bad values with `0.0`.
-- Post-transfer `sanitize_multifab` sweep in `regrid_negative_phi`.
+Verifies that level 0 calculations never produce non-finite (`NaN` / `±Inf`)
+values in `phi` or `vel`, even when running in parallel across multiple MPI ranks.
 
 ## Build
 
@@ -35,7 +27,7 @@ cmake --build build --parallel
 mpirun -n 4 ./build/levelset tests/regrid_finite_check/inputs.i
 ```
 
-Use any number of MPI ranks ≥ 1 to stress the parallel regridding paths.
+Use any number of MPI ranks ≥ 1 to stress the parallel computation paths.
 
 ## Verification criteria
 
@@ -57,6 +49,6 @@ Use any number of MPI ranks ≥ 1 to stress the parallel regridding paths.
    ...
    ```
 
-3. **No non-finite values in fine level** — optionally enable
+3. **No non-finite values** — optionally enable
    `plot_int = 5` and inspect plotfiles with `amrex::VisMF` / `yt` to confirm
-   all fine-level cells contain finite values.
+   all cells contain finite values.

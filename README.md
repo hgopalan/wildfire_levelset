@@ -11,7 +11,6 @@ The code now includes Richards' (1990) FARSITE (Fire Area Simulator) elliptical 
 - Git
 
 > Note: This project supports both 2D and 3D configurations. The default is 3D, but you can build for 2D using CMake options (see Build section below).
-> Grid tagging (AMR) is automatically disabled in 2D builds.
 
 ## Clone
 
@@ -80,12 +79,6 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `reinit_int=20`
   - `reinit_iters=20`
   - `reinit_dtau=0.5`
-- Dynamic AMR for negative `phi`:
-  - `amr_enable_negative_phi_refine=1`
-  - `amr_regrid_int=10`
-  - `amr_refine_ratio=2`
-  - `amr_max_refinements=1` (supports one local fine level when `>= 1`)
-  - `amr_tag_phi_threshold=0.0` (coarse boxes containing cells with `phi < threshold` are refined locally)
 - Velocity:
   - `u_x=0.25`, `u_y=0.0`, `u_z=0.0`
 - Initial source:
