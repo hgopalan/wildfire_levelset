@@ -115,7 +115,8 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
             };
             
             // Interpolate elevation at cell center and neighbors
-            Real z_center = interpolate_z(x, y);
+            // Note: z_center is computed but not used in the slope calculation
+            // Real z_center = interpolate_z(x, y);
             Real z_xplus  = interpolate_z(x + dx[0], y);
             Real z_xminus = interpolate_z(x - dx[0], y);
             Real z_yplus  = interpolate_z(x, y + dx[1]);
