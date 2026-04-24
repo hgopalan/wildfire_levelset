@@ -61,4 +61,19 @@ void parse_inputs(InputParameters& p)
     pp.query("amr_max_refinements", p.amr_max_refinements);
     p.amr_tag_phi_threshold = 0.0;
     pp.query("amr_tag_phi_threshold", p.amr_tag_phi_threshold);
+
+    // -------- Rothermel fire spread model (Southern California chaparral defaults) --------
+    p.rothermel.w0        = 0.230;    pp.query("rothermel.w0",        p.rothermel.w0);
+    p.rothermel.sigma     = 1739.0;   pp.query("rothermel.sigma",     p.rothermel.sigma);
+    p.rothermel.delta     = 2.0;      pp.query("rothermel.delta",     p.rothermel.delta);
+    p.rothermel.M_f       = 0.08;     pp.query("rothermel.M_f",       p.rothermel.M_f);
+    p.rothermel.M_x       = 0.30;     pp.query("rothermel.M_x",       p.rothermel.M_x);
+    p.rothermel.h_heat    = 8000.0;   pp.query("rothermel.h_heat",    p.rothermel.h_heat);
+    p.rothermel.S_T       = 0.0555;   pp.query("rothermel.S_T",       p.rothermel.S_T);
+    p.rothermel.S_e       = 0.010;    pp.query("rothermel.S_e",       p.rothermel.S_e);
+    p.rothermel.rho_p     = 32.0;     pp.query("rothermel.rho_p",     p.rothermel.rho_p);
+    p.rothermel.slope_x   = 0.0;      pp.query("rothermel.slope_x",   p.rothermel.slope_x);
+    p.rothermel.slope_y   = 0.0;      pp.query("rothermel.slope_y",   p.rothermel.slope_y);
+    p.rothermel.wind_conv = 196.85;   pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
+    p.rothermel.ros_conv  = 0.00508;  pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
 }
