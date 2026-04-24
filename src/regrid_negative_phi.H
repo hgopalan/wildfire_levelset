@@ -43,41 +43,20 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
     
     if (ngrow == 0) return;  // No ghost cells to fill
     
-    // Create a coarsened version of the fine BoxArray (with ghost cells)
-    // to determine what coarse data we need
-    BoxArray fine_ba_grown = fine_mf.boxArray();
-    fine_ba_grown.grow(ngrow);
-    BoxArray coarse_ba = fine_ba_grown;
-    coarse_ba.coarsen(refine_ratio);
-    
-    // Clip to coarse domain
     const Box& coarse_domain = coarse_geom.Domain();
-    BoxList coarse_bl;
-    for (int i = 0; i < coarse_ba.size(); ++i) {
-        Box clipped = coarse_ba[i] & coarse_domain;
-        if (clipped.ok()) {
-            coarse_bl.push_back(clipped);
-        }
-    }
-    if (coarse_bl.isEmpty()) return;
     
-    BoxArray coarse_ba_clipped(coarse_bl);
-    DistributionMapping coarse_dm(coarse_ba_clipped);
+    // We need to fill fine ghost cells that are outside the fine valid region
+    // with data interpolated from the coarse level. We use the entire coarse
+    // domain to ensure we have all necessary data.
     
-    // Create a temporary MultiFab on the coarse grid with the data we need
-    MultiFab coarse_tmp(coarse_ba_clipped, coarse_dm, ncomp, 0);
-    coarse_tmp.ParallelCopy(coarse_mf, 0, 0, ncomp, 0, 0);
-    
-    // Now copy the coarse data to a single global fab that covers everything
-    // This avoids nested MFIter
-    Box global_coarse_box = coarse_bl.minimalBox();
-    FArrayBox global_coarse_fab(global_coarse_box, ncomp);
+    // Create a single FArrayBox covering the entire coarse domain
+    FArrayBox global_coarse_fab(coarse_domain, ncomp);
     global_coarse_fab.setVal(0.0);
     
-    // Copy from coarse_tmp to global_coarse_fab
-    for (MFIter mfi(coarse_tmp); mfi.isValid(); ++mfi) {
+    // Copy data from coarse_mf to global_coarse_fab
+    for (MFIter mfi(coarse_mf); mfi.isValid(); ++mfi) {
         const Box& valid = mfi.validbox();
-        global_coarse_fab.copy(coarse_tmp[mfi], valid, 0, valid, 0, ncomp);
+        global_coarse_fab.copy(coarse_mf[mfi], valid, 0, valid, 0, ncomp);
     }
     
     auto global_coarse_arr = global_coarse_fab.const_array();
@@ -106,8 +85,9 @@ static void fill_fine_ghost_from_coarse(MultiFab& fine_mf,
             if (j < 0) jc = (j - rr + 1) / rr;
             if (k < 0) kc = (k - rr + 1) / rr;
             
-            // Check if coarse cell is within our global coarse fab
-            if (global_coarse_box.contains(IntVect(AMREX_D_DECL(ic, jc, kc)))) {
+            // Check if coarse cell is within the coarse domain
+            // (ghost cells outside domain are handled by boundary conditions later)
+            if (coarse_domain.contains(IntVect(AMREX_D_DECL(ic, jc, kc)))) {
                 fine_arr(i, j, k, n) = global_coarse_arr(ic, jc, kc, n);
             }
         });
