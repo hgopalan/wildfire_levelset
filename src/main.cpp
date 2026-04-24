@@ -144,13 +144,14 @@ int main(int argc, char* argv[])
             fill_boundary_extrap(phi, geom);
             const Real dt_step = dt;
             
-            // Conditionally skip level set advection if skip_levelset is enabled
+            // Run either level set advection OR FARSITE ellipse spread (mutually exclusive)
             if (inputs.skip_levelset == 0) {
+                // Traditional level set advection
                 advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
+            } else {
+                // FARSITE ellipse spread (only when skip_levelset == 1)
+                compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
             }
-
-            // Compute FARSITE ellipse spread
-            compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
 
             dt = compute_dt(vel, geom, inputs.cfl);
             Real phi_min = phi.min(0);
