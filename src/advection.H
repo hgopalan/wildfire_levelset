@@ -7,7 +7,11 @@ static void build_rhs_weno5z(const MultiFab& phi,
                              const Geometry& geom)
 {
     const auto dx = geom.CellSize();
+#if (AMREX_SPACEDIM == 3)
     GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
+#else
+    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1]};
+#endif
 
     // Artificial viscosity ε per Eq. (2); use a single uniform value across the domain.
     // Paper default ~0.4 is common operationally. 

@@ -8,7 +8,8 @@ This repository contains a small AMReX-based C++ level-set solver for wildfire-f
 - CMake (3.20+)
 - Git
 
-> Note: This project currently assumes a 3D setup (`x/y/z` parameters are used throughout).
+> Note: This project supports both 2D and 3D configurations. The default is 3D, but you can build for 2D using CMake options (see Build section below).
+> Grid tagging (AMR) is automatically disabled in 2D builds.
 
 ## Clone
 
@@ -34,7 +35,18 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-This project prefers the vendored `external/amrex` submodule and builds it as part of the top-level CMake configure. The build is currently configured for a 3D AMReX setup.
+This project prefers the vendored `external/amrex` submodule and builds it as part of the top-level CMake configure. The build is configured for 3D AMReX setup by default.
+
+### Building for 2D
+
+To build for 2D instead of 3D, use the `-DLEVELSET_DIM_2D=ON` option:
+
+```bash
+cmake -S . -B build -DLEVELSET_DIM_2D=ON
+cmake --build build -j
+```
+
+**Note:** Grid tagging (adaptive mesh refinement) is automatically disabled in 2D builds.
 
 If you intentionally want to use an already installed AMReX instead, configure CMake with `-DLEVELSET_USE_VENDORED_AMREX=OFF` and provide `AMReX_DIR` or `CMAKE_PREFIX_PATH` as needed.
 
