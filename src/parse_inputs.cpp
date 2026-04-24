@@ -68,12 +68,12 @@ void parse_inputs(InputParameters& p)
     std::string fuel_model_name = "";
     pp.query("rothermel.fuel_model", fuel_model_name);
     
-    // Set defaults (FM4 - Southern California chaparral)
+    // Set defaults (custom Southern California chaparral from original code)
     p.rothermel.w0        = 0.230;
-    p.rothermel.sigma     = 2000.0;
-    p.rothermel.delta     = 6.0;
+    p.rothermel.sigma     = 1739.0;
+    p.rothermel.delta     = 2.0;
     p.rothermel.M_f       = 0.08;
-    p.rothermel.M_x       = 0.20;
+    p.rothermel.M_x       = 0.30;
     p.rothermel.h_heat    = 8000.0;
     p.rothermel.S_T       = 0.0555;
     p.rothermel.S_e       = 0.010;
@@ -92,7 +92,7 @@ void parse_inputs(InputParameters& p)
             print_fuel_model_info(model);
         } else {
             Print() << "WARNING: Fuel model '" << fuel_model_name << "' not found in database.\n";
-            Print() << "         Using default values (FM4 - Chaparral).\n";
+            Print() << "         Using default values (custom Southern California chaparral).\n";
             print_available_fuel_models();
         }
     }

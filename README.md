@@ -97,7 +97,7 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
     - FM1: Short Grass (1 ft)
     - FM2: Timber (Grass and Understory)
     - FM3: Tall Grass (2.5 ft)
-    - FM4: Chaparral (6 ft) - **default**
+    - FM4: Chaparral (6 ft)
     - FM5: Brush (2 ft)
     - FM6: Dormant Brush, Hardwood Slash
     - FM7: Southern Rough
@@ -108,6 +108,8 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
     - FM12: Medium Logging Slash
     - FM13: Heavy Logging Slash
   - Can also use aliases: `1`, `SHORT_GRASS`, `GRASS`, `CHAPARRAL`, `BRUSH`, etc.
+  - Default (when no fuel model specified): custom Southern California chaparral
+    - w0=0.230, σ=1739.0, δ=2.0, Mx=0.30
   - Individual fuel parameters can be overridden:
     - `rothermel.w0=0.230` (oven-dry fuel load, lb/ft²)
     - `rothermel.sigma=2000.0` (surface-area-to-volume ratio, ft⁻¹)

@@ -312,7 +312,7 @@ inline void print_fuel_model_info(const FuelModel& model) {
     amrex::Print() << "║ Moisture of extinction (Mx):   " << model.M_x << "\n";
     amrex::Print() << "║ Heat content (h):              " << model.h_heat << " BTU/lb\n";
     amrex::Print() << "║ Total mineral content (ST):    " << model.S_T << "\n";
-    amrex::Print() << "║ Effective mineral content (Se):" << model.S_e << "\n";
+    amrex::Print() << "║ Effective mineral content (Se): " << model.S_e << "\n";
     amrex::Print() << "║ Particle density (ρp):         " << model.rho_p << " lb/ft³\n";
     amrex::Print() << "╚════════════════════════════════════════════════════════════════════╝\n";
     amrex::Print() << "\n";
