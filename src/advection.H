@@ -3,37 +3,26 @@
 // ============================================================================
 #include "parse_inputs.H"
 
-static void build_rhs_weno5z(const MultiFab& phi,
-                             const MultiFab& vel,
-                             MultiFab& rhs,
-                             const Geometry& geom,
-                             const RothermelParams& rp)
+// Structure to hold computed Rothermel parameters for GPU kernel
+struct RothermelComputed {
+    amrex::Real R0;              // No-wind, no-slope rate of spread [ft/min]
+    amrex::Real beta_ratio_E;    // Packing-ratio part of wind factor
+    amrex::Real C;               // Wind factor coefficient C (Eq. 47)
+    amrex::Real B;               // Wind factor coefficient B (Eq. 48)
+    amrex::Real phi_s;           // Slope factor (Eq. 51)
+    amrex::Real wind_conv;       // Unit conversion for wind
+    amrex::Real ros_conv;        // Unit conversion for ROS
+};
+
+// ============================================================================
+// Compute Rothermel (1972) fire spread parameters
+// ============================================================================
+static RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 {
-    const auto dx = geom.CellSize();
-#if (AMREX_SPACEDIM == 3)
-    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
-#else
-    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1]};
-#endif
-
-    // Artificial viscosity ε per Eq. (2); use a single uniform value across the domain.
-    // Paper default ~0.4 is common operationally. 
-    constexpr Real eps_visc = 0.4;
-
-    // Helper: discrete Laplacian Δφ (second-order)
-    auto laplacian_phi = [=] AMREX_GPU_HOST_DEVICE (Array4<const Real> const& p,
-                                                    int i, int j, int k) noexcept -> Real {
-        Real ddx = (p(i+1,j,k) - 2.0*p(i,j,k) + p(i-1,j,k)) / (gdx[0]*gdx[0]);
-        Real ddy = (p(i,j+1,k) - 2.0*p(i,j,k) + p(i,j-1,k)) / (gdx[1]*gdx[1]);
-#if (AMREX_SPACEDIM==3)
-        Real ddz = (p(i,j,k+1) - 2.0*p(i,j,k) + p(i,j,k-1)) / (gdx[2]*gdx[2]);
-        return ddx + ddy + ddz;
-#else
-        return ddx + ddy;
-#endif
-    };
-
-    // ---- Host-side Rothermel (1972) precomputation ----
+    using namespace amrex;
+    
+    RothermelComputed rc;
+    
     // Unpack fuel parameters
     const Real w0     = rp.w0;
     const Real sigma  = rp.sigma;
@@ -88,23 +77,66 @@ static void build_rhs_weno5z(const MultiFab& phi,
     const Real Q_ig = 250.0 + 1116.0 * M_f;
 
     // No-wind, no-slope rate of spread [ft/min] (Eq. 1)
-    const Real R0 = I_R * xi / (rho_b * eps_h * Q_ig);
+    rc.R0 = I_R * xi / (rho_b * eps_h * Q_ig);
 
     // Wind factor coefficients (Eqs. 47–48)
-    const Real C = 7.47  * std::exp(-0.133  * std::pow(sigma, 0.55));
-    const Real B = 0.02526 * std::pow(sigma, 0.54);
+    rc.C = 7.47  * std::exp(-0.133  * std::pow(sigma, 0.55));
+    rc.B = 0.02526 * std::pow(sigma, 0.54);
     const Real E = 0.715  * std::exp(-3.59e-4 * sigma);
 
     // Packing-ratio part of wind factor (captured for GPU)
-    const Real beta_ratio_E = std::pow(beta_ratio, -E);
+    rc.beta_ratio_E = std::pow(beta_ratio, -E);
 
     // Slope factor (Eq. 51)
     const Real tan_phi_sq = rp.slope_x * rp.slope_x + rp.slope_y * rp.slope_y;
-    const Real phi_s      = std::max(5.275 * std::pow(beta, -0.3) * tan_phi_sq, 0.0);
+    rc.phi_s = std::max(5.275 * std::pow(beta, -0.3) * tan_phi_sq, 0.0);
 
     // Unit-conversion scalars for the GPU kernel
-    const Real wind_conv = rp.wind_conv;
-    const Real ros_conv  = rp.ros_conv;
+    rc.wind_conv = rp.wind_conv;
+    rc.ros_conv  = rp.ros_conv;
+    
+    return rc;
+}
+
+static void build_rhs_weno5z(const MultiFab& phi,
+                             const MultiFab& vel,
+                             MultiFab& rhs,
+                             const Geometry& geom,
+                             const RothermelParams& rp)
+{
+    const auto dx = geom.CellSize();
+#if (AMREX_SPACEDIM == 3)
+    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
+#else
+    GpuArray<Real,AMREX_SPACEDIM> gdx{dx[0], dx[1]};
+#endif
+
+    // Artificial viscosity ε per Eq. (2); use a single uniform value across the domain.
+    // Paper default ~0.4 is common operationally. 
+    constexpr Real eps_visc = 0.4;
+
+    // Helper: discrete Laplacian Δφ (second-order)
+    auto laplacian_phi = [=] AMREX_GPU_HOST_DEVICE (Array4<const Real> const& p,
+                                                    int i, int j, int k) noexcept -> Real {
+        Real ddx = (p(i+1,j,k) - 2.0*p(i,j,k) + p(i-1,j,k)) / (gdx[0]*gdx[0]);
+        Real ddy = (p(i,j+1,k) - 2.0*p(i,j,k) + p(i,j-1,k)) / (gdx[1]*gdx[1]);
+#if (AMREX_SPACEDIM==3)
+        Real ddz = (p(i,j,k+1) - 2.0*p(i,j,k) + p(i,j,k-1)) / (gdx[2]*gdx[2]);
+        return ddx + ddy + ddz;
+#else
+        return ddx + ddy;
+#endif
+    };
+
+    // Compute Rothermel (1972) fire spread parameters
+    const RothermelComputed rc = compute_rothermel_params(rp);
+    const Real R0 = rc.R0;
+    const Real C = rc.C;
+    const Real B = rc.B;
+    const Real beta_ratio_E = rc.beta_ratio_E;
+    const Real phi_s = rc.phi_s;
+    const Real wind_conv = rc.wind_conv;
+    const Real ros_conv = rc.ros_conv;
 
     // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R from Rothermel (1972). 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
