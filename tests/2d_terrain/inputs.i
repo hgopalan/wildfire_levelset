@@ -9,7 +9,7 @@ prob_hi_y = 5000.0
 
 # Time & output
 nsteps = 10
-plot_int = 5000
+plot_int = 10
 
 # Velocity
 u_x = 5.0

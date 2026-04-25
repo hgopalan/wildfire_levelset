@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <algorithm>
+#include <cmath>
 
 using namespace amrex;
 
@@ -111,16 +113,78 @@ static void write_negative_phi_xy(const MultiFab& phi,
     }
 }
 
-// ======================= Write envelope of negative phi values ====================
-// Writes the boundary/envelope of the region where phi < 0 as x-y file
-// The envelope is defined as cells where phi < 0 and at least one neighbor has phi >= 0
-// ==================================================================================
-static void write_negative_phi_envelope(const MultiFab& phi, 
-                                        const Geometry& geom, 
-                                        const std::string& filename)
+// ======================= Convex Hull Helper Functions =============================
+// Cross product of vectors OA and OB where O is the origin point
+static Real cross_product(const std::pair<Real, Real>& O, 
+                         const std::pair<Real, Real>& A, 
+                         const std::pair<Real, Real>& B)
 {
-    // Collect envelope points (cells on the boundary of phi < 0 region)
-    std::vector<std::pair<Real, Real>> envelope_points;
+    return (A.first - O.first) * (B.second - O.second) - 
+           (A.second - O.second) * (B.first - O.first);
+}
+
+// Compute convex hull using Graham scan algorithm
+static std::vector<std::pair<Real, Real>> compute_convex_hull(
+    std::vector<std::pair<Real, Real>>& points)
+{
+    if (points.size() < 3) {
+        return points;
+    }
+    
+    // Find the point with lowest y-coordinate (and leftmost if tie)
+    size_t min_idx = 0;
+    for (size_t i = 1; i < points.size(); ++i) {
+        if (points[i].second < points[min_idx].second || 
+            (points[i].second == points[min_idx].second && 
+             points[i].first < points[min_idx].first)) {
+            min_idx = i;
+        }
+    }
+    std::swap(points[0], points[min_idx]);
+    
+    const auto& pivot = points[0];
+    
+    // Sort points by polar angle with respect to pivot
+    std::sort(points.begin() + 1, points.end(), 
+        [&pivot](const std::pair<Real, Real>& a, const std::pair<Real, Real>& b) {
+            Real cp = cross_product(pivot, a, b);
+            if (std::abs(cp) < 1e-10) {
+                // Collinear points - sort by distance
+                Real dist_a = (a.first - pivot.first) * (a.first - pivot.first) + 
+                             (a.second - pivot.second) * (a.second - pivot.second);
+                Real dist_b = (b.first - pivot.first) * (b.first - pivot.first) + 
+                             (b.second - pivot.second) * (b.second - pivot.second);
+                return dist_a < dist_b;
+            }
+            return cp > 0;
+        });
+    
+    // Build convex hull
+    std::vector<std::pair<Real, Real>> hull;
+    hull.push_back(points[0]);
+    hull.push_back(points[1]);
+    
+    for (size_t i = 2; i < points.size(); ++i) {
+        // Remove points that make clockwise turn
+        while (hull.size() > 1 && 
+               cross_product(hull[hull.size()-2], hull[hull.size()-1], points[i]) <= 0) {
+            hull.pop_back();
+        }
+        hull.push_back(points[i]);
+    }
+    
+    return hull;
+}
+
+// ======================= Write convex hull of negative phi values =================
+// Writes the convex hull of all cells where phi < 0 as x-y file
+// ==================================================================================
+static void write_negative_phi_convex_hull(const MultiFab& phi, 
+                                           const Geometry& geom, 
+                                           const std::string& filename)
+{
+    // Collect all negative phi cell centers
+    std::vector<std::pair<Real, Real>> negative_points;
     
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
@@ -139,44 +203,10 @@ static void write_negative_phi_envelope(const MultiFab& phi,
             for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
-                        // Check if this cell is on the envelope by checking neighbors
-                        // A cell is on the envelope if:
-                        // 1. It has phi < 0 AND
-                        // 2. At least one neighbor has phi >= 0 OR it's at domain boundary
-                        bool on_envelope = false;
-                        
-                        // Check 4 neighbors in 2D (or 6 in 3D, but we only need x-y for output)
-                        // Left neighbor
-                        if (i > bx.smallEnd(0)) {
-                            if (phi_arr(i-1,j,k,0) >= 0.0) on_envelope = true;
-                        } else {
-                            on_envelope = true; // At domain boundary
-                        }
-                        // Right neighbor
-                        if (i < bx.bigEnd(0)) {
-                            if (phi_arr(i+1,j,k,0) >= 0.0) on_envelope = true;
-                        } else {
-                            on_envelope = true; // At domain boundary
-                        }
-                        // Bottom neighbor
-                        if (j > bx.smallEnd(1)) {
-                            if (phi_arr(i,j-1,k,0) >= 0.0) on_envelope = true;
-                        } else {
-                            on_envelope = true; // At domain boundary
-                        }
-                        // Top neighbor
-                        if (j < bx.bigEnd(1)) {
-                            if (phi_arr(i,j+1,k,0) >= 0.0) on_envelope = true;
-                        } else {
-                            on_envelope = true; // At domain boundary
-                        }
-                        
-                        if (on_envelope) {
-                            // Compute cell center coordinates
-                            Real x = problo[0] + (i + Real(0.5)) * dx[0];
-                            Real y = problo[1] + (j + Real(0.5)) * dx[1];
-                            envelope_points.push_back({x, y});
-                        }
+                        // Compute cell center coordinates
+                        Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                        Real y = problo[1] + (j + Real(0.5)) * dx[1];
+                        negative_points.push_back({x, y});
                     }
                 }
             }
@@ -186,7 +216,7 @@ static void write_negative_phi_envelope(const MultiFab& phi,
     // Gather all points from all processors (if running in parallel)
 #ifdef AMREX_USE_MPI
     std::vector<int> counts(ParallelDescriptor::NProcs());
-    int local_count = envelope_points.size();
+    int local_count = negative_points.size();
     MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT, 
                   ParallelDescriptor::Communicator());
     
@@ -200,7 +230,7 @@ static void write_negative_phi_envelope(const MultiFab& phi,
     }
     
     std::vector<Real> local_data;
-    for (const auto& pt : envelope_points) {
+    for (const auto& pt : negative_points) {
         local_data.push_back(pt.first);
         local_data.push_back(pt.second);
     }
@@ -218,29 +248,44 @@ static void write_negative_phi_envelope(const MultiFab& phi,
                 ParallelDescriptor::Communicator());
     
     if (ParallelDescriptor::IOProcessor()) {
-        envelope_points.clear();
+        negative_points.clear();
         for (size_t i = 0; i < all_data.size(); i += 2) {
-            envelope_points.push_back({all_data[i], all_data[i+1]});
+            negative_points.push_back({all_data[i], all_data[i+1]});
         }
     }
 #endif
     
-    // Write to file (only on IO processor)
+    // Compute and write convex hull (only on IO processor)
     if (ParallelDescriptor::IOProcessor()) {
+        if (negative_points.empty()) {
+            amrex::Print() << "No negative phi points found. Skipping convex hull output.\n";
+            return;
+        }
+        
+        // Compute convex hull
+        std::vector<std::pair<Real, Real>> hull = compute_convex_hull(negative_points);
+        
         std::ofstream outfile(filename);
         if (!outfile.is_open()) {
             amrex::Abort("Cannot open output file: " + filename);
         }
         
-        outfile << "# X Y coordinates of envelope (boundary) of phi < 0 region\n";
-        outfile << "# Total points: " << envelope_points.size() << "\n";
+        outfile << "# X Y coordinates of convex hull of phi < 0 region\n";
+        outfile << "# Total hull points: " << hull.size() << "\n";
+        outfile << "# Total negative phi points: " << negative_points.size() << "\n";
         
-        for (const auto& pt : envelope_points) {
+        for (const auto& pt : hull) {
             outfile << pt.first << " " << pt.second << "\n";
         }
         
+        // Optionally close the hull by adding the first point at the end
+        if (!hull.empty()) {
+            outfile << hull[0].first << " " << hull[0].second << "\n";
+        }
+        
         outfile.close();
-        amrex::Print() << "Wrote " << envelope_points.size() << " envelope points to " 
+        amrex::Print() << "Wrote " << hull.size() << " convex hull points (from " 
+                       << negative_points.size() << " negative phi points) to " 
                        << filename << "\n";
     }
 }

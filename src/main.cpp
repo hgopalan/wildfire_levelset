@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
       
       // Write negative phi x-y data files
       write_negative_phi_xy(phi, geom, "phi_negative_0000.dat");
-      write_negative_phi_envelope(phi, geom, "phi_envelope_0000.dat");
+      write_negative_phi_convex_hull(phi, geom, "phi_envelope_0000.dat");
     }
 
     // ---------------- Time stepping ------------------------
@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
 	write_negative_phi_xy(phi, geom, xy_buf);
 	
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", step);
-	write_negative_phi_envelope(phi, geom, xy_buf);
+	write_negative_phi_convex_hull(phi, geom, xy_buf);
       }
     }
       // ---------------- Final write --------------------------
@@ -240,7 +240,7 @@ int main(int argc, char* argv[])
 	write_negative_phi_xy(phi, geom, xy_buf);
 	
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", inputs.nsteps);
-	write_negative_phi_envelope(phi, geom, xy_buf);
+	write_negative_phi_convex_hull(phi, geom, xy_buf);
       }
     }
   amrex::Finalize();
