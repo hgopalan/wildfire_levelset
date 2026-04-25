@@ -30,7 +30,12 @@ static void write_negative_phi_xy(const MultiFab& phi,
         auto const phi_arr = phi.array(mfi);
         
         // Loop over valid cells
+#if (AMREX_SPACEDIM == 3)
         for (int k = bx.smallEnd(2); k <= bx.bigEnd(2); ++k) {
+#else
+        int k = 0;
+        {
+#endif
             for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
@@ -125,7 +130,12 @@ static void write_negative_phi_envelope(const MultiFab& phi,
         auto const phi_arr = phi.array(mfi);
         
         // Loop over valid cells
+#if (AMREX_SPACEDIM == 3)
         for (int k = bx.smallEnd(2); k <= bx.bigEnd(2); ++k) {
+#else
+        int k = 0;
+        {
+#endif
             for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
