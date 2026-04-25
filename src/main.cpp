@@ -23,6 +23,7 @@ using namespace amrex;
 #include "parse_inputs.H"
 #include "farsite_ellipse.H"
 #include "terrain_slope.H"
+#include "write_xy_data.H"
 
 
 
@@ -143,6 +144,10 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
       WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
+      
+      // Write negative phi x-y data files
+      write_negative_phi_xy(phi, geom, "phi_negative_0000.dat");
+      write_negative_phi_envelope(phi, geom, "phi_envelope_0000.dat");
     }
 
     // ---------------- Time stepping ------------------------
@@ -195,9 +200,23 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
+	
+	// Write negative phi x-y data files
+	char xy_buf[64];
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", step);
+	write_negative_phi_xy(phi, geom, xy_buf);
+	
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", step);
+	write_negative_phi_envelope(phi, geom, xy_buf);
       }
     }
       // ---------------- Final write --------------------------
+      // Only write final if it wasn't already written at plot_int
+      bool should_write_final = (inputs.plot_int <= 0);
+      if (inputs.plot_int > 0) {
+          should_write_final = (inputs.nsteps % inputs.plot_int != 0);
+      }
+      if (should_write_final)
       {
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
@@ -214,6 +233,14 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
 	amrex::Print() << "Wrote final " << buf << "\n";
+	
+	// Write negative phi x-y data files for final step
+	char xy_buf[64];
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", inputs.nsteps);
+	write_negative_phi_xy(phi, geom, xy_buf);
+	
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", inputs.nsteps);
+	write_negative_phi_envelope(phi, geom, xy_buf);
       }
     }
   amrex::Finalize();
