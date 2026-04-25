@@ -2,7 +2,7 @@
 
 This repository contains a small AMReX-based C++ level-set solver for wildfire-front style advection based on the community fire model. The fuel and moisture databases are not added yet. Work is on-going to add a non-uniform wind field read from files for one way-coupling. A future work will use a two-way coupling with ERF by modifying the surface heat fluxes.
 
-The code now includes Richards' (1990) FARSITE (Fire Area Simulator) elliptical expansion model, which computes fire spread using an elliptical pattern with coefficients a, b, and c for directional spread rates based on wind conditions and fuel characteristics. The model identifies locations where the level-set function phi ≈ 0 (fire front) and computes directional spread displacements that are stored in a separate MultiFab for visualization and analysis. 
+The code now includes Richards' (1990) FARSITE (Fire Area Simulator) elliptical expansion model, which computes fire spread using an elliptical pattern with coefficients a, b, and c for directional spread rates based on wind conditions and fuel characteristics. 
 
 ## Prerequisites
 
@@ -135,21 +135,6 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
 - Level set control:
   - `skip_levelset=0` (1 to skip level set advection and use initial phi throughout simulation, 0 for normal operation with evolving level set)
 
-### Example: Running with different fuel models
-
-```bash
-# Use tall grass fuel model
-./build/levelset rothermel.fuel_model=FM3
-
-# Use chaparral with custom moisture
-./build/levelset rothermel.fuel_model=CHAPARRAL rothermel.M_f=0.12
-
-# Use brush with slope
-./build/levelset rothermel.fuel_model=FM5 rothermel.slope_x=0.2
-
-# Use terrain file for spatially-varying slopes
-./build/levelset rothermel.terrain_file=my_terrain.txt
-```
 
 ### Example: Creating a terrain file
 
