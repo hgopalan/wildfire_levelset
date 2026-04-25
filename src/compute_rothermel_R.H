@@ -60,10 +60,12 @@ static void compute_rothermel_R(MultiFab& R_mf,
             if (use_terrain) {
                 // Compute phi_s from terrain slopes at this cell
                 // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
+                constexpr Real PHI_S_COEFFICIENT = 5.275;
+                constexpr Real BETA_EXPONENT = -0.3;
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
+                phi_s = std::max(PHI_S_COEFFICIENT * std::pow(beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
             } else {
                 // Use constant phi_s from RothermelComputed
                 phi_s = phi_s_const;

@@ -7,7 +7,9 @@ static Real compute_dt(const MultiFab& R_mf, const Geometry& geom, Real cfl)
     const auto dx = geom.CellSize();
     Real dmin = dx[0];
     dmin = std::min(dmin, dx[1]);
+#if (AMREX_SPACEDIM == 3)
     dmin = std::min(dmin, dx[2]);
+#endif
 
     if (Rmax <= 1.0e-14) {
         return 1.0; // stationary flow: generous dt
