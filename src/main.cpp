@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
     for (int step = 1; step <= inputs.nsteps; ++step) {
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
-      amrex::Print() << "Time:"<< time << std::endl;
+      amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
       // Run either level set advection OR FARSITE ellipse spread (mutually exclusive)
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
