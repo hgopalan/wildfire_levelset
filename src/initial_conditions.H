@@ -77,7 +77,7 @@ static void init_phi_box(MultiFab& phi, const Geometry& geom,
 }
 
 // ======================= Initialize indicator function (sphere) ======================
-// For FARSITE mode: phi = 1 inside the sphere, phi = 0 outside
+// For FARSITE mode: phi = -10 inside the sphere, phi = 0 outside
 static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                        Real cx, Real cy, Real cz, Real radius)
 {
@@ -106,14 +106,14 @@ static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                (y - cy)*(y - cy)
                                );
 #endif
-            // Indicator function: 1 inside, 0 outside
+            // Indicator function: -10 inside, 0 outside
             p(i,j,k) = (d < radius) ? -10.0 : 0.0;
         });
     }
 }
 
 // ======================= Initialize indicator function (box) ======================
-// For FARSITE mode: phi = 1 inside the box, phi = 0 outside
+// For FARSITE mode: phi = -10 inside the box, phi = 0 outside
 static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
                                     Real cx, Real cy, Real cz, 
                                     Real sx, Real sy, Real sz) 
@@ -150,7 +150,7 @@ static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
             bool inside = inside_x && inside_y;
 #endif
             
-            // Indicator function: 1 inside, 0 outside
+            // Indicator function: -10 inside, 0 outside
             p(i,j,k) = inside ? -10.0 : 0.0;
         });
     }
