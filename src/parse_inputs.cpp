@@ -47,9 +47,12 @@ void parse_inputs(InputParameters& p)
     p.cz = 0.5;                  pp.query("center_z", p.cz);
     p.radius = 0.25;             pp.query("sphere_radius",   p.radius);
 
-    p.bx = 32;                 pp.query("box_size_x", p.bx);
-    p.by = 32;                 pp.query("box_size_y", p.by);
-    p.bz = 32;                 pp.query("box_size_z", p.bz);
+    p.xmin = 32;                 pp.query("box_xmin", p.xmin);
+    p.ymin = 32;                 pp.query("box_ymin", p.ymin);
+    p.zmin = 32;                 pp.query("box_zmin", p.zmin);
+    p.xmax = 64;                 pp.query("box_xmax", p.xmax);
+    p.ymax = 64;                 pp.query("box_ymax", p.ymax);
+    p.zmax = 64;                 pp.query("box_zmax", p.zmax);
 
     // -------- Rothermel fire spread model --------
     // Check if user wants to use a fuel model from the database

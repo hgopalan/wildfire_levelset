@@ -48,8 +48,8 @@ struct InputParameters {
 
     // Sphere parameters
     amrex::Real cx, cy, cz, radius;
-    // Box Size 
-    amrex::Real bx, by, bz;
+    // Box Extents 
+    amrex::Real xmin, xmax, ymin, ymax, zmin, zmax;
 
     // Rothermel fire spread model parameters
     RothermelParams rothermel;

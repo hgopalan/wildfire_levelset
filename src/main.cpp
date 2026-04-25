@@ -87,9 +87,9 @@ int main(int argc, char* argv[])
     }
     else if(inputs.source_type == "box") {
       if (use_indicator) {
-	init_phi_box_indicator(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+	init_phi_box_indicator(phi, geom, inputs.xmin, inputs.ymin, inputs.zmin, inputs.xmax, inputs.ymax, inputs.zmax);
       } else {
-	init_phi_box(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.bx, inputs.by, inputs.bz);
+	init_phi_box(phi, geom, inputs.xmin, inputs.ymin, inputs.zmin, inputs.xmax, inputs.ymax, inputs.zmax);
       }
     }
     else {
