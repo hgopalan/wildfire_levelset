@@ -54,6 +54,23 @@ void parse_inputs(InputParameters& p)
     p.ymax = 64;                 pp.query("box_ymax", p.ymax);
     p.zmax = 64;                 pp.query("box_zmax", p.zmax);
 
+    // ---------------- Inputs: ellipse ----------------------
+    p.ellipse_center_x = 0.5;    pp.query("ellipse_center_x", p.ellipse_center_x);
+    p.ellipse_center_y = 0.5;    pp.query("ellipse_center_y", p.ellipse_center_y);
+    p.ellipse_center_z = 0.5;    pp.query("ellipse_center_z", p.ellipse_center_z);
+    p.ellipse_radius_x = 0.3;    pp.query("ellipse_radius_x", p.ellipse_radius_x);
+    p.ellipse_radius_y = 0.2;    pp.query("ellipse_radius_y", p.ellipse_radius_y);
+    p.ellipse_radius_z = 0.15;   pp.query("ellipse_radius_z", p.ellipse_radius_z);
+
+    // ---------------- Inputs: EB implicit function ----------
+    p.eb_type = "sphere";        pp.query("eb_type", p.eb_type);
+    p.eb_param1 = 0.5;           pp.query("eb_param1", p.eb_param1);
+    p.eb_param2 = 0.5;           pp.query("eb_param2", p.eb_param2);
+    p.eb_param3 = 0.5;           pp.query("eb_param3", p.eb_param3);
+    p.eb_param4 = 0.25;          pp.query("eb_param4", p.eb_param4);
+    p.eb_param5 = 0.0;           pp.query("eb_param5", p.eb_param5);
+    p.eb_param6 = 0.0;           pp.query("eb_param6", p.eb_param6);
+
     // -------- Rothermel fire spread model --------
     // Check if user wants to use a fuel model from the database
     std::string fuel_model_name = "";

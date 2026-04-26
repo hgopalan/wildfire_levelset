@@ -59,3 +59,6 @@ if (MSVC)
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Add regression test subdirectory
+add_subdirectory(regtest)

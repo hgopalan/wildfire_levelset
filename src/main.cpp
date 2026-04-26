@@ -96,6 +96,23 @@ int main(int argc, char* argv[])
 	init_phi_box(phi, geom, inputs.xmin, inputs.ymin, inputs.zmin, inputs.xmax, inputs.ymax, inputs.zmax);
       }
     }
+    else if(inputs.source_type == "ellipse") {
+      if (use_indicator) {
+	init_phi_ellipse_indicator(phi, geom, 
+	                          inputs.ellipse_center_x, inputs.ellipse_center_y, inputs.ellipse_center_z,
+	                          inputs.ellipse_radius_x, inputs.ellipse_radius_y, inputs.ellipse_radius_z);
+      } else {
+	init_phi_ellipse(phi, geom, 
+	                inputs.ellipse_center_x, inputs.ellipse_center_y, inputs.ellipse_center_z,
+	                inputs.ellipse_radius_x, inputs.ellipse_radius_y, inputs.ellipse_radius_z);
+      }
+    }
+    else if(inputs.source_type == "eb") {
+      // EB implicit function always uses signed distance (no indicator mode)
+      init_phi_from_eb_implicit(phi, geom, inputs.eb_type,
+                               inputs.eb_param1, inputs.eb_param2, inputs.eb_param3,
+                               inputs.eb_param4, inputs.eb_param5, inputs.eb_param6);
+    }
     else {
       amrex::Abort("Invalid source_type: " + inputs.source_type);
     }

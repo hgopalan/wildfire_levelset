@@ -50,6 +50,14 @@ struct InputParameters {
     amrex::Real cx, cy, cz, radius;
     // Box Extents 
     amrex::Real xmin, xmax, ymin, ymax, zmin, zmax;
+    // Ellipse parameters
+    amrex::Real ellipse_center_x, ellipse_center_y, ellipse_center_z;
+    amrex::Real ellipse_radius_x, ellipse_radius_y, ellipse_radius_z;
+    
+    // EB (Embedded Boundary) implicit function parameters
+    std::string eb_type;  // "plane", "cylinder", "sphere", "ellipsoid"
+    amrex::Real eb_param1, eb_param2, eb_param3;
+    amrex::Real eb_param4, eb_param5, eb_param6;
 
     // Rothermel fire spread model parameters
     RothermelParams rothermel;
