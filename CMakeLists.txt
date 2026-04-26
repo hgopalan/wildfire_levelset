@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 project(LevelSet LANGUAGES CXX C)
 
+# Enable testing for regression tests
+enable_testing()
+
 # Require C++17 (AMReX supports C++17+)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
