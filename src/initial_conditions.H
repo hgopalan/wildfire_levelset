@@ -174,6 +174,7 @@ static void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
             // This gives the correct sign and is approximately a distance
             Real d = r - 1.0;
             // Scale back to get approximate distance
+            // Add small epsilon (1.0e-16) to denominator to prevent division by zero
             Real scale = std::sqrt((dx_norm*dx_norm*rx*rx + 
                                    dy_norm*dy_norm*ry*ry + 
                                    dz_norm*dz_norm*rz*rz) / 
@@ -189,6 +190,7 @@ static void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
             // Approximate SDF for ellipse
             Real d = r - 1.0;
             // Scale back to get approximate distance
+            // Add small epsilon (1.0e-16) to denominator to prevent division by zero
             Real scale = std::sqrt((dx_norm*dx_norm*rx*rx + dy_norm*dy_norm*ry*ry) / 
                                   (dx_norm*dx_norm + dy_norm*dy_norm + 1.0e-16));
             d *= scale;
@@ -326,6 +328,7 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
                 Real dz_norm = (z - cz) / rz;
                 Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm + dz_norm*dz_norm);
                 Real d = r - 1.0;
+                // Add small epsilon (1.0e-16) to denominator to prevent division by zero
                 Real scale = std::sqrt((dx_norm*dx_norm*rx*rx + 
                                        dy_norm*dy_norm*ry*ry + 
                                        dz_norm*dz_norm*rz*rz) / 
@@ -337,6 +340,7 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
                 Real dy_norm = (y - cy) / ry;
                 Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm);
                 Real d = r - 1.0;
+                // Add small epsilon (1.0e-16) to denominator to prevent division by zero
                 Real scale = std::sqrt((dx_norm*dx_norm*rx*rx + dy_norm*dy_norm*ry*ry) / 
                                       (dx_norm*dx_norm + dy_norm*dy_norm + 1.0e-16));
                 p(i,j,k) = d * scale;
