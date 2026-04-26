@@ -274,6 +274,16 @@ cmake --build build -j
 
 **Compatible tests**: All except `3d_sphere`
 
+### EB (Embedded Boundary) Build
+```bash
+cmake -S . -B build -DLEVELSET_ENABLE_EB=ON
+cmake --build build -j
+```
+
+**Recommended for**: `eb_implicit` (enables full EB capabilities)
+
+**Compatible tests**: All tests work with EB enabled
+
 ### Running Tests with CMake/CTest
 
 After building, you can run regression tests using CMake's testing framework:

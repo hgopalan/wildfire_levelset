@@ -49,6 +49,24 @@ cmake --build build -j
 
 **Note:** Grid tagging (adaptive mesh refinement) is automatically disabled in 2D builds.
 
+### Building with Embedded Boundary Support
+
+To enable AMReX Embedded Boundary (EB) support for complex geometries, use the `-DLEVELSET_ENABLE_EB=ON` option:
+
+```bash
+cmake -S . -B build -DLEVELSET_ENABLE_EB=ON
+cmake --build build -j
+```
+
+Embedded Boundary support allows the solver to handle complex geometries using implicit function representations, enabling features like terrain following coordinates and irregular domain boundaries.
+
+EB support can be combined with 2D builds:
+
+```bash
+cmake -S . -B build -DLEVELSET_DIM_2D=ON -DLEVELSET_ENABLE_EB=ON
+cmake --build build -j
+```
+
 If you intentionally want to use an already installed AMReX instead, configure CMake with `-DLEVELSET_USE_VENDORED_AMREX=OFF` and provide `AMReX_DIR` or `CMAKE_PREFIX_PATH` as needed.
 
 ## Run
