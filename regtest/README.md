@@ -12,6 +12,8 @@ regtest/
 ├── terrain_wind/         # External terrain (Gaussian hill) and wind field
 ├── anderson_lw/          # Anderson (1983) dynamic L/W ratio
 ├── reinitialization/     # Level-set reinitialization testing
+├── ellipse_sdf/          # Elliptical SDF initial condition
+├── eb_implicit/          # EB implicit function initial condition
 └── 3d_sphere/           # Full 3D fire spread simulation
 ```
 
@@ -190,6 +192,53 @@ done
 
 ---
 
+### 8. ellipse_sdf
+**Purpose**: Tests elliptical initial condition with signed distance function.
+
+**Features**:
+- Elliptical SDF initial condition
+- Approximate signed distance for ellipse
+- Advection of elliptical shape
+- Multi-axis radii specification
+
+**Expected Runtime**: ~1 minute
+
+**Key Parameters**:
+- Domain: 1.0³ unit cube
+- Grid: 64³ cells
+- Ellipse center: (0.4, 0.5, 0.5)
+- Semi-axes: rx=0.25, ry=0.15, rz=0.10
+- Constant velocity field
+
+**Formula**: Approximate SDF for ellipsoid in normalized coordinates
+
+---
+
+### 9. eb_implicit
+**Purpose**: Tests embedded boundary capabilities using implicit function representations.
+
+**Features**:
+- EB implicit function for initial conditions
+- Support for plane, cylinder, sphere, ellipsoid geometries
+- Exact signed distance for simple geometries
+- Extensible to complex implicit functions
+
+**Expected Runtime**: ~1 minute
+
+**Key Parameters**:
+- Domain: 1.0³ unit cube
+- Grid: 64³ cells
+- EB type: ellipsoid
+- Parameterized geometry specification
+
+**Supported EB Types**:
+- `plane`: Defined by normal vector and offset
+- `cylinder`: Circular cylinder along z-axis
+- `sphere`: Spherical geometry
+- `ellipsoid`: Ellipsoidal geometry
+
+---
+
 ## Testing Checklist
 
 Use this checklist to verify all capabilities:
@@ -201,6 +250,8 @@ Use this checklist to verify all capabilities:
 - [ ] **Wind Fields**: `terrain_wind` interpolates spatially-varying wind
 - [ ] **Anderson L/W**: `anderson_lw` computes dynamic coefficients
 - [ ] **Reinitialization**: `reinitialization` maintains |∇φ|=1
+- [ ] **Elliptical SDF**: `ellipse_sdf` creates elliptical initial conditions
+- [ ] **EB Capabilities**: `eb_implicit` uses implicit function geometries
 - [ ] **3D Capability**: `3d_sphere` runs in 3D mode
 
 ## Build Configurations
@@ -211,7 +262,7 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-**Compatible tests**: `basic_levelset`, `farsite_ellipse`, `rothermel_fuel`, `anderson_lw`, `reinitialization`, `3d_sphere`
+**Compatible tests**: `basic_levelset`, `farsite_ellipse`, `rothermel_fuel`, `anderson_lw`, `reinitialization`, `ellipse_sdf`, `eb_implicit`, `3d_sphere`
 
 ### 2D Build
 ```bash
@@ -222,6 +273,22 @@ cmake --build build -j
 **Required for**: `terrain_wind` (uses 2D wind/terrain data files)
 
 **Compatible tests**: All except `3d_sphere`
+
+### Running Tests with CMake/CTest
+
+After building, you can run regression tests using CMake's testing framework:
+
+```bash
+# Run all regression tests
+cd build
+ctest -L regtest --output-on-failure
+
+# Or use the custom target
+make regtest
+
+# Run a specific test
+ctest -R ellipse_sdf --output-on-failure
+```
 
 ## Output
 
