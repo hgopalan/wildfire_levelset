@@ -293,7 +293,7 @@ static void generate_firebrand_spots(
     
     amrex::Print() << "Generated " << total_spots << " firebrand spots at step " << step << "\n";
     
-    // Third pass: apply spots to phi field
+    // Third pass: apply spots to phi field by setting negative signed distance values
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
         auto p = phi.array(mfi);
@@ -351,7 +351,7 @@ static void generate_firebrand_spots(
     }
     
     // Fourth pass: update spotting_data with count, distance, and active flag
-    // Reset count component first
+    // Reset all spotting data components first
     for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
         auto spot = spotting_data.array(mfi);
@@ -364,7 +364,7 @@ static void generate_firebrand_spots(
     }
     
     // Update spotting data based on generated spots
-    // Restructured to iterate over boxes in outer loop for better performance
+    // Iterate over boxes in outer loop for better performance
     // NOTE: This code assumes serial execution (AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU=OFF).
     // If parallelization is enabled, atomic operations (Gpu::Atomic::Add, Gpu::Atomic::Max)
     // would be required to avoid race conditions when multiple threads update the same cell.
