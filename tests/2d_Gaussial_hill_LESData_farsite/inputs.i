@@ -7,7 +7,7 @@ prob_lo_y = 0.0
 prob_hi_y = 5000.0
 
 # Time & output
-nsteps = 100
+nsteps = 10
 plot_int = 100
 
 # Velocity
@@ -20,6 +20,22 @@ box_xmax = 2550
 box_ymin = 1000
 box_ymax = 4000
 
+# Firebrand spotting model
+spotting.enable = 1
+spotting.P_base = 0.05
+spotting.k_wind = 0.3
+spotting.I_critical = 800.0
+spotting.d_mean = 0.15
+spotting.d_sigma = 0.4
+spotting.d_lambda = 8.0
+spotting.distance_model = lognormal
+spotting.lateral_spread_angle = 20.0
+spotting.spot_radius = 25
+spotting.random_seed = 12345
+spotting.check_interval = 3
+
+# Rothermel model (use chaparral fuel type)
+rothermel.fuel_model = FM4
 
 # ---------------- Level Set Reinitialization ----------------
 reinit_int   = -1
