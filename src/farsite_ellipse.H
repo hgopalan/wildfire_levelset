@@ -146,9 +146,9 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     }
     
     // Get crown fire fraction array if provided
-    const bool compute_crown_fraction = (crown_fire_fraction != nullptr && use_crown_initiation == 1);
+    const bool should_compute_crown_fraction = (crown_fire_fraction != nullptr && use_crown_initiation == 1);
     Array4<Real> cff;
-    if (compute_crown_fraction) {
+    if (should_compute_crown_fraction) {
       cff = crown_fire_fraction->array(mfi);
     }
 
@@ -328,7 +328,7 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       }
       
       // Store crown fire fraction if enabled
-      if (compute_crown_fraction) {
+      if (should_compute_crown_fraction) {
         cff(i, j, k) = local_crown_fraction;
       }
     });
