@@ -275,6 +275,40 @@ Terrain Parameters
   
   Example: ``terrain_file = "terrain.xyz"``
 
+**rothermel.landscape_file** (default: "")
+  Path to FARSITE landscape file containing elevation, slope, aspect, and fuel model data.
+  When specified, this takes precedence over ``terrain_file`` for slope and elevation data.
+  
+  Example: ``rothermel.landscape_file = "socal_chaparral_landscape.lcp"``
+
+FARSITE Landscape File Format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The landscape file is an ASCII text file with the following format::
+
+    # Comments start with #
+    X Y ELEVATION SLOPE ASPECT FUEL_MODEL
+
+Where:
+
+* **X, Y**: Coordinates in meters
+* **ELEVATION**: Elevation above sea level in meters
+* **SLOPE**: Slope angle in degrees (0-90)
+* **ASPECT**: Slope aspect in degrees (0-360, where 0=North, 90=East, 180=South, 270=West)
+* **FUEL_MODEL**: NFFL fuel model number (optional, defaults to 0)
+
+Example landscape file::
+
+    # Southern California chaparral terrain
+    # X Y ELEVATION SLOPE ASPECT FUEL_MODEL
+    0.0 0.0 100.0 15.0 225.0 4
+    10.0 0.0 101.5 16.0 220.0 4
+    20.0 0.0 103.5 18.0 215.0 4
+
+The code uses inverse distance weighting (IDW) interpolation to map landscape data 
+points to the simulation grid. When a landscape file is specified, slope and elevation 
+from any terrain file are ignored.
+
 FARSITE Parameters
 ^^^^^^^^^^^^^^^^^^
 
@@ -497,6 +531,49 @@ Terrain and Crown Fire Simulation
     spotting.enable = 1
     spotting.probability = 0.05
     spotting.max_distance = 300.0
+
+FARSITE with Landscape File
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    # FARSITE simulation with landscape file (Southern California terrain)
+    n_cell_x = 50
+    n_cell_y = 50
+    max_grid_size = 32
+    prob_lo_x = 0.0
+    prob_lo_y = 0.0
+    prob_hi_x = 100.0
+    prob_hi_y = 100.0
+    
+    nsteps = 50
+    cfl = 0.5
+    plot_int = 10
+    
+    # Line fire ignition (simulating Santa Ana wind-driven fire)
+    source_type = box
+    box_xmin = 10.0
+    box_xmax = 15.0
+    box_ymin = 30.0
+    box_ymax = 70.0
+    
+    # Wind from west (Santa Ana conditions)
+    u_x = 5.0
+    u_y = 0.0
+    
+    # FARSITE model with Anderson L/W ratio
+    farsite.enable = 1
+    farsite.use_anderson_LW = 1
+    farsite.phi_threshold = 0.1
+    
+    # Use landscape file for terrain (slope, aspect, elevation)
+    # This ignores any terrain_file if specified
+    rothermel.fuel_model = FM4
+    rothermel.M_f = 0.08
+    rothermel.landscape_file = socal_chaparral_landscape.lcp
+    
+    # Skip level set advection, use FARSITE only
+    skip_levelset = 1
 
 Visualization
 -------------

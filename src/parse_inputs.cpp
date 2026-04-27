@@ -91,6 +91,7 @@ void parse_inputs(InputParameters& p)
     p.rothermel.slope_x   = 0.0;
     p.rothermel.slope_y   = 0.0;
     p.rothermel.terrain_file = "";
+    p.rothermel.landscape_file = "";
     p.rothermel.wind_conv = 196.85;
     p.rothermel.ros_conv  = 0.00508;
     
@@ -121,6 +122,7 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.slope_x",   p.rothermel.slope_x);
     pp.query("rothermel.slope_y",   p.rothermel.slope_y);
     pp.query("rothermel.terrain_file", p.rothermel.terrain_file);
+    pp.query("rothermel.landscape_file", p.rothermel.landscape_file);
     pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
 

@@ -23,6 +23,7 @@ using namespace amrex;
 #include "parse_inputs.H"
 #include "farsite_ellipse.H"
 #include "terrain_slope.H"
+#include "landscape_file.H"
 #include "write_xy_data.H"
 #include "compute_rothermel_R.H"
 #include "firebrand_spotting.H"
@@ -178,13 +179,24 @@ int main(int argc, char* argv[])
     init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
 #endif
 
-    // Initialize terrain slopes if terrain file is provided
+    // Initialize terrain slopes
+    // Priority: landscape_file > terrain_file
+    // If landscape file is specified, ignore terrain file slope/elevation
     std::unique_ptr<MultiFab> terrain_slopes;
-    if (!inputs.rothermel.terrain_file.empty()) {
+    if (!inputs.rothermel.landscape_file.empty()) {
+      // Create MultiFab for slopes (2 components: slope_x, slope_y)
+      terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
+      compute_slopes_from_landscape(*terrain_slopes, geom, inputs.rothermel.landscape_file);
+      amrex::Print() << "Initialized terrain slopes from landscape file: " 
+		     << inputs.rothermel.landscape_file << "\n";
+      if (!inputs.rothermel.terrain_file.empty()) {
+        amrex::Print() << "NOTE: Ignoring terrain_file because landscape_file takes precedence\n";
+      }
+    } else if (!inputs.rothermel.terrain_file.empty()) {
       // Create MultiFab for slopes (2 components: slope_x, slope_y)
       terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
       compute_slopes_from_terrain(*terrain_slopes, geom, inputs.rothermel.terrain_file);
-      amrex::Print() << "Initialized terrain slopes from file: " 
+      amrex::Print() << "Initialized terrain slopes from terrain file: " 
 		     << inputs.rothermel.terrain_file << "\n";
     }
 
