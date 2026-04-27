@@ -7,16 +7,16 @@ prob_lo_y = 0.0
 prob_hi_y = 5000.0
 
 # Time & output
-nsteps = 10
-plot_int = 10
+nsteps = 100
+plot_int = 100
 
 # Velocity
 velocity_file = "turbulent_field_2d.csv"
 
 # Fire 
 source_type=box
-box_xmin = 100
-box_xmax = 120 
+box_xmin = 2500
+box_xmax = 2550 
 box_ymin = 1000
 box_ymax = 4000
 

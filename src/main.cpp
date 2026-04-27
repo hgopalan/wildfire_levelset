@@ -190,11 +190,11 @@ int main(int argc, char* argv[])
       const Real dt_step = dt;
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
       // Run either level set advection OR FARSITE ellipse spread (mutually exclusive)
+  	// Update Rothermel wind speed R and dt
+  	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel, terrain_slopes.get());
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
 	advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
-	// Update Rothermel wind speed R and dt
-	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel, terrain_slopes.get());
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else if (inputs.farsite.enable == 1) {
 	// FARSITE ellipse spread (only when skip_levelset == 1 and farsite.enable == 1)
