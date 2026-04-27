@@ -3,3 +3,17 @@ plt*/
 build_rel/
 Backtrace.*
 phi_*.dat
+
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/

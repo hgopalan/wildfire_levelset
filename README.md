@@ -4,6 +4,18 @@ This repository contains a small AMReX-based C++ level-set solver for wildfire-f
 
 The code now includes Richards' (1990) FARSITE (Fire Area Simulator) elliptical expansion model, which computes fire spread using an elliptical pattern with coefficients a, b, and c for directional spread rates based on wind conditions and fuel characteristics. 
 
+## Documentation
+
+📚 **[Read the full documentation](https://hgopalan.github.io/wildfire_levelset/)**
+
+The documentation includes:
+- Overview and mathematical models
+- Detailed equations for Rothermel, FARSITE, and terrain effects
+- Code structure and API reference
+- Build and usage instructions
+- Input parameter reference
+ 
+
 ## Summary Flow
 
 The wildfire simulation follows these key steps for each timestep:
