@@ -34,7 +34,7 @@ A 100m × 100m sample landscape file representing typical Southern California ch
 - **Terrain**: Moderate slopes (10-35 degrees) representing coastal mountain foothills
 - **Aspect**: Predominantly southwest-facing (fire-prone orientation)
 - **Fuel**: NFFL Fuel Model 4 (chaparral)
-- **Elevation Range**: 100-186 meters
+- **Elevation Range**: 100-188 meters
 - **Grid**: 11×11 points spaced 10m apart
 
 This configuration is representative of fire-prone Southern California terrain where Santa Ana wind events drive rapid wildfire spread upslope.
