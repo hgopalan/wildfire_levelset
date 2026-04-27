@@ -137,7 +137,7 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
                 Real dy_val = y - y_ptr[n];
                 Real dist_sq = dx_val * dx_val + dy_val * dy_val;
                 
-                // If very close to a data point, use its value directly
+                // If very close to a data point (within epsilon), use its value directly
                 if (dist_sq < epsilon * epsilon) {
                     result_slope = slope_ptr[n];
                     result_aspect = aspect_ptr[n];
@@ -145,8 +145,8 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
                     break;
                 }
                 
-                // Inverse distance weighting using sqrt(dist_sq) for better numerical stability
-                // This prevents extreme weights when points are very close
+                // Inverse distance weighting using sqrt(dist) for better numerical stability
+                // Adding epsilon prevents division by zero and extreme weights for very close points
                 Real dist = std::sqrt(dist_sq);
                 Real weight = Real(1.0) / (dist + epsilon);
                 sum_weights += weight;
