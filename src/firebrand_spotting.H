@@ -129,6 +129,12 @@ static void generate_firebrand_spots(
         return; // Spotting disabled
     }
     
+#if defined(AMREX_USE_MPI) || defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
+    amrex::Abort("Firebrand spotting data update requires serial execution. "
+                 "Parallel execution (MPI/OMP/GPU) is not yet supported for spotting_data updates. "
+                 "Please rebuild with AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
+#endif
+    
     const Real phi_thresh = 0.1; // Threshold for identifying fire front
     const auto dx = geom.CellSize();
     const Real *prob_lo = geom.ProbLo();
