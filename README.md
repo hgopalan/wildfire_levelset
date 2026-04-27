@@ -105,7 +105,8 @@ Override parameters from command line:
 - **Grid/Domain**: `n_cell=64`, `prob_lo_x/y/z=0.0`, `prob_hi_x/y/z=1.0`
 - **Time stepping**: `nsteps=300`, `cfl=0.5`, `plot_int=50`
 - **Reinitialization**: `reinit_int=20`, `reinit_iters=20`
-- **Velocity**: `u_x=0.25`, `u_y=0.0`, `u_z=0.0`
+- **Velocity**: `u_x=0.25`, `u_y=0.0`, `u_z=0.0`, `velocity_file="wind.csv"`
+- **Time-dependent wind**: `use_time_dependent_wind=0`, `wind_time_spacing=60.0`
 - **Terrain**: `use_terrain_effects=false`, `terrain_slope=0.0`, `terrain_aspect=0.0`
 - **FARSITE**: `farsite.enable=0`, `farsite.length_to_width_ratio=3.0`
 - **Fuel model**: `rothermel.fuel_model=FM4` (FM1-FM13 available)
@@ -164,8 +165,9 @@ View with ParaView or other AMReX-compatible visualization tools.
    - Constant fuel properties across domain (no spatial variation except through fuel model selection)
 
 2. **Wind Field Constraints**
-   - Primarily constant or prescribed wind fields
-   - Limited support for spatially-varying wind (2D only via terrain_wind test)
+   - Support for constant, prescribed, and time-dependent wind fields (2D only)
+   - Spatially-varying wind supported via CSV input files
+   - Time-dependent wind with automatic interpolation between time snapshots
    - One-way coupling only (fire does not affect wind)
 
 3. **Terrain Representation**
