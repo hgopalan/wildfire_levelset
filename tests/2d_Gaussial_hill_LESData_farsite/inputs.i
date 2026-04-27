@@ -7,8 +7,8 @@ prob_lo_y = 0.0
 prob_hi_y = 5000.0
 
 # Time & output
-nsteps = 10
-plot_int = 100
+nsteps = 500
+plot_int = 10
 
 # Velocity
 velocity_file = "turbulent_field_2d.csv"
@@ -20,26 +20,32 @@ box_xmax = 2550
 box_ymin = 1000
 box_ymax = 4000
 
+# FARSITE — required for spotting to work
+farsite.enable = 1
+farsite.use_anderson_LW = 1
+farsite.phi_threshold = 0.1
+farsite.coeff_a = 1.0
+farsite.coeff_b = 0.5
+farsite.coeff_c = 0.2
+
 # Firebrand spotting model
 spotting.enable = 1
-spotting.P_base = 0.15          # increased from 0.05
-spotting.k_wind = 0.5           # increased from 0.3
-spotting.I_critical = 400.0     # decreased from 800.0
-spotting.d_mean = 0.15
-spotting.d_sigma = 0.4
-spotting.d_lambda = 8.0
+spotting.P_base = 0.50
+spotting.k_wind = 1.0
+spotting.I_critical = 100.0
+spotting.d_mean = 500.0
+spotting.d_sigma = 0.6
+spotting.d_lambda = 0.005
 spotting.distance_model = lognormal
-spotting.lateral_spread_angle = 30.0  # increased from 20.0
-spotting.spot_radius = 25
+spotting.lateral_spread_angle = 45.0
+spotting.spot_radius = 50.0
 spotting.random_seed = 12345
-spotting.check_interval = 1     # decreased from 3
+spotting.check_interval = 1
 
 # Rothermel model (use chaparral fuel type)
 rothermel.fuel_model = FM4
+rothermel.terrain_file = gaussian_hill_topography.csv
 
 # ---------------- Level Set Reinitialization ----------------
 reinit_int   = -1
-farsite.phi_threshold = 0.0
-farsite.use_anderson_LW = 1
-rothermel.terrain_file = gaussian_hill_topography.csv
 skip_levelset = 1

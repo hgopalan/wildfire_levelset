@@ -132,6 +132,8 @@ static void generate_firebrand_spots(
     const Real phi_thresh = 0.1; // Threshold for identifying fire front
     const auto dx = geom.CellSize();
     const Real *prob_lo = geom.ProbLo();
+    const Real *prob_hi = geom.ProbHi();
+    Real domain_length = prob_hi[0] - prob_lo[0];
     
 #if (AMREX_SPACEDIM == 3)
     GpuArray<Real, AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
@@ -221,7 +223,7 @@ static void generate_firebrand_spots(
             }
             
             // Clamp distance to reasonable bounds
-            distance = amrex::min(distance, Real(0.5)); // Max 50% of domain
+            distance = amrex::min(distance, Real(0.5) * domain_length); // Max 50% of domain
             distance = amrex::max(distance, sp.spot_radius * Real(2.0)); // Min 2x spot radius
             
             // Compute wind direction
