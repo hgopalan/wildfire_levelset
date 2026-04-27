@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
         bool use_farsite_model = false;
         Real terrain_slope = 0.0;      // slope in degrees
         Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North, 180=West, 270=South)
+        amrex::ParmParse pp;
         
         pp.query("use_terrain_effects", use_terrain_effects);
         pp.query("use_farsite_model", use_farsite_model);

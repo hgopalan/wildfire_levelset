@@ -258,7 +258,9 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
             Real norm = std::sqrt(param1*param1 + param2*param2 + param3*param3);
             Real nx = param1 / norm;
             Real ny = param2 / norm;
+#if (AMREX_SPACEDIM == 3)
             Real nz = param3 / norm;
+#endif
             Real d0 = param4 / norm;
             
             ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
@@ -293,13 +295,13 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
             // Sphere: center (param1, param2, param3), radius param4
             Real cx = param1;
             Real cy = param2;
-            Real cz = param3;
             Real radius = param4;
             
             ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 Real x = plo[0] + (i + 0.5) * dx[0];
                 Real y = plo[1] + (j + 0.5) * dx[1];
 #if (AMREX_SPACEDIM == 3)
+                Real cz = param3;
                 Real z = plo[2] + (k + 0.5) * dx[2];
                 Real r = std::sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy) + (z - cz)*(z - cz));
 #else
@@ -313,15 +315,14 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
             // Ellipsoid: center (param1, param2, param3), semi-axes (param4, param5, param6)
             Real cx = param1;
             Real cy = param2;
-            Real cz = param3;
             Real rx = param4;
             Real ry = param5;
-            Real rz = param6;
-            
             ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 Real x = plo[0] + (i + 0.5) * dx[0];
                 Real y = plo[1] + (j + 0.5) * dx[1];
 #if (AMREX_SPACEDIM == 3)
+                Real cz = param3;
+                Real rz = param6;   
                 Real z = plo[2] + (k + 0.5) * dx[2];
                 Real dx_norm = (x - cx) / rx;
                 Real dy_norm = (y - cy) / ry;
@@ -336,6 +337,8 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
                 p(i,j,k) = d * scale;
 #else
                 (void)k;
+                (void) param3; // unused in 2D
+                (void) param6; // unused in 2D
                 Real dx_norm = (x - cx) / rx;
                 Real dy_norm = (y - cy) / ry;
                 Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm);
