@@ -14,6 +14,7 @@
 // Structure to hold computed Rothermel parameters for GPU kernel
 struct RothermelComputed {
     amrex::Real R0;              // No-wind, no-slope rate of spread [ft/min]
+    amrex::Real I_R;             // Reaction intensity [BTU/ft²/min]
     amrex::Real beta_ratio_E;    // Packing-ratio part of wind factor
     amrex::Real C;               // Wind factor coefficient C (Eq. 47)
     amrex::Real B;               // Wind factor coefficient B (Eq. 48)
@@ -87,6 +88,9 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 
     // No-wind, no-slope rate of spread [ft/min] (Eq. 1)
     rc.R0 = I_R * xi / (rho_b * eps_h * Q_ig);
+    
+    // Store reaction intensity for fuel consumption calculation
+    rc.I_R = I_R;
 
     // Wind factor coefficients (Eqs. 47–48)
     rc.C = 7.47  * std::exp(-0.133  * std::pow(sigma, 0.55));

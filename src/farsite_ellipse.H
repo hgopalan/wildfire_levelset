@@ -16,6 +16,7 @@
 //    - b: flank fire coefficient (crosswind spread)
 //    - c: backing fire coefficient (upwind, minimum spread)
 // 4. Computes directional spread based on angle between fire normal and wind
+// 5. Optionally computes bulk fuel consumption fraction
 // ============================================================================
 
 #ifndef FARSITE_ELLIPSE_H
@@ -24,6 +25,7 @@
 #include "fire_models.H"
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "bulk_fuel_consumption.H"
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
@@ -40,13 +42,15 @@ constexpr Real PHI_RESET_MULTIPLIER = -10.0;
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
 // combined with Rothermel (1972) ROS
+// Optionally computes bulk fuel consumption fraction if enabled
 // ============================================================================
 static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    MultiFab &farsite_spread,
                                    const Geometry &geom, Real dt,
                                    const RothermelParams &rp,
                                    const InputParameters::FARSITEParams &fp,
-                                   const MultiFab *slopes = nullptr) {
+                                   const MultiFab *slopes = nullptr,
+                                   MultiFab *fuel_consumption = nullptr) {
   if (fp.enable == 0) {
     return; // FARSITE disabled
   }
@@ -81,6 +85,7 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   // Compute Rothermel (1972) fire spread parameters
   const RothermelComputed rc = compute_rothermel_params(rp);
   const Real R0 = rc.R0;
+  const Real I_R = rc.I_R; // Reaction intensity for fuel consumption
   const Real C = rc.C;
   const Real B = rc.B;
   const Real beta_ratio_E = rc.beta_ratio_E;
@@ -90,6 +95,12 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       rc.beta; // Packing ratio for terrain-based phi_s calculation
   const Real wind_conv = rc.wind_conv;
   const Real ros_conv = rc.ros_conv;
+  
+  // Bulk fuel consumption model parameters
+  const int use_fuel_consumption = fp.use_bulk_fuel_consumption;
+  const Real tau_residence = fp.tau_residence;
+  const Real f_c_min = fp.f_consumed_min;
+  const Real f_c_max = fp.f_consumed_max;
 
   // -------------------------------------------------------------------------
   // First pass: compute elliptical spread vector at each fire-front cell
@@ -105,6 +116,13 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     Array4<const Real> s;
     if (use_terrain) {
       s = slopes->const_array(mfi);
+    }
+    
+    // Get fuel consumption array if provided
+    const bool compute_fuel_consumption = (fuel_consumption != nullptr && use_fuel_consumption == 1);
+    Array4<Real> fc;
+    if (compute_fuel_consumption) {
+      fc = fuel_consumption->array(mfi);
     }
 
     ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -241,6 +259,12 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
       spread(i, j, k, 2) = spread_dist * nz;
 #endif
+
+      // Compute fuel consumption fraction if enabled
+      if (compute_fuel_consumption) {
+        Real f_c = compute_fuel_consumption_fraction(I_R, tau_residence, f_c_min, f_c_max);
+        fc(i, j, k) = f_c;
+      }
     });
   }
   amrex::Print()<<" Maximum Spread (cells) = "<<farsite_spread.norminf(0)<<" "<<farsite_spread.norminf(1)
