@@ -74,6 +74,22 @@ struct InputParameters {
         amrex::Real coeff_c;                 // backing fire coefficient (default: 0.2)
     } farsite;
     
+    // Firebrand spotting model parameters
+    struct SpottingParams {
+        int enable;                          // 1 to enable spotting, 0 to disable (default: 0)
+        amrex::Real P_base;                  // Base spotting probability (0.0-1.0) (default: 0.02)
+        amrex::Real k_wind;                  // Wind speed coefficient for probability (default: 0.3)
+        amrex::Real I_critical;              // Critical fire intensity for spotting (default: 1000.0)
+        amrex::Real d_mean;                  // Mean spotting distance (default: 0.1)
+        amrex::Real d_sigma;                 // Spotting distance std deviation for lognormal (default: 0.5)
+        amrex::Real d_lambda;                // Spotting distance decay rate for exponential (default: 10.0)
+        std::string distance_model;          // "lognormal" or "exponential" (default: "lognormal")
+        amrex::Real lateral_spread_angle;    // Angular spread perpendicular to wind in degrees (default: 15.0)
+        amrex::Real spot_radius;             // Radius of new spot fires (default: 0.02)
+        int random_seed;                     // Seed for random number generator (0 = use time) (default: 0)
+        int check_interval;                  // Check for spotting every N timesteps (default: 5)
+    } spotting;
+    
     // Skip level set evolution option
     int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
 };

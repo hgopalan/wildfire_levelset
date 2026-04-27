@@ -131,6 +131,33 @@ void parse_inputs(InputParameters& p)
     p.farsite.coeff_b = 0.5;                     pp.query("farsite.coeff_b", p.farsite.coeff_b);
     p.farsite.coeff_c = 0.2;                     pp.query("farsite.coeff_c", p.farsite.coeff_c);
 
+    // -------- Firebrand spotting model parameters --------
+    p.spotting.enable = 0;                       pp.query("spotting.enable", p.spotting.enable);
+    p.spotting.P_base = 0.02;                    pp.query("spotting.P_base", p.spotting.P_base);
+    p.spotting.k_wind = 0.3;                     pp.query("spotting.k_wind", p.spotting.k_wind);
+    p.spotting.I_critical = 1000.0;              pp.query("spotting.I_critical", p.spotting.I_critical);
+    p.spotting.d_mean = 0.1;                     pp.query("spotting.d_mean", p.spotting.d_mean);
+    p.spotting.d_sigma = 0.5;                    pp.query("spotting.d_sigma", p.spotting.d_sigma);
+    p.spotting.d_lambda = 10.0;                  pp.query("spotting.d_lambda", p.spotting.d_lambda);
+    p.spotting.distance_model = "lognormal";     pp.query("spotting.distance_model", p.spotting.distance_model);
+    p.spotting.lateral_spread_angle = 15.0;      pp.query("spotting.lateral_spread_angle", p.spotting.lateral_spread_angle);
+    p.spotting.spot_radius = 0.02;               pp.query("spotting.spot_radius", p.spotting.spot_radius);
+    p.spotting.random_seed = 0;                  pp.query("spotting.random_seed", p.spotting.random_seed);
+    p.spotting.check_interval = 5;               pp.query("spotting.check_interval", p.spotting.check_interval);
+    
+    // Validate spotting parameters
+    if (p.spotting.enable == 1) {
+        if (p.spotting.P_base < 0.0 || p.spotting.P_base > 1.0) {
+            amrex::Abort("spotting.P_base must be between 0.0 and 1.0");
+        }
+        if (p.spotting.check_interval < 1) {
+            amrex::Abort("spotting.check_interval must be at least 1");
+        }
+        if (p.spotting.distance_model != "lognormal" && p.spotting.distance_model != "exponential") {
+            amrex::Abort("spotting.distance_model must be either 'lognormal' or 'exponential'");
+        }
+    }
+
     // -------- Skip level set option --------
     p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
 }

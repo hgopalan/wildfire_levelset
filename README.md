@@ -196,6 +196,21 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `farsite.coeff_a=1.0` (head fire coefficient for elliptical expansion)
   - `farsite.coeff_b=0.5` (flank fire coefficient for elliptical expansion)
   - `farsite.coeff_c=0.2` (backing fire coefficient for elliptical expansion)
+- Firebrand spotting model:
+  - `spotting.enable=0` (1 to enable firebrand spotting, 0 to disable) (default: 0)
+  - `spotting.P_base=0.02` (base spotting probability, 0.0-1.0) (default: 0.02)
+  - `spotting.k_wind=0.3` (wind speed coefficient for probability) (default: 0.3)
+  - `spotting.I_critical=1000.0` (critical fire intensity for spotting, BTU/ft²/min) (default: 1000.0)
+  - `spotting.d_mean=0.1` (mean spotting distance in simulation units) (default: 0.1)
+  - `spotting.d_sigma=0.5` (spotting distance std deviation for lognormal) (default: 0.5)
+  - `spotting.d_lambda=10.0` (spotting distance decay rate for exponential) (default: 10.0)
+  - `spotting.distance_model=lognormal` ("lognormal" or "exponential") (default: "lognormal")
+  - `spotting.lateral_spread_angle=15.0` (angular spread perpendicular to wind, degrees) (default: 15.0)
+  - `spotting.spot_radius=0.02` (radius of new spot fires) (default: 0.02)
+  - `spotting.random_seed=0` (seed for RNG, 0=use time) (default: 0)
+  - `spotting.check_interval=5` (check for spotting every N timesteps) (default: 5)
+  - **Note:** Spotting requires `farsite.enable=1` and works best with `skip_levelset=1`
+  - See `SPOTTING_MODEL.md` for detailed documentation
 - Level set control:
   - `skip_levelset=0` (1 to skip level set advection and use initial phi throughout simulation, 0 for normal operation with evolving level set)
 
@@ -228,6 +243,23 @@ To run FARSITE ellipse model with a fixed initial phi (skipping level set evolut
 ./build/levelset skip_levelset=1 farsite.enable=1
 ```
 
+### Example: Using firebrand spotting with FARSITE
+
+To run the firebrand spotting model with FARSITE:
+
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 \
+  spotting.P_base=0.03 spotting.d_mean=0.15 u_x=0.4
+```
+
+This configuration:
+- Enables FARSITE ellipse spread and skips level set advection
+- Enables firebrand spotting with 3% base probability
+- Sets mean spotting distance to 0.15 (15% of domain)
+- Uses moderate wind speed (0.4 m/s in x-direction)
+
+See `SPOTTING_MODEL.md` for comprehensive documentation on the spotting model.
+
 This mode is useful for analyzing FARSITE spread patterns based on initial fire geometry without the complexity of level set advection. When both `skip_levelset=1` and `farsite.enable=1` are set, the phi field is initialized as an indicator function (phi = 1 inside the fire region, phi = 0 outside) instead of a signed distance function. The phi field remains at its initial configuration throughout the simulation, while FARSITE computes directional spread rates at each timestep.
 
 **Note:** In normal level set mode (`skip_levelset=0`), phi is initialized as a signed distance function (negative inside, positive outside). The indicator function initialization (phi = 1 inside, phi = 0 outside) is only used when both FARSITE is enabled and level set is skipped.
@@ -242,3 +274,8 @@ This mode is useful for analyzing FARSITE spread patterns based on initial fire 
     - In FARSITE-only mode (`skip_levelset=1` and `farsite.enable=1`): indicator function (1 inside burned region, 0 outside)
   - `velx`, `vely`, `velz`: Velocity field components
   - `farsite_dx`, `farsite_dy`, `farsite_dz`: FARSITE ellipse spread displacements (when enabled)
+  - `R`: Rothermel rate of spread field
+  - `spot_prob`: Spotting probability field (0.0-1.0) (when spotting enabled)
+  - `spot_count`: Number of firebrands generated per cell (when spotting enabled)
+  - `spot_dist`: Spotting distance field (when spotting enabled)
+  - `spot_active`: Active spot fire flag (0 or 1) (when spotting enabled)

@@ -4,11 +4,12 @@ This document provides detailed information about the fire spread models impleme
 
 ## Overview
 
-The solver now supports three fire spread modeling approaches:
+The solver now supports four fire spread modeling approaches:
 
 1. **Basic Model**: Simple wind-driven spread (original implementation)
 2. **Rothermel Model**: Includes terrain slope corrections
 3. **FARSITE Model**: Full model with Anderson L/W ratio and combined wind/terrain effects
+4. **Firebrand Spotting Model**: Probability-based spotting integrated with FARSITE
 
 ## Model Selection
 
@@ -23,6 +24,9 @@ Use runtime parameters to select the desired model:
 
 # FARSITE model with L/W ratio
 ./build/levelset u_x=0.5 u_y=0.0 use_terrain_effects=true use_farsite_model=true terrain_slope=15.0 terrain_aspect=90.0
+
+# FARSITE with firebrand spotting
+./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 u_x=0.4
 ```
 
 ## Anderson L/W Ratio (FARSITE)
@@ -198,20 +202,147 @@ Expected: Asymmetric fire shape (wind and slope perpendicular)
 ```
 Expected: Complex fire shape reflecting combined wind/terrain effects
 
+## Firebrand Spotting Model
+
+### Background
+
+The firebrand spotting model simulates the generation of new fire ignition points ahead of the main fire front. Firebrands (burning embers) are lofted by fire convection and transported downwind, creating spot fires when they land in receptive fuel beds. This is a critical fire behavior phenomenon that:
+- Accelerates fire spread beyond the continuous fire front
+- Creates non-contiguous fire perimeters
+- Is responsible for many structure losses in wildfire events
+
+### Model Overview
+
+The spotting model uses a probability-based approach:
+1. Identifies fire front locations (phi ≈ 0)
+2. Computes spotting probability based on wind, fire intensity, and fuel moisture
+3. Generates new ignition points stochastically
+4. Places spot fires at downwind locations with lateral dispersion
+
+### Integration with FARSITE
+
+**Important**: The spotting model works within the FARSITE framework and requires:
+- `farsite.enable = 1` (FARSITE must be enabled)
+- `skip_levelset = 1` (recommended for FARSITE mode)
+- `spotting.enable = 1` (enable spotting)
+
+The spotting model does NOT work with level-set advection. It is designed specifically for the FARSITE elliptical expansion approach.
+
+### Probability Function
+
+Spotting probability at each fire front cell:
+```
+P_spot = P_base × f_wind × f_intensity × f_moisture
+```
+
+Where:
+- `P_base`: Base probability (user-specified, 0.01-0.10)
+- `f_wind = 1 - exp(-k_wind × U²/100)`: Wind factor (higher wind → higher probability)
+- `f_intensity = min(1, I/I_critical)`: Fire intensity factor
+- `f_moisture = (M_x - M_f)/M_x`: Fuel moisture factor
+
+### Distance Distribution
+
+Two models available:
+1. **Lognormal** (recommended): `ln(d) ~ N(μ, σ²)` where `μ = ln(d_mean) - 0.5σ²`
+2. **Exponential**: `d ~ Exp(λ)` where mean = `1/λ`
+
+Lognormal is more physically realistic for firebrand transport.
+
+### Directional Dispersion
+
+Spots are placed primarily downwind with lateral spread:
+- Primary direction: Wind direction
+- Lateral offset: Gaussian with std dev = `tan(lateral_angle) × distance`
+- Creates a cone of possible landing locations
+
+### Key Parameters
+
+| Parameter | Description | Typical Range |
+|-----------|-------------|---------------|
+| `spotting.P_base` | Base probability | 0.01-0.10 |
+| `spotting.k_wind` | Wind coefficient | 0.1-0.5 |
+| `spotting.I_critical` | Critical intensity (BTU/ft²/min) | 500-2000 |
+| `spotting.d_mean` | Mean distance | 0.1-0.3 |
+| `spotting.d_sigma` | Distance std dev (lognormal) | 0.3-1.0 |
+| `spotting.lateral_spread_angle` | Lateral angle (degrees) | 10-30 |
+| `spotting.spot_radius` | Spot fire radius | 0.01-0.05 |
+| `spotting.check_interval` | Check every N steps | 1-10 |
+
+See `SPOTTING_MODEL.md` for comprehensive parameter documentation.
+
+### Example Usage
+
+**Basic spotting with moderate frequency:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 \
+  u_x=0.4 spotting.P_base=0.03 spotting.d_mean=0.15
+```
+
+**Aggressive spotting with high frequency:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 \
+  u_x=0.5 spotting.P_base=0.08 spotting.k_wind=0.2 \
+  spotting.check_interval=3 spotting.d_mean=0.2
+```
+
+**Using exponential distance model:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 \
+  u_x=0.4 spotting.distance_model=exponential spotting.d_lambda=8.0
+```
+
+### Expected Behavior
+
+A properly configured spotting simulation should show:
+1. Fire starts at initial ignition point
+2. FARSITE propagates fire elliptically in wind direction
+3. New spot fires appear ahead of main fire (primarily downwind)
+4. Distance distribution follows chosen model (lognormal/exponential)
+5. Some lateral dispersion perpendicular to wind
+6. Spot fires grow and eventually merge with main fire
+7. Multiple generations of spotting possible
+
+### Output Fields
+
+Spotting adds four fields to plotfiles:
+- `spot_prob`: Spotting probability (0.0-1.0)
+- `spot_count`: Number of firebrands generated
+- `spot_dist`: Spotting distance field
+- `spot_active`: Active spot fire flag (0 or 1)
+
+### Validation
+
+Validate spotting behavior by checking:
+- **No wind case**: Minimal or no spotting
+- **Low intensity**: Reduced spotting frequency
+- **High moisture**: Reduced spotting frequency
+- **Reproducibility**: Fixed random seed gives consistent results
+
+### Limitations
+
+Current implementation:
+- CPU-only random number generation (not GPU-compatible)
+- Simplified physics (no firebrand lofting height or burnout)
+- No fuel receptivity variations
+- No terrain interaction in landing probability
+
+See `SPOTTING_MODEL.md` for detailed physics, implementation, and future enhancements.
+
 ## Notes and Limitations
 
 ### Current Implementation
 - Terrain is currently uniform (constant slope/aspect)
 - Wind field is constant in space and time
 - No fuel or moisture variability
-- Simplified fire physics (no spotting, crown fire, etc.)
+- Firebrand spotting available (see Spotting Model section above)
 
 ### Future Enhancements
 - Variable terrain from elevation data
 - Non-uniform wind fields from file input
 - Fuel bed properties and moisture content
 - Two-way coupling with atmospheric models
-- Spotting and ember transport
+- Enhanced spotting with firebrand physics
 
 ### Numerical Considerations
 - WENO5-Z scheme maintains accuracy on complex fire fronts
