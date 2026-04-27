@@ -358,25 +358,26 @@ static void generate_firebrand_spots(
     }
     
     // Update spotting data based on generated spots
-    for (int idx = 0; idx < total_spots; ++idx) {
-        int src_i = source_i[idx];
-        int src_j = source_j[idx];
-        int src_k = source_k[idx];
-        Real distance = spot_distances[idx];
+    // Restructured to iterate over boxes in outer loop for better performance
+    for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
+        const Box &bx = mfi.validbox();
+        auto spot = spotting_data.array(mfi);
         
-        Real x_spot = spot_x[idx];
-        Real y_spot = spot_y[idx];
-#if (AMREX_SPACEDIM == 3)
-        Real z_spot = spot_z[idx];
-#endif
+        const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
         
-        // Update source cell with count and distance information
-        for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
-            const Box &bx = mfi.validbox();
-            auto spot = spotting_data.array(mfi);
+        // Process all spots for this box
+        for (int idx = 0; idx < total_spots; ++idx) {
+            int src_i = source_i[idx];
+            int src_j = source_j[idx];
+            int src_k = source_k[idx];
+            Real distance = spot_distances[idx];
             
-            const auto lo = lbound(bx);
-            const auto hi = ubound(bx);
+            Real x_spot = spot_x[idx];
+            Real y_spot = spot_y[idx];
+#if (AMREX_SPACEDIM == 3)
+            Real z_spot = spot_z[idx];
+#endif
             
             // Check if source cell is in this box
             if (src_i >= lo.x && src_i <= hi.x &&
@@ -384,6 +385,7 @@ static void generate_firebrand_spots(
                 src_k >= lo.z && src_k <= hi.z) {
                 
                 // Increment count (component 1)
+                // Using simple increment is safe here because we're in serial CPU loop
                 spot(src_i, src_j, src_k, 1) += 1.0;
                 
                 // Store maximum distance (component 2) - useful for visualization
