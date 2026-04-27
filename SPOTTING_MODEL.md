@@ -197,17 +197,25 @@ The spotting model adds four output fields to plotfiles:
 | Field | Description | Range | Units |
 |-------|-------------|-------|-------|
 | `spot_prob` | Spotting probability | 0.0-1.0 | dimensionless |
-| `spot_count` | Number of firebrands generated | ≥ 0 | count |
-| `spot_dist` | Spotting distance field | ≥ 0 | sim units |
-| `spot_active` | Active spot fire flag | 0 or 1 | binary |
+| `spot_count` | Number of firebrands generated per cell | ≥ 0 | count |
+| `spot_dist` | Maximum spotting distance from cell | ≥ 0 | sim units |
+| `spot_active` | Active spot fire flag (1 where spot ignited) | 0 or 1 | binary |
+
+These fields are populated as follows:
+- **`spot_prob`**: Computed at each cell near the fire front (phi ≤ 0.1) based on wind speed, fire intensity, and fuel moisture
+- **`spot_count`**: Incremented for source cells that generated firebrands; shows how many spots originated from each location
+- **`spot_dist`**: Stores the maximum distance traveled by firebrands generated from each source cell
+- **`spot_active`**: Set to 1.0 at cells where new spot fires were placed, 0.0 elsewhere; marks active ignition points
 
 ### Visualization Tips
 
 In ParaView or VisIt:
 1. **Fire perimeter**: Threshold `phi < 0` to see burned regions
 2. **Spotting zones**: Color by `spot_prob` to see high-probability areas
-3. **Spot locations**: Track where `phi` becomes negative in unburned regions
-4. **Temporal evolution**: Animate to observe spot fire generation and growth
+3. **Spot locations**: Color by `spot_active` to see where new fires ignited
+4. **Spot sources**: Color by `spot_count` to see which cells generated the most firebrands
+5. **Spot distances**: Color by `spot_dist` to visualize how far firebrands traveled
+6. **Temporal evolution**: Animate to observe spot fire generation and growth
 
 ## Example Configurations
 
