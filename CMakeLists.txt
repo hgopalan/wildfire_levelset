@@ -12,6 +12,7 @@ set(AMREX_SUBMODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/amrex")
 option(LEVELSET_USE_VENDORED_AMREX "Prefer building the vendored AMReX submodule" ON)
 option(LEVELSET_DIM_2D "Build for 2D instead of 3D" OFF)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
+option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 
 if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt")
   message(STATUS "Using vendored AMReX from ${AMREX_SUBMODULE_DIR}")
@@ -72,3 +73,33 @@ endif()
 
 # Add regression test subdirectory
 add_subdirectory(regtest)
+
+# Add documentation build target
+if(LEVELSET_BUILD_DOCS)
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    find_program(SPHINX_EXECUTABLE
+                 NAMES sphinx-build
+                 DOC "Path to sphinx-build executable")
+    
+    if(SPHINX_EXECUTABLE)
+      set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/docs)
+      set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/docs)
+      
+      add_custom_target(docs
+        COMMAND ${SPHINX_EXECUTABLE} -b html
+                ${SPHINX_SOURCE} ${SPHINX_BUILD}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating documentation with Sphinx"
+        VERBATIM)
+      
+      message(STATUS "Documentation build target 'docs' configured")
+      message(STATUS "  Build with: cmake --build build --target docs")
+      message(STATUS "  Output: ${SPHINX_BUILD}/index.html")
+    else()
+      message(WARNING "sphinx-build not found. Install with: pip install -r docs/requirements.txt")
+    endif()
+  else()
+    message(WARNING "Python3 not found. Documentation build disabled.")
+  endif()
+endif()

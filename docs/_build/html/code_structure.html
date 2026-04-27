@@ -1,0 +1,470 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Structure &mdash; Wildfire Level-Set Solver 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Building the Code" href="building.html" />
+    <link rel="prev" title="Mathematical Models" href="mathematical_models.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Wildfire Level-Set Solver
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mathematical_models.html">Mathematical Models</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Code Structure</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#directory-structure">Directory Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-components">Core Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#main-simulation-loop">Main Simulation Loop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#input-parsing">Input Parsing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#rothermel-model">Rothermel Model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#farsite-ellipse-model">FARSITE Ellipse Model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-set-advection">Level-Set Advection</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#numerical-schemes">Numerical Schemes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reinitialization">Reinitialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#terrain-slope">Terrain Slope</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#velocity-field">Velocity Field</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#crown-fire-initiation">Crown Fire Initiation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#firebrand-spotting">Firebrand Spotting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#bulk-fuel-consumption">Bulk Fuel Consumption</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fuel-database">Fuel Database</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#initial-conditions">Initial Conditions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#boundary-conditions">Boundary Conditions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#output-and-visualization">Output and Visualization</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#data-structures">Data Structures</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#rothermelparams">RothermelParams</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#rothermelcomputed">RothermelComputed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#gpu-cpu-execution">GPU/CPU Execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#build-system">Build System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#cmake-configuration">CMake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-framework">Testing Framework</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building.html">Building the Code</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Wildfire Level-Set Solver</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Code Structure</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/code_structure.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="code-structure">
+<h1>Code Structure<a class="headerlink" href="#code-structure" title="Link to this heading"></a></h1>
+<p>This section describes the organization and architecture of the wildfire level-set solver.</p>
+<section id="directory-structure">
+<h2>Directory Structure<a class="headerlink" href="#directory-structure" title="Link to this heading"></a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>wildfire_levelset/
+├── CMakeLists.txt          # Main CMake build configuration
+├── README.md               # Project README
+├── LICENSE                 # License file
+├── docs/                   # Documentation (this directory)
+├── external/               # External dependencies
+│   └── amrex/              # AMReX submodule
+├── src/                    # Source code
+│   ├── main.cpp            # Main entry point
+│   ├── parse_inputs.H      # Input parameter parsing
+│   ├── parse_inputs.cpp    # Input parameter implementation
+│   ├── advection.H         # Level-set advection
+│   ├── rothermel_model.H   # Rothermel fire spread model
+│   ├── farsite_ellipse.H   # FARSITE elliptical expansion
+│   ├── fire_models.H       # Fire model utilities
+│   ├── terrain_slope.H     # Terrain slope calculations
+│   ├── velocity_field.H    # Wind field management
+│   ├── crown_initiation.H  # Crown fire initiation
+│   ├── firebrand_spotting.H # Firebrand spotting model
+│   ├── bulk_fuel_consumption.H # Fuel consumption
+│   ├── initial_conditions.H # Initial fire setup
+│   ├── boundary_conditions.H # Boundary conditions
+│   ├── numerical_schemes.H # Numerical discretization
+│   ├── reinitialization.H  # Level-set reinitialization
+│   ├── compute_dt.H        # Time step calculation
+│   ├── plot_results.H      # Output/plotting
+│   ├── write_xy_data.H     # XY data export
+│   ├── compute_rothermel_R.H # Rothermel ROS
+│   └── fuel_database.H     # Fuel property database
+├── regtest/                # Regression tests
+│   ├── basic_levelset/     # Basic level-set test
+│   ├── anderson_lw/        # Anderson L/W ratio test
+│   ├── farsite_ellipse/    # FARSITE ellipse test
+│   ├── rothermel_fuel/     # Rothermel fuel test
+│   ├── terrain_wind/       # Terrain/wind test
+│   ├── crown_initiation/   # Crown fire test
+│   ├── firebrand_spotting/ # Spotting test
+│   ├── bulk_fuel_consumption/ # Fuel consumption test
+│   └── ...                 # Other tests
+└── tests/                  # Additional test files
+</pre></div>
+</div>
+</section>
+<section id="core-components">
+<h2>Core Components<a class="headerlink" href="#core-components" title="Link to this heading"></a></h2>
+<section id="main-simulation-loop">
+<h3>Main Simulation Loop<a class="headerlink" href="#main-simulation-loop" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/main.cpp</span></code></p>
+<p>The main simulation loop performs the following steps:</p>
+<ol class="arabic simple">
+<li><p>Parse input parameters from configuration file</p></li>
+<li><p>Set up AMReX geometry and grid hierarchy</p></li>
+<li><p>Initialize level-set function <span class="math notranslate nohighlight">\(\phi\)</span> and velocity field</p></li>
+<li><p>Time stepping loop:</p>
+<ol class="loweralpha simple">
+<li><p>Compute time step <span class="math notranslate nohighlight">\(\Delta t\)</span> based on CFL condition</p></li>
+<li><p>Compute fire spread rate using Rothermel model</p></li>
+<li><p>Advance level-set function or apply FARSITE ellipse</p></li>
+<li><p>Apply crown fire initiation if enabled</p></li>
+<li><p>Apply firebrand spotting if enabled</p></li>
+<li><p>Compute bulk fuel consumption if enabled</p></li>
+<li><p>Write output files</p></li>
+<li><p>Advance time <span class="math notranslate nohighlight">\(t \leftarrow t + \Delta t\)</span></p></li>
+</ol>
+</li>
+</ol>
+</section>
+<section id="input-parsing">
+<h3>Input Parsing<a class="headerlink" href="#input-parsing" title="Link to this heading"></a></h3>
+<p><strong>Files</strong>: <code class="docutils literal notranslate"><span class="pre">src/parse_inputs.H</span></code>, <code class="docutils literal notranslate"><span class="pre">src/parse_inputs.cpp</span></code></p>
+<p>The input parser reads configuration files and stores parameters in structured data types:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">RothermelParams</span></code>: Fuel properties for Rothermel model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">InputParameters::FARSITEParams</span></code>: FARSITE ellipse parameters</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">InputParameters::CrownInitiationParams</span></code>: Crown fire parameters</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">InputParameters::SpottingParams</span></code>: Firebrand spotting parameters</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">InputParameters::FuelConsumptionParams</span></code>: Bulk fuel consumption parameters</p></li>
+</ul>
+</section>
+<section id="rothermel-model">
+<h3>Rothermel Model<a class="headerlink" href="#rothermel-model" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/rothermel_model.H</span></code></p>
+<p>Implements the Rothermel (1972) fire spread equations. Key function:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_rothermel_params()</span></code>: Computes all Rothermel parameters including:</p>
+<ul>
+<li><p>Packing ratio <span class="math notranslate nohighlight">\(\beta\)</span></p></li>
+<li><p>Reaction intensity <span class="math notranslate nohighlight">\(I_R\)</span></p></li>
+<li><p>No-wind, no-slope ROS <span class="math notranslate nohighlight">\(R_0\)</span></p></li>
+<li><p>Wind factor coefficients <span class="math notranslate nohighlight">\(C\)</span>, <span class="math notranslate nohighlight">\(B\)</span>, <span class="math notranslate nohighlight">\(E\)</span></p></li>
+<li><p>Slope factor <span class="math notranslate nohighlight">\(\phi_s\)</span></p></li>
+</ul>
+</li>
+</ul>
+<p>Returns a <code class="docutils literal notranslate"><span class="pre">RothermelComputed</span></code> structure with all computed values.</p>
+</section>
+<section id="farsite-ellipse-model">
+<h3>FARSITE Ellipse Model<a class="headerlink" href="#farsite-ellipse-model" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/farsite_ellipse.H</span></code></p>
+<p>Implements Richards’ (1990) elliptical fire spread model:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_farsite_spread()</span></code>: Main function that:</p>
+<ol class="arabic simple">
+<li><p>Identifies fire front locations (where <span class="math notranslate nohighlight">\(\phi \approx 0\)</span>)</p></li>
+<li><p>Computes base ROS using Rothermel model</p></li>
+<li><p>Applies Van Wagner crown fire modification if enabled</p></li>
+<li><p>Computes elliptical expansion using Richards’ coefficients <span class="math notranslate nohighlight">\(a\)</span>, <span class="math notranslate nohighlight">\(b\)</span>, <span class="math notranslate nohighlight">\(c\)</span></p></li>
+<li><p>Updates level-set function with new fire front</p></li>
+</ol>
+</li>
+</ul>
+</section>
+<section id="level-set-advection">
+<h3>Level-Set Advection<a class="headerlink" href="#level-set-advection" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/advection.H</span></code></p>
+<p>Implements the level-set advection equation:</p>
+<div class="math notranslate nohighlight">
+\[\frac{\partial \phi}{\partial t} + V|\nabla\phi| = 0\]</div>
+<ul class="simple">
+<li><p>Uses upwind finite differences for spatial derivatives</p></li>
+<li><p>Explicit time integration</p></li>
+<li><p>Computes <span class="math notranslate nohighlight">\(|\nabla\phi|\)</span> using central or upwind differences</p></li>
+</ul>
+</section>
+<section id="numerical-schemes">
+<h3>Numerical Schemes<a class="headerlink" href="#numerical-schemes" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/numerical_schemes.H</span></code></p>
+<p>Provides numerical discretization utilities:</p>
+<ul class="simple">
+<li><p>Upwind gradient computation</p></li>
+<li><p>CFL time step calculation</p></li>
+<li><p>Spatial derivative operators</p></li>
+</ul>
+</section>
+<section id="reinitialization">
+<h3>Reinitialization<a class="headerlink" href="#reinitialization" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/reinitialization.H</span></code></p>
+<p>Maintains the level-set function as a signed distance function:</p>
+<ul class="simple">
+<li><p>Iterative reinitialization equation</p></li>
+<li><p>Ensures <span class="math notranslate nohighlight">\(|\nabla\phi| = 1\)</span> away from the interface</p></li>
+</ul>
+</section>
+<section id="terrain-slope">
+<h3>Terrain Slope<a class="headerlink" href="#terrain-slope" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/terrain_slope.H</span></code></p>
+<p>Computes terrain slopes from elevation data:</p>
+<ul class="simple">
+<li><p>Reads X Y Z terrain data from file</p></li>
+<li><p>Interpolates elevation using inverse distance weighting (IDW)</p></li>
+<li><p>Computes slopes <span class="math notranslate nohighlight">\(\partial z/\partial x\)</span> and <span class="math notranslate nohighlight">\(\partial z/\partial y\)</span> using central differences</p></li>
+</ul>
+</section>
+<section id="velocity-field">
+<h3>Velocity Field<a class="headerlink" href="#velocity-field" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/velocity_field.H</span></code></p>
+<p>Manages wind velocity field:</p>
+<ul class="simple">
+<li><p>Uniform or spatially-varying wind</p></li>
+<li><p>Time-dependent wind (future capability)</p></li>
+<li><p>Wind direction and magnitude</p></li>
+</ul>
+</section>
+<section id="crown-fire-initiation">
+<h3>Crown Fire Initiation<a class="headerlink" href="#crown-fire-initiation" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/crown_initiation.H</span></code></p>
+<p>Implements Van Wagner (1977) crown fire model:</p>
+<ul class="simple">
+<li><p>Computes critical surface intensity <span class="math notranslate nohighlight">\(I_0\)</span></p></li>
+<li><p>Checks crown fire initiation criterion <span class="math notranslate nohighlight">\(I &gt; I_0\)</span></p></li>
+<li><p>Modifies fire spread rate for active crown fire</p></li>
+</ul>
+</section>
+<section id="firebrand-spotting">
+<h3>Firebrand Spotting<a class="headerlink" href="#firebrand-spotting" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/firebrand_spotting.H</span></code></p>
+<p>Simulates firebrand spotting:</p>
+<ul class="simple">
+<li><p>Probabilistic spotting model</p></li>
+<li><p>Distance-dependent spot fire probability</p></li>
+<li><p>Creates new ignition points ahead of main fire</p></li>
+</ul>
+</section>
+<section id="bulk-fuel-consumption">
+<h3>Bulk Fuel Consumption<a class="headerlink" href="#bulk-fuel-consumption" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/bulk_fuel_consumption.H</span></code></p>
+<p>Computes post-frontal fuel consumption:</p>
+<ul class="simple">
+<li><p>Residence time calculation</p></li>
+<li><p>Fuel consumption fraction</p></li>
+<li><p>Heat release rate</p></li>
+</ul>
+</section>
+<section id="fuel-database">
+<h3>Fuel Database<a class="headerlink" href="#fuel-database" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/fuel_database.H</span></code></p>
+<p>Standard fuel model properties:</p>
+<ul class="simple">
+<li><p>Anderson 13 fuel models</p></li>
+<li><p>Custom fuel properties</p></li>
+<li><p>Fuel moisture scenarios</p></li>
+</ul>
+</section>
+<section id="initial-conditions">
+<h3>Initial Conditions<a class="headerlink" href="#initial-conditions" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/initial_conditions.H</span></code></p>
+<p>Sets up initial fire configuration:</p>
+<ul class="simple">
+<li><p>Circular ignition</p></li>
+<li><p>Elliptical ignition</p></li>
+<li><p>Custom ignition patterns from file</p></li>
+</ul>
+</section>
+<section id="boundary-conditions">
+<h3>Boundary Conditions<a class="headerlink" href="#boundary-conditions" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">src/boundary_conditions.H</span></code></p>
+<p>Applies boundary conditions to level-set function:</p>
+<ul class="simple">
+<li><p>Neumann (zero gradient)</p></li>
+<li><p>Dirichlet (fixed value)</p></li>
+<li><p>Periodic</p></li>
+</ul>
+</section>
+<section id="output-and-visualization">
+<h3>Output and Visualization<a class="headerlink" href="#output-and-visualization" title="Link to this heading"></a></h3>
+<p><strong>Files</strong>: <code class="docutils literal notranslate"><span class="pre">src/plot_results.H</span></code>, <code class="docutils literal notranslate"><span class="pre">src/write_xy_data.H</span></code></p>
+<ul class="simple">
+<li><p>AMReX plotfile output for visualization with VisIt, ParaView, yt</p></li>
+<li><p>XY data export for time series and 2D plotting</p></li>
+</ul>
+</section>
+</section>
+<section id="data-structures">
+<h2>Data Structures<a class="headerlink" href="#data-structures" title="Link to this heading"></a></h2>
+<section id="rothermelparams">
+<h3>RothermelParams<a class="headerlink" href="#rothermelparams" title="Link to this heading"></a></h3>
+<p>Fuel properties for Rothermel model:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>struct RothermelParams {
+    Real w0;        // Oven-dry fuel loading [lb/ft²]
+    Real sigma;     // Surface-area-to-volume ratio [ft⁻¹]
+    Real delta;     // Fuel bed depth [ft]
+    Real M_f;       // Fuel moisture content [fraction]
+    Real M_x;       // Moisture of extinction [fraction]
+    Real h_heat;    // Heat content [BTU/lb]
+    Real S_T;       // Total mineral content [fraction]
+    Real S_e;       // Effective mineral content [fraction]
+    Real rho_p;     // Oven-dry particle density [lb/ft³]
+    Real slope_x;   // Terrain slope in x-direction
+    Real slope_y;   // Terrain slope in y-direction
+    Real wind_conv; // Wind unit conversion factor
+    Real ros_conv;  // ROS unit conversion factor
+};
+</pre></div>
+</div>
+</section>
+<section id="rothermelcomputed">
+<h3>RothermelComputed<a class="headerlink" href="#rothermelcomputed" title="Link to this heading"></a></h3>
+<p>Computed Rothermel parameters:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>struct RothermelComputed {
+    Real R0;              // No-wind, no-slope ROS [ft/min]
+    Real I_R;             // Reaction intensity [BTU/ft²/min]
+    Real beta_ratio_E;    // Packing-ratio part of wind factor
+    Real C;               // Wind factor coefficient C
+    Real B;               // Wind factor coefficient B
+    Real phi_s;           // Slope factor
+    Real beta;            // Packing ratio
+    Real wind_conv;       // Wind unit conversion
+    Real ros_conv;        // ROS unit conversion
+};
+</pre></div>
+</div>
+</section>
+</section>
+<section id="gpu-cpu-execution">
+<h2>GPU/CPU Execution<a class="headerlink" href="#gpu-cpu-execution" title="Link to this heading"></a></h2>
+<p>The code is designed to run on both CPU and GPU using AMReX’s unified memory model:</p>
+<ul class="simple">
+<li><p>GPU kernels are launched using <code class="docutils literal notranslate"><span class="pre">ParallelFor</span></code></p></li>
+<li><p>Data is transferred automatically between host and device</p></li>
+<li><p>CUDA, HIP, and SYCL backends are supported through AMReX</p></li>
+</ul>
+</section>
+<section id="build-system">
+<h2>Build System<a class="headerlink" href="#build-system" title="Link to this heading"></a></h2>
+<section id="cmake-configuration">
+<h3>CMake Configuration<a class="headerlink" href="#cmake-configuration" title="Link to this heading"></a></h3>
+<p>The project uses CMake (version 3.20+) with the following key options:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">LEVELSET_USE_VENDORED_AMREX</span></code>: Use the vendored AMReX submodule (default: ON)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LEVELSET_DIM_2D</span></code>: Build for 2D instead of 3D (default: OFF)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LEVELSET_ENABLE_EB</span></code>: Enable embedded boundary support (default: OFF)</p></li>
+</ul>
+<p>AMReX is configured with:</p>
+<ul class="simple">
+<li><p>No MPI, OpenMP, or GPU backends by default (CPU-only)</p></li>
+<li><p>Minimal feature set (no particles, linear solvers, AmrLevel)</p></li>
+<li><p>Spatial dimension controlled by <code class="docutils literal notranslate"><span class="pre">LEVELSET_DIM_2D</span></code></p></li>
+</ul>
+</section>
+</section>
+<section id="testing-framework">
+<h2>Testing Framework<a class="headerlink" href="#testing-framework" title="Link to this heading"></a></h2>
+<p>The project uses CTest for regression testing. Each test case:</p>
+<ol class="arabic simple">
+<li><p>Runs the solver with specific input parameters</p></li>
+<li><p>Compares output against reference data</p></li>
+<li><p>Reports pass/fail status</p></li>
+</ol>
+<p>Run all tests:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cd</span> <span class="n">build</span>
+<span class="n">ctest</span>
+</pre></div>
+</div>
+<p>Run specific test:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ctest</span> <span class="o">-</span><span class="n">R</span> <span class="n">basic_levelset</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="mathematical_models.html" class="btn btn-neutral float-left" title="Mathematical Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="building.html" class="btn btn-neutral float-right" title="Building the Code" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Wildfire Level-Set Contributors.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,220 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wildfire Level-Set Solver Documentation &mdash; Wildfire Level-Set Solver 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Overview" href="overview.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            Wildfire Level-Set Solver
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mathematical_models.html">Mathematical Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="code_structure.html">Code Structure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="building.html">Building the Code</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">Wildfire Level-Set Solver</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Wildfire Level-Set Solver Documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="wildfire-level-set-solver-documentation">
+<h1>Wildfire Level-Set Solver Documentation<a class="headerlink" href="#wildfire-level-set-solver-documentation" title="Link to this heading"></a></h1>
+<p>Welcome to the documentation for the Wildfire Level-Set Solver, an AMReX-based C++ level-set solver for wildfire-front style advection based on the community fire model.</p>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#summary-flow">Summary Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#fire-spread-models">Fire Spread Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#prerequisites">Prerequisites</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="mathematical_models.html">Mathematical Models</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#rothermel-1972-fire-spread-model">Rothermel (1972) Fire Spread Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#farsite-elliptical-expansion-model-richards-1990">FARSITE Elliptical Expansion Model (Richards 1990)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#van-wagner-1977-crown-fire-initiation">Van Wagner (1977) Crown Fire Initiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#firebrand-spotting">Firebrand Spotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#bulk-fuel-consumption">Bulk Fuel Consumption</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mathematical_models.html#level-set-method">Level-Set Method</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="code_structure.html">Code Structure</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#directory-structure">Directory Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#core-components">Core Components</a></li>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#data-structures">Data Structures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#gpu-cpu-execution">GPU/CPU Execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#build-system">Build System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="code_structure.html#testing-framework">Testing Framework</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building.html">Building the Code</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#cloning-the-repository">Cloning the Repository</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#basic-build-3d-cpu-only">Basic Build (3D, CPU-only)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#build-options">Build Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#advanced-build-options">Advanced Build Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#building-documentation">Building Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#running-tests">Running Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="building.html#platform-specific-notes">Platform-Specific Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#input-files">Input Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#running-simulations">Running Simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#input-parameters-reference">Input Parameters Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#example-input-files">Example Input Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#visualization">Visualization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#data-structures">Data Structures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#amrex-integration">AMReX Integration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#units-and-conversions">Units and Conversions</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="overview">
+<h1>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h1>
+<p>This repository contains a small AMReX-based C++ level-set solver for wildfire-front style advection based on the community fire model. The code implements advanced fire spread models including:</p>
+<ul class="simple">
+<li><p>Rothermel (1972) fire spread equations</p></li>
+<li><p>FARSITE elliptical expansion model (Richards 1990)</p></li>
+<li><p>Anderson (1983) length-to-width ratio</p></li>
+<li><p>Van Wagner (1977) crown fire initiation</p></li>
+<li><p>Terrain slope effects</p></li>
+<li><p>Firebrand spotting models</p></li>
+</ul>
+<section id="key-features">
+<h2>Key Features<a class="headerlink" href="#key-features" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Multiple Fire Spread Models</strong>: Level-set advection and FARSITE elliptical expansion</p></li>
+<li><p><strong>Terrain Effects</strong>: Slope-based spread rate modifications using Rothermel corrections</p></li>
+<li><p><strong>Crown Fire</strong>: Van Wagner crown fire initiation criteria</p></li>
+<li><p><strong>Spotting</strong>: Firebrand spotting probability models</p></li>
+<li><p><strong>Bulk Fuel Consumption</strong>: Post-frontal burnout simulation</p></li>
+<li><p><strong>2D/3D Support</strong>: Flexible spatial dimensions</p></li>
+<li><p><strong>Embedded Boundaries</strong>: Complex geometry support with AMReX EB</p></li>
+</ul>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<p>Clone with submodules:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="o">--</span><span class="n">recurse</span><span class="o">-</span><span class="n">submodules</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">hgopalan</span><span class="o">/</span><span class="n">wildfire_levelset</span><span class="o">.</span><span class="n">git</span>
+<span class="n">cd</span> <span class="n">wildfire_levelset</span>
+</pre></div>
+</div>
+<p>Build the project:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">S</span> <span class="o">.</span> <span class="o">-</span><span class="n">B</span> <span class="n">build</span>
+<span class="n">cmake</span> <span class="o">--</span><span class="n">build</span> <span class="n">build</span> <span class="o">-</span><span class="n">j</span>
+</pre></div>
+</div>
+<p>Run a test case:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cd</span> <span class="n">regtest</span><span class="o">/</span><span class="n">basic_levelset</span>
+<span class="o">../../</span><span class="n">build</span><span class="o">/</span><span class="n">levelset</span> <span class="n">inputs</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="overview.html" class="btn btn-neutral float-right" title="Overview" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Wildfire Level-Set Contributors.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
