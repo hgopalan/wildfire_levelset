@@ -22,17 +22,17 @@ box_ymax = 4000
 
 # Firebrand spotting model
 spotting.enable = 1
-spotting.P_base = 0.05
-spotting.k_wind = 0.3
-spotting.I_critical = 800.0
+spotting.P_base = 0.15          # increased from 0.05
+spotting.k_wind = 0.5           # increased from 0.3
+spotting.I_critical = 400.0     # decreased from 800.0
 spotting.d_mean = 0.15
 spotting.d_sigma = 0.4
 spotting.d_lambda = 8.0
 spotting.distance_model = lognormal
-spotting.lateral_spread_angle = 20.0
+spotting.lateral_spread_angle = 30.0  # increased from 20.0
 spotting.spot_radius = 25
 spotting.random_seed = 12345
-spotting.check_interval = 3
+spotting.check_interval = 1     # decreased from 3
 
 # Rothermel model (use chaparral fuel type)
 rothermel.fuel_model = FM4
