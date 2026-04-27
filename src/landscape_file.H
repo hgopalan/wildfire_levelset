@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cmath>
 
 using namespace amrex;
 
@@ -144,8 +145,10 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
                     break;
                 }
                 
-                // Inverse distance weighting
-                Real weight = Real(1.0) / dist_sq;
+                // Inverse distance weighting using sqrt(dist_sq) for better numerical stability
+                // This prevents extreme weights when points are very close
+                Real dist = std::sqrt(dist_sq);
+                Real weight = Real(1.0) / (dist + epsilon);
                 sum_weights += weight;
                 sum_slope += weight * slope_ptr[n];
                 sum_aspect += weight * aspect_ptr[n];
@@ -164,7 +167,8 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             // Mathematical convention: 0=East, 90=North, 180=West, 270=South
             // Convert: aspect_math = 90 - aspect_farsite
             
-            Real PI = Real(3.14159265358979323846);
+            // Use M_PI from cmath for better portability
+            Real PI = Real(M_PI);
             Real slope_radians = result_slope * PI / Real(180.0);
             Real aspect_farsite = result_aspect;
             Real aspect_math = Real(90.0) - aspect_farsite; // Convert to math convention
