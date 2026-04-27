@@ -215,6 +215,53 @@ Wind Parameters
   
   Example: ``wind_file = "wind_data.txt"``
 
+**use_time_dependent_wind** (default: 0)
+  Enable time-dependent wind fields (1=yes, 0=no). When enabled, the solver will 
+  load a sequence of wind field files and interpolate between them in time.
+  
+  Example: ``use_time_dependent_wind = 1``
+
+**wind_time_spacing** (default: 60.0)
+  Time spacing in seconds between consecutive wind field files. This parameter is 
+  only used when ``use_time_dependent_wind = 1``.
+  
+  Example: ``wind_time_spacing = 60.0``
+
+Time-Dependent Wind Fields
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When ``use_time_dependent_wind = 1``, the solver expects a series of wind field files 
+following this naming convention:
+
+* Base file: ``turbulent_field_2d.csv`` (time index 0)
+* First update: ``turbulent_field_2d_1.csv`` (time index 1)
+* Second update: ``turbulent_field_2d_2.csv`` (time index 2)
+* And so on...
+
+The solver will:
+
+1. Determine which two wind field files bracket the current simulation time
+2. Load both files (if not already loaded)
+3. Perform spatial interpolation using inverse distance weighting for each field
+4. Perform temporal linear interpolation between the two fields based on the current time
+
+For example, with ``wind_time_spacing = 60.0``:
+
+* At t=0s: Uses ``turbulent_field_2d.csv`` and ``turbulent_field_2d_1.csv``
+* At t=30s: Interpolates 50% between indices 0 and 1
+* At t=60s: Uses ``turbulent_field_2d_1.csv`` and ``turbulent_field_2d_2.csv``
+* At t=120s: Uses ``turbulent_field_2d_2.csv`` and ``turbulent_field_2d_3.csv``
+
+Each wind field file should be in CSV format with X, Y, U, V columns::
+
+    # X Y U V
+    0 0 1.0 0.0
+    1000 0 1.0 0.0
+    2000 0 1.0 0.0
+    0 1000 1.2 0.1
+    1000 1000 1.2 0.1
+    2000 1000 1.2 0.1
+
 Terrain Parameters
 ^^^^^^^^^^^^^^^^^^
 

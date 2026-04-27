@@ -37,6 +37,8 @@ void parse_inputs(InputParameters& p)
     p.uy = 0.0;                  pp.query("u_y", p.uy);
     p.uz = 0.0;                  pp.query("u_z", p.uz);
     p.velocity_file = "";        pp.query("velocity_file", p.velocity_file);
+    p.use_time_dependent_wind = 0;     pp.query("use_time_dependent_wind", p.use_time_dependent_wind);
+    p.wind_time_spacing = 60.0;        pp.query("wind_time_spacing", p.wind_time_spacing);
 
     // ---------------- Inputs: source selection --------------
     p.source_type = "sphere";    pp.query("source_type", p.source_type);

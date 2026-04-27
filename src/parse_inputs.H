@@ -42,6 +42,8 @@ struct InputParameters {
     // Velocity
     amrex::Real ux, uy, uz;
     std::string velocity_file;
+    int use_time_dependent_wind;      // 1 to use time-dependent wind fields, 0 for static (default: 0)
+    amrex::Real wind_time_spacing;    // Time spacing in seconds between wind field files (default: 60.0)
 
     // Source selection
     std::string source_type;

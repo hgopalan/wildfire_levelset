@@ -152,8 +152,25 @@ int main(int argc, char* argv[])
         
     // Initialize velocity field
 #if (AMREX_SPACEDIM == 2)
+    // Storage for time-dependent wind field data
+    std::vector<Real> wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1;
+    std::vector<Real> wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2;
+    int current_wind_field_index = -1;
+    int next_wind_field_index = -1;
+    
     if (!inputs.velocity_file.empty()) {
-      init_velocity_from_file(vel, geom, inputs.velocity_file);
+      if (inputs.use_time_dependent_wind == 1) {
+        // Time-dependent wind field: load initial two snapshots
+        amrex::Print() << "Using time-dependent wind fields with spacing = " 
+                       << inputs.wind_time_spacing << " seconds\n";
+        update_time_dependent_velocity(vel, geom, inputs.velocity_file, 0.0, inputs.wind_time_spacing,
+                                        wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1,
+                                        wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2,
+                                        current_wind_field_index, next_wind_field_index);
+      } else {
+        // Static wind field
+        init_velocity_from_file(vel, geom, inputs.velocity_file);
+      }
     } else {
       init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
     }
@@ -216,6 +233,16 @@ int main(int argc, char* argv[])
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
+      
+      // Update time-dependent wind field if enabled
+#if (AMREX_SPACEDIM == 2)
+      if (!inputs.velocity_file.empty() && inputs.use_time_dependent_wind == 1) {
+        update_time_dependent_velocity(vel, geom, inputs.velocity_file, time, inputs.wind_time_spacing,
+                                        wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1,
+                                        wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2,
+                                        current_wind_field_index, next_wind_field_index);
+      }
+#endif
       
       // --- Step 2: Compute surface ROS via Rothermel/Level Set
       // Update Rothermel wind speed R and dt
