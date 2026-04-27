@@ -10,6 +10,7 @@ The solver now supports four fire spread modeling approaches:
 2. **Rothermel Model**: Includes terrain slope corrections
 3. **FARSITE Model**: Full model with Anderson L/W ratio and combined wind/terrain effects
 4. **Firebrand Spotting Model**: Probability-based spotting integrated with FARSITE
+5. **Bulk Fuel Consumption Model**: Computes fraction of fuel consumed (FARSITE only)
 
 ## Model Selection
 
@@ -27,6 +28,9 @@ Use runtime parameters to select the desired model:
 
 # FARSITE with firebrand spotting
 ./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 u_x=0.4
+
+# FARSITE with bulk fuel consumption
+./build/levelset skip_levelset=1 farsite.enable=1 farsite.use_bulk_fuel_consumption=1 u_x=0.4
 ```
 
 ## Anderson L/W Ratio (FARSITE)
@@ -99,6 +103,123 @@ FARSITE (Fire Area Simulator) combines wind and slope effects vectorially, accou
 - Slope aspect represents uphill direction
 - Alignment factor: cos(wind_direction - slope_aspect)
 - Only positive alignment contributes to slope effect
+
+## Bulk Fuel Consumption Fraction Model (FARSITE Only)
+
+### Background
+The bulk fuel consumption fraction model computes what fraction of available fuel is consumed as the fire passes through. Not all fuel is consumed during fire passage - the fraction depends on fire intensity, residence time, and fuel properties. This model is currently only available in the FARSITE pathway.
+
+### Physical Basis
+Fuel consumption fraction is influenced by:
+- **Fire Intensity**: Higher intensity fires consume more fuel
+- **Residence Time**: Longer residence allows more complete combustion
+- **Fuel Moisture**: Lower moisture increases consumption (via intensity)
+- **Fuel Type**: Implicitly through Rothermel parameters
+
+### Formula
+The model uses a sigmoid-like transition function:
+
+```
+I_norm = (I_R / I_ref) × √(τ / τ_ref)
+f_c = f_c_min + (f_c_max - f_c_min) × [0.5 × (1 + tanh(I_norm - 1))]
+```
+
+where:
+- I_R = Reaction intensity from Rothermel model [BTU/ft²/min]
+- I_ref = Reference intensity (1000 BTU/ft²/min)
+- τ = Residence time [seconds]
+- τ_ref = Reference residence time (60 seconds)
+- f_c_min = Minimum consumption fraction (default: 0.5)
+- f_c_max = Maximum consumption fraction (default: 0.9)
+- f_c = Computed fuel consumption fraction (0.0-1.0)
+
+### Parameter Guidelines
+
+| Parameter | Description | Typical Range | Default |
+|-----------|-------------|---------------|---------|
+| `farsite.use_bulk_fuel_consumption` | Enable model (0=off, 1=on) | 0 or 1 | 0 |
+| `farsite.tau_residence` | Residence time [seconds] | 30-120 | 60.0 |
+| `farsite.f_consumed_min` | Minimum fraction | 0.3-0.6 | 0.5 |
+| `farsite.f_consumed_max` | Maximum fraction | 0.8-1.0 | 0.9 |
+
+### Physical Interpretation
+
+**Low Intensity Fires** (I_R < 500 BTU/ft²/min):
+- Fast-moving grass fires
+- f_c ≈ f_c_min (typically 0.5)
+- 50% of fuel remains unconsumed
+
+**Moderate Intensity Fires** (500-2000 BTU/ft²/min):
+- Typical brush and forest fires
+- f_c transitions between min and max
+- Consumption depends on residence time
+
+**High Intensity Fires** (I_R > 2000 BTU/ft²/min):
+- Crown fires, high fuel loads
+- f_c ≈ f_c_max (typically 0.9)
+- 90% of fuel consumed
+
+### Implementation Details
+- Computed at each fire front cell during FARSITE spread calculation
+- Uses reaction intensity I_R from Rothermel model
+- Output field `fuel_consumption` in plotfiles shows f_c values
+- Model is applied locally (spatially varying if I_R varies)
+- Does NOT affect current spread rate (for future coupling)
+
+### Example Usage
+
+**Enable with default parameters:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  farsite.use_bulk_fuel_consumption=1 u_x=0.4
+```
+
+**Fast-moving grass fire (lower consumption):**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  farsite.use_bulk_fuel_consumption=1 \
+  farsite.tau_residence=30 \
+  farsite.f_consumed_min=0.3 \
+  farsite.f_consumed_max=0.7 \
+  u_x=0.6
+```
+
+**Slow-moving crown fire (higher consumption):**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  farsite.use_bulk_fuel_consumption=1 \
+  farsite.tau_residence=120 \
+  farsite.f_consumed_min=0.6 \
+  farsite.f_consumed_max=0.95 \
+  rothermel.fuel_model=TU5
+```
+
+### Output
+The `fuel_consumption` field in plotfiles contains the computed consumption fraction (0.0-1.0) at each grid point. Values are only meaningful at fire front locations where phi ≈ 0.
+
+### Residual Fuel
+The residual fuel fraction is simply:
+```
+f_residual = 1 - f_c
+```
+
+This can be important for:
+- Multi-pass fire simulations
+- Fuel recovery/regrowth modeling
+- Post-fire effects analysis
+
+### Future Enhancements
+Potential improvements for future versions:
+- Couple consumption to spread rate (reduced fuel → reduced ROS)
+- Fuel moisture effects on consumption (beyond intensity)
+- Time-integrated consumption (track fuel state over time)
+- Fuel type-specific consumption models
+- Validation against experimental data
+
+### References
+1. Albini, F. A. (1976). "Estimating wildfire behavior and effects." USDA Forest Service Research Paper INT-30.
+2. Byram, G. M. (1959). "Combustion of forest fuels." In Forest Fire: Control and Use.
+3. Andrews, P. L. (2018). "The Rothermel surface fire spread model and associated developments: A comprehensive explanation." USDA Forest Service General Technical Report RMRS-GTR-371.
 
 ## Terrain Data
 
