@@ -130,6 +130,28 @@ void parse_inputs(InputParameters& p)
     p.farsite.coeff_a = 1.0;                     pp.query("farsite.coeff_a", p.farsite.coeff_a);
     p.farsite.coeff_b = 0.5;                     pp.query("farsite.coeff_b", p.farsite.coeff_b);
     p.farsite.coeff_c = 0.2;                     pp.query("farsite.coeff_c", p.farsite.coeff_c);
+    
+    // -------- Bulk Fuel Consumption Fraction Model parameters --------
+    p.farsite.use_bulk_fuel_consumption = 0;     pp.query("farsite.use_bulk_fuel_consumption", p.farsite.use_bulk_fuel_consumption);
+    p.farsite.tau_residence = 60.0;              pp.query("farsite.tau_residence", p.farsite.tau_residence);
+    p.farsite.f_consumed_max = 0.9;              pp.query("farsite.f_consumed_max", p.farsite.f_consumed_max);
+    p.farsite.f_consumed_min = 0.5;              pp.query("farsite.f_consumed_min", p.farsite.f_consumed_min);
+    
+    // Validate bulk fuel consumption parameters
+    if (p.farsite.use_bulk_fuel_consumption == 1) {
+        if (p.farsite.f_consumed_max < 0.0 || p.farsite.f_consumed_max > 1.0) {
+            amrex::Abort("farsite.f_consumed_max must be between 0.0 and 1.0");
+        }
+        if (p.farsite.f_consumed_min < 0.0 || p.farsite.f_consumed_min > 1.0) {
+            amrex::Abort("farsite.f_consumed_min must be between 0.0 and 1.0");
+        }
+        if (p.farsite.f_consumed_min > p.farsite.f_consumed_max) {
+            amrex::Abort("farsite.f_consumed_min must be less than or equal to farsite.f_consumed_max");
+        }
+        if (p.farsite.tau_residence <= 0.0) {
+            amrex::Abort("farsite.tau_residence must be greater than 0");
+        }
+    }
 
     // -------- Firebrand spotting model parameters --------
     p.spotting.enable = 0;                       pp.query("spotting.enable", p.spotting.enable);

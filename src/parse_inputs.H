@@ -72,6 +72,11 @@ struct InputParameters {
         amrex::Real coeff_a;                 // head fire coefficient (default: 1.0)
         amrex::Real coeff_b;                 // flank fire coefficient (default: 0.5)
         amrex::Real coeff_c;                 // backing fire coefficient (default: 0.2)
+        // Bulk Fuel Consumption Fraction Model parameters
+        int use_bulk_fuel_consumption;       // 1 to enable bulk fuel consumption model, 0 to disable (default: 0)
+        amrex::Real tau_residence;           // Residence time for fuel consumption in seconds (default: 60.0)
+        amrex::Real f_consumed_max;          // Maximum fuel consumption fraction (0.0-1.0) (default: 0.9)
+        amrex::Real f_consumed_min;          // Minimum fuel consumption fraction (0.0-1.0) (default: 0.5)
     } farsite;
     
     // Firebrand spotting model parameters
