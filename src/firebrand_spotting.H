@@ -288,8 +288,6 @@ static void generate_firebrand_spots(
     amrex::Print() << "Generated " << total_spots << " firebrand spots at step " << step << "\n";
     
     // Third pass: apply spots to phi field
-    const Real spot_phi_value = -sp.spot_radius; // Signed distance value
-    
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
         auto p = phi.array(mfi);
