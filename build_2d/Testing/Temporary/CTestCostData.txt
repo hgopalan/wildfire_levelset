@@ -1,6 +1,0 @@
-basic_levelset 1 0.737008
-farsite_ellipse 1 0.70517
-rothermel_fuel 1 0.735501
-anderson_lw 1 0.724935
-terrain_wind 1 3.88552
----
