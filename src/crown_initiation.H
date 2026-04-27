@@ -217,7 +217,7 @@ amrex::Real compute_crown_fraction(
 //   R_surface: Surface fire rate of spread [m/min or ft/min]
 //   R_crown: Crown fire rate of spread [m/min]
 //   crown_initiated: Whether crown fire has initiated
-//   crown_fraction_weight: How much to weight crown vs surface (0-1)
+//   crown_fraction_weight: How much to weight crown vs surface (0-2)
 //
 // Returns:
 //   R_total: Total fire rate of spread [m/min or ft/min]
@@ -228,9 +228,10 @@ amrex::Real compute_crown_fraction(
 //
 // The crown_fraction_weight allows tuning how much crown fire dominates
 // the total spread rate. Common approaches:
-//   - Simple addition: crown_fraction_weight = 1.0
-//   - Crown dominates: crown_fraction_weight > 1.0 and use max(R_surface, R_crown)
+//   - Simple addition: crown_fraction_weight = 1.0 (default)
+//   - Crown dominates: crown_fraction_weight = 1.2-1.5
 //   - Transition zone: crown_fraction_weight = 0.5-1.0
+//   - Valid range: 0.0-2.0
 // ============================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_total_spread_rate(

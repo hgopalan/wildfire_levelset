@@ -304,8 +304,10 @@ crown_fraction = R_crown / (R_crown + R_surface)
 | `crown.CBH` | Canopy base height [m] | 2-10 | 4.0 |
 | `crown.CBD` | Canopy bulk density [kg/m³] | 0.05-0.30 | 0.15 |
 | `crown.FMC` | Foliar moisture content [%] | 50-300 | 100.0 |
-| `crown.crown_fraction_weight` | Crown fire weighting (0-2) | 0.5-1.5 | 1.0 |
+| `crown.crown_fraction_weight` | Crown fire weighting (0-2) | 0.5-1.5 (operational) | 1.0 |
 | `crown.use_metric_units` | Use metric units (1) or imperial (0) | 0 or 1 | 1 |
+
+**Note:** `crown_fraction_weight` valid range is 0.0-2.0, but typical operational values are 0.5-1.5 for realistic fire behavior.
 
 ### Typical Forest Type Parameters
 

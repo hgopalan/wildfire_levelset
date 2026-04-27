@@ -101,7 +101,7 @@ struct InputParameters {
         amrex::Real CBH;                     // Canopy base height [m] (default: 4.0)
         amrex::Real CBD;                     // Canopy bulk density [kg/m³] (default: 0.15)
         amrex::Real FMC;                     // Foliar moisture content [%] (default: 100.0)
-        amrex::Real crown_fraction_weight;   // Crown fire weighting factor (0-1) (default: 1.0)
+        amrex::Real crown_fraction_weight;   // Crown fire weighting factor (0-2) (default: 1.0)
         int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
     } crown;
     
