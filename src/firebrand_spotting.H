@@ -359,6 +359,9 @@ static void generate_firebrand_spots(
     
     // Update spotting data based on generated spots
     // Restructured to iterate over boxes in outer loop for better performance
+    // NOTE: This code assumes serial execution (AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU=OFF).
+    // If parallelization is enabled, atomic operations (Gpu::Atomic::Add, Gpu::Atomic::Max)
+    // would be required to avoid race conditions when multiple threads update the same cell.
     for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
         auto spot = spotting_data.array(mfi);
@@ -385,7 +388,6 @@ static void generate_firebrand_spots(
                 src_k >= lo.z && src_k <= hi.z) {
                 
                 // Increment count (component 1)
-                // Using simple increment is safe here because we're in serial CPU loop
                 spot(src_i, src_j, src_k, 1) += 1.0;
                 
                 // Store maximum distance (component 2) - useful for visualization
