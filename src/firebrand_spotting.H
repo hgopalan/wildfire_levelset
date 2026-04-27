@@ -364,7 +364,7 @@ static void generate_firebrand_spots(
     }
     
     // Update spotting data based on generated spots
-    // Iterate over boxes in outer loop for better performance
+    // Iterate over boxes in outer loop (better cache locality than iterating over spots first)
     // NOTE: This code assumes serial execution (AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU=OFF).
     // If parallelization is enabled, atomic operations (Gpu::Atomic::Add, Gpu::Atomic::Max)
     // would be required to avoid race conditions when multiple threads update the same cell.
@@ -396,7 +396,7 @@ static void generate_firebrand_spots(
                 // Increment count (component 1)
                 spot(src_i, src_j, src_k, 1) += 1.0;
                 
-                // Store maximum distance (component 2) - useful for visualization
+                // Store maximum distance (component 2) - shows farthest firebrand travel from this source cell
                 spot(src_i, src_j, src_k, 2) = amrex::max(spot(src_i, src_j, src_k, 2), distance);
             }
             
