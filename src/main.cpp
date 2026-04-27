@@ -29,11 +29,21 @@ using namespace amrex;
 
 
 // ======================= Main ================================================
+// 
+// Summary Flow:
+// 1. Setup inputs (landscape, fuel, weather, wind)
+// 2. Compute surface ROS via Rothermel/Level Set
+// 3. Generate elliptical wavelets per vertex
+// 4. Merge to new perimeter
+// 5. Apply crown/spotting sub-models
+// 6. Simulate post-frontal burnout
+// 7. Update states, record outputs, step time
+//
 int main(int argc, char* argv[])
 {
   amrex::Initialize(argc, argv);
   {
-    // --- new: parse all inputs in one place
+    // --- Step 1: Setup inputs (landscape, fuel, weather, wind)
     InputParameters inputs;
     parse_inputs(inputs);
 
@@ -206,22 +216,29 @@ int main(int argc, char* argv[])
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
-      // Run either level set advection OR FARSITE ellipse spread (mutually exclusive)
-  	// Update Rothermel wind speed R and dt
+      
+      // --- Step 2: Compute surface ROS via Rothermel/Level Set
+      // Update Rothermel wind speed R and dt
   	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel, terrain_slopes.get());
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
 	advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else if (inputs.farsite.enable == 1) {
+	// --- Step 3: Generate elliptical wavelets per vertex
+	// --- Step 4: Merge to new perimeter
 	// FARSITE ellipse spread (only when skip_levelset == 1 and farsite.enable == 1)
 	compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
 	
+	// --- Step 5: Apply crown/spotting sub-models
 	// Add firebrand spotting model
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
 	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
 	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step);
 	}
+	
+	// --- Step 6: Simulate post-frontal burnout
+	// (Bulk fuel consumption is computed within compute_farsite_spread)
       }
       if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0) && inputs.skip_levelset == 0) {
 	amrex::Print() << "Reinitializing at step " << step << "\n";
@@ -243,6 +260,7 @@ int main(int argc, char* argv[])
 
       time += dt_step;
 
+      // --- Step 7: Update states, record outputs, step time
       if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", step);
