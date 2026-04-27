@@ -95,6 +95,16 @@ struct InputParameters {
         int check_interval;                  // Check for spotting every N timesteps (default: 5)
     } spotting;
     
+    // Van Wagner crown fire initiation model parameters (Van Wagner 1977)
+    struct CrownInitiationParams {
+        int enable;                          // 1 to enable crown initiation model, 0 to disable (default: 0)
+        amrex::Real CBH;                     // Canopy base height [m] (default: 4.0)
+        amrex::Real CBD;                     // Canopy bulk density [kg/m³] (default: 0.15)
+        amrex::Real FMC;                     // Foliar moisture content [%] (default: 100.0)
+        amrex::Real crown_fraction_weight;   // Crown fire weighting factor (0-1) (default: 1.0)
+        int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
+    } crown;
+    
     // Skip level set evolution option
     int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
 };
