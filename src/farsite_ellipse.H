@@ -7,16 +7,18 @@
 // The model can use either:
 // 1. Fixed Richards' coefficients (a, b, c) from input parameters
 // 2. Anderson (1983) L/W ratio based on wind speed, converted to coefficients
+// 3. Van Wagner (1977) crown fire initiation to modify spread rates
 //
 // The model:
 // 1. Finds locations where phi ≈ 0 (fire front)
 // 2. Uses Rothermel (1972) to compute base rate of spread (ROS)
-// 3. Applies Richards' elliptical expansion with coefficients:
+// 3. Applies Van Wagner crown initiation if enabled
+// 4. Applies Richards' elliptical expansion with coefficients:
 //    - a: head fire coefficient (downwind, maximum spread)
 //    - b: flank fire coefficient (crosswind spread)
 //    - c: backing fire coefficient (upwind, minimum spread)
-// 4. Computes directional spread based on angle between fire normal and wind
-// 5. Optionally computes bulk fuel consumption fraction
+// 5. Computes directional spread based on angle between fire normal and wind
+// 6. Optionally computes bulk fuel consumption fraction
 // ============================================================================
 
 #ifndef FARSITE_ELLIPSE_H
@@ -26,6 +28,7 @@
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 #include "bulk_fuel_consumption.H"
+#include "crown_initiation.H"
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
@@ -42,6 +45,7 @@ constexpr Real PHI_RESET_MULTIPLIER = -10.0;
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
 // combined with Rothermel (1972) ROS
+// Optionally applies Van Wagner (1977) crown fire initiation
 // Optionally computes bulk fuel consumption fraction if enabled
 // ============================================================================
 static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
@@ -49,8 +53,10 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    const Geometry &geom, Real dt,
                                    const RothermelParams &rp,
                                    const InputParameters::FARSITEParams &fp,
+                                   const InputParameters::CrownInitiationParams &cp,
                                    const MultiFab *slopes = nullptr,
-                                   MultiFab *fuel_consumption = nullptr) {
+                                   MultiFab *fuel_consumption = nullptr,
+                                   MultiFab *crown_fire_fraction = nullptr) {
   if (fp.enable == 0) {
     return; // FARSITE disabled
   }
@@ -101,6 +107,20 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const Real tau_residence = fp.tau_residence;
   const Real f_c_min = fp.f_consumed_min;
   const Real f_c_max = fp.f_consumed_max;
+  
+  // Crown fire initiation model parameters
+  const int use_crown_initiation = cp.enable;
+  const Real CBH = cp.CBH;
+  const Real CBD = cp.CBD;
+  const Real FMC = cp.FMC;
+  const Real crown_fraction_weight = cp.crown_fraction_weight;
+  const int use_metric_units = cp.use_metric_units;
+  
+  // Compute critical surface intensity for crown initiation (if enabled)
+  Real I_o = 0.0;
+  if (use_crown_initiation == 1) {
+    I_o = compute_critical_surface_intensity(CBH, FMC);
+  }
 
   // -------------------------------------------------------------------------
   // First pass: compute elliptical spread vector at each fire-front cell
@@ -123,6 +143,13 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     Array4<Real> fc;
     if (compute_fuel_consumption) {
       fc = fuel_consumption->array(mfi);
+    }
+    
+    // Get crown fire fraction array if provided
+    const bool should_compute_crown_fraction = (crown_fire_fraction != nullptr && use_crown_initiation == 1);
+    Array4<Real> cff;
+    if (should_compute_crown_fraction) {
+      cff = crown_fire_fraction->array(mfi);
     }
 
     ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -202,7 +229,41 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       }
 
       // Rate of spread using full Rothermel model [ft/min] → simulation units
-      Real R_head = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+      Real R_surface_ftmin = std::max(R0 * (1.0 + phi_w + phi_s), 0.0);
+      Real R_surface = R_surface_ftmin * ros_conv;
+      
+      // Apply Van Wagner crown fire initiation if enabled
+      Real R_head = R_surface;  // Default: surface fire rate
+      Real local_crown_fraction = 0.0;
+      
+      if (use_crown_initiation == 1) {
+        // Compute fireline intensity from Rothermel reaction intensity
+        // Assuming w_consumed ≈ w0 * (1 - S_T) from Rothermel params
+        // I_B [BTU/ft/s] = h_heat * w_consumed * R_surface_ftmin / 60
+        Real I_B_imperial = I_R * R_surface_ftmin / Real(60.0);
+        
+        // Convert to metric if needed for Van Wagner model
+        Real I_B = use_metric_units ? convert_intensity_to_metric(I_B_imperial) : I_B_imperial;
+        
+        // Check if crown fire initiates
+        bool crown_initiated = will_crown_initiate(I_B, I_o);
+        
+        if (crown_initiated) {
+          // Compute crown fire spread rate [m/min]
+          Real R_crown_mmin = compute_crown_fire_spread_rate(CBD, FMC);
+          
+          // Convert to simulation units (assuming ros_conv is for ft/min to sim units)
+          // Need to convert m/min to ft/min first: 1 m = 3.28084 ft
+          Real R_crown_ftmin = R_crown_mmin * Real(3.28084);
+          Real R_crown = R_crown_ftmin * ros_conv;
+          
+          // Compute combined rate (crown fire dominates)
+          R_head = compute_total_spread_rate(R_surface, R_crown, crown_initiated, crown_fraction_weight);
+          
+          // Compute crown fire fraction for output
+          local_crown_fraction = compute_crown_fraction(R_crown, R_surface, crown_initiated);
+        }
+      }
 
       // Determine elliptical coefficients
       Real local_coeff_a = coeff_a;
@@ -264,6 +325,11 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       if (compute_fuel_consumption) {
         Real f_c = compute_fuel_consumption_fraction(I_R, tau_residence, f_c_min, f_c_max);
         fc(i, j, k) = f_c;
+      }
+      
+      // Store crown fire fraction if enabled
+      if (should_compute_crown_fraction) {
+        cff(i, j, k) = local_crown_fraction;
       }
     });
   }

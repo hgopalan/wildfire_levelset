@@ -180,6 +180,30 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Van Wagner crown fire initiation model parameters --------
+    p.crown.enable = 0;                          pp.query("crown.enable", p.crown.enable);
+    p.crown.CBH = 4.0;                           pp.query("crown.CBH", p.crown.CBH);
+    p.crown.CBD = 0.15;                          pp.query("crown.CBD", p.crown.CBD);
+    p.crown.FMC = 100.0;                         pp.query("crown.FMC", p.crown.FMC);
+    p.crown.crown_fraction_weight = 1.0;         pp.query("crown.crown_fraction_weight", p.crown.crown_fraction_weight);
+    p.crown.use_metric_units = 1;                pp.query("crown.use_metric_units", p.crown.use_metric_units);
+    
+    // Validate crown fire parameters
+    if (p.crown.enable == 1) {
+        if (p.crown.CBH <= 0.0) {
+            amrex::Abort("crown.CBH (canopy base height) must be greater than 0");
+        }
+        if (p.crown.CBD <= 0.0) {
+            amrex::Abort("crown.CBD (canopy bulk density) must be greater than 0");
+        }
+        if (p.crown.FMC < 50.0 || p.crown.FMC > 300.0) {
+            amrex::Abort("crown.FMC (foliar moisture content) must be between 50% and 300%");
+        }
+        if (p.crown.crown_fraction_weight < 0.0 || p.crown.crown_fraction_weight > 2.0) {
+            amrex::Abort("crown.crown_fraction_weight must be between 0.0 and 2.0");
+        }
+    }
+
     // -------- Skip level set option --------
     p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
 }
