@@ -211,6 +211,15 @@ You can override runtime parameters directly from the command line (AMReX `ParmP
   - `spotting.check_interval=5` (check for spotting every N timesteps) (default: 5)
   - **Note:** Spotting requires `farsite.enable=1` and works best with `skip_levelset=1`
   - See `SPOTTING_MODEL.md` for detailed documentation
+- Van Wagner crown fire initiation model (Van Wagner 1977):
+  - `crown.enable=0` (1 to enable crown initiation model, 0 to disable) (default: 0)
+  - `crown.CBH=4.0` (canopy base height [m]) (default: 4.0)
+  - `crown.CBD=0.15` (canopy bulk density [kg/m³]) (default: 0.15)
+  - `crown.FMC=100.0` (foliar moisture content [%]) (default: 100.0)
+  - `crown.crown_fraction_weight=1.0` (crown fire weighting factor, 0-2) (default: 1.0)
+  - `crown.use_metric_units=1` (1 for metric (m, kW), 0 for imperial (ft, BTU)) (default: 1)
+  - **Note:** Crown initiation requires `farsite.enable=1` and works best with `skip_levelset=1`
+  - See `FIRE_MODELS.md` for detailed documentation
 - Level set control:
   - `skip_levelset=0` (1 to skip level set advection and use initial phi throughout simulation, 0 for normal operation with evolving level set)
 
@@ -279,3 +288,5 @@ This mode is useful for analyzing FARSITE spread patterns based on initial fire 
   - `spot_count`: Number of firebrands generated per cell (when spotting enabled)
   - `spot_dist`: Spotting distance field (when spotting enabled)
   - `spot_active`: Active spot fire flag (0 or 1) (when spotting enabled)
+  - `fuel_consumption`: Bulk fuel consumption fraction (0.0-1.0) (when bulk fuel consumption enabled)
+  - `crown_fraction`: Crown fire fraction (0.0-1.0) (when crown initiation enabled)

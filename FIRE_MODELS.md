@@ -4,13 +4,14 @@ This document provides detailed information about the fire spread models impleme
 
 ## Overview
 
-The solver now supports four fire spread modeling approaches:
+The solver now supports six fire spread modeling approaches:
 
 1. **Basic Model**: Simple wind-driven spread (original implementation)
 2. **Rothermel Model**: Includes terrain slope corrections
 3. **FARSITE Model**: Full model with Anderson L/W ratio and combined wind/terrain effects
 4. **Firebrand Spotting Model**: Probability-based spotting integrated with FARSITE
 5. **Bulk Fuel Consumption Model**: Computes fraction of fuel consumed (FARSITE only)
+6. **Van Wagner Crown Fire Initiation Model**: Predicts transition from surface to crown fire
 
 ## Model Selection
 
@@ -31,6 +32,9 @@ Use runtime parameters to select the desired model:
 
 # FARSITE with bulk fuel consumption
 ./build/levelset skip_levelset=1 farsite.enable=1 farsite.use_bulk_fuel_consumption=1 u_x=0.4
+
+# FARSITE with Van Wagner crown fire initiation
+./build/levelset skip_levelset=1 farsite.enable=1 crown.enable=1 crown.CBH=4.0 crown.CBD=0.15 u_x=0.4
 ```
 
 ## Anderson L/W Ratio (FARSITE)
@@ -220,6 +224,207 @@ Potential improvements for future versions:
 1. Albini, F. A. (1976). "Estimating wildfire behavior and effects." USDA Forest Service Research Paper INT-30.
 2. Byram, G. M. (1959). "Combustion of forest fuels." In Forest Fire: Control and Use.
 3. Andrews, P. L. (2018). "The Rothermel surface fire spread model and associated developments: A comprehensive explanation." USDA Forest Service General Technical Report RMRS-GTR-371.
+
+## Van Wagner Crown Fire Initiation Model (FARSITE Only)
+
+### Background
+The Van Wagner (1977) crown fire initiation model predicts the transition from surface fire to crown fire based on surface fire intensity and canopy properties. Crown fires spread much faster than surface fires and are a major concern in forest fire management. This model is currently only available in the FARSITE pathway.
+
+### Physical Basis
+Crown fire initiation depends on:
+- **Surface Fire Intensity**: Must be high enough to raise canopy fuels above ignition temperature
+- **Canopy Base Height (CBH)**: Height to bottom of live canopy [m]
+- **Canopy Bulk Density (CBD)**: Mass of canopy fuel per volume [kg/m³]
+- **Foliar Moisture Content (FMC)**: Moisture of canopy foliage [%]
+
+### Model Components
+
+#### Critical Surface Intensity
+Van Wagner's threshold equation for crown fire initiation:
+
+```
+I_o = 0.010 × CBH × (460 + 25.9 × FMC)
+```
+
+where:
+- I_o = Critical surface fire intensity [kW/m or BTU/ft/s]
+- CBH = Canopy base height [m or ft]
+- FMC = Foliar moisture content [%]
+
+**Physical Interpretation:**
+- Higher canopy base height → harder to ignite crown
+- Higher foliar moisture → harder to ignite crown
+- Typical I_o values: 50-500 kW/m for various forest types
+
+#### Crown Fire Spread Rate
+When crown fire initiates (I_surface ≥ I_o), the crown fire spread rate is:
+
+```
+R_crown = 3.0 / CBD
+```
+
+with optional moisture adjustment:
+
+```
+R_crown *= [1.0 - (FMC - 100) / 200]
+```
+
+where:
+- R_crown = Crown fire rate of spread [m/min]
+- CBD = Canopy bulk density [kg/m³]
+
+**Physical Interpretation:**
+- CBD = 0.1 kg/m³: R_crown ≈ 30 m/min (sparse canopy, very fast)
+- CBD = 0.15 kg/m³: R_crown ≈ 20 m/min (moderate canopy)
+- CBD = 0.3 kg/m³: R_crown ≈ 10 m/min (dense canopy, slower)
+
+#### Combined Fire Spread
+When crown fire is active, the total rate of spread is:
+
+```
+R_total = max(R_surface, R_crown × crown_fraction_weight)
+```
+
+The crown fraction output shows the contribution:
+
+```
+crown_fraction = R_crown / (R_crown + R_surface)
+```
+
+**Values:**
+- crown_fraction = 0.0: Pure surface fire (crown not initiated)
+- crown_fraction = 0.5: Equal contribution from surface and crown
+- crown_fraction = 1.0: Crown fire dominates (typical when active)
+
+### Parameter Guidelines
+
+| Parameter | Description | Typical Range | Default |
+|-----------|-------------|---------------|---------|
+| `crown.enable` | Enable model (0=off, 1=on) | 0 or 1 | 0 |
+| `crown.CBH` | Canopy base height [m] | 2-10 | 4.0 |
+| `crown.CBD` | Canopy bulk density [kg/m³] | 0.05-0.30 | 0.15 |
+| `crown.FMC` | Foliar moisture content [%] | 50-300 | 100.0 |
+| `crown.crown_fraction_weight` | Crown fire weighting (0-2) | 0.5-1.5 | 1.0 |
+| `crown.use_metric_units` | Use metric units (1) or imperial (0) | 0 or 1 | 1 |
+
+### Typical Forest Type Parameters
+
+**Sparse Conifer (e.g., Ponderosa Pine)**
+```bash
+crown.CBH=5.0      # High canopy base (less ladder fuels)
+crown.CBD=0.08     # Low density
+crown.FMC=120.0    # Moderate to high moisture
+```
+
+**Moderate Conifer (e.g., Douglas Fir)**
+```bash
+crown.CBH=4.0      # Moderate canopy base
+crown.CBD=0.15     # Moderate density
+crown.FMC=100.0    # Typical live fuel moisture
+```
+
+**Dense Conifer (e.g., Lodgepole Pine)**
+```bash
+crown.CBH=2.5      # Low canopy base (more ladder fuels)
+crown.CBD=0.25     # High density
+crown.FMC=90.0     # Lower moisture (more prone to crown fire)
+```
+
+### Example Usage
+
+**Enable with typical conifer forest parameters:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  crown.enable=1 crown.CBH=4.0 crown.CBD=0.15 crown.FMC=100.0 \
+  rothermel.fuel_model=FM10 u_x=0.4
+```
+
+**High-risk crown fire scenario (dense forest, low moisture):**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  crown.enable=1 crown.CBH=2.5 crown.CBD=0.25 crown.FMC=80.0 \
+  crown.crown_fraction_weight=1.2 \
+  rothermel.fuel_model=FM10 u_x=0.5
+```
+
+**Crown fire with fuel consumption:**
+```bash
+./build/levelset skip_levelset=1 farsite.enable=1 \
+  crown.enable=1 crown.CBH=4.0 crown.CBD=0.15 \
+  farsite.use_bulk_fuel_consumption=1 \
+  rothermel.fuel_model=TU5 u_x=0.4
+```
+
+### Output Fields
+
+The crown initiation model adds the `crown_fraction` field to plotfiles:
+- **crown_fraction**: Fraction of total spread from crown fire (0.0-1.0)
+  - 0.0 = Pure surface fire
+  - 0.0-1.0 = Transition zone or crown fire active
+  - Values only meaningful at fire front (phi ≈ 0)
+
+### Physical Interpretation of Results
+
+**crown_fraction = 0.0 throughout:**
+- Surface fire intensity never exceeds I_o
+- Crown fire does not initiate
+- May need: higher wind, drier fuels, or lower CBH/higher CBD
+
+**crown_fraction = 0.6-0.9 at fire front:**
+- Active crown fire
+- Crown fire dominates spread rate
+- Very dangerous fire behavior
+- Typical for high-intensity forest fires
+
+**Spatially varying crown_fraction:**
+- Some parts of fire are crown fire, others surface
+- Depends on local fire intensity variations
+- Realistic for heterogeneous conditions
+
+### Model Limitations
+
+Current implementation:
+- Simplified crown fire spread rate (no wind effect on crown ROS)
+- Uniform canopy properties (no spatial variation of CBH, CBD, FMC)
+- No passive crown fire modeling (torching without sustained spread)
+- No canopy fuel consumption (crown fuels not depleted)
+
+### Integration with Other Models
+
+The crown initiation model works with:
+- **Rothermel Model**: Provides surface fire intensity
+- **FARSITE**: Provides directional spread framework
+- **Bulk Fuel Consumption**: Both models can be active simultaneously
+- **Anderson L/W**: Crown fires also exhibit elliptical patterns
+
+The crown initiation model does NOT work with:
+- **Level-set advection** (requires `skip_levelset=1`)
+- **Basic model** (requires FARSITE)
+
+### Future Enhancements
+
+Potential improvements:
+- Wind effects on crown fire spread rate
+- Spatially varying canopy properties from input files
+- Passive vs. active crown fire distinction
+- Canopy fuel consumption and depletion
+- Coupling crown fire to atmospheric plume dynamics
+- Ladder fuel effects on crown initiation
+
+### Validation
+
+The model follows Van Wagner's original formulation but should be validated against:
+- Experimental crown fire data
+- Field observations of crown fire initiation
+- Operational fire behavior predictions (BehavePlus, FlamMap)
+- Laboratory crown fire experiments
+
+Users should verify results are physically reasonable for their specific applications.
+
+### References
+1. Van Wagner, C. E. (1977). "Conditions for the start and spread of crown fire." Canadian Journal of Forest Research, 7(1), 23-34.
+2. Cruz, M. G., & Alexander, M. E. (2010). "Assessing crown fire potential in coniferous forests of western North America: a critique of current approaches and recent simulation studies." International Journal of Wildland Fire, 19(4), 377-398.
+3. Scott, J. H., & Reinhardt, E. D. (2001). "Assessing crown fire potential by linking models of surface and crown fire behavior." Research Paper RMRS-RP-29, USDA Forest Service.
 
 ## Terrain Data
 
