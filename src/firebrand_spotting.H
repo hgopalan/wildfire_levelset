@@ -129,6 +129,12 @@ static void generate_firebrand_spots(
         return; // Spotting disabled
     }
     
+#if defined(AMREX_USE_MPI) || defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
+    amrex::Abort("Firebrand spotting data update requires serial execution. "
+                 "Parallel execution (MPI/OMP/GPU) is not yet supported for spotting_data updates. "
+                 "Please rebuild with AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
+#endif
+    
     const Real phi_thresh = 0.1; // Threshold for identifying fire front
     const auto dx = geom.CellSize();
     const Real *prob_lo = geom.ProbLo();
@@ -204,6 +210,8 @@ static void generate_firebrand_spots(
 #if (AMREX_SPACEDIM == 3)
     std::vector<Real> spot_z;
 #endif
+    std::vector<Real> spot_distances; // Store distances for each spot
+    std::vector<int> source_i, source_j, source_k; // Store source cell indices
     
     const int npts = static_cast<int>(xarray.size());
     int total_spots = 0;
@@ -260,8 +268,21 @@ static void generate_firebrand_spots(
             Real new_x = xarray[idx] + distance * wx + lateral_offset * perp_x;
             Real new_y = yarray[idx] + distance * wy + lateral_offset * perp_y;
             
+            // Compute source cell indices
+            int src_i = static_cast<int>(std::floor((xarray[idx] - prob_lo[0]) / gdx[0]));
+            int src_j = static_cast<int>(std::floor((yarray[idx] - prob_lo[1]) / gdx[1]));
+#if (AMREX_SPACEDIM == 3)
+            int src_k = static_cast<int>(std::floor((zarray[idx] - prob_lo[2]) / gdx[2]));
+#else
+            int src_k = 0;
+#endif
+            
             spot_x.push_back(new_x);
             spot_y.push_back(new_y);
+            spot_distances.push_back(distance);
+            source_i.push_back(src_i);
+            source_j.push_back(src_j);
+            source_k.push_back(src_k);
 #if (AMREX_SPACEDIM == 3)
             Real new_z = zarray[idx] + distance * wz;
             spot_z.push_back(new_z);
@@ -272,9 +293,7 @@ static void generate_firebrand_spots(
     
     amrex::Print() << "Generated " << total_spots << " firebrand spots at step " << step << "\n";
     
-    // Third pass: apply spots to phi field
-    const Real spot_phi_value = -sp.spot_radius; // Signed distance value
-    
+    // Third pass: apply spots to phi field by setting negative signed distance values
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
         auto p = phi.array(mfi);
@@ -327,6 +346,76 @@ static void generate_firebrand_spots(
                         }
                     }
                 }
+            }
+        }
+    }
+    
+    // Fourth pass: update spotting_data with count, distance, and active flag
+    // Reset all spotting data components first
+    for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
+        const Box &bx = mfi.validbox();
+        auto spot = spotting_data.array(mfi);
+        
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+            spot(i, j, k, 1) = 0.0; // Reset count
+            spot(i, j, k, 2) = 0.0; // Reset distance
+            spot(i, j, k, 3) = 0.0; // Reset active flag
+        });
+    }
+    
+    // Update spotting data based on generated spots
+    // Iterate over boxes in outer loop (better cache locality than iterating over spots first)
+    // NOTE: This code assumes serial execution (AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU=OFF).
+    // If parallelization is enabled, atomic operations (Gpu::Atomic::Add, Gpu::Atomic::Max)
+    // would be required to avoid race conditions when multiple threads update the same cell.
+    for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
+        const Box &bx = mfi.validbox();
+        auto spot = spotting_data.array(mfi);
+        
+        const auto lo = lbound(bx);
+        const auto hi = ubound(bx);
+        
+        // Process all spots for this box
+        for (int idx = 0; idx < total_spots; ++idx) {
+            int src_i = source_i[idx];
+            int src_j = source_j[idx];
+            int src_k = source_k[idx];
+            Real distance = spot_distances[idx];
+            
+            Real x_spot = spot_x[idx];
+            Real y_spot = spot_y[idx];
+#if (AMREX_SPACEDIM == 3)
+            Real z_spot = spot_z[idx];
+#endif
+            
+            // Check if source cell is in this box
+            if (src_i >= lo.x && src_i <= hi.x &&
+                src_j >= lo.y && src_j <= hi.y &&
+                src_k >= lo.z && src_k <= hi.z) {
+                
+                // Increment count (component 1)
+                spot(src_i, src_j, src_k, 1) += 1.0;
+                
+                // Store maximum distance (component 2) - shows farthest firebrand travel from this source cell
+                spot(src_i, src_j, src_k, 2) = amrex::max(spot(src_i, src_j, src_k, 2), distance);
+            }
+            
+            // Mark cells where spot fires were placed (component 3)
+            int i_center = static_cast<int>(std::floor((x_spot - prob_lo[0]) / gdx[0]));
+            int j_center = static_cast<int>(std::floor((y_spot - prob_lo[1]) / gdx[1]));
+#if (AMREX_SPACEDIM == 3)
+            int k_center = static_cast<int>(std::floor((z_spot - prob_lo[2]) / gdx[2]));
+#else
+            int k_center = 0;
+#endif
+            
+            // Check if spot center is in this box
+            if (i_center >= lo.x && i_center <= hi.x &&
+                j_center >= lo.y && j_center <= hi.y &&
+                k_center >= lo.z && k_center <= hi.z) {
+                
+                // Mark as active spot fire location (component 3)
+                spot(i_center, j_center, k_center, 3) = 1.0;
             }
         }
     }
