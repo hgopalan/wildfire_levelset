@@ -189,7 +189,9 @@ int main(int argc, char* argv[])
       compute_slopes_from_landscape(*terrain_slopes, geom, inputs.rothermel.landscape_file);
       amrex::Print() << "Initialized terrain slopes from landscape file: " 
 		     << inputs.rothermel.landscape_file << "\n";
-      amrex::Print() << "NOTE: Ignoring terrain_file (if specified) because landscape_file takes precedence\n";
+      if (!inputs.rothermel.terrain_file.empty()) {
+        amrex::Print() << "NOTE: Ignoring terrain_file because landscape_file takes precedence\n";
+      }
     } else if (!inputs.rothermel.terrain_file.empty()) {
       // Create MultiFab for slopes (2 components: slope_x, slope_y)
       terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);

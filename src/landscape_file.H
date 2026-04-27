@@ -167,12 +167,10 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             // Mathematical convention: 0=East, 90=North, 180=West, 270=South
             // Convert: aspect_math = 90 - aspect_farsite
             
-            // Use M_PI from cmath for better portability
-            Real PI = Real(M_PI);
-            Real slope_radians = result_slope * PI / Real(180.0);
+            Real slope_radians = result_slope * Real(M_PI) / Real(180.0);
             Real aspect_farsite = result_aspect;
             Real aspect_math = Real(90.0) - aspect_farsite; // Convert to math convention
-            Real aspect_radians = aspect_math * PI / Real(180.0);
+            Real aspect_radians = aspect_math * Real(M_PI) / Real(180.0);
             
             Real tan_slope = std::tan(slope_radians);
             s(i, j, k, 0) = tan_slope * std::cos(aspect_radians); // slope_x
