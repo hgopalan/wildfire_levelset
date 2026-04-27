@@ -124,6 +124,9 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
             
             // Interpolate slope and aspect at this cell center using inverse distance weighting
+            // Epsilon tolerance for exact point matching and numerical stability in weight calculation
+            // Value chosen to be small enough to detect coincident points but large enough to avoid
+            // floating-point comparison issues (typically ~10 orders of magnitude smaller than domain size)
             Real epsilon = Real(1.0e-10);
             Real sum_weights = Real(0.0);
             Real sum_slope = Real(0.0);
