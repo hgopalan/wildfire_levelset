@@ -89,6 +89,10 @@ int main(int argc, char* argv[])
 
     // Rothermel wind speed R field (1 component, no ghost cells)
     MultiFab R_mf(ba, dm, 1, 0);
+    
+    // Bulk fuel consumption fraction field (1 component, no ghost cells)
+    MultiFab fuel_consumption_mf(ba, dm, 1, 0);
+    fuel_consumption_mf.setVal(0.0); // Initialize to zero
 
 
     // ---------------- Initialize ---------------------------
@@ -172,18 +176,19 @@ int main(int argc, char* argv[])
       Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
 				   , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
-				   "spot_prob", "spot_count", "spot_dist", "spot_active"
+				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
-				   "spot_prob", "spot_count", "spot_dist", "spot_active"
+				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, R_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 1, 0);
       MultiFab::Copy(plotmf, spotting_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1, 4, 0);
+      MultiFab::Copy(plotmf, fuel_consumption_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 1, 0);
       WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
       
       // Write negative phi x-y data files
@@ -205,7 +210,7 @@ int main(int argc, char* argv[])
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else if (inputs.farsite.enable == 1) {
 	// FARSITE ellipse spread (only when skip_levelset == 1 and farsite.enable == 1)
-	compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get());
+	compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, terrain_slopes.get(), &fuel_consumption_mf);
 	
 	// Add firebrand spotting model
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
@@ -239,18 +244,19 @@ int main(int argc, char* argv[])
 	Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
-				     "spot_prob", "spot_count", "spot_dist", "spot_active"
+				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
-				     "spot_prob", "spot_count", "spot_dist", "spot_active"
+				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, R_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 1, 0);
 	MultiFab::Copy(plotmf, spotting_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1, 4, 0);
+	MultiFab::Copy(plotmf, fuel_consumption_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	
@@ -276,18 +282,19 @@ int main(int argc, char* argv[])
 	Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
-				     "spot_prob", "spot_count", "spot_dist", "spot_active"
+				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
-				     "spot_prob", "spot_count", "spot_dist", "spot_active"
+				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, R_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM, 1, 0);
 	MultiFab::Copy(plotmf, spotting_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1, 4, 0);
+	MultiFab::Copy(plotmf, fuel_consumption_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	
