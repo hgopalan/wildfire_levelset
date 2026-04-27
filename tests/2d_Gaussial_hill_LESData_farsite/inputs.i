@@ -7,7 +7,7 @@ prob_lo_y = 0.0
 prob_hi_y = 5000.0
 
 # Time & output
-nsteps = 500
+nsteps = 100
 plot_int = 10
 
 # Velocity
@@ -27,9 +27,10 @@ farsite.phi_threshold = 0.1
 farsite.coeff_a = 1.0
 farsite.coeff_b = 0.5
 farsite.coeff_c = 0.2
+farsite.use_bulk_fuel_consumption = 1
 
 # Firebrand spotting model
-spotting.enable = 1
+spotting.enable = 0
 spotting.P_base = 0.50
 spotting.k_wind = 1.0
 spotting.I_critical = 100.0
