@@ -28,6 +28,7 @@ farsite.coeff_a = 1.0
 farsite.coeff_b = 0.5
 farsite.coeff_c = 0.2
 farsite.use_bulk_fuel_consumption = 1
+fire_points_file     = ignitions.csv
 
 # Firebrand spotting model
 spotting.enable = 0
