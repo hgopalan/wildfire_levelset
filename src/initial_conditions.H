@@ -1,11 +1,24 @@
-// ======================= Initialize from CSV fire points (Gaussian blobs) =========
+#include <limits>
+
+// ======================= Initialize from CSV fire points (signed distance) =========
 // Each row in the CSV provides the coordinates of an ignition point (X Y in 2D,
-// X Y Z in 3D).  For every grid cell a Gaussian contribution
-//   phi_contrib = -exp( -r^2 / (2*sigma^2) )
-// is computed for each ignition point; phi at a cell is set to the minimum (most
-// negative) value across all points.  Values are in [-1, 0): negative near fire
-// centres and approaching 0 far away, which is consistent with the signed-distance
-// convention used by the level-set solver (negative = inside fire).
+// X Y Z in 3D).  The level-set field phi is initialised as a true signed-distance
+// function relative to a "fire disk" of radius sigma centred on each ignition point:
+//
+//   phi(x) = min_i( ||x - x_i|| ) - sigma
+//
+// This gives:
+//   phi < 0  inside the union of disks (inside the fire region)
+//   phi > 0  outside the union of disks
+//   phi = 0  on the perimeter (the 0-level set / fire front)
+//   |grad phi| = 1  almost everywhere  (true SDF property)
+//
+// A proper SDF is required so that the WENO5-Z level-set advection and the
+// Sussman reinitialization both remain stable.  The previous Gaussian-blob
+// initialisation gave phi in (-1, 0] with no positive values and no well-defined
+// zero contour, which caused the artificial-viscosity term in the advection RHS
+// (+R eps Delta phi) to push phi positive, and subsequent reinitialization steps
+// then amplified those values into very large positives.
 //
 // sigma   > 0  use provided value (physical units)
 // sigma  <= 0  auto-select as 3 * min(dx, dy [, dz])
@@ -67,7 +80,6 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
         amrex::Print() << "init_phi_from_fire_points_csv: auto sigma = " << sigma << "\n";
     }
 
-    const amrex::Real inv2sig2 = 1.0 / (2.0 * sigma * sigma);
     const int npts = static_cast<int>(pts_x.size());
 
     // Raw pointers captured by [=] in the ParallelFor lambda.
@@ -92,7 +104,12 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
             (void)k;
             (void)pz;  // Z coordinates unused in 2D
 #endif
-            amrex::Real phi_min = 0.0;
+            // Compute the minimum distance from this cell to any ignition point.
+            // phi = min_dist - sigma is a true signed-distance function:
+            //   phi < 0  inside the union of fire disks (radius sigma)
+            //   phi > 0  outside  (|grad phi| = 1 everywhere)
+            //   phi = 0  on the fire perimeter (the level-set front)
+            amrex::Real min_dist = std::numeric_limits<amrex::Real>::max();
             for (int n = 0; n < npts; ++n) {
 #if (AMREX_SPACEDIM == 3)
                 amrex::Real r2 = (x - px[n])*(x - px[n])
@@ -102,10 +119,10 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
                 amrex::Real r2 = (x - px[n])*(x - px[n])
                                + (y - py[n])*(y - py[n]);
 #endif
-                amrex::Real contrib = -std::exp(-r2 * inv2sig2);
-                if (contrib < phi_min) phi_min = contrib;
+                amrex::Real dist = std::sqrt(r2);
+                if (dist < min_dist) min_dist = dist;
             }
-            p(i,j,k) = phi_min;
+            p(i,j,k) = min_dist - sigma;
         });
     }
 }
