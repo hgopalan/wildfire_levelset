@@ -17,3 +17,4 @@ __pycache__/
 .Python
 env/
 venv/
+build_2d/

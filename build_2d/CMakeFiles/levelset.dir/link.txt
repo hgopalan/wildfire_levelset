@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/levelset.dir/link.d CMakeFiles/levelset.dir/src/main.cpp.o CMakeFiles/levelset.dir/src/parse_inputs.cpp.o -o levelset  external/amrex/Src/libamrex_2d.a
