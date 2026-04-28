@@ -23,7 +23,8 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
         }
         std::string line;
         while (std::getline(fin, line)) {
-            // Skip blank lines and comment lines starting with '#'
+            // Skip blank lines and '#' comment lines (short-circuit ensures
+            // line[0] is only accessed when the line is non-empty)
             if (line.empty() || line[0] == '#') continue;
             // Replace commas with spaces so both CSV and space-delimited work
             for (char& c : line) { if (c == ',') c = ' '; }
@@ -70,9 +71,10 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
     const int npts = static_cast<int>(pts_x.size());
 
     // Raw pointers captured by [=] in the ParallelFor lambda.
-    // With GPU_BACKEND=NONE these live on the host and are safe to access from
-    // the CPU-side ParallelFor.  For GPU builds the data would need to be on
-    // device; promote to Gpu::DeviceVector if GPU support is ever added.
+    // The project currently builds with AMReX_GPU_BACKEND=NONE so these host
+    // pointers are safe to access inside the (CPU) ParallelFor / AMREX_GPU_DEVICE
+    // lambda.  When GPU support is enabled the vectors must be replaced with
+    // amrex::Gpu::DeviceVector and the data copied to device before launching.
     const amrex::Real* px = pts_x.data();
     const amrex::Real* py = pts_y.data();
     const amrex::Real* pz = pts_z.data();
