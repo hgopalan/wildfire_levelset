@@ -1,3 +1,113 @@
+// ======================= Initialize from CSV fire points (Gaussian blobs) =========
+// Each row in the CSV provides the coordinates of an ignition point (X Y in 2D,
+// X Y Z in 3D).  For every grid cell a Gaussian contribution
+//   phi_contrib = -exp( -r^2 / (2*sigma^2) )
+// is computed for each ignition point; phi at a cell is set to the minimum (most
+// negative) value across all points.  Values are in [-1, 0): negative near fire
+// centres and approaching 0 far away, which is consistent with the signed-distance
+// convention used by the level-set solver (negative = inside fire).
+//
+// sigma   > 0  use provided value (physical units)
+// sigma  <= 0  auto-select as 3 * min(dx, dy [, dz])
+static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
+                                          const std::string& filename,
+                                          amrex::Real sigma)
+{
+    // ---- Read fire points on rank 0 and broadcast ----
+    std::vector<amrex::Real> pts_x, pts_y, pts_z;
+
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream fin(filename);
+        if (!fin.is_open()) {
+            amrex::Abort("init_phi_from_fire_points_csv: cannot open file: " + filename);
+        }
+        std::string line;
+        while (std::getline(fin, line)) {
+            // Skip blank lines and comment lines starting with '#'
+            if (line.empty() || line[0] == '#') continue;
+            // Replace commas with spaces so both CSV and space-delimited work
+            for (char& c : line) { if (c == ',') c = ' '; }
+            std::istringstream iss(line);
+            amrex::Real x = 0.0, y = 0.0, z = 0.0;
+            if (!(iss >> x >> y)) continue;  // skip malformed lines
+            iss >> z;                         // optional Z (stays 0 if not present)
+            pts_x.push_back(x);
+            pts_y.push_back(y);
+            pts_z.push_back(z);
+        }
+        amrex::Print() << "init_phi_from_fire_points_csv: read " << pts_x.size()
+                       << " ignition point(s) from '" << filename << "'\n";
+    }
+
+    // Broadcast the point arrays to all MPI ranks
+    {
+        int n = static_cast<int>(pts_x.size());
+        amrex::ParallelDescriptor::Bcast(&n, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+        pts_x.resize(n); pts_y.resize(n); pts_z.resize(n);
+        amrex::ParallelDescriptor::Bcast(pts_x.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+        amrex::ParallelDescriptor::Bcast(pts_y.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+        amrex::ParallelDescriptor::Bcast(pts_z.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+    }
+
+    if (pts_x.empty()) {
+        amrex::Abort("init_phi_from_fire_points_csv: no valid ignition points found in '" + filename + "'");
+    }
+
+    const auto dx  = geom.CellSize();
+    const auto plo = geom.ProbLo();
+
+    // Auto-compute sigma if not specified (3 cells)
+    if (sigma <= 0.0) {
+#if (AMREX_SPACEDIM == 3)
+        sigma = 3.0 * std::min({dx[0], dx[1], dx[2]});
+#else
+        sigma = 3.0 * std::min(dx[0], dx[1]);
+#endif
+        amrex::Print() << "init_phi_from_fire_points_csv: auto sigma = " << sigma << "\n";
+    }
+
+    const amrex::Real inv2sig2 = 1.0 / (2.0 * sigma * sigma);
+    const int npts = static_cast<int>(pts_x.size());
+
+    // Raw pointers captured by [=] in the ParallelFor lambda.
+    // With GPU_BACKEND=NONE these live on the host and are safe to access from
+    // the CPU-side ParallelFor.  For GPU builds the data would need to be on
+    // device; promote to Gpu::DeviceVector if GPU support is ever added.
+    const amrex::Real* px = pts_x.data();
+    const amrex::Real* py = pts_y.data();
+    const amrex::Real* pz = pts_z.data();
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const p = phi.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const amrex::Real x = plo[0] + (i + 0.5) * dx[0];
+            const amrex::Real y = plo[1] + (j + 0.5) * dx[1];
+#if (AMREX_SPACEDIM == 3)
+            const amrex::Real z = plo[2] + (k + 0.5) * dx[2];
+#else
+            (void)k;
+            (void)pz;  // Z coordinates unused in 2D
+#endif
+            amrex::Real phi_min = 0.0;
+            for (int n = 0; n < npts; ++n) {
+#if (AMREX_SPACEDIM == 3)
+                amrex::Real r2 = (x - px[n])*(x - px[n])
+                               + (y - py[n])*(y - py[n])
+                               + (z - pz[n])*(z - pz[n]);
+#else
+                amrex::Real r2 = (x - px[n])*(x - px[n])
+                               + (y - py[n])*(y - py[n]);
+#endif
+                amrex::Real contrib = -std::exp(-r2 * inv2sig2);
+                if (contrib < phi_min) phi_min = contrib;
+            }
+            p(i,j,k) = phi_min;
+        });
+    }
+}
+
 // ======================= Initialize signed distance (sphere) ======================
 static void init_phi_sphere(MultiFab& phi, const Geometry& geom,
                             Real cx, Real cy, Real cz, Real radius)

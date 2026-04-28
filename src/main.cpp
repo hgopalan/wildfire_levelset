@@ -11,6 +11,8 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <fstream>
+#include <sstream>
 
 using namespace amrex;
 #include "numerical_schemes.H"
@@ -115,7 +117,11 @@ int main(int argc, char* argv[])
     // (phi = 1 inside, phi = 0 outside) instead of signed distance
     bool use_indicator = (inputs.farsite.enable == 1 && inputs.skip_levelset == 1);
         
-    if (inputs.source_type == "sphere") {
+    if (!inputs.fire_points_file.empty()) {
+      // CSV fire-points takes precedence over all other source_type options
+      init_phi_from_fire_points_csv(phi, geom, inputs.fire_points_file, inputs.fire_gaussian_sigma);
+    }
+    else if (inputs.source_type == "sphere") {
       if (use_indicator) {
 	init_phi_sphere_indicator(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
       } else {

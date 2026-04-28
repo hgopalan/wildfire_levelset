@@ -110,6 +110,10 @@ struct InputParameters {
     
     // Skip level set evolution option
     int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
+
+    // CSV fire points initialization (takes precedence over source_type when non-empty)
+    std::string fire_points_file;            // Path to CSV file with X Y [Z] ignition point coordinates
+    amrex::Real fire_gaussian_sigma;         // Gaussian sigma for each ignition point (physical units); <=0 means auto (3 cells)
 };
 
 void parse_inputs(InputParameters& inputs);
