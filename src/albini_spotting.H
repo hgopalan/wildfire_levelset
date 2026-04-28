@@ -261,6 +261,7 @@ static void compute_albini_spotting(
     struct LandingSpot {
         Real x, y;
         int  src_i, src_j;
+        int  ic, jc;      // grid indices of the landing cell
         Real distance;
     };
     std::vector<LandingSpot> spots;
@@ -269,7 +270,6 @@ static void compute_albini_spotting(
         // Intensity-weighted launch probability (capped at P_base)
         Real p_launch = asp.P_base *
             std::min(Real(1.0), fc.I_B / std::max(asp.I_B_min, Real(1.0e-10)));
-        p_launch = std::min(p_launch, asp.P_base);
 
         if (uniform(gen) > p_launch) {
             continue; // no firebrand from this cell
@@ -307,7 +307,9 @@ static void compute_albini_spotting(
             continue;
         }
 
-        spots.push_back({px, py, fc.i, fc.j, dist});
+        int ic = static_cast<int>(std::floor((px - prob_lo[0]) / dx[0]));
+        int jc = static_cast<int>(std::floor((py - prob_lo[1]) / dx[1]));
+        spots.push_back({px, py, fc.i, fc.j, ic, jc, dist});
     }
 
     amrex::Print() << "Albini spotting: generated " << spots.size()
@@ -327,8 +329,8 @@ static void compute_albini_spotting(
         const auto hi = ubound(bx);
 
         for (const auto& sp : spots) {
-            int ic = static_cast<int>(std::floor((sp.x - prob_lo[0]) / dx[0]));
-            int jc = static_cast<int>(std::floor((sp.y - prob_lo[1]) / dx[1]));
+            int ic = sp.ic;
+            int jc = sp.jc;
 
             int i0 = std::max(ic - radius_cells, lo.x);
             int i1 = std::min(ic + radius_cells, hi.x);
@@ -366,8 +368,8 @@ static void compute_albini_spotting(
             }
 
             // Mark landing cell as active
-            int ic = static_cast<int>(std::floor((sp.x - prob_lo[0]) / dx[0]));
-            int jc = static_cast<int>(std::floor((sp.y - prob_lo[1]) / dx[1]));
+            int ic = sp.ic;
+            int jc = sp.jc;
             if (ic >= lo.x && ic <= hi.x && jc >= lo.y && jc <= hi.y) {
                 adata(ic, jc, 0, 3) = Real(1.0);
             }

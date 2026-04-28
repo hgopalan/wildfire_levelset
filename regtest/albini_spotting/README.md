@@ -17,10 +17,16 @@ Tests the Albini (1983) firebrand spotting model with 2-D trajectory integration
 
 ## Domain
 
-1 km × 1 km with 100×100 cells (dx = 10 m).  Wind is 5 m/s in x + 1 m/s in y.
+1 km × 1 km with 100×100 cells (dx = 10 m).  Wind is 2 m/s in x + 0.5 m/s in y.
 FARSITE ellipse spread is used (`skip_levelset = 1`).
 
 ## Expected result
 
 Spot fires appear downwind of the main fire front.  With `random_seed = 42` the
 result is deterministic.
+
+## Physics verification (FM4 defaults, u = 2 m/s, v_t = 5 m/s)
+
+- R ≈ 88 ft/min, I_B ≈ 9355 kW/m, H_z ≈ 257 m
+- Flight time = 257 m / 5 m/s ≈ 51 s
+- Landing distance ≈ 2 m/s × 51 s ≈ 102 m (well within the 1 km domain)
