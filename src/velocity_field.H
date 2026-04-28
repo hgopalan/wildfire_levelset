@@ -131,7 +131,7 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
             });
         }
 
-        amrex::Print() << "Velocity field initialised from " << nx_wind << "x" << ny_wind
+        amrex::Print() << "Velocity field initialized from " << nx_wind << "x" << ny_wind
                        << " regular grid using nearest-neighbour interpolation\n";
     } else {
         // Unstructured data – fall back to inverse distance weighting
