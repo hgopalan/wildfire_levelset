@@ -210,4 +210,8 @@ void parse_inputs(InputParameters& p)
 
     // -------- Skip level set option --------
     p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
+
+    // -------- CSV fire points initialization --------
+    p.fire_points_file  = "";                    pp.query("fire_points_file",     p.fire_points_file);
+    p.fire_gaussian_sigma = -1.0;                pp.query("fire_gaussian_sigma",  p.fire_gaussian_sigma);
 }
