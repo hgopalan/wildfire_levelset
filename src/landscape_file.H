@@ -7,11 +7,12 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_Gpu.H>
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cmath>
 
 using namespace amrex;
 
@@ -79,6 +80,11 @@ static void read_landscape_file(const std::string& filename,
 // Compute slopes from landscape file data and store in MultiFab
 // The landscape file contains slope and aspect, which we convert to
 // slope_x and slope_y (tangent of slope angle in x and y directions)
+//
+// The landscape data is assumed to lie on a regular rectangular grid.  The
+// code detects the grid spacing automatically and uses bilinear interpolation
+// (O(1) per cell) instead of brute-force IDW (O(n_points) per cell), which
+// would hang for large datasets.
 // ============================================================================
 static void compute_slopes_from_landscape(MultiFab& slopes, 
                                          const Geometry& geom, 
@@ -90,29 +96,92 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
     
     read_landscape_file(filename, x_data, y_data, elevation_data, 
                        slope_data, aspect_data, fuel_model_data);
-    
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_slope(slope_data.size());
-    Gpu::DeviceVector<Real> d_aspect(aspect_data.size());
-    
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, slope_data.begin(), slope_data.end(), d_slope.begin());
-    Gpu::copy(Gpu::hostToDevice, aspect_data.begin(), aspect_data.end(), d_aspect.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* slope_ptr = d_slope.data();
-    Real const* aspect_ptr = d_aspect.data();
-    int n_points = static_cast<int>(x_data.size());
-    
+
+    // ------------------------------------------------------------------
+    // Detect regular grid structure
+    // ------------------------------------------------------------------
+    std::vector<Real> xs = x_data;
+    std::vector<Real> ys = y_data;
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+    std::sort(ys.begin(), ys.end());
+    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+
+    int nx_land = static_cast<int>(xs.size());
+    int ny_land = static_cast<int>(ys.size());
+
+    if (nx_land * ny_land != static_cast<int>(x_data.size())) {
+        amrex::Abort("Landscape file does not appear to be a regular rectangular grid.");
+    }
+
+    if (nx_land < 2 || ny_land < 2) {
+        amrex::Abort("Landscape grid must have at least 2 points in each direction.");
+    }
+
+    Real x_min_land = xs.front();
+    Real y_min_land = ys.front();
+    Real dx_land    = (xs.back() - xs.front()) / (nx_land - 1);
+    Real dy_land    = (ys.back() - ys.front()) / (ny_land - 1);
+
+    // Build 2-D arrays for slope and aspect indexed as [ix * ny_land + iy].
+    std::vector<Real> slope_grid(nx_land * ny_land, Real(0.0));
+    std::vector<Real> aspect_grid(nx_land * ny_land, Real(0.0));
+    for (int n = 0; n < static_cast<int>(x_data.size()); ++n) {
+        int ix = static_cast<int>(std::round((x_data[n] - x_min_land) / dx_land));
+        int iy = static_cast<int>(std::round((y_data[n] - y_min_land) / dy_land));
+        // Clamp to guard against floating-point precision at the boundary
+        ix = std::max(0, std::min(ix, nx_land - 1));
+        iy = std::max(0, std::min(iy, ny_land - 1));
+        slope_grid [ix * ny_land + iy] = slope_data [n];
+        aspect_grid[ix * ny_land + iy] = aspect_data[n];
+    }
+
+    // Copy grids to device memory.
+    Gpu::DeviceVector<Real> d_slope_grid(slope_grid.size());
+    Gpu::DeviceVector<Real> d_aspect_grid(aspect_grid.size());
+    Gpu::copy(Gpu::hostToDevice, slope_grid.begin(),  slope_grid.end(),  d_slope_grid.begin());
+    Gpu::copy(Gpu::hostToDevice, aspect_grid.begin(), aspect_grid.end(), d_aspect_grid.begin());
+    Real const* slope_ptr  = d_slope_grid.data();
+    Real const* aspect_ptr = d_aspect_grid.data();
+
     // Get domain bounds and cell size
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
-    // Compute slopes for each cell using inverse distance weighting interpolation
+
+    // ------------------------------------------------------------------
+    // Bilinear interpolation helper (O(1) per query point)
+    // ------------------------------------------------------------------
+    // Returns the value at landscape coordinates (px, py) using bilinear
+    // interpolation on the regular grid.  Queries outside the grid are
+    // clamped to the nearest grid edge.
+    auto interpolate_grid = [=] AMREX_GPU_DEVICE (Real const* grid_ptr, Real px, Real py) -> Real
+    {
+        Real fx = (px - x_min_land) / dx_land;
+        Real fy = (py - y_min_land) / dy_land;
+
+        fx = amrex::max(Real(0.0), amrex::min(fx, Real(nx_land - 1)));
+        fy = amrex::max(Real(0.0), amrex::min(fy, Real(ny_land - 1)));
+
+        int ix0 = static_cast<int>(fx);
+        int iy0 = static_cast<int>(fy);
+        int ix1 = amrex::min(ix0 + 1, nx_land - 1);
+        int iy1 = amrex::min(iy0 + 1, ny_land - 1);
+
+        Real tx = fx - ix0;
+        Real ty = fy - iy0;
+
+        Real v00 = grid_ptr[ix0 * ny_land + iy0];
+        Real v10 = grid_ptr[ix1 * ny_land + iy0];
+        Real v01 = grid_ptr[ix0 * ny_land + iy1];
+        Real v11 = grid_ptr[ix1 * ny_land + iy1];
+
+        return (Real(1.0) - tx) * (Real(1.0) - ty) * v00
+             +              tx  * (Real(1.0) - ty) * v10
+             + (Real(1.0) - tx) *              ty  * v01
+             +              tx  *              ty  * v11;
+    };
+
+    // Compute slopes for each cell
     // slopes has 2 components: slope_x (∂z/∂x) and slope_y (∂z/∂y)
     for (MFIter mfi(slopes); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -122,46 +191,11 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Interpolate slope and aspect at this cell center using inverse distance weighting
-            // Epsilon tolerance for exact point matching and numerical stability in weight calculation
-            // Value chosen to be small enough to detect coincident points but large enough to avoid
-            // floating-point comparison issues (typically ~10 orders of magnitude smaller than domain size)
-            Real epsilon = Real(1.0e-10);
-            Real sum_weights = Real(0.0);
-            Real sum_slope = Real(0.0);
-            Real sum_aspect = Real(0.0);
-            bool exact_match = false;
-            Real result_slope = Real(0.0);
-            Real result_aspect = Real(0.0);
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                
-                // If very close to a data point (within epsilon), use its value directly
-                if (dist_sq < epsilon * epsilon) {
-                    result_slope = slope_ptr[n];
-                    result_aspect = aspect_ptr[n];
-                    exact_match = true;
-                    break;
-                }
-                
-                // Inverse distance weighting using sqrt(dist) for better numerical stability
-                // Adding epsilon prevents division by zero and extreme weights for very close points
-                Real dist = std::sqrt(dist_sq);
-                Real weight = Real(1.0) / (dist + epsilon);
-                sum_weights += weight;
-                sum_slope += weight * slope_ptr[n];
-                sum_aspect += weight * aspect_ptr[n];
-            }
-            
-            if (!exact_match && sum_weights > epsilon) {
-                result_slope = sum_slope / sum_weights;
-                result_aspect = sum_aspect / sum_weights;
-            }
-            
+
+            // Bilinear interpolation of slope and aspect at this cell center
+            Real result_slope  = interpolate_grid(slope_ptr,  x, y);
+            Real result_aspect = interpolate_grid(aspect_ptr, x, y);
+
             // Convert slope (degrees) and aspect (degrees) to slope_x and slope_y
             // slope_x = tan(slope) * cos(aspect_radians_from_east)
             // slope_y = tan(slope) * sin(aspect_radians_from_east)
@@ -170,10 +204,9 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             // Mathematical convention: 0=East, 90=North, 180=West, 270=South
             // Convert: aspect_math = 90 - aspect_farsite
             
-            Real slope_radians = result_slope * Real(M_PI) / Real(180.0);
-            Real aspect_farsite = result_aspect;
-            Real aspect_math = Real(90.0) - aspect_farsite; // Convert to math convention
-            Real aspect_radians = aspect_math * Real(M_PI) / Real(180.0);
+            Real slope_radians  = result_slope  * Real(M_PI) / Real(180.0);
+            Real aspect_math    = Real(90.0) - result_aspect;
+            Real aspect_radians = aspect_math   * Real(M_PI) / Real(180.0);
             
             Real tan_slope = std::tan(slope_radians);
             s(i, j, k, 0) = tan_slope * std::cos(aspect_radians); // slope_x
@@ -181,7 +214,8 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
         });
     }
     
-    amrex::Print() << "Computed slopes from landscape file with " << n_points << " data points\n";
+    amrex::Print() << "Computed slopes from landscape file on " << nx_land << "x" << ny_land
+                   << " regular grid (spacing " << dx_land << " x " << dy_land << ")\n";
 }
 
 #endif // LANDSCAPE_FILE_H

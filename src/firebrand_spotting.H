@@ -39,10 +39,10 @@ static void compute_spotting_probability(
     MultiFab &spotting_data,
     const MultiFab &phi,
     const MultiFab &vel,
-    const Geometry &geom,
+    const Geometry & /*geom*/,
     const RothermelParams &rp,
     const InputParameters::SpottingParams &sp,
-    const MultiFab *slopes = nullptr)
+    const MultiFab * /*slopes*/ = nullptr)
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
