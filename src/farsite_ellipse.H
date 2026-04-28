@@ -37,9 +37,8 @@
 using namespace amrex;
 
 // Constant for phi reset multiplier
-// When resetting phi at fire front positions, multiply threshold by this value
-// to get a value much smaller (more negative) than the threshold
-constexpr Real PHI_RESET_MULTIPLIER = -10.0;
+// When resetting phi at fire front positions in FARSITE mode, set to -1 (fire)
+constexpr Real PHI_RESET_MULTIPLIER = -1.0;
 
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
