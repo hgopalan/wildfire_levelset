@@ -1,4 +1,5 @@
 // velocity_field.H - Velocity field initialization functions
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -30,10 +31,13 @@ static void init_velocity_constant(MultiFab& vel, const Geometry& geom, Real ux,
 }
 
 // ======================= Initialize velocity from unstructured 2D data ===========
+// For regular-grid data the function detects the grid automatically and uses
+// nearest-neighbour interpolation (O(1) per cell).  For unstructured data it
+// falls back to inverse distance weighting.
 #if (AMREX_SPACEDIM == 2)
 static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const std::string& filename)
 {
-    // Read unstructured data from file (X Y U V format)
+    // Read data from file (X Y U V format)
     std::vector<Real> x_data, y_data, u_data, v_data;
     
     std::ifstream infile(filename);
@@ -62,76 +66,139 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     }
     
     amrex::Print() << "Read " << x_data.size() << " velocity data points from " << filename << "\n";
-    
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_u(u_data.size());
-    Gpu::DeviceVector<Real> d_v(v_data.size());
-    
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data.begin(), u_data.end(), d_u.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data.begin(), v_data.end(), d_v.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* u_ptr = d_u.data();
-    Real const* v_ptr = d_v.data();
-    int n_points = static_cast<int>(x_data.size());
-    
-    // Get domain bounds
-    const auto dx = geom.CellSizeArray();
-    const auto problo = geom.ProbLoArray();
-    
-    // Interpolate onto MultiFab using inverse distance weighting
-    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
-        const Box& bx = mfi.validbox();
-        auto const v = vel.array(mfi);
-        
-        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
-            Real x = problo[0] + (i + Real(0.5)) * dx[0];
-            Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Inverse distance weighting interpolation
-            Real sum_weights = Real(0.0);
-            Real sum_u = Real(0.0);
-            Real sum_v = Real(0.0);
-            Real epsilon = Real(1.0e-10);  // Small value to avoid division by zero
-            bool exact_match = false;
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                
-                // If very close to a data point, use its value directly
-                if (dist_sq < epsilon * epsilon) {
-                    v(i,j,k,0) = u_ptr[n];
-                    v(i,j,k,1) = v_ptr[n];
-                    v(i,j,k,2) = Real(0.0);
-                    exact_match = true;
-                    break;
+
+    // ------------------------------------------------------------------
+    // Detect regular grid structure (same approach as terrain_slope.H)
+    // ------------------------------------------------------------------
+    std::vector<Real> xs = x_data;
+    std::vector<Real> ys = y_data;
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+    std::sort(ys.begin(), ys.end());
+    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+
+    int nx_wind = static_cast<int>(xs.size());
+    int ny_wind = static_cast<int>(ys.size());
+    bool is_regular_grid = (nx_wind * ny_wind == static_cast<int>(x_data.size())
+                            && nx_wind >= 2 && ny_wind >= 2);
+
+    if (is_regular_grid) {
+        // Build 2-D velocity arrays indexed as [ix * ny_wind + iy]
+        Real x_min_wind = xs.front();
+        Real y_min_wind = ys.front();
+        Real dx_wind    = (xs.back() - xs.front()) / (nx_wind - 1);
+        Real dy_wind    = (ys.back() - ys.front()) / (ny_wind - 1);
+
+        std::vector<Real> u_grid(nx_wind * ny_wind, Real(0.0));
+        std::vector<Real> v_grid(nx_wind * ny_wind, Real(0.0));
+        for (int n = 0; n < static_cast<int>(x_data.size()); ++n) {
+            int ix = static_cast<int>(std::round((x_data[n] - x_min_wind) / dx_wind));
+            int iy = static_cast<int>(std::round((y_data[n] - y_min_wind) / dy_wind));
+            ix = std::max(0, std::min(ix, nx_wind - 1));
+            iy = std::max(0, std::min(iy, ny_wind - 1));
+            u_grid[ix * ny_wind + iy] = u_data[n];
+            v_grid[ix * ny_wind + iy] = v_data[n];
+        }
+
+        // Copy grids to device memory
+        Gpu::DeviceVector<Real> d_u_grid(u_grid.size());
+        Gpu::DeviceVector<Real> d_v_grid(v_grid.size());
+        Gpu::copy(Gpu::hostToDevice, u_grid.begin(), u_grid.end(), d_u_grid.begin());
+        Gpu::copy(Gpu::hostToDevice, v_grid.begin(), v_grid.end(), d_v_grid.begin());
+        Real const* u_ptr = d_u_grid.data();
+        Real const* v_ptr = d_v_grid.data();
+
+        const auto dx = geom.CellSizeArray();
+        const auto problo = geom.ProbLoArray();
+
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto const vfab = vel.array(mfi);
+
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+                // Nearest-neighbour lookup on the regular grid
+                int ix = static_cast<int>(std::round((x - x_min_wind) / dx_wind));
+                int iy = static_cast<int>(std::round((y - y_min_wind) / dy_wind));
+                ix = amrex::max(0, amrex::min(ix, nx_wind - 1));
+                iy = amrex::max(0, amrex::min(iy, ny_wind - 1));
+
+                vfab(i,j,k,0) = u_ptr[ix * ny_wind + iy];
+                vfab(i,j,k,1) = v_ptr[ix * ny_wind + iy];
+                vfab(i,j,k,2) = Real(0.0);
+            });
+        }
+
+        amrex::Print() << "Velocity field initialised from " << nx_wind << "x" << ny_wind
+                       << " regular grid using nearest-neighbour interpolation\n";
+    } else {
+        // Unstructured data – fall back to inverse distance weighting
+        amrex::Print() << "Velocity data appears unstructured; using IDW interpolation\n";
+
+        Gpu::DeviceVector<Real> d_x(x_data.size());
+        Gpu::DeviceVector<Real> d_y(y_data.size());
+        Gpu::DeviceVector<Real> d_u(u_data.size());
+        Gpu::DeviceVector<Real> d_v(v_data.size());
+
+        Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
+        Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
+        Gpu::copy(Gpu::hostToDevice, u_data.begin(), u_data.end(), d_u.begin());
+        Gpu::copy(Gpu::hostToDevice, v_data.begin(), v_data.end(), d_v.begin());
+
+        Real const* x_ptr = d_x.data();
+        Real const* y_ptr = d_y.data();
+        Real const* u_ptr = d_u.data();
+        Real const* v_ptr = d_v.data();
+        int n_points = static_cast<int>(x_data.size());
+
+        const auto dx = geom.CellSizeArray();
+        const auto problo = geom.ProbLoArray();
+
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto const vfab = vel.array(mfi);
+
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+                Real sum_weights = Real(0.0);
+                Real sum_u = Real(0.0);
+                Real sum_v = Real(0.0);
+                Real epsilon = Real(1.0e-10);
+                bool exact_match = false;
+
+                for (int n = 0; n < n_points; ++n) {
+                    Real dx_val = x - x_ptr[n];
+                    Real dy_val = y - y_ptr[n];
+                    Real dist_sq = dx_val * dx_val + dy_val * dy_val;
+
+                    if (dist_sq < epsilon * epsilon) {
+                        vfab(i,j,k,0) = u_ptr[n];
+                        vfab(i,j,k,1) = v_ptr[n];
+                        vfab(i,j,k,2) = Real(0.0);
+                        exact_match = true;
+                        break;
+                    }
+
+                    Real weight = Real(1.0) / dist_sq;
+                    sum_weights += weight;
+                    sum_u += weight * u_ptr[n];
+                    sum_v += weight * v_ptr[n];
                 }
-                
-                // For power=2, weight = 1/dist^2 = 1/dist_sq (no sqrt needed)
-                Real weight = Real(1.0) / dist_sq;
-                sum_weights += weight;
-                sum_u += weight * u_ptr[n];
-                sum_v += weight * v_ptr[n];
-            }
-            
-            // Apply weighted average if not an exact match
-            if (!exact_match) {
-                v(i,j,k,0) = sum_u / sum_weights;
-                v(i,j,k,1) = sum_v / sum_weights;
-                v(i,j,k,2) = Real(0.0);
-            }
-        });
+
+                if (!exact_match) {
+                    vfab(i,j,k,0) = sum_u / sum_weights;
+                    vfab(i,j,k,1) = sum_v / sum_weights;
+                    vfab(i,j,k,2) = Real(0.0);
+                }
+            });
+        }
+
+        amrex::Print() << "Velocity field interpolated from unstructured data\n";
     }
-    
-    amrex::Print() << "Velocity field interpolated from unstructured data\n";
 }
 
 // ======================= Load wind field data from file ==========================
@@ -175,6 +242,8 @@ static void load_wind_field_data(const std::string& filename,
 }
 
 // ======================= Interpolate velocity field using two time snapshots ====
+// For regular-grid data uses nearest-neighbour interpolation (O(1) per cell).
+// Falls back to IDW for unstructured data.
 static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
                                         const std::vector<Real>& x_data1, const std::vector<Real>& y_data1,
                                         const std::vector<Real>& u_data1, const std::vector<Real>& v_data1,
@@ -186,95 +255,158 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
     if (x_data1.size() != x_data2.size()) {
         amrex::Abort("Wind field files must have the same number of data points");
     }
-    
+
     int n_points = static_cast<int>(x_data1.size());
-    
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(n_points);
-    Gpu::DeviceVector<Real> d_y(n_points);
-    Gpu::DeviceVector<Real> d_u1(n_points);
-    Gpu::DeviceVector<Real> d_v1(n_points);
-    Gpu::DeviceVector<Real> d_u2(n_points);
-    Gpu::DeviceVector<Real> d_v2(n_points);
-    
-    Gpu::copy(Gpu::hostToDevice, x_data1.begin(), x_data1.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data1.begin(), y_data1.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data1.begin(), u_data1.end(), d_u1.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data1.begin(), v_data1.end(), d_v1.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data2.begin(), u_data2.end(), d_u2.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data2.begin(), v_data2.end(), d_v2.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* u1_ptr = d_u1.data();
-    Real const* v1_ptr = d_v1.data();
-    Real const* u2_ptr = d_u2.data();
-    Real const* v2_ptr = d_v2.data();
-    
-    // Get domain bounds
+
+    // ------------------------------------------------------------------
+    // Detect regular grid structure
+    // ------------------------------------------------------------------
+    std::vector<Real> xs = x_data1;
+    std::vector<Real> ys = y_data1;
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+    std::sort(ys.begin(), ys.end());
+    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+
+    int nx_wind = static_cast<int>(xs.size());
+    int ny_wind = static_cast<int>(ys.size());
+    bool is_regular_grid = (nx_wind * ny_wind == n_points && nx_wind >= 2 && ny_wind >= 2);
+
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
-    // Interpolate onto MultiFab using inverse distance weighting and temporal interpolation
-    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
-        const Box& bx = mfi.validbox();
-        auto const v = vel.array(mfi);
-        
-        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
-            Real x = problo[0] + (i + Real(0.5)) * dx[0];
-            Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Inverse distance weighting interpolation for both time snapshots
-            Real sum_weights = Real(0.0);
-            Real sum_u1 = Real(0.0);
-            Real sum_v1 = Real(0.0);
-            Real sum_u2 = Real(0.0);
-            Real sum_v2 = Real(0.0);
-            Real epsilon = Real(1.0e-10);
-            bool exact_match = false;
-            Real u1_val = Real(0.0);
-            Real v1_val = Real(0.0);
-            Real u2_val = Real(0.0);
-            Real v2_val = Real(0.0);
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                
-                // If very close to a data point, use its value directly
-                if (dist_sq < epsilon * epsilon) {
-                    u1_val = u1_ptr[n];
-                    v1_val = v1_ptr[n];
-                    u2_val = u2_ptr[n];
-                    v2_val = v2_ptr[n];
-                    exact_match = true;
-                    break;
+
+    if (is_regular_grid) {
+        Real x_min_wind = xs.front();
+        Real y_min_wind = ys.front();
+        Real dx_wind    = (xs.back() - xs.front()) / (nx_wind - 1);
+        Real dy_wind    = (ys.back() - ys.front()) / (ny_wind - 1);
+
+        // Build 2-D arrays for each snapshot indexed as [ix * ny_wind + iy]
+        std::vector<Real> u1_grid(nx_wind * ny_wind, Real(0.0));
+        std::vector<Real> v1_grid(nx_wind * ny_wind, Real(0.0));
+        std::vector<Real> u2_grid(nx_wind * ny_wind, Real(0.0));
+        std::vector<Real> v2_grid(nx_wind * ny_wind, Real(0.0));
+
+        for (int n = 0; n < n_points; ++n) {
+            int ix = static_cast<int>(std::round((x_data1[n] - x_min_wind) / dx_wind));
+            int iy = static_cast<int>(std::round((y_data1[n] - y_min_wind) / dy_wind));
+            ix = std::max(0, std::min(ix, nx_wind - 1));
+            iy = std::max(0, std::min(iy, ny_wind - 1));
+            u1_grid[ix * ny_wind + iy] = u_data1[n];
+            v1_grid[ix * ny_wind + iy] = v_data1[n];
+            u2_grid[ix * ny_wind + iy] = u_data2[n];
+            v2_grid[ix * ny_wind + iy] = v_data2[n];
+        }
+
+        Gpu::DeviceVector<Real> d_u1(u1_grid.size()), d_v1(v1_grid.size());
+        Gpu::DeviceVector<Real> d_u2(u2_grid.size()), d_v2(v2_grid.size());
+        Gpu::copy(Gpu::hostToDevice, u1_grid.begin(), u1_grid.end(), d_u1.begin());
+        Gpu::copy(Gpu::hostToDevice, v1_grid.begin(), v1_grid.end(), d_v1.begin());
+        Gpu::copy(Gpu::hostToDevice, u2_grid.begin(), u2_grid.end(), d_u2.begin());
+        Gpu::copy(Gpu::hostToDevice, v2_grid.begin(), v2_grid.end(), d_v2.begin());
+
+        Real const* u1_ptr = d_u1.data();
+        Real const* v1_ptr = d_v1.data();
+        Real const* u2_ptr = d_u2.data();
+        Real const* v2_ptr = d_v2.data();
+
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto const vfab = vel.array(mfi);
+
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+                // Nearest-neighbour lookup
+                int ix = static_cast<int>(std::round((x - x_min_wind) / dx_wind));
+                int iy = static_cast<int>(std::round((y - y_min_wind) / dy_wind));
+                ix = amrex::max(0, amrex::min(ix, nx_wind - 1));
+                iy = amrex::max(0, amrex::min(iy, ny_wind - 1));
+
+                Real u1_val = u1_ptr[ix * ny_wind + iy];
+                Real v1_val = v1_ptr[ix * ny_wind + iy];
+                Real u2_val = u2_ptr[ix * ny_wind + iy];
+                Real v2_val = v2_ptr[ix * ny_wind + iy];
+
+                // Linear interpolation in time
+                vfab(i,j,k,0) = u1_val + time_fraction * (u2_val - u1_val);
+                vfab(i,j,k,1) = v1_val + time_fraction * (v2_val - v1_val);
+                vfab(i,j,k,2) = Real(0.0);
+            });
+        }
+    } else {
+        // Unstructured data – fall back to IDW
+        Gpu::DeviceVector<Real> d_x(n_points);
+        Gpu::DeviceVector<Real> d_y(n_points);
+        Gpu::DeviceVector<Real> d_u1(n_points);
+        Gpu::DeviceVector<Real> d_v1(n_points);
+        Gpu::DeviceVector<Real> d_u2(n_points);
+        Gpu::DeviceVector<Real> d_v2(n_points);
+
+        Gpu::copy(Gpu::hostToDevice, x_data1.begin(), x_data1.end(), d_x.begin());
+        Gpu::copy(Gpu::hostToDevice, y_data1.begin(), y_data1.end(), d_y.begin());
+        Gpu::copy(Gpu::hostToDevice, u_data1.begin(), u_data1.end(), d_u1.begin());
+        Gpu::copy(Gpu::hostToDevice, v_data1.begin(), v_data1.end(), d_v1.begin());
+        Gpu::copy(Gpu::hostToDevice, u_data2.begin(), u_data2.end(), d_u2.begin());
+        Gpu::copy(Gpu::hostToDevice, v_data2.begin(), v_data2.end(), d_v2.begin());
+
+        Real const* x_ptr  = d_x.data();
+        Real const* y_ptr  = d_y.data();
+        Real const* u1_ptr = d_u1.data();
+        Real const* v1_ptr = d_v1.data();
+        Real const* u2_ptr = d_u2.data();
+        Real const* v2_ptr = d_v2.data();
+
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto const vfab = vel.array(mfi);
+
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+                Real sum_weights = Real(0.0);
+                Real sum_u1 = Real(0.0), sum_v1 = Real(0.0);
+                Real sum_u2 = Real(0.0), sum_v2 = Real(0.0);
+                Real epsilon = Real(1.0e-10);
+                bool exact_match = false;
+                Real u1_val = Real(0.0), v1_val = Real(0.0);
+                Real u2_val = Real(0.0), v2_val = Real(0.0);
+
+                for (int n = 0; n < n_points; ++n) {
+                    Real dx_val = x - x_ptr[n];
+                    Real dy_val = y - y_ptr[n];
+                    Real dist_sq = dx_val * dx_val + dy_val * dy_val;
+
+                    if (dist_sq < epsilon * epsilon) {
+                        u1_val = u1_ptr[n]; v1_val = v1_ptr[n];
+                        u2_val = u2_ptr[n]; v2_val = v2_ptr[n];
+                        exact_match = true;
+                        break;
+                    }
+
+                    Real weight = Real(1.0) / dist_sq;
+                    sum_weights += weight;
+                    sum_u1 += weight * u1_ptr[n];
+                    sum_v1 += weight * v1_ptr[n];
+                    sum_u2 += weight * u2_ptr[n];
+                    sum_v2 += weight * v2_ptr[n];
                 }
-                
-                // For power=2, weight = 1/dist^2
-                Real weight = Real(1.0) / dist_sq;
-                sum_weights += weight;
-                sum_u1 += weight * u1_ptr[n];
-                sum_v1 += weight * v1_ptr[n];
-                sum_u2 += weight * u2_ptr[n];
-                sum_v2 += weight * v2_ptr[n];
-            }
-            
-            // Apply weighted average if not an exact match
-            if (!exact_match) {
-                u1_val = sum_u1 / sum_weights;
-                v1_val = sum_v1 / sum_weights;
-                u2_val = sum_u2 / sum_weights;
-                v2_val = sum_v2 / sum_weights;
-            }
-            
-            // Linear interpolation in time
-            v(i,j,k,0) = u1_val + time_fraction * (u2_val - u1_val);
-            v(i,j,k,1) = v1_val + time_fraction * (v2_val - v1_val);
-            v(i,j,k,2) = Real(0.0);
-        });
+
+                if (!exact_match) {
+                    u1_val = sum_u1 / sum_weights;
+                    v1_val = sum_v1 / sum_weights;
+                    u2_val = sum_u2 / sum_weights;
+                    v2_val = sum_v2 / sum_weights;
+                }
+
+                // Linear interpolation in time
+                vfab(i,j,k,0) = u1_val + time_fraction * (u2_val - u1_val);
+                vfab(i,j,k,1) = v1_val + time_fraction * (v2_val - v1_val);
+                vfab(i,j,k,2) = Real(0.0);
+            });
+        }
     }
 }
 
