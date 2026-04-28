@@ -234,17 +234,76 @@ Firebrand Spotting
 ------------------
 
 Firebrand spotting generates new ignition points ahead of the main fire front.
+Two independent spotting models are available; they can be enabled separately or
+together.
 
-Spotting Distance
-^^^^^^^^^^^^^^^^^
+Probability-Based Spotting (``spotting.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The maximum spotting distance :math:`d_{max}` depends on:
+A stochastic model driven by wind speed, fire intensity, and fuel moisture.
+For each fire-front cell a spotting probability is computed and a Bernoulli draw
+decides whether a firebrand is generated.  If so, the landing distance is
+sampled from a log-normal or exponential distribution and the spot is placed
+downwind with optional lateral dispersion.
 
-* Firebrand lofting height
-* Wind speed
-* Firebrand size and terminal velocity
+Albini (1983) Spotting with 2-D Trajectory (``albini_spotting.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The spotting probability decreases with distance from the source and is modulated by terrain and fuel moisture.
+A physics-based spotting model that couples Albini's thermal-plume lofting
+formula with a 2-D horizontal particle trajectory integrated through the
+simulation wind field.
+
+**Stage 1 – Lofting height (Albini 1983)**
+
+Byram's fire line intensity is computed from the Rothermel rate-of-spread:
+
+.. math::
+
+   I_B \;[\text{kW/m}] = \frac{R \;[\text{ft/min}]\; w_0 \;[\text{lb/ft}^2]\; h \;[\text{BTU/lb}]}{60} \times 3.459
+
+The maximum height reached by a firebrand above the fire front is:
+
+.. math::
+
+   H_z \;[\text{m}] = 12.2 \; I_B^{1/3}
+
+where :math:`I_B` is in kW/m.  Cells with :math:`I_B < I_{B,\min}` do not
+generate firebrands.
+
+**Stage 2 – 2-D horizontal trajectory**
+
+Each lofted firebrand descends at a constant terminal velocity
+:math:`v_t` (m/s).  The flight time is:
+
+.. math::
+
+   t_f = \frac{H_z}{v_t}
+
+During the flight the horizontal position is integrated with forward Euler over
+:math:`n_{\text{traj}}` sub-steps using bilinear interpolation of the
+cell-centred velocity field :math:`(u, v)`:
+
+.. math::
+
+   x(t + \Delta t) &= x(t) + u\!\bigl(x(t),\,y(t)\bigr)\,\Delta t \\
+   y(t + \Delta t) &= y(t) + v\!\bigl(x(t),\,y(t)\bigr)\,\Delta t
+
+where :math:`\Delta t = t_f / n_{\text{traj}}`.
+
+The landing position is the final :math:`(x, y)` after the full trajectory.
+A circular ignition zone of radius ``albini_spotting.spot_radius`` is then
+imposed by setting :math:`\phi` to a negative signed-distance value in that
+neighbourhood.
+
+**Diagnostic output fields**
+
+Each plot file contains four Albini-specific scalar fields:
+
+* ``albini_Hz`` – lofting height :math:`H_z` at fire-front source cells.
+* ``albini_count`` – number of firebrands launched from each source cell at the
+  last spotting step.
+* ``albini_dist`` – maximum landing distance from each source cell.
+* ``albini_active`` – flag (1) at cells that received a spot ignition.
 
 Bulk Fuel Consumption
 ----------------------

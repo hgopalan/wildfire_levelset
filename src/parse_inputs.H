@@ -108,6 +108,18 @@ struct InputParameters {
         int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
     } crown;
     
+    // Albini (1983) firebrand spotting model with 2-D trajectory integration
+    struct AlbiniSpottingParams {
+        int enable;                          // 1 to enable Albini spotting, 0 to disable (default: 0)
+        amrex::Real terminal_velocity;       // Firebrand terminal descent velocity [m/s] (default: 1.0)
+        amrex::Real P_base;                  // Max probability of launching a firebrand per fire-front cell (default: 0.01)
+        amrex::Real I_B_min;                 // Minimum Byram fire line intensity to allow spotting [kW/m] (default: 10.0)
+        amrex::Real spot_radius;             // Radius of new spot-fire ignition zone [m] (default: 5.0)
+        int random_seed;                     // Seed for RNG (0 = use system time) (default: 0)
+        int check_interval;                  // Run spotting check every N timesteps (default: 5)
+        int n_traj_steps;                    // Number of forward-Euler steps for 2-D trajectory (default: 100)
+    } albini_spotting;
+
     // Skip level set evolution option
     int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
 

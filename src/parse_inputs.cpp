@@ -208,6 +208,32 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Albini (1983) firebrand spotting with 2-D trajectory --------
+    p.albini_spotting.enable             = 0;        pp.query("albini_spotting.enable",             p.albini_spotting.enable);
+    p.albini_spotting.terminal_velocity  = 1.0;      pp.query("albini_spotting.terminal_velocity",  p.albini_spotting.terminal_velocity);
+    p.albini_spotting.P_base             = 0.01;     pp.query("albini_spotting.P_base",             p.albini_spotting.P_base);
+    p.albini_spotting.I_B_min            = 10.0;     pp.query("albini_spotting.I_B_min",            p.albini_spotting.I_B_min);
+    p.albini_spotting.spot_radius        = 5.0;      pp.query("albini_spotting.spot_radius",        p.albini_spotting.spot_radius);
+    p.albini_spotting.random_seed        = 0;        pp.query("albini_spotting.random_seed",        p.albini_spotting.random_seed);
+    p.albini_spotting.check_interval     = 5;        pp.query("albini_spotting.check_interval",     p.albini_spotting.check_interval);
+    p.albini_spotting.n_traj_steps       = 100;      pp.query("albini_spotting.n_traj_steps",       p.albini_spotting.n_traj_steps);
+
+    // Validate Albini spotting parameters
+    if (p.albini_spotting.enable == 1) {
+        if (p.albini_spotting.terminal_velocity <= 0.0) {
+            amrex::Abort("albini_spotting.terminal_velocity must be greater than 0");
+        }
+        if (p.albini_spotting.P_base < 0.0 || p.albini_spotting.P_base > 1.0) {
+            amrex::Abort("albini_spotting.P_base must be between 0.0 and 1.0");
+        }
+        if (p.albini_spotting.check_interval < 1) {
+            amrex::Abort("albini_spotting.check_interval must be at least 1");
+        }
+        if (p.albini_spotting.n_traj_steps < 1) {
+            amrex::Abort("albini_spotting.n_traj_steps must be at least 1");
+        }
+    }
+
     // -------- Skip level set option --------
     p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
 
