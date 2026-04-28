@@ -286,7 +286,7 @@ amrex::Real compute_total_spread_rate(
 // ============================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_fireline_intensity(
-    amrex::Real I_R,
+    amrex::Real /*I_R*/,
     amrex::Real R_surface,
     amrex::Real w_consumed,
     amrex::Real h_heat)
