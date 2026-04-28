@@ -73,7 +73,6 @@ static void compute_rothermel_R(MultiFab& R_mf,
 
             // Rate of spread [ft/min] → simulation units
             R(i,j,k) = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
-            amrex::Print() << "Cell (" << i << "," << j << "): "<< R(i,j,k)<<std::endl;
         });
     }
 }
