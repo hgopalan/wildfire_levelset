@@ -75,16 +75,23 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
         amrex::Abort("Terrain file does not appear to be a regular rectangular grid.");
     }
 
+    if (nx_terrain < 2 || ny_terrain < 2) {
+        amrex::Abort("Terrain grid must have at least 2 points in each direction.");
+    }
+
     Real x_min_terrain = xs.front();
     Real y_min_terrain = ys.front();
-    Real dx_terrain    = (nx_terrain > 1) ? (xs.back() - xs.front()) / (nx_terrain - 1) : Real(1.0);
-    Real dy_terrain    = (ny_terrain > 1) ? (ys.back() - ys.front()) / (ny_terrain - 1) : Real(1.0);
+    Real dx_terrain    = (xs.back() - xs.front()) / (nx_terrain - 1);
+    Real dy_terrain    = (ys.back() - ys.front()) / (ny_terrain - 1);
 
     // Build a 2-D elevation array indexed as z_grid[ix * ny_terrain + iy].
     std::vector<Real> z_grid(nx_terrain * ny_terrain, Real(0.0));
     for (int n = 0; n < static_cast<int>(x_data.size()); ++n) {
         int ix = static_cast<int>(std::round((x_data[n] - x_min_terrain) / dx_terrain));
         int iy = static_cast<int>(std::round((y_data[n] - y_min_terrain) / dy_terrain));
+        // Clamp to valid range to guard against floating-point precision at the boundary
+        ix = std::max(0, std::min(ix, nx_terrain - 1));
+        iy = std::max(0, std::min(iy, ny_terrain - 1));
         z_grid[ix * ny_terrain + iy] = z_data[n];
     }
 
@@ -103,7 +110,7 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
     // Returns the elevation at terrain coordinates (px, py) using bilinear
     // interpolation on the regular grid.  Queries outside the grid are
     // clamped to the nearest grid edge.
-    auto bilinear_z = [=] AMREX_GPU_DEVICE (Real px, Real py) -> Real
+    auto interpolate_z = [=] AMREX_GPU_DEVICE (Real px, Real py) -> Real
     {
         Real fx = (px - x_min_terrain) / dx_terrain;
         Real fy = (py - y_min_terrain) / dy_terrain;
@@ -143,10 +150,10 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
             
             // Interpolate elevation at neighboring points using bilinear interp
-            Real z_xplus  = bilinear_z(x + dx[0], y);
-            Real z_xminus = bilinear_z(x - dx[0], y);
-            Real z_yplus  = bilinear_z(x, y + dx[1]);
-            Real z_yminus = bilinear_z(x, y - dx[1]);
+            Real z_xplus  = interpolate_z(x + dx[0], y);
+            Real z_xminus = interpolate_z(x - dx[0], y);
+            Real z_yplus  = interpolate_z(x, y + dx[1]);
+            Real z_yminus = interpolate_z(x, y - dx[1]);
             
             // Compute slopes using central differences
             // slope_x = ∂z/∂x = tan(angle_x)
