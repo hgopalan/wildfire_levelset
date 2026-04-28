@@ -147,10 +147,16 @@ int main(int argc, char* argv[])
       }
     }
     else if(inputs.source_type == "eb") {
-      // EB implicit function always uses signed distance (no indicator mode)
-      init_phi_from_eb_implicit(phi, geom, inputs.eb_type,
-                               inputs.eb_param1, inputs.eb_param2, inputs.eb_param3,
-                               inputs.eb_param4, inputs.eb_param5, inputs.eb_param6);
+      // EB implicit function: use indicator (-1/0) for FARSITE, SDF for level set
+      if (use_indicator) {
+        init_phi_from_eb_implicit_indicator(phi, geom, inputs.eb_type,
+                                            inputs.eb_param1, inputs.eb_param2, inputs.eb_param3,
+                                            inputs.eb_param4, inputs.eb_param5, inputs.eb_param6);
+      } else {
+        init_phi_from_eb_implicit(phi, geom, inputs.eb_type,
+                                  inputs.eb_param1, inputs.eb_param2, inputs.eb_param3,
+                                  inputs.eb_param4, inputs.eb_param5, inputs.eb_param6);
+      }
     }
     else {
       amrex::Abort("Invalid source_type: " + inputs.source_type);

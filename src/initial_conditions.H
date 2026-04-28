@@ -187,19 +187,34 @@ static void init_phi_box(MultiFab& phi, const Geometry& geom,
 #else
             (void)k;  // Suppress unused parameter warning
 #endif
-        if (x > xmin && y > ymin && x< xmax && y < ymax) {
-            p(i,j,k) = -10; 
-        }
-        else
-        {
-            p(i,j,k)=0.0;
-        }
+            // Signed distance function for an axis-aligned box:
+            //   < 0 inside, > 0 outside, = 0 on the surface
+            Real cx = Real(0.5) * (xmin + xmax);
+            Real cy = Real(0.5) * (ymin + ymax);
+            Real hx = Real(0.5) * (xmax - xmin);
+            Real hy = Real(0.5) * (ymax - ymin);
+            Real qx = std::abs(x - cx) - hx;
+            Real qy = std::abs(y - cy) - hy;
+#if (AMREX_SPACEDIM == 3)
+            Real cz = Real(0.5) * (zmin + zmax);
+            Real hz = Real(0.5) * (zmax - zmin);
+            Real qz = std::abs(z - cz) - hz;
+            Real d = std::sqrt(std::max(qx, Real(0.0)) * std::max(qx, Real(0.0)) +
+                               std::max(qy, Real(0.0)) * std::max(qy, Real(0.0)) +
+                               std::max(qz, Real(0.0)) * std::max(qz, Real(0.0)))
+                   + std::min(std::max({qx, qy, qz}), Real(0.0));
+#else
+            Real d = std::sqrt(std::max(qx, Real(0.0)) * std::max(qx, Real(0.0)) +
+                               std::max(qy, Real(0.0)) * std::max(qy, Real(0.0)))
+                   + std::min(std::max(qx, qy), Real(0.0));
+#endif
+            p(i,j,k) = d;
         });
     }
 }
 
 // ======================= Initialize indicator function (sphere) ======================
-// For FARSITE mode: phi = -10 inside the sphere, phi = 0 outside
+// For FARSITE mode: phi = -1 inside the sphere, phi = 0 outside
 static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                        Real cx, Real cy, Real cz, Real radius)
 {
@@ -228,14 +243,14 @@ static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                (y - cy)*(y - cy)
                                );
 #endif
-            // Indicator function: -10 inside, 0 outside
-            p(i,j,k) = (d < radius) ? -10.0 : 0.0;
+            // Indicator function: -1 inside (fire), 0 outside (no fire)
+            p(i,j,k) = (d < radius) ? -1.0 : 0.0;
         });
     }
 }
 
 // ======================= Initialize indicator function (box) ======================
-// For FARSITE mode: phi = -10 inside the box, phi = 0 outside
+// For FARSITE mode: phi = -1 inside the box, phi = 0 outside
 static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
                          Real xmin, Real ymin, Real zmin, 
                          Real xmax, Real ymax, Real zmax) 
@@ -261,12 +276,17 @@ static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
 #else
             (void)k;  // Suppress unused parameter warning
 #endif
-        if (x > xmin && y > ymin && x< xmax && y < ymax) {
-            p(i,j,k) = -10; 
+        // Indicator function: -1 inside (fire), 0 outside (no fire)
+        if (x > xmin && y > ymin && x < xmax && y < ymax
+#if (AMREX_SPACEDIM == 3)
+            && z > zmin && z < zmax
+#endif
+           ) {
+            p(i,j,k) = -1.0; 
         }
         else
         {
-            p(i,j,k)=0.0;
+            p(i,j,k) = 0.0;
         }
         });
     }
@@ -330,7 +350,7 @@ static void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
 }
 
 // ======================= Initialize indicator function (ellipse) ======================
-// For FARSITE mode: phi = -10 inside the ellipse, phi = 0 outside
+// For FARSITE mode: phi = -1 inside the ellipse, phi = 0 outside
 static void init_phi_ellipse_indicator(MultiFab& phi, const Geometry& geom,
                                         Real cx, Real cy, Real cz, Real rx, Real ry, Real rz)
 {
@@ -360,8 +380,8 @@ static void init_phi_ellipse_indicator(MultiFab& phi, const Geometry& geom,
             Real dy_norm = (y - cy) / ry;
             Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm);
 #endif
-            // Indicator function: -10 inside, 0 outside
-            p(i,j,k) = (r < 1.0) ? -10.0 : 0.0;
+            // Indicator function: -1 inside (fire), 0 outside (no fire)
+            p(i,j,k) = (r < 1.0) ? -1.0 : 0.0;
         });
     }
 }
@@ -477,6 +497,104 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
                                       (dx_norm*dx_norm + dy_norm*dy_norm + 1.0e-16));
                 p(i,j,k) = d * scale;
 #endif
+            });
+        }
+        else {
+            amrex::Abort("Unknown EB type: " + eb_type);
+        }
+    }
+}
+
+// ======================= Initialize indicator function from EB implicit ==========
+// For FARSITE mode: phi = -1 inside (fire), phi = 0 outside (no fire)
+static void init_phi_from_eb_implicit_indicator(MultiFab& phi, const Geometry& geom,
+                                                 const std::string& eb_type,
+                                                 Real param1, Real param2, Real param3,
+                                                 Real param4, Real param5, Real param6)
+{
+    const auto dx  = geom.CellSize();
+    const auto plo = geom.ProbLo();
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const p = phi.array(mfi);
+
+        if (eb_type == "plane") {
+            Real norm = std::sqrt(param1*param1 + param2*param2 + param3*param3);
+            Real nx = param1 / norm;
+            Real ny = param2 / norm;
+#if (AMREX_SPACEDIM == 3)
+            Real nz = param3 / norm;
+#endif
+            Real d0 = param4 / norm;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = plo[0] + (i + 0.5) * dx[0];
+                Real y = plo[1] + (j + 0.5) * dx[1];
+#if (AMREX_SPACEDIM == 3)
+                Real z = plo[2] + (k + 0.5) * dx[2];
+                Real sdf = nx*x + ny*y + nz*z + d0;
+#else
+                (void)k;
+                Real sdf = nx*x + ny*y + d0;
+#endif
+                p(i,j,k) = (sdf < Real(0.0)) ? -1.0 : 0.0;
+            });
+        }
+        else if (eb_type == "cylinder") {
+            Real cx = param1;
+            Real cy = param2;
+            Real radius = param4;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = plo[0] + (i + 0.5) * dx[0];
+                Real y = plo[1] + (j + 0.5) * dx[1];
+                (void)k;
+                Real r = std::sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy));
+                p(i,j,k) = (r < radius) ? -1.0 : 0.0;
+            });
+        }
+        else if (eb_type == "sphere") {
+            Real cx = param1;
+            Real cy = param2;
+            Real radius = param4;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = plo[0] + (i + 0.5) * dx[0];
+                Real y = plo[1] + (j + 0.5) * dx[1];
+#if (AMREX_SPACEDIM == 3)
+                Real cz = param3;
+                Real z = plo[2] + (k + 0.5) * dx[2];
+                Real r = std::sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy) + (z - cz)*(z - cz));
+#else
+                (void)k;
+                Real r = std::sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy));
+#endif
+                p(i,j,k) = (r < radius) ? -1.0 : 0.0;
+            });
+        }
+        else if (eb_type == "ellipsoid") {
+            Real cx = param1;
+            Real cy = param2;
+            Real rx = param4;
+            Real ry = param5;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = plo[0] + (i + 0.5) * dx[0];
+                Real y = plo[1] + (j + 0.5) * dx[1];
+#if (AMREX_SPACEDIM == 3)
+                Real cz = param3;
+                Real rz = param6;
+                Real z = plo[2] + (k + 0.5) * dx[2];
+                Real dx_norm = (x - cx) / rx;
+                Real dy_norm = (y - cy) / ry;
+                Real dz_norm = (z - cz) / rz;
+                Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm + dz_norm*dz_norm);
+#else
+                (void)k;
+                (void)param3;
+                (void)param6;
+                Real dx_norm = (x - cx) / rx;
+                Real dy_norm = (y - cy) / ry;
+                Real r = std::sqrt(dx_norm*dx_norm + dy_norm*dy_norm);
+#endif
+                p(i,j,k) = (r < Real(1.0)) ? -1.0 : 0.0;
             });
         }
         else {
