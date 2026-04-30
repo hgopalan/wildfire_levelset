@@ -76,7 +76,9 @@ SPECIES_NAMES = [
 ]
 
 NUM_SPECIES = 44
-NA = 6.02214085774e23   # Avogadro's number
+NA = 6.02214085774e23       # Avogadro's number  [mol⁻¹]
+KB = 1.380649e-23           # Boltzmann constant [J/K]
+MIN_TEEV = 1e-30            # Guard value used when Te ≤ 0
 
 
 # ---------------------------------------------------------------------------
@@ -166,14 +168,14 @@ class ReactionDB:
 
         # --- electron energy terms ---
         ne = sc[0] * NA          # electron number density [1/m³]
-        Ue = 1.5 * Te * ne * 1.380649e-23
+        Ue = 1.5 * Te * ne * KB
 
         # --- electron temperature quantities ---
         if Te <= 0.0:
             invTe   = 1.0
-            TeeV    = 1e-30
-            logTe   = math.log(1e-30)
-            invTeeV = 1.0 / 1e-30
+            TeeV    = MIN_TEEV
+            logTe   = math.log(MIN_TEEV)
+            invTeeV = 1.0 / MIN_TEEV
         else:
             invTe   = 1.0 / Te
             TeeV    = Te / 11595.0

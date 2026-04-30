@@ -244,22 +244,38 @@ def parse_exp_arg(arg):
 # k_max extraction from std::min
 # ---------------------------------------------------------------------------
 
+_NUM_PAT = r'[+-]?(?:\d+\.\d*|\d+|\.\d+)(?:[eE][+-]?\d+)?'
+
+
+def _parse_kmax_expr(expr):
+    """
+    Evaluate a k_max expression of the form 'A' or 'A * B' where A and B are
+    numeric literals (possibly in scientific notation).  Returns a float or
+    None when the expression does not match.
+
+    This avoids the use of eval() on arbitrary strings.
+    """
+    expr = expr.strip()
+    # Single number
+    m = re.fullmatch(_NUM_PAT, expr)
+    if m:
+        return float(expr)
+    # Product of two numbers: A * B
+    m = re.fullmatch(r'(' + _NUM_PAT + r')\s*\*\s*(' + _NUM_PAT + r')', expr)
+    if m:
+        return float(m.group(1)) * float(m.group(2))
+    return None
+
+
 def extract_kmax(flat):
     """
-    Find std::min(k_expr, k_max_expr) and evaluate k_max_expr.
+    Find std::min(k_expr, k_max_expr) and parse k_max_expr.
     Returns float or None.
     """
-    # Join any whitespace including newlines already done (flat is flattened)
     m = re.search(r'std::min\(\s*[^,]+,\s*([^)]+)\)', flat)
     if not m:
         return None
-    kmax_str = m.group(1).strip()
-    # Replace NA constant so we can eval
-    kmax_str_eval = kmax_str.replace('6.02214085774e23', repr(NA))
-    try:
-        return float(eval(kmax_str_eval))  # noqa: S307 - trusted source file
-    except Exception:
-        return None
+    return _parse_kmax_expr(m.group(1))
 
 
 # ---------------------------------------------------------------------------
