@@ -115,6 +115,80 @@ Override parameters from command line:
 
 See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) for complete parameter reference.
 
+## Tools
+
+Python utilities live in the `tools/` directory.
+
+### `dem_to_xyz.py` – Convert DEM files to terrain format
+
+Converts Arc/Info ASCII Grid, SRTM HGT, or GeoTIFF elevation files to the
+space-separated `X Y Z` format required by `rothermel.terrain_file`.
+
+```bash
+python3 tools/dem_to_xyz.py input.tif terrain.csv
+python3 tools/dem_to_xyz.py input.hgt terrain.csv --project-utm --subsample 4
+```
+
+Options: `--nodata VALUE`, `--project-utm`, `--subsample N`
+
+### `landfire_to_lcp.py` – Download LANDFIRE data and build a landscape file
+
+Downloads elevation, slope, aspect, and fuel-model rasters from the LANDFIRE
+Product Service (LFPS) API for any user-specified bounding box and assembles
+them into an ASCII landscape file (`.lcp`) compatible with
+`rothermel.landscape_file`.
+
+```bash
+# Download LANDFIRE data for a bounding box and write landscape.lcp
+python3 tools/landfire_to_lcp.py \
+    --bbox -118.85 34.10 -118.75 34.18 \
+    landscape.lcp
+
+# Download with subsampling (every 4th pixel in each dimension)
+python3 tools/landfire_to_lcp.py \
+    --bbox -120.5 37.0 -120.0 37.5 \
+    --subsample 4 \
+    landscape.lcp
+
+# Use locally-downloaded rasters (skip LFPS API, requires rasterio)
+python3 tools/landfire_to_lcp.py \
+    --elev-file  elev.tif \
+    --slope-file slope.tif \
+    --aspect-file aspect.tif \
+    --fuel-file  fbfm13.tif \
+    landscape.lcp
+```
+
+Options: `--bbox MIN_LON MIN_LAT MAX_LON MAX_LAT`, `--subsample N`,
+`--vintage YEAR` (default 2020), `--elev-product / --slope-product /
+--aspect-product / --fuel-product` (override layer IDs), `--no-utm`,
+`--keep-nonburnable`, `--cache-dir DIR`, `--timeout N`
+
+Requires: `pip install requests rasterio numpy pyproj`
+
+The output landscape file has the format:
+```
+# X Y ELEVATION SLOPE ASPECT FUEL_MODEL
+0.0 0.0 150.0 12.5 225.0 4
+30.0 0.0 152.0 13.1 220.0 4
+...
+```
+
+Use the landscape file in a simulation:
+```
+rothermel.landscape_file = landscape.lcp
+```
+
+### `wrf_to_terrain_wind.py` – Extract terrain and wind from WRF output
+
+Reads a WRF-style netCDF file, de-staggers the wind components, reprojects
+to UTM, and writes separate terrain and wind CSV files.
+
+```bash
+python3 tools/wrf_to_terrain_wind.py wrfout_d01 terrain.csv wind.csv
+python3 tools/wrf_to_terrain_wind.py wrfout_d01 terrain.csv wind.csv --subsample 2
+```
+
 ## Testing
 
 Run regression tests:
@@ -141,6 +215,7 @@ Available regression tests:
 - `bulk_fuel_consumption` - Fuel consumption modeling
 - `3d_sphere` - Full 3D simulation (3D builds only)
 - `terrain_wind` - External terrain and wind (2D builds only)
+- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3)
 
 ## Output
 
@@ -161,8 +236,9 @@ View with ParaView or other AMReX-compatible visualization tools.
 
 1. **Simplified Fuel Modeling**
    - Limited to NFFL fuel models (FM1-FM13)
-   - No comprehensive fuel and moisture databases
+   - No comprehensive fuel moisture databases
    - Constant fuel properties across domain (no spatial variation except through fuel model selection)
+   - Spatially-varying fuel models are supported via landscape files but require LANDFIRE data
 
 2. **Wind Field Constraints**
    - Support for constant, prescribed, and time-dependent wind fields (2D only)
@@ -173,7 +249,8 @@ View with ParaView or other AMReX-compatible visualization tools.
 3. **Terrain Representation**
    - 2D terrain data only (no 3D terrain in 3D simulations)
    - Terrain effects use simplified slope/aspect model
-   - No automated terrain preprocessing or DEM file readers
+   - Automated DEM preprocessing supported via `dem_to_xyz.py` (Arc/Info ASCII, SRTM HGT, GeoTIFF)
+   - LANDFIRE landscape files (elevation, slope, aspect, fuel model) downloadable via `landfire_to_lcp.py`
 
 4. **Physical Sub-models**
    - Simplified crown fire model (Van Wagner empirical criteria only)
@@ -186,6 +263,11 @@ View with ParaView or other AMReX-compatible visualization tools.
    - Model parameters not extensively calibrated for diverse fuel types and conditions
    - No automated parameter optimization or data assimilation
 
+6. **LANDFIRE Integration**
+   - Automated download via LFPS API requires internet connectivity
+   - Non-burnable LANDFIRE classes (urban, water, agriculture, snow/ice, barren) are filtered out by default; use `--keep-nonburnable` to retain these pixels (written as fuel code 0)
+   - Only Anderson 13 fuel model (FBFM13) is supported by the wildfire_levelset solver; Scott/Burgan 40 (FBFM40) can be downloaded with `--fuel-product F40_FBFM40` but the solver will not use the extended model numbers
+
 ### Scope for Future Work
 
 1. **Enhanced Coupling**
@@ -195,7 +277,7 @@ View with ParaView or other AMReX-compatible visualization tools.
 
 2. **Advanced Fuel Modeling**
    - Comprehensive fuel and moisture databases
-   - Spatially-varying fuel properties
+   - Support for Scott/Burgan 40-class fuel models (FBFM40) from LANDFIRE
    - Dynamic fuel moisture evolution
    - Multi-layer fuel structure (surface, ladder, canopy)
 
@@ -211,7 +293,8 @@ View with ParaView or other AMReX-compatible visualization tools.
    - Vertical fire spread and plume dynamics
 
 5. **Data Integration**
-   - Automated readers for standard terrain formats (GeoTIFF, DEM)
+   - Automated readers for standard terrain formats (GeoTIFF, DEM) — partially complete via `dem_to_xyz.py`
+   - LANDFIRE data download for arbitrary extents — implemented via `landfire_to_lcp.py`
    - Weather data ingestion (GRIB, NetCDF)
    - Real-time data assimilation for operational forecasting
 
