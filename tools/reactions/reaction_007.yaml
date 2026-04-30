@@ -1,0 +1,23 @@
+id: 7
+comment: 'reaction 44:  H2 + E => E + H2+ + E'
+rate_type: conditional
+TeeV_threshold: 8.0
+low_type: Jfit
+low_Jfit_A: 5.282e-15
+low_Jfit_coefs: [-1857.73884641047, 9635.17665706921, -21676.8880597883, 27257.3024281753,
+  -20922.3742900842, 10057.6678627611, -2964.28003383507, 490.871842318378, -35.0368193361303]
+high_type: Ffit
+high_Ffit_A: 3.21438910016961e-14
+high_Ffit_coefs: [-35.6107865815828, 339.861096189597, -1989.12742271793, 2664.29385213052]
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [3, -1.0]
+- [5, 1.0]
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 2
+  eexci: 15.4
+  elidx: 0

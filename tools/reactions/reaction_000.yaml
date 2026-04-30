@@ -1,0 +1,13 @@
+id: 0
+comment: 'reaction 12:  CO2 + E => CO + O + E'
+rate_type: Ffit
+Ffit_A: 1.50741518933862e-16
+Ffit_coefs: [28.3950215483559, -119.510009432235, 160.43749646796, -74.1425574458809]
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [11, 1.0]
+- [12, -1.0]
+reactants: [0, 12]
+gibbs_exponent: []
+refC_factor: 0

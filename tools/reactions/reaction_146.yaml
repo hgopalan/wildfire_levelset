@@ -1,0 +1,13 @@
+id: 146
+comment: 'reaction 90:  ARe + H2 => AR + 2 H'
+rate_type: constant
+k_f: 39746129.016
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [3, -1.0]
+- [38, 1.0]
+- [39, -1.0]
+reactants: [3, 39]
+gibbs_exponent: []
+refC_factor: 0

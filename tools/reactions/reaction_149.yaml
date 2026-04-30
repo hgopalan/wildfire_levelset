@@ -1,0 +1,13 @@
+id: 149
+comment: 'reaction 93:  ARe + O2 => AR + 2 O'
+rate_type: constant
+k_f: 126464955.96
+has_third_body: false
+stoichiometry:
+- [7, 2.0]
+- [9, -1.0]
+- [38, 1.0]
+- [39, -1.0]
+reactants: [9, 39]
+gibbs_exponent: []
+refC_factor: 0

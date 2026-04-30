@@ -1,0 +1,15 @@
+id: 201
+comment: 'reaction 149:  AR2+ + H- => 2 AR + H'
+rate_type: Arrhenius
+A: 60221407600.0
+beta: -0.5
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [2, -1.0]
+- [38, 2.0]
+- [43, -1.0]
+reactants: [2, 43]
+gibbs_exponent: []
+refC_factor: 0

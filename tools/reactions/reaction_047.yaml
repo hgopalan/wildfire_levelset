@@ -1,0 +1,14 @@
+id: 47
+comment: 'reaction 280:  H + O + H2 => OH + H2'
+rate_type: Arrhenius
+A: 10879.853799976
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [7, -1.0]
+- [22, 1.0]
+reactants: [1, 3, 7]
+gibbs_exponent: []
+refC_factor: 0

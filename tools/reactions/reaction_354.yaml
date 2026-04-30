@@ -1,0 +1,19 @@
+id: 354
+comment: 'reaction 345:  CH3OH + OH <=> CH3O + H2O'
+rate_type: Arrhenius
+A: 9996753.6616
+beta: 1.18
+Ea: 853.958681870609
+has_third_body: false
+stoichiometry:
+- [22, -1.0]
+- [24, 1.0]
+- [35, 1.0]
+- [36, -1.0]
+reactants: [22, 36]
+gibbs_exponent:
+- [22, 1.0]
+- [24, -1.0]
+- [35, -1.0]
+- [36, 1.0]
+refC_factor: 0

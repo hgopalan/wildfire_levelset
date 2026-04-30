@@ -1,0 +1,18 @@
+id: 134
+comment: 'reaction 75:  E + H3O+ => H + H2 + O'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [1, 1.0]
+- [3, 1.0]
+- [7, 1.0]
+- [26, -1.0]
+reactants: [0, 26]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

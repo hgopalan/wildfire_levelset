@@ -1,0 +1,19 @@
+id: 34
+comment: 'reaction 199:  H- + H2O+ + M => H + H2O + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [1, 1.0]
+- [2, -1.0]
+- [24, 1.0]
+- [25, -1.0]
+reactants: [2, 25]
+gibbs_exponent:
+- [1, -1.0]
+- [2, 1.0]
+- [24, -1.0]
+- [25, 1.0]
+refC_factor: 0

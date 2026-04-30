@@ -1,0 +1,19 @@
+id: 20
+comment: 'reaction 143:  AR+ + O2- + M => AR + O2 + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [9, 1.0]
+- [10, -1.0]
+- [38, 1.0]
+- [40, -1.0]
+reactants: [10, 40]
+gibbs_exponent:
+- [9, -1.0]
+- [10, 1.0]
+- [38, -1.0]
+- [40, 1.0]
+refC_factor: 0

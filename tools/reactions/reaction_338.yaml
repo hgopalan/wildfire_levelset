@@ -1,0 +1,13 @@
+id: 338
+comment: 'reaction 329:  CH2 + CH2O => CH3 + HCO'
+rate_type: constant
+k_f: 6022.14076
+has_third_body: false
+stoichiometry:
+- [27, 1.0]
+- [29, -1.0]
+- [31, 1.0]
+- [34, -1.0]
+reactants: [29, 34]
+gibbs_exponent: []
+refC_factor: 0

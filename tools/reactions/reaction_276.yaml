@@ -1,0 +1,13 @@
+id: 276
+comment: 'reaction 239:  H3+ + O => H2 + OH+'
+rate_type: constant
+k_f: 505859823.84
+has_third_body: false
+stoichiometry:
+- [3, 1.0]
+- [6, -1.0]
+- [7, -1.0]
+- [23, 1.0]
+reactants: [6, 7]
+gibbs_exponent: []
+refC_factor: 0

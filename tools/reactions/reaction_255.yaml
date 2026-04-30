@@ -1,0 +1,13 @@
+id: 255
+comment: 'reaction 218:  AR+ + CO2 => AR + CO2+'
+rate_type: constant
+k_f: 457682697.76
+has_third_body: false
+stoichiometry:
+- [12, -1.0]
+- [17, 1.0]
+- [38, 1.0]
+- [40, -1.0]
+reactants: [12, 40]
+gibbs_exponent: []
+refC_factor: 0

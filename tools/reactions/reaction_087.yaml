@@ -1,0 +1,16 @@
+id: 87
+comment: 'reaction 21:  AR + E => ARe + E'
+rate_type: Ffit
+Ffit_A: 9.18800465289008e-14
+Ffit_coefs: [-17.8244315740958, -55.1739383730274, 102.978958246859, -55.9966048149755]
+has_third_body: false
+stoichiometry:
+- [38, -1.0]
+- [39, 1.0]
+reactants: [0, 38]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 11.55
+  elidx: 38

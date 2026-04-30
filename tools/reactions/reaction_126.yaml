@@ -1,0 +1,17 @@
+id: 126
+comment: 'reaction 95:  CH3+ + E => CH2 + H'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [1, 1.0]
+- [29, 1.0]
+- [32, -1.0]
+reactants: [0, 32]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

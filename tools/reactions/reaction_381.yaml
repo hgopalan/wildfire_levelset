@@ -1,0 +1,13 @@
+id: 381
+comment: 'reaction 372:  CH2 + O => H + HCO'
+rate_type: constant
+k_f: 30170925.2076
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, -1.0]
+- [27, 1.0]
+- [29, -1.0]
+reactants: [7, 29]
+gibbs_exponent: []
+refC_factor: 0

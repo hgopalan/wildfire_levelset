@@ -1,0 +1,13 @@
+id: 345
+comment: 'reaction 336:  CH3O + H => CH2O + H2'
+rate_type: constant
+k_f: 13971366.5632
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [3, 1.0]
+- [34, 1.0]
+- [35, -1.0]
+reactants: [1, 35]
+gibbs_exponent: []
+refC_factor: 0

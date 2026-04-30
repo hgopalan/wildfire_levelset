@@ -1,0 +1,17 @@
+id: 121
+comment: 'reaction 61:  CO2+ + E => C + O2'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [9, 1.0]
+- [17, -1.0]
+- [21, 1.0]
+reactants: [0, 17]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

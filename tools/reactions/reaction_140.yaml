@@ -1,0 +1,14 @@
+id: 140
+comment: 'reaction 81:  AR2e + ARe => 2 AR + AR+ + E'
+rate_type: constant
+k_f: 301107038.0
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [38, 2.0]
+- [39, -1.0]
+- [40, 1.0]
+- [42, -1.0]
+reactants: [39, 42]
+gibbs_exponent: []
+refC_factor: 0

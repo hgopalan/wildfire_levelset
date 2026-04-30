@@ -1,0 +1,13 @@
+id: 293
+comment: 'reaction 256:  CH2 + H2O+ => CH2+ + H2O'
+rate_type: constant
+k_f: 283040615.72
+has_third_body: false
+stoichiometry:
+- [24, 1.0]
+- [25, -1.0]
+- [29, -1.0]
+- [30, 1.0]
+reactants: [25, 29]
+gibbs_exponent: []
+refC_factor: 0

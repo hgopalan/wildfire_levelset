@@ -1,0 +1,13 @@
+id: 197
+comment: 'reaction 144:  AR2+ + O- => 2 AR + O'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [8, -1.0]
+- [38, 2.0]
+- [43, -1.0]
+reactants: [8, 43]
+gibbs_exponent: []
+refC_factor: 0

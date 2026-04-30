@@ -1,0 +1,19 @@
+id: 25
+comment: 'reaction 159:  H2+ + O- + M => H2 + O + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [3, 1.0]
+- [5, -1.0]
+- [7, 1.0]
+- [8, -1.0]
+reactants: [5, 8]
+gibbs_exponent:
+- [3, -1.0]
+- [5, 1.0]
+- [7, -1.0]
+- [8, 1.0]
+refC_factor: 0

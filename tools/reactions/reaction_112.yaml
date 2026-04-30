@@ -1,0 +1,17 @@
+id: 112
+comment: 'reaction 48:  C + O- => CO + E'
+rate_type: constant
+k_f: 301107038.0
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [8, -1.0]
+- [11, 1.0]
+- [21, -1.0]
+reactants: [8, 21]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

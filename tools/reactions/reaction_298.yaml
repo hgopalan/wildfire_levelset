@@ -1,0 +1,13 @@
+id: 298
+comment: 'reaction 262:  C2O4+ + CO => C2O3+ + CO2'
+rate_type: constant
+k_f: 541992668.4
+has_third_body: false
+stoichiometry:
+- [11, -1.0]
+- [12, 1.0]
+- [18, 1.0]
+- [19, -1.0]
+reactants: [11, 19]
+gibbs_exponent: []
+refC_factor: 0

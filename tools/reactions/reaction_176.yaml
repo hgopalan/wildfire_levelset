@@ -1,0 +1,11 @@
+id: 176
+comment: 'reaction 120:  AR + CO2v3 => AR + CO2v4'
+rate_type: constant
+k_f: 1457.35806392
+has_third_body: false
+stoichiometry:
+- [15, -1.0]
+- [16, 1.0]
+reactants: [15, 38]
+gibbs_exponent: []
+refC_factor: 0

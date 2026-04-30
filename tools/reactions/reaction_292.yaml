@@ -1,0 +1,13 @@
+id: 292
+comment: 'reaction 255:  CH2 + H2O+ => CH3+ + OH'
+rate_type: constant
+k_f: 283040615.72
+has_third_body: false
+stoichiometry:
+- [22, 1.0]
+- [25, -1.0]
+- [29, -1.0]
+- [32, 1.0]
+reactants: [25, 29]
+gibbs_exponent: []
+refC_factor: 0

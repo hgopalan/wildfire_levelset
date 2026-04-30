@@ -1,0 +1,17 @@
+id: 67
+comment: 'reaction 374:  CO2 + M => CO + O + M'
+rate_type: Arrhenius
+A: 235465703.716
+beta: 0.0
+Ea: 49424.4312653422
+has_third_body: true
+stoichiometry:
+- [7, 1.0]
+- [11, 1.0]
+- [12, -1.0]
+reactants: [12]
+gibbs_exponent:
+- [7, -1.0]
+- [11, -1.0]
+- [12, 1.0]
+refC_factor: -1

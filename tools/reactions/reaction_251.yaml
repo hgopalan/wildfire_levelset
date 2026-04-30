@@ -1,0 +1,13 @@
+id: 251
+comment: 'reaction 214:  AR+ + H2 => ARH+ + H'
+rate_type: constant
+k_f: 662435483.6
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [3, -1.0]
+- [40, -1.0]
+- [41, 1.0]
+reactants: [3, 40]
+gibbs_exponent: []
+refC_factor: 0

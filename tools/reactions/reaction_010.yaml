@@ -1,0 +1,19 @@
+id: 10
+comment: 'reaction 44:  E + O + M => O- + M'
+rate_type: constant
+k_f: 36266.1793332534
+has_third_body: true
+stoichiometry:
+- [0, -1.0]
+- [7, -1.0]
+- [8, 1.0]
+reactants: [0, 7]
+gibbs_exponent:
+- [0, 1.0]
+- [7, 1.0]
+- [8, -1.0]
+refC_factor: 1
+energy_exchange:
+  rxntype: 4
+  eexci: 0.0
+  elidx: 0

@@ -1,0 +1,11 @@
+id: 155
+comment: 'reaction 99:  CO2v1 + O2 => CO2 + O2'
+rate_type: constant
+k_f: 4504.56128848
+has_third_body: false
+stoichiometry:
+- [12, 1.0]
+- [13, -1.0]
+reactants: [9, 13]
+gibbs_exponent: []
+refC_factor: 0

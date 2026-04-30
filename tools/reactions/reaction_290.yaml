@@ -1,0 +1,13 @@
+id: 290
+comment: 'reaction 253:  H2O+ + OH => H3O+ + O'
+rate_type: constant
+k_f: 415527712.44
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [22, -1.0]
+- [25, -1.0]
+- [26, 1.0]
+reactants: [22, 25]
+gibbs_exponent: []
+refC_factor: 0

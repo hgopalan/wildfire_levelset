@@ -1,0 +1,13 @@
+id: 297
+comment: 'reaction 260:  CO2+ + H2O => CO2 + H2O+'
+rate_type: constant
+k_f: 1228516715.04
+has_third_body: false
+stoichiometry:
+- [12, 1.0]
+- [17, -1.0]
+- [24, -1.0]
+- [25, 1.0]
+reactants: [17, 24]
+gibbs_exponent: []
+refC_factor: 0

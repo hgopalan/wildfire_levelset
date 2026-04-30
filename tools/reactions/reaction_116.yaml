@@ -1,0 +1,17 @@
+id: 116
+comment: 'reaction 55:  H- + OH => E + H2O'
+rate_type: constant
+k_f: 60221407.6
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [2, -1.0]
+- [22, -1.0]
+- [24, 1.0]
+reactants: [2, 22]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

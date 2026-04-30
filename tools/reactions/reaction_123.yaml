@@ -1,0 +1,16 @@
+id: 123
+comment: 'reaction 63:  C2O4+ + E => 2 CO2'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [12, 2.0]
+- [19, -1.0]
+reactants: [0, 19]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

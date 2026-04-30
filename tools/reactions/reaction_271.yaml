@@ -1,0 +1,14 @@
+id: 271
+comment: 'reaction 234:  CH4 + H2+ => CH3+ + H + H2'
+rate_type: constant
+k_f: 1385092374.8
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [3, 1.0]
+- [5, -1.0]
+- [32, 1.0]
+- [33, -1.0]
+reactants: [5, 33]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,13 @@
+id: 324
+comment: 'reaction 315:  CH2 + O2 => CO + H2O'
+rate_type: constant
+k_f: 855143.98792
+has_third_body: false
+stoichiometry:
+- [9, -1.0]
+- [11, 1.0]
+- [24, 1.0]
+- [29, -1.0]
+reactants: [9, 29]
+gibbs_exponent: []
+refC_factor: 0

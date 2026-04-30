@@ -1,0 +1,15 @@
+id: 71
+comment: 'reaction comment: excitational losses for CO2(e1) | reaction 0:  CO2 + E
+  => CO2 + E'
+rate_type: Ffit
+Ffit_A: 4.66040157646352e-16
+Ffit_coefs: [13.9944258667849, -44.236700423386, 35.3755884340306, -12.2196503543953]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 12]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 2
+  eexci: 7.0
+  elidx: 12

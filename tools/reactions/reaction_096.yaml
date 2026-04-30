@@ -1,0 +1,21 @@
+id: 96
+comment: 'reaction comment: Accounting for electron energy losses only:  E + H2 |
+  => E + H2(C1Pu) reaction 32:  E + H2 => E + H2'
+rate_type: conditional
+TeeV_threshold: 8.0
+low_type: Jfit
+low_Jfit_A: 3.698e-15
+low_Jfit_coefs: [-1722.95883904265, 8840.57300247299, -19662.3928799025, 24571.8767044338,
+  -18862.3663163976, 9120.3092566193, -2717.10515978014, 456.709922480483, -33.2048491354566]
+high_type: Ffit
+high_Ffit_A: 4.58123944995702e-14
+high_Ffit_coefs: [-45.3587148056958, 333.894802125744, -1528.57489939913, 1996.74422025009]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 12.4
+  elidx: 0

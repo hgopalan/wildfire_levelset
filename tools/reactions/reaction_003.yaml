@@ -1,0 +1,23 @@
+id: 3
+comment: 'reaction 22:  AR + E => AR+ + E + E'
+rate_type: conditional
+TeeV_threshold: 8.0
+low_type: Jfit
+low_Jfit_A: 1.429e-14
+low_Jfit_coefs: [-1951.40116682516, 9125.28938191463, -19064.2751720459, 22763.7019090326,
+  -16855.4371729404, 7904.47881474249, -2291.72587558317, 375.740475221758, -26.6926001068518]
+high_type: Ffit
+high_Ffit_A: 1.13390537981533e-12
+high_Ffit_coefs: [-77.951093126982, 533.060249822779, -2091.338573891, 1893.83145115372]
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [38, -1.0]
+- [40, 1.0]
+reactants: [0, 38]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 2
+  eexci: 15.759
+  elidx: 0

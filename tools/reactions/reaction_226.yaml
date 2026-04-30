@@ -1,0 +1,13 @@
+id: 226
+comment: 'reaction 182:  H2O+ + O2- => H2O + 2 O'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [7, 2.0]
+- [10, -1.0]
+- [24, 1.0]
+- [25, -1.0]
+reactants: [10, 25]
+gibbs_exponent: []
+refC_factor: 0

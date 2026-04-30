@@ -1,0 +1,21 @@
+id: 102
+comment: 'reaction comment: Accounting for electron energy losses only:  E + H2 |
+  => E + H2(D''1Pu) reaction 38:  E + H2 => E + H2'
+rate_type: conditional
+TeeV_threshold: 8.0
+low_type: Jfit
+low_Jfit_A: 7.015e-17
+low_Jfit_coefs: [-1623.83862891674, 8436.33548817704, -19010.5486957234, 23949.7480501913,
+  -18423.4444914014, 8877.64829120409, -2623.24137908025, 435.579097522363, -31.1783913722693]
+high_type: Ffit
+high_Ffit_A: 3.69314852331613e-16
+high_Ffit_coefs: [-33.4626924276693, 315.067335486014, -1763.06821892842, 2328.44773677504]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 14.6
+  elidx: 0

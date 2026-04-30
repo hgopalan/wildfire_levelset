@@ -1,0 +1,15 @@
+id: 106
+comment: 'reaction comment: Accounting for electron energy losses only:  E + H2 |
+  => E + H(1S) + H(4) reaction 42:  E + H2 => E + H2'
+rate_type: Ffit
+Ffit_A: 5.39806251555896e-17
+Ffit_coefs: [23.7861184571555, -579.496649338752, 3175.06620048815, -7295.94567126596]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 17.22
+  elidx: 0

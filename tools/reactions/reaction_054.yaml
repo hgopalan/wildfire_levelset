@@ -1,0 +1,13 @@
+id: 54
+comment: 'reaction 288:  H2 + H => 2 H + H'
+rate_type: Arrhenius
+A: 281233973492.0
+beta: -1.0
+Ea: 54994.0333224688
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [3, -1.0]
+reactants: [1, 3]
+gibbs_exponent: []
+refC_factor: 0

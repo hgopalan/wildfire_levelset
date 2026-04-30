@@ -1,0 +1,13 @@
+id: 50
+comment: 'reaction 284:  2 H + AR => H2 + AR'
+rate_type: Arrhenius
+A: 7253.23586665068
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -2.0]
+- [3, 1.0]
+reactants: [1, 1, 38]
+gibbs_exponent: []
+refC_factor: 0

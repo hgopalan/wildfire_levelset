@@ -1,0 +1,13 @@
+id: 358
+comment: 'reaction 349:  CH3O + HCO => CH3OH + CO'
+rate_type: constant
+k_f: 90332111.4
+has_third_body: false
+stoichiometry:
+- [11, 1.0]
+- [27, -1.0]
+- [35, -1.0]
+- [36, 1.0]
+reactants: [27, 35]
+gibbs_exponent: []
+refC_factor: 0

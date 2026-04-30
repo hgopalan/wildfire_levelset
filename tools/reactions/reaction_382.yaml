@@ -1,0 +1,14 @@
+id: 382
+comment: 'reaction 373:  CH3 + O => CH3O'
+rate_type: Arrhenius
+A: 73470117.272
+beta: 0.05
+Ea: -68.4374665494419
+has_third_body: false
+stoichiometry:
+- [7, -1.0]
+- [31, -1.0]
+- [35, 1.0]
+reactants: [7, 31]
+gibbs_exponent: []
+refC_factor: 0

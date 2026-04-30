@@ -1,0 +1,13 @@
+id: 284
+comment: 'reaction 247:  H2O + OH+ => H3O+ + O'
+rate_type: constant
+k_f: 782878298.8
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [23, -1.0]
+- [24, -1.0]
+- [26, 1.0]
+reactants: [23, 24]
+gibbs_exponent: []
+refC_factor: 0

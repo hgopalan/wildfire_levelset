@@ -1,0 +1,13 @@
+id: 43
+comment: 'reaction 276:  2 O + H2 => O2 + H2'
+rate_type: Arrhenius
+A: 47.1460331332294
+beta: 0.0
+Ea: -899.751398458839
+has_third_body: false
+stoichiometry:
+- [7, -2.0]
+- [9, 1.0]
+reactants: [3, 7, 7]
+gibbs_exponent: []
+refC_factor: 0

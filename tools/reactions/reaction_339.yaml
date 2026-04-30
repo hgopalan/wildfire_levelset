@@ -1,0 +1,13 @@
+id: 339
+comment: 'reaction 330:  CH2 + HCO => CH3 + CO'
+rate_type: constant
+k_f: 18126643.6876
+has_third_body: false
+stoichiometry:
+- [11, 1.0]
+- [27, -1.0]
+- [29, -1.0]
+- [31, 1.0]
+reactants: [27, 29]
+gibbs_exponent: []
+refC_factor: 0

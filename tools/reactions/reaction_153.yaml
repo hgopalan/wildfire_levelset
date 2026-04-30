@@ -1,0 +1,11 @@
+id: 153
+comment: 'reaction 97:  CO2 + CO2v1 => 2 CO2'
+rate_type: constant
+k_f: 6443.6906132
+has_third_body: false
+stoichiometry:
+- [12, 1.0]
+- [13, -1.0]
+reactants: [12, 13]
+gibbs_exponent: []
+refC_factor: 0

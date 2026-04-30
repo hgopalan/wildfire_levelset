@@ -1,0 +1,12 @@
+id: 357
+comment: 'reaction 348:  2 HCO => CH2O + CO'
+rate_type: constant
+k_f: 30110703.8
+has_third_body: false
+stoichiometry:
+- [11, 1.0]
+- [27, -2.0]
+- [34, 1.0]
+reactants: [27, 27]
+gibbs_exponent: []
+refC_factor: 0

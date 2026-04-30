@@ -1,0 +1,13 @@
+id: 178
+comment: 'reaction 122:  CO2 + CO2v3 => CO2v1 + CO2v2'
+rate_type: constant
+k_f: 1457.35806392
+has_third_body: false
+stoichiometry:
+- [12, -1.0]
+- [13, 1.0]
+- [14, 1.0]
+- [15, -1.0]
+reactants: [12, 15]
+gibbs_exponent: []
+refC_factor: 0

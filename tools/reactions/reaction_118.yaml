@@ -1,0 +1,17 @@
+id: 118
+comment: 'reaction 58:  CH2 + H- => CH3 + E'
+rate_type: constant
+k_f: 602214076.0
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [2, -1.0]
+- [29, -1.0]
+- [31, 1.0]
+reactants: [2, 29]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

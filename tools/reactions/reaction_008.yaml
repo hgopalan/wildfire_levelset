@@ -1,0 +1,21 @@
+id: 8
+comment: 'reaction 45:  H2 + E => H + H-'
+rate_type: Jfit
+Jfit_A: 1.536e-18
+Jfit_coefs: [-5.24436622270143, 1.67023573577288, 1.39354323542527, 0.244196472865026,
+  -0.312518441280522, -0.112078040187164, 0.0161059139891788, 0.0110294867650971,
+  0.00118630502279277]
+k_max: 900000.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [1, 1.0]
+- [2, 1.0]
+- [3, -1.0]
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 4
+  eexci: 0.0
+  elidx: 0

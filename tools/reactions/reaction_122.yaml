@@ -1,0 +1,17 @@
+id: 122
+comment: 'reaction 62:  C2O3+ + E => CO + CO2'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [11, 1.0]
+- [12, 1.0]
+- [18, -1.0]
+reactants: [0, 18]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

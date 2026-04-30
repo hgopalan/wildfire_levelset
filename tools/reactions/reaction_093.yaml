@@ -1,0 +1,15 @@
+id: 93
+comment: 'reaction comment: Accounting for electron energy losses only:  E + H2 |
+  => E + H2(B1Su) reaction 29:  E + H2 => E + H2'
+rate_type: Ffit
+Ffit_A: 7.08804984129738e-15
+Ffit_coefs: [9.73715263713406, -169.759074219013, 302.650832488494, -173.548526278283]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 11.4
+  elidx: 0

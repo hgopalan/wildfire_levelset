@@ -1,0 +1,19 @@
+id: 333
+comment: 'reaction 323:  CH3 + OH <=> CH3O + H'
+rate_type: Arrhenius
+A: 1547690.17532
+beta: -0.23
+Ea: 7009.30493799394
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [22, -1.0]
+- [31, -1.0]
+- [35, 1.0]
+reactants: [22, 31]
+gibbs_exponent:
+- [1, -1.0]
+- [22, 1.0]
+- [31, 1.0]
+- [35, -1.0]
+refC_factor: 0

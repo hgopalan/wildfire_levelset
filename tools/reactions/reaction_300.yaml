@@ -1,0 +1,13 @@
+id: 300
+comment: 'reaction 266:  CH+ + H2O => C + H3O+'
+rate_type: constant
+k_f: 349284164.08
+has_third_body: false
+stoichiometry:
+- [21, 1.0]
+- [24, -1.0]
+- [26, 1.0]
+- [28, -1.0]
+reactants: [24, 28]
+gibbs_exponent: []
+refC_factor: 0

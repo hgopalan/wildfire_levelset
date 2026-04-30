@@ -1,0 +1,13 @@
+id: 49
+comment: 'reaction 283:  O2 + H => 2 O + H'
+rate_type: Arrhenius
+A: 3613284456.0
+beta: 0.0
+Ea: 52294.2759104265
+has_third_body: false
+stoichiometry:
+- [7, 2.0]
+- [9, -1.0]
+reactants: [1, 9]
+gibbs_exponent: []
+refC_factor: 0

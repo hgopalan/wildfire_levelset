@@ -1,0 +1,18 @@
+id: 75
+comment: 'reaction comment: CO2(100) | reaction 3:  CO2 + E => CO2v2 + E'
+rate_type: Jfit
+Jfit_A: 2.108e-15
+Jfit_coefs: [-1.74710336851205, 5.28866024293583, -3.06722524904491, -1.26813972992265,
+  0.765286490697251, 0.220019094021629, -0.0660599223620025, -0.017451339532754, -0.000100232840708316]
+k_max: null
+has_third_body: false
+stoichiometry:
+- [12, -1.0]
+- [14, 1.0]
+reactants: [0, 12]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 0.17
+  elidx: 0

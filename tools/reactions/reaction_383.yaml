@@ -1,0 +1,12 @@
+id: 383
+comment: 'reaction 375:  C + CO2 => 2 CO'
+rate_type: constant
+k_f: 602.214076
+has_third_body: false
+stoichiometry:
+- [11, 2.0]
+- [12, -1.0]
+- [21, -1.0]
+reactants: [12, 21]
+gibbs_exponent: []
+refC_factor: 0

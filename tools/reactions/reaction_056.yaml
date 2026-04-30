@@ -1,0 +1,14 @@
+id: 56
+comment: 'reaction 291:  H + OH + AR => H2O + AR'
+rate_type: Arrhenius
+A: 290129.434666027
+beta: -2.6
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [22, -1.0]
+- [24, 1.0]
+reactants: [1, 22, 38]
+gibbs_exponent: []
+refC_factor: 0

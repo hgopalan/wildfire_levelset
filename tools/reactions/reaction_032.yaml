@@ -1,0 +1,19 @@
+id: 32
+comment: 'reaction 195:  H- + OH+ + M => H + OH + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [1, 1.0]
+- [2, -1.0]
+- [22, 1.0]
+- [23, -1.0]
+reactants: [2, 23]
+gibbs_exponent:
+- [1, -1.0]
+- [2, 1.0]
+- [22, -1.0]
+- [23, 1.0]
+refC_factor: 0

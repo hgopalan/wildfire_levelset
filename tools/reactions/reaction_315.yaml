@@ -1,0 +1,12 @@
+id: 315
+comment: 'reaction 305:  CH2 + CH4 => 2 CH3'
+rate_type: constant
+k_f: 0.181266436876
+has_third_body: false
+stoichiometry:
+- [29, -1.0]
+- [31, 2.0]
+- [33, -1.0]
+reactants: [29, 33]
+gibbs_exponent: []
+refC_factor: 0

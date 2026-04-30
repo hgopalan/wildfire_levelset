@@ -1,0 +1,13 @@
+id: 51
+comment: 'reaction 285:  2 H + O2 => H2 + O2'
+rate_type: Arrhenius
+A: 7253.23586665068
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -2.0]
+- [3, 1.0]
+reactants: [1, 1, 9]
+gibbs_exponent: []
+refC_factor: 0

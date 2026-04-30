@@ -1,0 +1,19 @@
+id: 330
+comment: 'reaction 320:  CH3O + CH4 <=> CH3 + CH3OH'
+rate_type: Arrhenius
+A: 157177.873836
+beta: 0.0
+Ea: 4449.44175904533
+has_third_body: false
+stoichiometry:
+- [31, 1.0]
+- [33, -1.0]
+- [35, -1.0]
+- [36, 1.0]
+reactants: [33, 35]
+gibbs_exponent:
+- [31, -1.0]
+- [33, 1.0]
+- [35, 1.0]
+- [36, -1.0]
+refC_factor: 0
