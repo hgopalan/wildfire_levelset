@@ -1,9 +1,0 @@
-id: 85
-comment: 'reaction 15:  CO + E => CO + E'
-rate_type: constant
-k_f: 0.0
-has_third_body: false
-stoichiometry: []
-reactants: [0, 11]
-gibbs_exponent: []
-refC_factor: 0
