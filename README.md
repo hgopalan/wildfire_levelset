@@ -265,8 +265,8 @@ View with ParaView or other AMReX-compatible visualization tools.
 
 6. **LANDFIRE Integration**
    - Automated download via LFPS API requires internet connectivity
-   - Non-burnable LANDFIRE classes (urban, water, agriculture) are filtered out by default
-   - Only Anderson 13 fuel model (FBFM13) is supported; Scott/Burgan 40 (FBFM40) is downloaded but mapped to FM1-FM13 via `--keep-nonburnable` flag
+   - Non-burnable LANDFIRE classes (urban, water, agriculture, snow/ice, barren) are filtered out by default; use `--keep-nonburnable` to retain these pixels (written as fuel code 0)
+   - Only Anderson 13 fuel model (FBFM13) is supported by the wildfire_levelset solver; Scott/Burgan 40 (FBFM40) can be downloaded with `--fuel-product F40_FBFM40` but the solver will not use the extended model numbers
 
 ### Scope for Future Work
 

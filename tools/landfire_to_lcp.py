@@ -166,6 +166,9 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
     # Poll until done
     status_url = _JOB_URL.format(jobId=job_id)
     deadline = time.time() + timeout_s
+    # poll_interval grows from 5 s up to 30 s (exponential back-off) across
+    # iterations; it is initialised once here, outside the loop, so each poll
+    # builds on the previous interval rather than resetting.
     poll_interval = 5  # seconds between polls
 
     while time.time() < deadline:
