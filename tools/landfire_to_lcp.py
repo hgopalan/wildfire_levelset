@@ -676,6 +676,23 @@ def create_landscape_from_files(output_path,
 # CLI
 # ---------------------------------------------------------------------------
 
+def _parse_inputs_file(path):
+    """Parse a wildfire_levelset inputs file and return a dict of key→value.
+
+    Lines of the form ``key = value`` are parsed; ``#`` comments and blank
+    lines are ignored.
+    """
+    params = {}
+    with open(path) as fh:
+        for line in fh:
+            line = line.split("#", 1)[0].strip()
+            if "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            params[key.strip()] = val.strip()
+    return params
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -735,6 +752,16 @@ def _build_parser():
         help="API polling timeout in seconds (default: 300)",
     )
 
+    parser.add_argument(
+        "--inputs-file", default=None, metavar="PATH",
+        help=(
+            "Path to a wildfire_levelset inputs file.  When provided (and "
+            "--bbox is not given), reads bbox_lat_min/max and "
+            "bbox_lon_min/max from the file to set the bounding box.  The "
+            "UTM extents of the downloaded data are also printed."
+        ),
+    )
+
     # Local-files mode (no download)
     local_group = parser.add_argument_group(
         "local files mode (skip download, use pre-existing rasters)"
@@ -766,6 +793,32 @@ def main(argv=None):
     if args.subsample < 1:
         print("ERROR: --subsample must be >= 1", file=sys.stderr)
         sys.exit(1)
+
+    # --inputs-file: read bbox from inputs when --bbox not supplied
+    if args.inputs_file is not None:
+        if not os.path.isfile(args.inputs_file):
+            print(f"ERROR: inputs file not found: {args.inputs_file}",
+                  file=sys.stderr)
+            sys.exit(1)
+        params = _parse_inputs_file(args.inputs_file)
+        if args.bbox is None:
+            bbox_keys = ("bbox_lat_min", "bbox_lat_max",
+                         "bbox_lon_min", "bbox_lon_max")
+            if all(k in params for k in bbox_keys):
+                lat_min = float(params["bbox_lat_min"])
+                lat_max = float(params["bbox_lat_max"])
+                lon_min = float(params["bbox_lon_min"])
+                lon_max = float(params["bbox_lon_max"])
+                args.bbox = [lon_min, lat_min, lon_max, lat_max]
+                print(f"Using bbox from inputs file: {tuple(args.bbox)}")
+            else:
+                missing = [k for k in bbox_keys if k not in params]
+                print(
+                    f"WARNING: --inputs-file provided but bbox keys not found "
+                    f"({missing}).  Use --bbox or add bbox_lat_min/max and "
+                    f"bbox_lon_min/max to the inputs file.",
+                    file=sys.stderr,
+                )
 
     local_files = [args.elev_file, args.slope_file,
                    args.aspect_file, args.fuel_file]
@@ -832,6 +885,29 @@ def main(argv=None):
             cache_dir=args.cache_dir,
             timeout_s=args.timeout,
         )
+
+        # Print UTM extents so users know what to put in prob_lo / prob_hi
+        if not args.no_utm and os.path.isfile(args.output):
+            xs, ys = [], []
+            with open(args.output) as fh:
+                for line in fh:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            xs.append(float(parts[0]))
+                            ys.append(float(parts[1]))
+                        except ValueError:
+                            pass
+            if xs and ys:
+                print(
+                    f"\nUTM extents of downloaded data (use for prob_lo / prob_hi):\n"
+                    f"  prob_lo_x = {min(xs):.0f}\n"
+                    f"  prob_lo_y = {min(ys):.0f}\n"
+                    f"  prob_hi_x = {max(xs):.0f}\n"
+                    f"  prob_hi_y = {max(ys):.0f}"
+                )
 
 
 if __name__ == "__main__":

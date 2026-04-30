@@ -5,15 +5,16 @@
 #
 # Domain: 300m x 300m to cover the synthetic 11x11 grid at 30m spacing
 
+# Domain: UTM Zone 11N, Santa Monica Mountains, Southern California
 # Grid & domain
 n_cell_x = 30
 n_cell_y = 30
 max_grid_size = 32
-prob_lo_x = 0.0
-prob_lo_y = 0.0
+prob_lo_x = 330000.0
+prob_lo_y = 3775000.0
 prob_lo_z = 0.0
-prob_hi_x = 300.0
-prob_hi_y = 300.0
+prob_hi_x = 330300.0
+prob_hi_y = 3775300.0
 prob_hi_z = 1.0
 
 # Time & output
@@ -28,10 +29,10 @@ u_z = 0.0
 
 # Initial source - line fire at western edge
 source_type = box
-box_xmin = 20.0
-box_xmax = 30.0
-box_ymin = 80.0
-box_ymax = 220.0
+box_xmin = 330020.0
+box_xmax = 330030.0
+box_ymin = 3775080.0
+box_ymax = 3775220.0
 box_zmin = 0.0
 box_zmax = 1.0
 
@@ -50,3 +51,9 @@ rothermel.landscape_file = landscape.lcp
 
 # Level set control
 skip_levelset = 0
+
+# Lat/lon bounding box for LANDFIRE download (WGS-84 decimal degrees)
+bbox_lat_min = 34.10
+bbox_lat_max = 34.103
+bbox_lon_min = -118.853
+bbox_lon_max = -118.850

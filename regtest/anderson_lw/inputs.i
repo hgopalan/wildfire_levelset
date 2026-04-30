@@ -1,14 +1,16 @@
 # Anderson L/W Ratio Test
 # Tests: Dynamic ellipse elongation based on wind speed (Anderson 1983)
 
+# Domain: UTM Zone 11N, Santa Monica Mountains, Southern California (100m x 100m)
 # Grid & domain
-n_cell = 64
+n_cell_x = 64
+n_cell_y = 64
 max_grid_size = 32
-prob_lo_x = 0.0
-prob_lo_y = 0.0
+prob_lo_x = 330000.0
+prob_lo_y = 3775000.0
 prob_lo_z = 0.0
-prob_hi_x = 1.0
-prob_hi_y = 1.0
+prob_hi_x = 330100.0
+prob_hi_y = 3775100.0
 prob_hi_z = 1.0
 
 # Time & output
@@ -23,10 +25,10 @@ u_z = 0.0
 
 # Initial source - box
 source_type = box
-box_xmin = 0.45
-box_xmax = 0.55
-box_ymin = 0.45
-box_ymax = 0.55
+box_xmin = 330045.0
+box_xmax = 330055.0
+box_ymin = 3775045.0
+box_ymax = 3775055.0
 box_zmin = 0.45
 box_zmax = 0.55
 

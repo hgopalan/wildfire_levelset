@@ -11,6 +11,7 @@ that the regression test can always proceed.
 
 Usage (called by CMake/CTest):
   python3 create_landscape.py [--output landscape.lcp] [--subsample N]
+  python3 create_landscape.py [--inputs-file inputs.i] [--output landscape.lcp]
 
 The default output filename is ``landscape.lcp`` in the current working
 directory.
@@ -25,8 +26,9 @@ import sys
 # Constants
 # ---------------------------------------------------------------------------
 
-# Small Southern California extent (near the Santa Monica Mountains)
-_DEFAULT_BBOX = (-118.85, 34.10, -118.75, 34.18)  # (min_lon, min_lat, max_lon, max_lat)
+# Small Southern California extent (Santa Monica Mountains area)
+# Corresponds to the UTM Zone 11N domain origin used in inputs.i
+_DEFAULT_BBOX = (-118.853, 34.10, -118.850, 34.103)  # (min_lon, min_lat, max_lon, max_lat)
 
 # LANDFIRE vintage to use
 _VINTAGE = 2020
@@ -41,11 +43,33 @@ _SYNTH_SPACING = 30.0  # metres between points
 
 
 # ---------------------------------------------------------------------------
+# Inputs file parser
+# ---------------------------------------------------------------------------
+
+def _parse_inputs_file(path):
+    """Parse a wildfire_levelset inputs file and return a dict of key→value.
+
+    Lines of the form ``key = value`` are parsed; comments (``#``) and blank
+    lines are ignored.
+    """
+    params = {}
+    with open(path) as fh:
+        for line in fh:
+            line = line.split("#", 1)[0].strip()
+            if "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            params[key.strip()] = val.strip()
+    return params
+
+
+# ---------------------------------------------------------------------------
 # Synthetic landscape generator (no external dependencies)
 # ---------------------------------------------------------------------------
 
 def _generate_synthetic_landscape(output_path, nx=_SYNTH_NX, ny=_SYNTH_NY,
-                                   spacing=_SYNTH_SPACING):
+                                   spacing=_SYNTH_SPACING,
+                                   x_orig=0.0, y_orig=0.0):
     """Write a synthetic Southern California chaparral landscape file.
 
     The landscape mimics a gentle hillslope:
@@ -62,10 +86,11 @@ def _generate_synthetic_landscape(output_path, nx=_SYNTH_NX, ny=_SYNTH_NY,
         Grid dimensions.
     spacing : float
         Grid spacing in metres.
+    x_orig, y_orig : float
+        UTM origin of the grid (metres).  Defaults to (0, 0) for backward
+        compatibility; set to prob_lo_x / prob_lo_y from inputs.i for a
+        domain-aligned landscape.
     """
-    x_orig = 0.0
-    y_orig = 0.0
-
     rows = []
     for j in range(ny):
         for i in range(nx):
@@ -170,10 +195,19 @@ def main(argv=None):
     parser.add_argument(
         "--bbox", nargs=4, type=float,
         metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"),
-        default=list(_DEFAULT_BBOX),
+        default=None,
         help=(
             "Bounding box in WGS-84 decimal degrees "
             f"(default: {_DEFAULT_BBOX})"
+        ),
+    )
+    parser.add_argument(
+        "--inputs-file", default=None, metavar="PATH",
+        help=(
+            "Path to a wildfire_levelset inputs file.  When provided, "
+            "bbox_lat_min/max and bbox_lon_min/max are read from this file "
+            "to set the LANDFIRE download bounding box; prob_lo_x/prob_lo_y "
+            "are used to align the synthetic landscape origin."
         ),
     )
     args = parser.parse_args(argv)
@@ -182,13 +216,46 @@ def main(argv=None):
     out_dir = os.path.dirname(os.path.abspath(args.output))
     os.makedirs(out_dir, exist_ok=True)
 
-    bbox = tuple(args.bbox)
+    # Defaults
+    bbox = tuple(args.bbox) if args.bbox is not None else _DEFAULT_BBOX
+    x_orig = 0.0
+    y_orig = 0.0
+
+    # Override with values from inputs file when provided
+    if args.inputs_file is not None:
+        if not os.path.isfile(args.inputs_file):
+            print(f"ERROR: inputs file not found: {args.inputs_file}",
+                  file=sys.stderr)
+            sys.exit(1)
+        params = _parse_inputs_file(args.inputs_file)
+
+        # Bounding box from inputs (only used if --bbox not explicitly given)
+        if args.bbox is None:
+            bbox_keys = ("bbox_lat_min", "bbox_lat_max",
+                         "bbox_lon_min", "bbox_lon_max")
+            if all(k in params for k in bbox_keys):
+                lat_min = float(params["bbox_lat_min"])
+                lat_max = float(params["bbox_lat_max"])
+                lon_min = float(params["bbox_lon_min"])
+                lon_max = float(params["bbox_lon_max"])
+                bbox = (lon_min, lat_min, lon_max, lat_max)
+                print(f"Using bbox from inputs file: {bbox}")
+
+        # UTM origin for synthetic landscape
+        if "prob_lo_x" in params:
+            x_orig = float(params["prob_lo_x"])
+        if "prob_lo_y" in params:
+            y_orig = float(params["prob_lo_y"])
+        if x_orig != 0.0 or y_orig != 0.0:
+            print(f"Synthetic landscape origin from inputs: "
+                  f"x_orig={x_orig}, y_orig={y_orig}")
+
     success = _try_download_landscape(
         args.output, bbox=bbox, subsample=args.subsample, timeout_s=args.timeout
     )
 
     if not success:
-        _generate_synthetic_landscape(args.output)
+        _generate_synthetic_landscape(args.output, x_orig=x_orig, y_orig=y_orig)
 
     if not os.path.isfile(args.output):
         print(f"ERROR: landscape file was not created: {args.output}",
@@ -197,9 +264,10 @@ def main(argv=None):
 
     # Report row count
     with open(args.output) as fh:
-        n = sum(1 for l in fh if not l.startswith("#") and l.strip())
+        n = sum(1 for ln in fh if not ln.startswith("#") and ln.strip())
     print(f"Landscape file ready: '{args.output}' ({n} data rows)")
 
 
 if __name__ == "__main__":
     main()
+
