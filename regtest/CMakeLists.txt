@@ -41,6 +41,12 @@ function(add_regression_test TEST_NAME TEST_DIR)
              DESTINATION ${TEST_WORK_DIR})
     endif()
 
+    # Copy time-dependent wind field snapshots if present
+    file(GLOB _TIME_WIND_FILES "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/time_wind*.csv")
+    foreach(_twf ${_TIME_WIND_FILES})
+        file(COPY "${_twf}" DESTINATION ${TEST_WORK_DIR})
+    endforeach()
+
     # Copy landscape files if present (farsite_ellipse landscape test)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/socal_chaparral_landscape.lcp")
         file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/socal_chaparral_landscape.lcp"
@@ -104,9 +110,10 @@ if(NOT LEVELSET_DIM_2D)
     add_regression_test(3d_sphere 3d_sphere)
 endif()
 
-# 2D-specific tests (terrain_wind requires 2D build with data files)
+# 2D-specific tests (terrain_wind and time_dependent_wind require 2D build with data files)
 if(LEVELSET_DIM_2D)
     add_regression_test(terrain_wind terrain_wind)
+    add_regression_test(time_dependent_wind time_dependent_wind)
 endif()
 
 # LANDFIRE / landscape-file FARSITE test (requires Python3 for setup step)
@@ -130,6 +137,7 @@ if(NOT LEVELSET_DIM_2D)
 endif()
 if(LEVELSET_DIM_2D)
     message(STATUS "  - terrain_wind: External terrain and wind field (2D only)")
+    message(STATUS "  - time_dependent_wind: Time-dependent wind field with linear interpolation (2D only)")
 endif()
 message(STATUS "")
 message(STATUS "Note: Additional tests are available but commented out for faster testing.")
