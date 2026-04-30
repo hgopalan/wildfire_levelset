@@ -49,7 +49,7 @@ spotting.k_wind = 0.3
 spotting.I_critical = 800.0
 spotting.d_mean = 15.0
 spotting.d_sigma = 40.0
-spotting.d_lambda = 0.08
+spotting.d_lambda = 0.08    # decay rate [1/m]: was 8.0 in 0-1 domain → 8.0/100 = 0.08 /m (inverse scaling)
 spotting.distance_model = lognormal
 spotting.lateral_spread_angle = 20.0
 spotting.spot_radius = 3.0

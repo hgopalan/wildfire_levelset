@@ -3,7 +3,7 @@
 
 # Domain: UTM Zone 11N, Santa Monica Mountains, Southern California (100m x 100m)
 # Grid & domain
-n_cell_x = 64
+n_cell_x = 64    # split from n_cell=64 to allow non-square UTM domain in future
 n_cell_y = 64
 max_grid_size = 32
 prob_lo_x = 330000.0
