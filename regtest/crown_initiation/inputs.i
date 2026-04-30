@@ -1,14 +1,15 @@
 # Crown Fire Initiation Test (Van Wagner 1977)
 # Tests: Van Wagner's threshold model for crown fire initiation
 
+# Domain: UTM Zone 11N, Southern California (100m x 100m)
 # Grid & domain
 n_cell = 64
 max_grid_size = 32
-prob_lo_x = 0.0
-prob_lo_y = 0.0
+prob_lo_x = 330000.0
+prob_lo_y = 3775000.0
 prob_lo_z = 0.0
-prob_hi_x = 1.0
-prob_hi_y = 1.0
+prob_hi_x = 330100.0
+prob_hi_y = 3775100.0
 prob_hi_z = 1.0
 
 # Time & output
@@ -23,10 +24,10 @@ u_z = 0.0
 
 # Initial source - sphere
 source_type = sphere
-sphere_center_x = 0.5
-sphere_center_y = 0.5
+sphere_center_x = 330050.0
+sphere_center_y = 3775050.0
 sphere_center_z = 0.5
-sphere_radius = 0.1
+sphere_radius = 10.0
 
 # Reinitialization
 reinit_int = 20

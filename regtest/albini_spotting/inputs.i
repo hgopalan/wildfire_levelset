@@ -16,14 +16,15 @@
 #   R ≈ 88 ft/min, I_B ≈ 9355 kW/m, H_z ≈ 257 m
 #   Flight time = 257 m / 5 m/s ≈ 51 s  →  landing ≈ 2 m/s * 51 s ≈ 103 m
 
+# Domain: UTM Zone 11N, Santa Monica Mountains, Southern California
 # Grid & domain (1 km x 1 km, dx = 10 m)
 n_cell_x = 100
 n_cell_y = 100
 max_grid_size = 50
-prob_lo_x = 0.0
-prob_lo_y = 0.0
-prob_hi_x = 1000.0
-prob_hi_y = 1000.0
+prob_lo_x = 330000.0
+prob_lo_y = 3775000.0
+prob_hi_x = 331000.0
+prob_hi_y = 3776000.0
 
 # Time & output
 nsteps = 100
@@ -38,10 +39,10 @@ u_z = 0.0
 
 # Initial source: box ignition on the left edge
 source_type = box
-box_xmin = 50.0
-box_xmax = 100.0
-box_ymin = 300.0
-box_ymax = 700.0
+box_xmin = 330050.0
+box_xmax = 330100.0
+box_ymin = 3775300.0
+box_ymax = 3775700.0
 
 # Rothermel fuel model (NFFL Model 4 - chaparral, standard moisture)
 rothermel.fuel_model = FM4

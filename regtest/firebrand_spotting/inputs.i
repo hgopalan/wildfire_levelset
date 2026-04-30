@@ -1,14 +1,15 @@
 # Firebrand Spotting Model Test
 # Tests: Probability-based firebrand spotting with FARSITE ellipse model
 
+# Domain: UTM Zone 11N, Southern California (100m x 100m)
 # Grid & domain
 n_cell = 64
 max_grid_size = 32
-prob_lo_x = 0.0
-prob_lo_y = 0.0
+prob_lo_x = 330000.0
+prob_lo_y = 3775000.0
 prob_lo_z = 0.0
-prob_hi_x = 1.0
-prob_hi_y = 1.0
+prob_hi_x = 330100.0
+prob_hi_y = 3775100.0
 prob_hi_z = 1.0
 
 # Time & output
@@ -23,10 +24,10 @@ u_z = 0.0
 
 # Initial source - small sphere (point ignition)
 source_type = sphere
-center_x = 0.3
-center_y = 0.5
+center_x = 330030.0
+center_y = 3775050.0
 center_z = 0.5
-sphere_radius = 0.1
+sphere_radius = 10.0
 
 # Reinitialization
 reinit_int = -1
@@ -46,12 +47,12 @@ spotting.enable = 1
 spotting.P_base = 0.05
 spotting.k_wind = 0.3
 spotting.I_critical = 800.0
-spotting.d_mean = 0.15
-spotting.d_sigma = 0.4
-spotting.d_lambda = 8.0
+spotting.d_mean = 15.0
+spotting.d_sigma = 40.0
+spotting.d_lambda = 0.08    # decay rate [1/m]: scaled from 8.0 [1/unit] in normalized domain by 1/100 to account for 100m physical domain
 spotting.distance_model = lognormal
 spotting.lateral_spread_angle = 20.0
-spotting.spot_radius = 0.03
+spotting.spot_radius = 3.0
 spotting.random_seed = 12345
 spotting.check_interval = 3
 
