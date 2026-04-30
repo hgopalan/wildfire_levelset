@@ -1,0 +1,14 @@
+id: 48
+comment: 'reaction 281:  H + O + H2O => OH + H2O'
+rate_type: Arrhenius
+A: 27199.63449994
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [7, -1.0]
+- [22, 1.0]
+reactants: [1, 7, 24]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,13 @@
+id: 243
+comment: 'reaction 206:  CO2+ + CO3- => 2 CO2 + O'
+rate_type: constant
+k_f: 301107038000.0
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [12, 2.0]
+- [17, -1.0]
+- [20, -1.0]
+reactants: [17, 20]
+gibbs_exponent: []
+refC_factor: 0

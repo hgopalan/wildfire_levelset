@@ -1,0 +1,13 @@
+id: 270
+comment: 'reaction 233:  H2+ + H2O => H + H3O+'
+rate_type: constant
+k_f: 2047527858.4
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [5, -1.0]
+- [24, -1.0]
+- [26, 1.0]
+reactants: [5, 24]
+gibbs_exponent: []
+refC_factor: 0

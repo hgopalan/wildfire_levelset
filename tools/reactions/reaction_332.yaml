@@ -1,0 +1,19 @@
+id: 332
+comment: 'reaction 322:  CH3 + OH <=> CH2OH + H'
+rate_type: Arrhenius
+A: 927409677.04
+beta: -1.8
+Ea: 4059.44884304667
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [22, -1.0]
+- [31, -1.0]
+- [37, 1.0]
+reactants: [22, 31]
+gibbs_exponent:
+- [1, -1.0]
+- [22, 1.0]
+- [31, 1.0]
+- [37, -1.0]
+refC_factor: 0

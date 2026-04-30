@@ -1,0 +1,11 @@
+id: 184
+comment: 'reaction 128:  CO2 + CO2v4 => CO2 + CO2v2'
+rate_type: constant
+k_f: 26075.8694908
+has_third_body: false
+stoichiometry:
+- [14, 1.0]
+- [16, -1.0]
+reactants: [12, 16]
+gibbs_exponent: []
+refC_factor: 0

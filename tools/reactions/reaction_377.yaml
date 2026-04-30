@@ -1,0 +1,13 @@
+id: 377
+comment: 'reaction 368:  CH2OH + HCO => CH3OH + CO'
+rate_type: constant
+k_f: 121045029.276
+has_third_body: false
+stoichiometry:
+- [11, 1.0]
+- [27, -1.0]
+- [36, 1.0]
+- [37, -1.0]
+reactants: [27, 37]
+gibbs_exponent: []
+refC_factor: 0

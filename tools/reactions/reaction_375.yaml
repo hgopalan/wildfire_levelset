@@ -1,0 +1,19 @@
+id: 375
+comment: 'reaction 366:  CH2O + CH2OH <=> CH3OH + HCO'
+rate_type: Arrhenius
+A: 46490.9266672
+beta: 2.8
+Ea: 2949.85609494727
+has_third_body: false
+stoichiometry:
+- [27, 1.0]
+- [34, -1.0]
+- [36, 1.0]
+- [37, -1.0]
+reactants: [34, 37]
+gibbs_exponent:
+- [27, -1.0]
+- [34, 1.0]
+- [36, -1.0]
+- [37, 1.0]
+refC_factor: 0

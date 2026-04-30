@@ -1,0 +1,13 @@
+id: 282
+comment: 'reaction 245:  OH + OH+ => H2O+ + O'
+rate_type: constant
+k_f: 421549853.2
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [22, -1.0]
+- [23, -1.0]
+- [25, 1.0]
+reactants: [22, 23]
+gibbs_exponent: []
+refC_factor: 0

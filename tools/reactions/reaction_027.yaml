@@ -1,0 +1,19 @@
+id: 27
+comment: 'reaction 167:  H2O+ + O- + M => H2O + O + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [7, 1.0]
+- [8, -1.0]
+- [24, 1.0]
+- [25, -1.0]
+reactants: [8, 25]
+gibbs_exponent:
+- [7, -1.0]
+- [8, 1.0]
+- [24, -1.0]
+- [25, 1.0]
+refC_factor: 0

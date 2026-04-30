@@ -1,0 +1,20 @@
+id: 91
+comment: 'reaction comment: Accounting for electron energy loss to H2(v3) | reaction
+  26:  E + H2 => E + H2v'
+rate_type: Jfit
+Jfit_A: 3.008e-17
+Jfit_coefs: [-1.3200748506483, 2.57319732174652, -1.75221503040112, 0.357811634017136,
+  0.334804775754479, -0.248830468289447, -0.0422357401405263, 0.0656821644773556,
+  -0.0125518656838086]
+k_max: null
+has_third_body: false
+stoichiometry:
+- [3, -1.0]
+- [4, 1.0]
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 1.5
+  elidx: 0

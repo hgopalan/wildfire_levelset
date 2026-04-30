@@ -1,0 +1,15 @@
+id: 249
+comment: 'reaction 212:  CO3- + H2O+ => CO2 + H + O + OH'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, 1.0]
+- [12, 1.0]
+- [20, -1.0]
+- [22, 1.0]
+- [25, -1.0]
+reactants: [20, 25]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,13 @@
+id: 301
+comment: 'reaction 267:  CH2+ + CH4 => CH3 + CH3+'
+rate_type: constant
+k_f: 83105542.488
+has_third_body: false
+stoichiometry:
+- [30, -1.0]
+- [31, 1.0]
+- [32, 1.0]
+- [33, -1.0]
+reactants: [30, 33]
+gibbs_exponent: []
+refC_factor: 0

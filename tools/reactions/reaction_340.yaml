@@ -1,0 +1,13 @@
+id: 340
+comment: 'reaction 331:  CH2 + CH3O => CH2O + CH3'
+rate_type: constant
+k_f: 18126643.6876
+has_third_body: false
+stoichiometry:
+- [29, -1.0]
+- [31, 1.0]
+- [34, 1.0]
+- [35, -1.0]
+reactants: [29, 35]
+gibbs_exponent: []
+refC_factor: 0

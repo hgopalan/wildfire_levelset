@@ -1,0 +1,12 @@
+id: 380
+comment: 'reaction 371:  2 CH2OH => CH2O + CH3OH'
+rate_type: constant
+k_f: 4817712.608
+has_third_body: false
+stoichiometry:
+- [34, 1.0]
+- [36, 1.0]
+- [37, -2.0]
+reactants: [37, 37]
+gibbs_exponent: []
+refC_factor: 0

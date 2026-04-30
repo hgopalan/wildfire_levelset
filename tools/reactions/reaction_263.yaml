@@ -1,0 +1,13 @@
+id: 263
+comment: 'reaction 226:  AR + H2+ => AR+ + H2'
+rate_type: constant
+k_f: 132487096.72
+has_third_body: false
+stoichiometry:
+- [3, 1.0]
+- [5, -1.0]
+- [38, -1.0]
+- [40, 1.0]
+reactants: [5, 38]
+gibbs_exponent: []
+refC_factor: 0

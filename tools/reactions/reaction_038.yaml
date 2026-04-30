@@ -1,0 +1,17 @@
+id: 38
+comment: 'reaction 263:  C2O4+ + CO + M => C2O3+ + CO2 + M'
+rate_type: constant
+k_f: 15231795319.9664
+has_third_body: true
+stoichiometry:
+- [11, -1.0]
+- [12, 1.0]
+- [18, 1.0]
+- [19, -1.0]
+reactants: [11, 19]
+gibbs_exponent:
+- [11, 1.0]
+- [12, -1.0]
+- [18, -1.0]
+- [19, 1.0]
+refC_factor: 0

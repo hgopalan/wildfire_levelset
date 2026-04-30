@@ -1,0 +1,21 @@
+id: 13
+comment: 'reaction 52:  O2- + M => E + O2 + M'
+rate_type: Arrhenius
+A: 162597800.52
+beta: 0.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [0, 1.0]
+- [9, 1.0]
+- [10, -1.0]
+reactants: [10]
+gibbs_exponent:
+- [0, -1.0]
+- [9, -1.0]
+- [10, 1.0]
+refC_factor: -1
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

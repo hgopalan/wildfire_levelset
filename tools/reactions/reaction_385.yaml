@@ -1,0 +1,15 @@
+id: 385
+comment: 'reaction 379:  CH2 + O2 => CO2 + 2 H'
+rate_type: Arrhenius
+A: 6503912.0208
+beta: 0.0
+Ea: 757.844298701908
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [9, -1.0]
+- [12, 1.0]
+- [29, -1.0]
+reactants: [9, 29]
+gibbs_exponent: []
+refC_factor: 0

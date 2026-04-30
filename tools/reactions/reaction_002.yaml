@@ -1,0 +1,17 @@
+id: 2
+comment: 'reaction 18:  CO + E => C + O + E'
+rate_type: Ffit
+Ffit_A: 7.39606286753756e-15
+Ffit_coefs: [16.3541660916144, -220.870249708484, 433.102467731706, -274.716891876346]
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [11, -1.0]
+- [21, 1.0]
+reactants: [0, 11]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 2
+  eexci: 11.1
+  elidx: 0

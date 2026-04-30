@@ -1,0 +1,17 @@
+id: 66
+comment: 'reaction 334:  CO + H + M => HCO + M'
+rate_type: Arrhenius
+A: 721.696968731742
+beta: 0.0
+Ea: 841.881481891296
+has_third_body: true
+stoichiometry:
+- [1, -1.0]
+- [11, -1.0]
+- [27, 1.0]
+reactants: [1, 11]
+gibbs_exponent:
+- [1, 1.0]
+- [11, 1.0]
+- [27, -1.0]
+refC_factor: 1

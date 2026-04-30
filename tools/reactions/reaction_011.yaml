@@ -1,0 +1,16 @@
+id: 11
+comment: 'reaction 50:  O2- + O2 => E + O2 + O2'
+rate_type: constant
+k_f: 1.31282668568
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [9, 1.0]
+- [10, -1.0]
+reactants: [9, 10]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

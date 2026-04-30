@@ -1,0 +1,14 @@
+id: 63
+comment: 'reaction 301:  H2O + H2 => H + OH + H2'
+rate_type: Arrhenius
+A: 3492841640.8
+beta: 0.0
+Ea: 52894.1101760657
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [22, 1.0]
+- [24, -1.0]
+reactants: [3, 24]
+gibbs_exponent: []
+refC_factor: 0

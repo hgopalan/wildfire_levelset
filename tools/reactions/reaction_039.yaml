@@ -1,0 +1,15 @@
+id: 39
+comment: 'reaction 264:  C2O4+ + M => CO2 + CO2+ + M'
+rate_type: constant
+k_f: 6022.14076
+has_third_body: true
+stoichiometry:
+- [12, 1.0]
+- [17, 1.0]
+- [19, -1.0]
+reactants: [19]
+gibbs_exponent:
+- [12, -1.0]
+- [17, -1.0]
+- [19, 1.0]
+refC_factor: -1

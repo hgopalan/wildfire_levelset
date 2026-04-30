@@ -1,0 +1,13 @@
+id: 291
+comment: 'reaction 254:  CH4 + H2O+ => CH3 + H3O+'
+rate_type: constant
+k_f: 843099706.4
+has_third_body: false
+stoichiometry:
+- [25, -1.0]
+- [26, 1.0]
+- [31, 1.0]
+- [33, -1.0]
+reactants: [25, 33]
+gibbs_exponent: []
+refC_factor: 0

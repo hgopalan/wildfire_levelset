@@ -1,0 +1,14 @@
+id: 45
+comment: 'reaction 278:  H + O + AR => OH + AR'
+rate_type: Arrhenius
+A: 5439.92689998801
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [7, -1.0]
+- [22, 1.0]
+reactants: [1, 7, 38]
+gibbs_exponent: []
+refC_factor: 0

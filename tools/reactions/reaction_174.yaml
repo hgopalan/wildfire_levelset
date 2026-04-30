@@ -1,0 +1,11 @@
+id: 174
+comment: 'reaction 118:  CO + CO2v3 => CO + CO2v4'
+rate_type: constant
+k_f: 1090.00747756
+has_third_body: false
+stoichiometry:
+- [15, -1.0]
+- [16, 1.0]
+reactants: [11, 15]
+gibbs_exponent: []
+refC_factor: 0

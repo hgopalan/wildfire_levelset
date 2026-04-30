@@ -1,0 +1,17 @@
+id: 124
+comment: 'reaction comment: estimate based on E + N2+ => 2N | reaction 91:  E + H2+
+  => 2 H'
+rate_type: constant
+k_f: 0.0
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [1, 2.0]
+- [5, -1.0]
+reactants: [0, 5]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 3
+  eexci: 0.0
+  elidx: 0

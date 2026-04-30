@@ -1,0 +1,18 @@
+id: 84
+comment: 'reaction 16:  CO2 + E => CO + O-'
+rate_type: Ffit
+Ffit_A: 4.23133262631561e-18
+Ffit_coefs: [5.68537810168761, -15.1912011431635, 6.86995641002507, -1.21745244042248]
+has_third_body: false
+stoichiometry:
+- [0, -1.0]
+- [8, 1.0]
+- [11, 1.0]
+- [12, -1.0]
+reactants: [0, 12]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 4
+  eexci: 0.0
+  elidx: 0

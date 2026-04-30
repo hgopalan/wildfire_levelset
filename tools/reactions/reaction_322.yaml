@@ -1,0 +1,13 @@
+id: 322
+comment: 'reaction 313:  CH2 + O => CO + 2 H'
+rate_type: constant
+k_f: 49923546.9004
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [7, -1.0]
+- [11, 1.0]
+- [29, -1.0]
+reactants: [7, 29]
+gibbs_exponent: []
+refC_factor: 0

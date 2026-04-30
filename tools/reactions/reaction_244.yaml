@@ -1,0 +1,14 @@
+id: 244
+comment: 'reaction 207:  C2O3+ + CO3- => CO + 2 CO2 + O'
+rate_type: constant
+k_f: 301107038000.0
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [11, 1.0]
+- [12, 2.0]
+- [18, -1.0]
+- [20, -1.0]
+reactants: [18, 20]
+gibbs_exponent: []
+refC_factor: 0

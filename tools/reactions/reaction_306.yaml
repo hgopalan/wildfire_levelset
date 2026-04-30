@@ -1,0 +1,13 @@
+id: 306
+comment: 'reaction 273:  CO3- + O => CO2 + O2-'
+rate_type: constant
+k_f: 48177126.08
+has_third_body: false
+stoichiometry:
+- [7, -1.0]
+- [10, 1.0]
+- [12, 1.0]
+- [20, -1.0]
+reactants: [7, 20]
+gibbs_exponent: []
+refC_factor: 0

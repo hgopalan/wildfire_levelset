@@ -1,0 +1,15 @@
+id: 237
+comment: 'reaction 197:  H- + H2O+ => H + H2O'
+rate_type: Arrhenius
+A: 120442815200.0
+beta: -0.5
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [2, -1.0]
+- [24, 1.0]
+- [25, -1.0]
+reactants: [2, 25]
+gibbs_exponent: []
+refC_factor: 0

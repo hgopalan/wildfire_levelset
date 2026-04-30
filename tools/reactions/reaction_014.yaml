@@ -1,0 +1,19 @@
+id: 14
+comment: 'reaction 56:  H- + M => E + H + M'
+rate_type: constant
+k_f: 602214076.0
+has_third_body: true
+stoichiometry:
+- [0, 1.0]
+- [1, 1.0]
+- [2, -1.0]
+reactants: [2]
+gibbs_exponent:
+- [0, -1.0]
+- [1, -1.0]
+- [2, 1.0]
+refC_factor: -1
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

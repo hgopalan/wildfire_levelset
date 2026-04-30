@@ -1,0 +1,11 @@
+id: 151
+comment: 'reaction 95:  ARe => AR'
+rate_type: constant
+k_f: 0.02
+has_third_body: false
+stoichiometry:
+- [38, 1.0]
+- [39, -1.0]
+reactants: [39]
+gibbs_exponent: []
+refC_factor: 0

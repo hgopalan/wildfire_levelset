@@ -1,0 +1,13 @@
+id: 216
+comment: 'reaction 170:  H2+ + O2- => 2 H + O2'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [5, -1.0]
+- [9, 1.0]
+- [10, -1.0]
+reactants: [5, 10]
+gibbs_exponent: []
+refC_factor: 0

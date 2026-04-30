@@ -1,0 +1,13 @@
+id: 319
+comment: 'reaction 310:  CH3 + O => CH2O + H'
+rate_type: constant
+k_f: 67447976.512
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, -1.0]
+- [31, -1.0]
+- [34, 1.0]
+reactants: [7, 31]
+gibbs_exponent: []
+refC_factor: 0

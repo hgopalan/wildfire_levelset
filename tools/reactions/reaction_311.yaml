@@ -1,0 +1,15 @@
+id: 311
+comment: 'reaction 299:  H2 + OH => H + H2O'
+rate_type: Arrhenius
+A: 574512.228504
+beta: 2.0
+Ea: 1490.02454744777
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [3, -1.0]
+- [22, -1.0]
+- [24, 1.0]
+reactants: [3, 22]
+gibbs_exponent: []
+refC_factor: 0

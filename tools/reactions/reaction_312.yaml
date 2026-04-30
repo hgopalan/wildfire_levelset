@@ -1,0 +1,15 @@
+id: 312
+comment: 'reaction 302:  O + OH => H + O2'
+rate_type: Arrhenius
+A: 10900074.7756
+beta: -0.31
+Ea: -177.132266363261
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, -1.0]
+- [9, 1.0]
+- [22, -1.0]
+reactants: [7, 22]
+gibbs_exponent: []
+refC_factor: 0

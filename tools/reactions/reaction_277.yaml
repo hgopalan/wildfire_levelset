@@ -1,0 +1,13 @@
+id: 277
+comment: 'reaction 240:  H3+ + OH => H2 + H2O+'
+rate_type: constant
+k_f: 782878298.8
+has_third_body: false
+stoichiometry:
+- [3, 1.0]
+- [6, -1.0]
+- [22, -1.0]
+- [25, 1.0]
+reactants: [6, 22]
+gibbs_exponent: []
+refC_factor: 0

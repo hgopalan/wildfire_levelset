@@ -1,0 +1,13 @@
+id: 285
+comment: 'reaction 248:  CH4 + OH+ => CH2 + H3O+'
+rate_type: constant
+k_f: 788900439.56
+has_third_body: false
+stoichiometry:
+- [23, -1.0]
+- [26, 1.0]
+- [29, 1.0]
+- [33, -1.0]
+reactants: [23, 33]
+gibbs_exponent: []
+refC_factor: 0

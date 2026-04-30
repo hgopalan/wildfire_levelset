@@ -1,0 +1,14 @@
+id: 221
+comment: 'reaction 176:  O2- + OH+ => H + O + O2'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, 1.0]
+- [9, 1.0]
+- [10, -1.0]
+- [23, -1.0]
+reactants: [10, 23]
+gibbs_exponent: []
+refC_factor: 0

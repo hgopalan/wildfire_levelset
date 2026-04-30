@@ -1,0 +1,13 @@
+id: 305
+comment: 'reaction 272:  H + O2- => H- + O2'
+rate_type: constant
+k_f: 421549853.2
+has_third_body: false
+stoichiometry:
+- [1, -1.0]
+- [2, 1.0]
+- [9, 1.0]
+- [10, -1.0]
+reactants: [1, 10]
+gibbs_exponent: []
+refC_factor: 0

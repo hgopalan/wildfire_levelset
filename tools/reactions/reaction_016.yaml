@@ -1,0 +1,13 @@
+id: 16
+comment: 'reaction 86:  AR2e + M => 2 AR + M'
+rate_type: constant
+k_f: 3011.07038
+has_third_body: true
+stoichiometry:
+- [38, 2.0]
+- [42, -1.0]
+reactants: [42]
+gibbs_exponent:
+- [38, -2.0]
+- [42, 1.0]
+refC_factor: -1

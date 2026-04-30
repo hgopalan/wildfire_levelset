@@ -1,0 +1,15 @@
+id: 328
+comment: 'reaction 679a:  CH4 + HCO => CH2O + CH3'
+rate_type: Arrhenius
+A: 81901.114336
+beta: 2.85
+Ea: 11300.0
+has_third_body: false
+stoichiometry:
+- [27, -1.0]
+- [31, 1.0]
+- [33, -1.0]
+- [34, 1.0]
+reactants: [27, 33]
+gibbs_exponent: []
+refC_factor: 0

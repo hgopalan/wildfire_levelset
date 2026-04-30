@@ -1,0 +1,13 @@
+id: 281
+comment: 'reaction 244:  H2 + OH+ => H + H2O+'
+rate_type: constant
+k_f: 782878298.8
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [3, -1.0]
+- [23, -1.0]
+- [25, 1.0]
+reactants: [3, 23]
+gibbs_exponent: []
+refC_factor: 0

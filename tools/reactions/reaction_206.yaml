@@ -1,0 +1,13 @@
+id: 206
+comment: 'reaction 156:  ARH+ + H- => AR + 2 H'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [2, -1.0]
+- [38, 1.0]
+- [41, -1.0]
+reactants: [2, 41]
+gibbs_exponent: []
+refC_factor: 0

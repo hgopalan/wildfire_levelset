@@ -1,0 +1,15 @@
+id: 40
+comment: 'reaction 270:  CO2 + O- + M => CO3- + M'
+rate_type: constant
+k_f: 32639561.399928
+has_third_body: true
+stoichiometry:
+- [8, -1.0]
+- [12, -1.0]
+- [20, 1.0]
+reactants: [8, 12]
+gibbs_exponent:
+- [8, 1.0]
+- [12, 1.0]
+- [20, -1.0]
+refC_factor: 1

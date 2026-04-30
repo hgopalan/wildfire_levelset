@@ -1,0 +1,19 @@
+id: 327
+comment: 'reaction 318:  CH4 + OH <=> CH3 + H2O'
+rate_type: Arrhenius
+A: 81901.114336
+beta: 3.04
+Ea: 919.880065091028
+has_third_body: false
+stoichiometry:
+- [22, -1.0]
+- [24, 1.0]
+- [31, 1.0]
+- [33, -1.0]
+reactants: [22, 33]
+gibbs_exponent:
+- [22, 1.0]
+- [24, -1.0]
+- [31, -1.0]
+- [33, 1.0]
+refC_factor: 0

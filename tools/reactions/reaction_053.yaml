@@ -1,0 +1,13 @@
+id: 53
+comment: 'reaction 287:  2 H + H2O => H2 + H2O'
+rate_type: Arrhenius
+A: 33364.8849865931
+beta: -1.0
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, -2.0]
+- [3, 1.0]
+reactants: [1, 1, 24]
+gibbs_exponent: []
+refC_factor: 0

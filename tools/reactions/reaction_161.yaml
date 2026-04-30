@@ -1,0 +1,11 @@
+id: 161
+comment: 'reaction 105:  AR + CO2v2 => AR + CO2'
+rate_type: constant
+k_f: 16.8017727204
+has_third_body: false
+stoichiometry:
+- [12, 1.0]
+- [14, -1.0]
+reactants: [14, 38]
+gibbs_exponent: []
+refC_factor: 0

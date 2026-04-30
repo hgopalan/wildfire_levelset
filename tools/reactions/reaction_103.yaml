@@ -1,0 +1,21 @@
+id: 103
+comment: 'reaction comment: Accounting for electron energy losses only:  E + H2 |
+  => E + H(1S) + H(2P) reaction 39:  E + H2 => E + H2'
+rate_type: conditional
+TeeV_threshold: 8.0
+low_type: Jfit
+low_Jfit_A: 5.595e-16
+low_Jfit_coefs: [-1040.41862142214, 5184.68998652417, -11244.7072600707, 13561.7679057104,
+  -9911.01285847446, 4499.27707708176, -1241.34744203749, 190.568117411283, -12.4697342945185]
+high_type: Ffit
+high_Ffit_A: 5.22063789288094e-16
+high_Ffit_coefs: [5.39236346695952, 24.7748709446991, -971.786226819569, 1598.10574023187]
+has_third_body: false
+stoichiometry: []
+reactants: [0, 3]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 1
+  eexci: 14.68
+  elidx: 0

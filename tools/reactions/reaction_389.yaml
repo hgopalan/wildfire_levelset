@@ -1,0 +1,13 @@
+id: 389
+comment: 'reaction 383:  CH3 + O2 => H2O + HCO'
+rate_type: constant
+k_f: 999675.36616
+has_third_body: false
+stoichiometry:
+- [9, -1.0]
+- [24, 1.0]
+- [27, 1.0]
+- [31, -1.0]
+reactants: [9, 31]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,13 @@
+id: 274
+comment: 'reaction 237:  C + H2+ => CH+ + H'
+rate_type: constant
+k_f: 1445313782.4
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [5, -1.0]
+- [21, -1.0]
+- [28, 1.0]
+reactants: [5, 21]
+gibbs_exponent: []
+refC_factor: 0

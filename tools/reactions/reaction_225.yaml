@@ -1,0 +1,14 @@
+id: 225
+comment: 'reaction 181:  H2O+ + O2- => H + O2 + OH'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [9, 1.0]
+- [10, -1.0]
+- [22, 1.0]
+- [25, -1.0]
+reactants: [10, 25]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,15 @@
+id: 17
+comment: 'reaction 87:  AR2e + M => AR + ARe + M'
+rate_type: constant
+k_f: 3011.07038
+has_third_body: true
+stoichiometry:
+- [38, 1.0]
+- [39, 1.0]
+- [42, -1.0]
+reactants: [42]
+gibbs_exponent:
+- [38, -1.0]
+- [39, -1.0]
+- [42, 1.0]
+refC_factor: -1

@@ -1,0 +1,12 @@
+id: 234
+comment: 'reaction 191:  H- + H2+ => 3 H'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 3.0]
+- [2, -1.0]
+- [5, -1.0]
+reactants: [2, 5]
+gibbs_exponent: []
+refC_factor: 0

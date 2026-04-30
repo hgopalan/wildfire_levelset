@@ -1,0 +1,11 @@
+id: 152
+comment: 'reaction 96:  AR2e => 2 AR'
+rate_type: constant
+k_f: 317000.0
+has_third_body: false
+stoichiometry:
+- [38, 2.0]
+- [42, -1.0]
+reactants: [42]
+gibbs_exponent: []
+refC_factor: 0

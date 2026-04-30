@@ -1,0 +1,13 @@
+id: 336
+comment: 'reaction 327:  CH2 + CO2 => CH2O + CO'
+rate_type: constant
+k_f: 23486.348964
+has_third_body: false
+stoichiometry:
+- [11, 1.0]
+- [12, -1.0]
+- [29, -1.0]
+- [34, 1.0]
+reactants: [12, 29]
+gibbs_exponent: []
+refC_factor: 0

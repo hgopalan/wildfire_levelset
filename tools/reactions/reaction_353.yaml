@@ -1,0 +1,15 @@
+id: 353
+comment: 'reaction 344:  CH2O + OH => H2O + HCO'
+rate_type: Arrhenius
+A: 2848472.57948
+beta: 1.18
+Ea: -224.93784961471
+has_third_body: false
+stoichiometry:
+- [22, -1.0]
+- [24, 1.0]
+- [27, 1.0]
+- [34, -1.0]
+reactants: [22, 34]
+gibbs_exponent: []
+refC_factor: 0

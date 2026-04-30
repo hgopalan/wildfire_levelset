@@ -1,0 +1,15 @@
+id: 384
+comment: 'reaction 377:  CO + O2 => CO2 + O'
+rate_type: Arrhenius
+A: 2529299.1192
+beta: 0.0
+Ea: 2399.84027922271
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [9, -1.0]
+- [11, -1.0]
+- [12, 1.0]
+reactants: [9, 11]
+gibbs_exponent: []
+refC_factor: 0

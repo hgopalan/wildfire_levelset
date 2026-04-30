@@ -1,0 +1,13 @@
+id: 42
+comment: 'reaction 275:  2 O + O2 => O2 + O2'
+rate_type: Arrhenius
+A: 18.894679432625
+beta: 0.0
+Ea: -899.751398458839
+has_third_body: false
+stoichiometry:
+- [7, -2.0]
+- [9, 1.0]
+reactants: [7, 7, 9]
+gibbs_exponent: []
+refC_factor: 0

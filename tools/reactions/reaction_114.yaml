@@ -1,0 +1,17 @@
+id: 114
+comment: 'reaction 53:  H + H- => E + H2'
+rate_type: constant
+k_f: 782878298.8
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [1, -1.0]
+- [2, -1.0]
+- [3, 1.0]
+reactants: [1, 2]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

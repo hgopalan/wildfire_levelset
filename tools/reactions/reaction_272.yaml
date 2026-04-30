@@ -1,0 +1,13 @@
+id: 272
+comment: 'reaction 235:  CH2 + H2+ => CH3+ + H'
+rate_type: constant
+k_f: 602214076.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [5, -1.0]
+- [29, -1.0]
+- [32, 1.0]
+reactants: [5, 29]
+gibbs_exponent: []
+refC_factor: 0

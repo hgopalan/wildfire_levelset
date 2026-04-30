@@ -1,0 +1,17 @@
+id: 117
+comment: 'reaction 57:  CH3 + H- => CH4 + E'
+rate_type: constant
+k_f: 602214076.0
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [2, -1.0]
+- [31, -1.0]
+- [33, 1.0]
+reactants: [2, 31]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

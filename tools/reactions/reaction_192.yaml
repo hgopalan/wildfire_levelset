@@ -1,0 +1,11 @@
+id: 192
+comment: 'reaction 136:  AR + CO2v4 => AR + CO2v1'
+rate_type: constant
+k_f: 3721.68298968
+has_third_body: false
+stoichiometry:
+- [13, 1.0]
+- [16, -1.0]
+reactants: [16, 38]
+gibbs_exponent: []
+refC_factor: 0

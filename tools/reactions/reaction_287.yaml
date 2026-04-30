@@ -1,0 +1,13 @@
+id: 287
+comment: 'reaction 250:  CH2 + OH+ => CH2+ + OH'
+rate_type: constant
+k_f: 289062756.48
+has_third_body: false
+stoichiometry:
+- [22, 1.0]
+- [23, -1.0]
+- [29, -1.0]
+- [30, 1.0]
+reactants: [23, 29]
+gibbs_exponent: []
+refC_factor: 0

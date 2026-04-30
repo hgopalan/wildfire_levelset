@@ -1,0 +1,14 @@
+id: 313
+comment: 'reaction 303:  2 OH => H2O + O'
+rate_type: Arrhenius
+A: 33061.5527724
+beta: 2.42
+Ea: -969.698515005695
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [22, -2.0]
+- [24, 1.0]
+reactants: [22, 22]
+gibbs_exponent: []
+refC_factor: 0

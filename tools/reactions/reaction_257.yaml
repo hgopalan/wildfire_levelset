@@ -1,0 +1,14 @@
+id: 257
+comment: 'reaction 220:  AR2+ + H2O => AR + ARH+ + OH'
+rate_type: constant
+k_f: 240885630.4
+has_third_body: false
+stoichiometry:
+- [22, 1.0]
+- [24, -1.0]
+- [38, 1.0]
+- [41, 1.0]
+- [43, -1.0]
+reactants: [24, 43]
+gibbs_exponent: []
+refC_factor: 0

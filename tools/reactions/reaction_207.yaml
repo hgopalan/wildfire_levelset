@@ -1,0 +1,13 @@
+id: 207
+comment: 'reaction 157:  H2+ + O- => 2 H + O'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 2.0]
+- [5, -1.0]
+- [7, 1.0]
+- [8, -1.0]
+reactants: [5, 8]
+gibbs_exponent: []
+refC_factor: 0

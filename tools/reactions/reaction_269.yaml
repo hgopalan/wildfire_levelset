@@ -1,0 +1,13 @@
+id: 269
+comment: 'reaction 232:  H2+ + H2O => H2 + H2O+'
+rate_type: constant
+k_f: 2348634896.4
+has_third_body: false
+stoichiometry:
+- [3, 1.0]
+- [5, -1.0]
+- [24, -1.0]
+- [25, 1.0]
+reactants: [5, 24]
+gibbs_exponent: []
+refC_factor: 0

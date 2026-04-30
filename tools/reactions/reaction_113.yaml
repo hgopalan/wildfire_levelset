@@ -1,0 +1,17 @@
+id: 113
+comment: 'reaction 49:  CO + O- => CO2 + E'
+rate_type: constant
+k_f: 391439149.4
+has_third_body: false
+stoichiometry:
+- [0, 1.0]
+- [8, -1.0]
+- [11, -1.0]
+- [12, 1.0]
+reactants: [8, 11]
+gibbs_exponent: []
+refC_factor: 0
+energy_exchange:
+  rxntype: 7
+  eexci: 0.0
+  elidx: 0

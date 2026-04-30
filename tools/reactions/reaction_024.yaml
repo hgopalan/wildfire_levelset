@@ -1,0 +1,17 @@
+id: 24
+comment: 'reaction 158:  H2+ + O- + M => H2O + M'
+rate_type: Arrhenius
+A: 72532358666.5068
+beta: -2.5
+Ea: 0.0
+has_third_body: true
+stoichiometry:
+- [5, -1.0]
+- [8, -1.0]
+- [24, 1.0]
+reactants: [5, 8]
+gibbs_exponent:
+- [5, 1.0]
+- [8, 1.0]
+- [24, -1.0]
+refC_factor: 1

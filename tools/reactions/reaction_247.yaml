@@ -1,0 +1,14 @@
+id: 247
+comment: 'reaction 210:  CO3- + OH+ => CO2 + H + 2 O'
+rate_type: constant
+k_f: 60221407600.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, 2.0]
+- [12, 1.0]
+- [20, -1.0]
+- [23, -1.0]
+reactants: [20, 23]
+gibbs_exponent: []
+refC_factor: 0

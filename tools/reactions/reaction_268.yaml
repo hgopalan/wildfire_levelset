@@ -1,0 +1,13 @@
+id: 268
+comment: 'reaction 231:  H2+ + OH => H + H2O+'
+rate_type: constant
+k_f: 457682697.76
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [5, -1.0]
+- [22, -1.0]
+- [25, 1.0]
+reactants: [5, 22]
+gibbs_exponent: []
+refC_factor: 0

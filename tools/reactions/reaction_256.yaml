@@ -1,0 +1,13 @@
+id: 256
+comment: 'reaction 219:  AR2+ + H2O => 2 AR + H2O+'
+rate_type: constant
+k_f: 963542521.6
+has_third_body: false
+stoichiometry:
+- [24, -1.0]
+- [25, 1.0]
+- [38, 2.0]
+- [43, -1.0]
+reactants: [24, 43]
+gibbs_exponent: []
+refC_factor: 0

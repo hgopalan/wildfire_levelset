@@ -1,0 +1,13 @@
+id: 253
+comment: 'reaction 216:  AR+ + H2O => AR + H2O+'
+rate_type: constant
+k_f: 421549853.2
+has_third_body: false
+stoichiometry:
+- [24, -1.0]
+- [25, 1.0]
+- [38, 1.0]
+- [40, -1.0]
+reactants: [24, 40]
+gibbs_exponent: []
+refC_factor: 0

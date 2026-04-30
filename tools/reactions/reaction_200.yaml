@@ -1,0 +1,15 @@
+id: 200
+comment: 'reaction 147:  AR+ + H- => AR + H'
+rate_type: Arrhenius
+A: 120442815200.0
+beta: -0.5
+Ea: 0.0
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [2, -1.0]
+- [38, 1.0]
+- [40, -1.0]
+reactants: [2, 40]
+gibbs_exponent: []
+refC_factor: 0

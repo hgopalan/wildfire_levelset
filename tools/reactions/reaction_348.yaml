@@ -1,0 +1,13 @@
+id: 348
+comment: 'reaction 339:  HCO + O => CO2 + H'
+rate_type: constant
+k_f: 30110703.8
+has_third_body: false
+stoichiometry:
+- [1, 1.0]
+- [7, -1.0]
+- [12, 1.0]
+- [27, -1.0]
+reactants: [7, 27]
+gibbs_exponent: []
+refC_factor: 0

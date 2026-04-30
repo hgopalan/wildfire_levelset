@@ -1,0 +1,14 @@
+id: 144
+comment: 'reaction 88:  ARe + CO2 => AR + CO + O'
+rate_type: constant
+k_f: 319173460.28
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [11, 1.0]
+- [12, -1.0]
+- [38, 1.0]
+- [39, -1.0]
+reactants: [12, 39]
+gibbs_exponent: []
+refC_factor: 0

@@ -1,0 +1,11 @@
+id: 164
+comment: 'reaction 108:  CO + CO2v2 => CO + CO2v1'
+rate_type: constant
+k_f: 12224.9457428
+has_third_body: false
+stoichiometry:
+- [13, 1.0]
+- [14, -1.0]
+reactants: [11, 14]
+gibbs_exponent: []
+refC_factor: 0

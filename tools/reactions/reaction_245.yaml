@@ -1,0 +1,13 @@
+id: 245
+comment: 'reaction 208:  C2O4+ + CO3- => 3 CO2 + O'
+rate_type: constant
+k_f: 301107038000.0
+has_third_body: false
+stoichiometry:
+- [7, 1.0]
+- [12, 3.0]
+- [19, -1.0]
+- [20, -1.0]
+reactants: [19, 20]
+gibbs_exponent: []
+refC_factor: 0
