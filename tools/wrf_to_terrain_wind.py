@@ -13,7 +13,7 @@ WRF uses a staggered Arakawa C-grid:
 This script:
   1. Reads the first time step (index 0) unless --time-index is supplied.
   2. Reads the lowest model level (index 0 for bottom_top) for U and V.
-  3. Destaggered U and V to mass-point locations (cell centres):
+  3. Destagger U and V to mass-point locations (cell centres):
        u_mass[j, i] = 0.5 * (U[j, i] + U[j, i+1])
        v_mass[j, i] = 0.5 * (V[j, i] + V[j+1, i])
   4. Converts XLAT/XLONG to UTM metres using pyproj.
@@ -232,13 +232,13 @@ def convert_wrf(wrf_path, terrain_out, wind_out,
     # --- Subsample ---
     if subsample > 1:
         sl = slice(None, None, subsample)
-        lat_2d  = lat_2d[sl, sl]
-        lon_2d  = lon_2d[sl, sl]
-        hgt_2d  = hgt_2d[sl, sl]
-        u_mass  = u_mass[sl, sl]
-        v_mass  = v_mass[sl, sl]
-        x_utm   = x_utm[sl, sl]
-        y_utm   = y_utm[sl, sl]
+        lat_2d = lat_2d[sl, sl]
+        lon_2d = lon_2d[sl, sl]
+        hgt_2d = hgt_2d[sl, sl]
+        u_mass = u_mass[sl, sl]
+        v_mass = v_mass[sl, sl]
+        x_utm = x_utm[sl, sl]
+        y_utm = y_utm[sl, sl]
         ny_out, nx_out = lat_2d.shape
         print(f"Subsampled to every {subsample}-th point: {ny_out}×{nx_out} = "
               f"{ny_out * nx_out} points retained.")
