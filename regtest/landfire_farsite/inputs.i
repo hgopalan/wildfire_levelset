@@ -53,7 +53,8 @@ rothermel.landscape_file = landscape.lcp
 skip_levelset = 0
 
 # Lat/lon bounding box for LANDFIRE download (WGS-84 decimal degrees)
-bbox_lat_min = 34.10
-bbox_lat_max = 34.103
-bbox_lon_min = -118.853
-bbox_lon_max = -118.850
+# These corners correspond to the UTM domain (prob_lo/prob_hi) above
+bbox_lat_min = 34.102
+bbox_lat_max = 34.105
+bbox_lon_min = -118.843
+bbox_lon_max = -118.840

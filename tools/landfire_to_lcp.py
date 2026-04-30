@@ -815,7 +815,7 @@ def main(argv=None):
                 missing = [k for k in bbox_keys if k not in params]
                 print(
                     f"WARNING: --inputs-file provided but bbox keys not found "
-                    f"({missing}).  Use --bbox or add bbox_lat_min/max and "
+                    f"({', '.join(missing)}).  Use --bbox or add bbox_lat_min/max and "
                     f"bbox_lon_min/max to the inputs file.",
                     file=sys.stderr,
                 )

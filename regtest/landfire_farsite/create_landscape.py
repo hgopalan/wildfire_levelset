@@ -264,7 +264,7 @@ def main(argv=None):
 
     # Report row count
     with open(args.output) as fh:
-        n = sum(1 for ln in fh if not ln.startswith("#") and ln.strip())
+        n = sum(1 for line in fh if not line.startswith("#") and line.strip())
     print(f"Landscape file ready: '{args.output}' ({n} data rows)")
 
 

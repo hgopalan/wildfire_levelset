@@ -33,11 +33,15 @@ Southern California (Santa Monica Mountains, ~34.10°N 118.85°W):
 
 >>> e, n, zone, letter = latlon_to_utm(34.10, -118.85)
 >>> print(f"UTM Zone {zone}{letter}: {e:.0f} E, {n:.0f} N")
-UTM Zone 11S: 330050 E, 3775094 N   # (approximate)
+UTM Zone 11S: 329346 E, 3774789 N
+
+Note: The zone letter 'S' is the UTM latitude band (32°N–40°N) and does NOT
+indicate the southern hemisphere.  Northern-hemisphere coordinates always
+use false northing N0 = 0; pass ``northern=True`` to utm_to_latlon.
 
 >>> lat, lon = utm_to_latlon(330000, 3775000, zone_number=11, northern=True)
 >>> print(f"{lat:.4f}°N, {lon:.4f}°W")
-34.0996°N, 118.8534°W               # (approximate)
+34.1020°N, 118.8430°W
 """
 
 import argparse
@@ -120,7 +124,8 @@ def latlon_to_utm(lat, lon):
     lat_r = math.radians(lat)
     zone_number = int((lon + 180.0) / 6.0) + 1
     lon0_r = math.radians(_central_meridian(zone_number))
-    dlon = math.radians(lon) - lon0_r
+    # A = (lon - lon0) * cos(lat) — standard TM intermediate variable
+    A = (math.radians(lon) - lon0_r) * math.cos(lat_r)
 
     a  = _WGS84_A
     e2 = _WGS84_E2
@@ -140,17 +145,17 @@ def latlon_to_utm(lat, lon):
     )
 
     easting = _UTM_K0 * n * (
-        dlon
-        + dlon ** 3 / 6.0   * (1.0 - t + c)
-        + dlon ** 5 / 120.0 * (5.0 - 18.0 * t + t * t + 72.0 * c - 58.0 * _WGS84_EP2)
+        A
+        + A ** 3 / 6.0   * (1.0 - t + c)
+        + A ** 5 / 120.0 * (5.0 - 18.0 * t + t * t + 72.0 * c - 58.0 * _WGS84_EP2)
     ) + _UTM_E0
 
     northing_raw = _UTM_K0 * (
         m
         + n * math.tan(lat_r) * (
-            dlon ** 2 / 2.0
-            + dlon ** 4 / 24.0 * (5.0 - t + 9.0 * c + 4.0 * c * c)
-            + dlon ** 6 / 720.0 * (61.0 - 58.0 * t + t * t + 600.0 * c - 330.0 * _WGS84_EP2)
+            A ** 2 / 2.0
+            + A ** 4 / 24.0 * (5.0 - t + 9.0 * c + 4.0 * c * c)
+            + A ** 6 / 720.0 * (61.0 - 58.0 * t + t * t + 600.0 * c - 330.0 * _WGS84_EP2)
         )
     )
 
