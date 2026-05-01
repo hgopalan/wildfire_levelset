@@ -1,4 +1,5 @@
 // velocity_field.H - Velocity field initialization functions
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -62,7 +63,18 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     }
     
     amrex::Print() << "Read " << x_data.size() << " velocity data points from " << filename << "\n";
-    
+
+    // Characteristic data spacing for Gaussian kernel bandwidth
+    int n_points = static_cast<int>(x_data.size());
+    Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
+    Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
+    Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
+    Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
+    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
     // Copy data to device-accessible memory
     Gpu::DeviceVector<Real> d_x(x_data.size());
     Gpu::DeviceVector<Real> d_y(y_data.size());
@@ -78,13 +90,12 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     Real const* y_ptr = d_y.data();
     Real const* u_ptr = d_u.data();
     Real const* v_ptr = d_v.data();
-    int n_points = static_cast<int>(x_data.size());
     
     // Get domain bounds
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
     
-    // Interpolate onto MultiFab using inverse distance weighting
+    // Interpolate onto MultiFab using Gaussian RBF for a smooth wind field
     for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const v = vel.array(mfi);
@@ -94,36 +105,23 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
             
-            // Inverse distance weighting interpolation
+            // Gaussian RBF: weight = exp(-dist²/(2h²)) – smooth, no bullseye artefacts
+            Real two_h2 = Real(2.0) * h * h;
             Real sum_weights = Real(0.0);
             Real sum_u = Real(0.0);
             Real sum_v = Real(0.0);
-            Real epsilon = Real(1.0e-10);  // Small value to avoid division by zero
-            bool exact_match = false;
             
             for (int n = 0; n < n_points; ++n) {
                 Real dx_val = x - x_ptr[n];
                 Real dy_val = y - y_ptr[n];
                 Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                
-                // If very close to a data point, use its value directly
-                if (dist_sq < epsilon * epsilon) {
-                    v(i,j,k,0) = u_ptr[n];
-                    v(i,j,k,1) = v_ptr[n];
-                    v(i,j,k,2) = Real(0.0);
-                    exact_match = true;
-                    break;
-                }
-                
-                // For power=2, weight = 1/dist^2 = 1/dist_sq (no sqrt needed)
-                Real weight = Real(1.0) / dist_sq;
+                Real weight = std::exp(-dist_sq / two_h2);
                 sum_weights += weight;
                 sum_u += weight * u_ptr[n];
                 sum_v += weight * v_ptr[n];
             }
             
-            // Apply weighted average if not an exact match
-            if (!exact_match) {
+            if (sum_weights > Real(0.0)) {
                 v(i,j,k,0) = sum_u / sum_weights;
                 v(i,j,k,1) = sum_v / sum_weights;
                 v(i,j,k,2) = Real(0.0);
@@ -188,7 +186,17 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
     }
     
     int n_points = static_cast<int>(x_data1.size());
-    
+
+    // Characteristic data spacing for Gaussian kernel bandwidth
+    Real x_min_d = *std::min_element(x_data1.begin(), x_data1.end());
+    Real x_max_d = *std::max_element(x_data1.begin(), x_data1.end());
+    Real y_min_d = *std::min_element(y_data1.begin(), y_data1.end());
+    Real y_max_d = *std::max_element(y_data1.begin(), y_data1.end());
+    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
     // Copy data to device-accessible memory
     Gpu::DeviceVector<Real> d_x(n_points);
     Gpu::DeviceVector<Real> d_y(n_points);
@@ -215,7 +223,7 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
     
-    // Interpolate onto MultiFab using inverse distance weighting and temporal interpolation
+    // Interpolate onto MultiFab using Gaussian RBF and temporal interpolation
     for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const v = vel.array(mfi);
@@ -225,14 +233,13 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
             
-            // Inverse distance weighting interpolation for both time snapshots
+            // Gaussian RBF: weight = exp(-dist²/(2h²)) – smooth, no bullseye artefacts
+            Real two_h2 = Real(2.0) * h * h;
             Real sum_weights = Real(0.0);
             Real sum_u1 = Real(0.0);
             Real sum_v1 = Real(0.0);
             Real sum_u2 = Real(0.0);
             Real sum_v2 = Real(0.0);
-            Real epsilon = Real(1.0e-10);
-            bool exact_match = false;
             Real u1_val = Real(0.0);
             Real v1_val = Real(0.0);
             Real u2_val = Real(0.0);
@@ -242,19 +249,7 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
                 Real dx_val = x - x_ptr[n];
                 Real dy_val = y - y_ptr[n];
                 Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                
-                // If very close to a data point, use its value directly
-                if (dist_sq < epsilon * epsilon) {
-                    u1_val = u1_ptr[n];
-                    v1_val = v1_ptr[n];
-                    u2_val = u2_ptr[n];
-                    v2_val = v2_ptr[n];
-                    exact_match = true;
-                    break;
-                }
-                
-                // For power=2, weight = 1/dist^2
-                Real weight = Real(1.0) / dist_sq;
+                Real weight = std::exp(-dist_sq / two_h2);
                 sum_weights += weight;
                 sum_u1 += weight * u1_ptr[n];
                 sum_v1 += weight * v1_ptr[n];
@@ -262,8 +257,7 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
                 sum_v2 += weight * v2_ptr[n];
             }
             
-            // Apply weighted average if not an exact match
-            if (!exact_match) {
+            if (sum_weights > Real(0.0)) {
                 u1_val = sum_u1 / sum_weights;
                 v1_val = sum_v1 / sum_weights;
                 u2_val = sum_u2 / sum_weights;

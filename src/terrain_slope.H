@@ -6,6 +6,8 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_Gpu.H>
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -63,7 +65,18 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
     Real const* y_ptr = d_y.data();
     Real const* z_ptr = d_z.data();
     int n_points = static_cast<int>(x_data.size());
-    
+
+    // Estimate characteristic data spacing for Gaussian kernel bandwidth.
+    // h ≈ sqrt(area / n_points) – the mean grid spacing for a regular grid.
+    Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
+    Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
+    Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
+    Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
+    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
     // Get domain bounds and cell size
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
@@ -78,40 +91,26 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
             // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Interpolate elevation at this cell center and neighboring points
-            // using inverse distance weighting
-            Real epsilon = Real(1.0e-10);
-            
-            // Helper function for IDW interpolation
+
+            // Gaussian RBF interpolation: weight = exp(-dist²/(2h²)).
+            // Avoids IDW bullseye artefacts, producing a smooth field.
+            Real two_h2 = Real(2.0) * h * h;
+
+            // Helper: Gaussian-weighted interpolation of z at (px, py)
             auto interpolate_z = [&](Real px, Real py) -> Real {
                 Real sum_weights = Real(0.0);
                 Real sum_z = Real(0.0);
-                bool exact_match = false;
-                Real result = Real(0.0);
-                
+
                 for (int n = 0; n < n_points; ++n) {
                     Real dx_val = px - x_ptr[n];
                     Real dy_val = py - y_ptr[n];
                     Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                    
-                    // If very close to a data point, use its value directly
-                    if (dist_sq < epsilon * epsilon) {
-                        result = z_ptr[n];
-                        exact_match = true;
-                        break;
-                    }
-                    
-                    // For power=2, weight = 1/dist^2
-                    Real weight = Real(1.0) / dist_sq;
+                    Real weight = std::exp(-dist_sq / two_h2);
                     sum_weights += weight;
                     sum_z += weight * z_ptr[n];
                 }
-                
-                if (!exact_match) {
-                    result = sum_z / sum_weights;
-                }
-                return result;
+
+                return (sum_weights > Real(0.0)) ? sum_z / sum_weights : Real(0.0);
             };
             
             // Interpolate elevation at cell center and neighbors
@@ -135,7 +134,7 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
 
 // ======================= Read terrain data and interpolate elevation ====================
 // Reads terrain file in X Y Z format and interpolates elevation (Z) to each cell
-// using inverse distance weighting.  The result is stored in a single-component
+// using a Gaussian RBF kernel.  The result is stored in a single-component
 // MultiFab (component 0 = elevation in the same units as the terrain file).
 // ==================================================================================
 static void compute_elevation_from_terrain(MultiFab& elevation,
@@ -181,6 +180,16 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
     Real const* z_ptr = d_z.data();
     int n_points = static_cast<int>(x_data.size());
 
+    // Characteristic data spacing for Gaussian kernel bandwidth
+    Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
+    Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
+    Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
+    Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
+    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
     const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
 
@@ -192,33 +201,21 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
 
-            // Inverse distance weighting (power = 2) to interpolate elevation
-            Real epsilon = Real(1.0e-10);
+            // Gaussian RBF: weight = exp(-dist²/(2h²)) for smooth interpolation
+            Real two_h2 = Real(2.0) * h * h;
             Real sum_weights = Real(0.0);
             Real sum_z = Real(0.0);
-            bool exact_match = false;
-            Real result = Real(0.0);
 
             for (int n = 0; n < n_points; ++n) {
                 Real dx_val = x - x_ptr[n];
                 Real dy_val = y - y_ptr[n];
                 Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-
-                if (dist_sq < epsilon * epsilon) {
-                    result = z_ptr[n];
-                    exact_match = true;
-                    break;
-                }
-
-                Real weight = Real(1.0) / dist_sq;
+                Real weight = std::exp(-dist_sq / two_h2);
                 sum_weights += weight;
                 sum_z += weight * z_ptr[n];
             }
 
-            if (!exact_match) {
-                result = sum_z / sum_weights;
-            }
-            elev(i, j, k) = result;
+            elev(i, j, k) = (sum_weights > Real(0.0)) ? sum_z / sum_weights : Real(0.0);
         });
     }
 
