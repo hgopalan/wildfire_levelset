@@ -172,8 +172,8 @@ class TestReadWrfBbox(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
 
-    def test_bbox_extents(self):
-        """Bbox should cover the expected lat/lon range."""
+    def test_bbox_is_center_plus_minus_045(self):
+        """Bbox should be centre ±0.45° regardless of domain extent."""
         ny, nx = 5, 6
         dlat = dlon = 0.01
         lat_sw, lon_sw = 37.0, -120.0
@@ -183,10 +183,12 @@ class TestReadWrfBbox(unittest.TestCase):
 
         lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(path)
 
-        self.assertAlmostEqual(lat_min, lat_sw, places=3)
-        self.assertAlmostEqual(lat_max, lat_sw + (ny - 1) * dlat, places=3)
-        self.assertAlmostEqual(lon_min, lon_sw, places=3)
-        self.assertAlmostEqual(lon_max, lon_sw + (nx - 1) * dlon, places=3)
+        center_lat = lat_sw + (ny - 1) * dlat / 2.0
+        center_lon = lon_sw + (nx - 1) * dlon / 2.0
+        self.assertAlmostEqual(lat_min, center_lat - 0.45, places=5)
+        self.assertAlmostEqual(lat_max, center_lat + 0.45, places=5)
+        self.assertAlmostEqual(lon_min, center_lon - 0.45, places=5)
+        self.assertAlmostEqual(lon_max, center_lon + 0.45, places=5)
 
     def test_lat_min_less_than_max(self):
         path = os.path.join(self.tmpdir, "wrf_order.nc")
@@ -194,6 +196,14 @@ class TestReadWrfBbox(unittest.TestCase):
         lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(path)
         self.assertLess(lat_min, lat_max)
         self.assertLess(lon_min, lon_max)
+
+    def test_span_is_0_9_degrees(self):
+        """Each axis should span exactly 0.9° (2 × 0.45°)."""
+        path = os.path.join(self.tmpdir, "wrf_span.nc")
+        _make_wrf_nc(path, ny=10, nx=12, n_times=1)
+        lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(path)
+        self.assertAlmostEqual(lat_max - lat_min, 0.9, places=10)
+        self.assertAlmostEqual(lon_max - lon_min, 0.9, places=10)
 
 
 # ===========================================================================
@@ -332,6 +342,52 @@ class TestExtractWrfWind(unittest.TestCase):
         x_full, _, _, _ = twp.extract_wrf_wind(nc_path, subsample=1)
         x_sub,  _, _, _ = twp.extract_wrf_wind(nc_path, subsample=2)
         self.assertLess(x_sub.size, x_full.size)
+
+    def test_latlon_clip_reduces_size(self):
+        """Providing lat/lon bounds should return fewer grid points."""
+        ny, nx = 20, 20
+        dlat = dlon = 0.05
+        lat_sw, lon_sw = 37.0, -120.0
+        nc_path = os.path.join(self.tmpdir, "wrf_clip.nc")
+        _make_wrf_nc(nc_path, ny=ny, nx=nx, n_times=1,
+                     lat_sw=lat_sw, lon_sw=lon_sw, dlat=dlat, dlon=dlon)
+
+        # Clip to a sub-region that excludes some rows and columns
+        center_lat = lat_sw + (ny - 1) * dlat / 2.0
+        center_lon = lon_sw + (nx - 1) * dlon / 2.0
+        x_full, _, _, _ = twp.extract_wrf_wind(nc_path)
+        x_clip, _, _, _ = twp.extract_wrf_wind(
+            nc_path,
+            lat_min=center_lat - 0.1, lat_max=center_lat + 0.1,
+            lon_min=center_lon - 0.1, lon_max=center_lon + 0.1,
+        )
+        self.assertLess(x_clip.size, x_full.size)
+
+    def test_latlon_clip_values_within_bounds(self):
+        """All returned UTM coordinates must correspond to points inside the clip box."""
+        ny, nx = 20, 20
+        dlat = dlon = 0.05
+        lat_sw, lon_sw = 37.0, -120.0
+        nc_path = os.path.join(self.tmpdir, "wrf_clip_vals.nc")
+        _make_wrf_nc(nc_path, ny=ny, nx=nx, n_times=1,
+                     lat_sw=lat_sw, lon_sw=lon_sw, dlat=dlat, dlon=dlon)
+
+        center_lat = lat_sw + (ny - 1) * dlat / 2.0
+        center_lon = lon_sw + (nx - 1) * dlon / 2.0
+        clip_lat_min = center_lat - 0.45
+        clip_lat_max = center_lat + 0.45
+        clip_lon_min = center_lon - 0.45
+        clip_lon_max = center_lon + 0.45
+
+        x_clip, y_clip, u_clip, v_clip = twp.extract_wrf_wind(
+            nc_path,
+            lat_min=clip_lat_min, lat_max=clip_lat_max,
+            lon_min=clip_lon_min, lon_max=clip_lon_max,
+        )
+        # Result must be non-empty 2-D arrays with matching shapes
+        self.assertEqual(x_clip.ndim, 2)
+        self.assertEqual(x_clip.shape, u_clip.shape)
+        self.assertEqual(x_clip.shape, v_clip.shape)
 
 
 # ===========================================================================
