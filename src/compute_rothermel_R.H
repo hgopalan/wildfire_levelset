@@ -64,16 +64,16 @@ static void compute_rothermel_R(MultiFab& R_mf,
             if (ux*ux + uy*uy > MAX_WIND_SPEED_SQ) {
                 Real ux_mean = 0.0, uy_mean = 0.0;
                 int cnt = 0;
-                if (vel_bx.contains(IntVect(i-1,j,k))) {
+                if (vel_bx.contains(IntVect(AMREX_D_DECL(i-1,j,k)))) {
                     ux_mean += v(i-1,j,k,0); uy_mean += v(i-1,j,k,1); ++cnt;
                 }
-                if (vel_bx.contains(IntVect(i+1,j,k))) {
+                if (vel_bx.contains(IntVect(AMREX_D_DECL(i+1,j,k)))) {
                     ux_mean += v(i+1,j,k,0); uy_mean += v(i+1,j,k,1); ++cnt;
                 }
-                if (vel_bx.contains(IntVect(i,j-1,k))) {
+                if (vel_bx.contains(IntVect(AMREX_D_DECL(i,j-1,k)))) {
                     ux_mean += v(i,j-1,k,0); uy_mean += v(i,j-1,k,1); ++cnt;
                 }
-                if (vel_bx.contains(IntVect(i,j+1,k))) {
+                if (vel_bx.contains(IntVect(AMREX_D_DECL(i,j+1,k)))) {
                     ux_mean += v(i,j+1,k,0); uy_mean += v(i,j+1,k,1); ++cnt;
                 }
                 if (cnt > 0) {
