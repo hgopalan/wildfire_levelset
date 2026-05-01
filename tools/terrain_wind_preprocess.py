@@ -526,7 +526,7 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
     print(f"Submitting LANDFIRE job for bbox {bbox} …")
     resp = _requests_post(_SUBMIT_URL, data=payload, timeout=60)
     resp.raise_for_status()
-    job_info = resp.json()
+    job_info = _parse_json_response(resp, "LANDFIRE job submission")
 
     if "jobId" not in job_info:
         raise RuntimeError(f"LANDFIRE job submission failed: {job_info}")
@@ -542,7 +542,7 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
         time.sleep(poll_interval)
         sr = _requests_get(status_url, params={"f": "json"}, timeout=30)
         sr.raise_for_status()
-        status = sr.json().get("jobStatus", "")
+        status = _parse_json_response(sr, "LANDFIRE job status").get("jobStatus", "")
         print(f"  Status: {status}")
 
         if status == "esriJobSucceeded":
@@ -559,7 +559,7 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
     result_url = _RESULT_URL.format(jobId=job_id)
     rr = _requests_get(result_url, params={"f": "json"}, timeout=30)
     rr.raise_for_status()
-    result = rr.json()
+    result = _parse_json_response(rr, "LANDFIRE job result")
 
     download_url = (
         result.get("value", {}).get("url")
@@ -569,6 +569,25 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
         raise RuntimeError(
             f"Could not parse download URL from LANDFIRE result: {result}")
     return download_url
+
+
+def _parse_json_response(resp, context="LANDFIRE API"):
+    """Parse JSON from *resp*, raising RuntimeError on empty or invalid body."""
+    text = resp.text.strip() if resp.text else ""
+    if not text:
+        raise RuntimeError(
+            f"{context} returned an empty response "
+            f"(HTTP {resp.status_code}). "
+            "The LFPS service may be temporarily unavailable; "
+            "retry later or check https://lfps.usgs.gov for service status."
+        )
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"{context} returned non-JSON response "
+            f"(HTTP {resp.status_code}): {text[:500]!r}"
+        ) from exc
 
 
 def _requests_get(url, **kwargs):
