@@ -229,4 +229,82 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
     amrex::Print() << "Interpolated landscape elevation from " << n_points << " data points\n";
 }
 
+// ============================================================================
+// Interpolate slope (degrees), aspect (degrees), and fuel model from
+// landscape file data to MultiFabs.  All three MultiFabs must have 1
+// component and no ghost cells.
+// ============================================================================
+static void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
+                                                MultiFab& aspect_out,
+                                                MultiFab& fuel_model_out,
+                                                const Geometry& geom,
+                                                const std::string& filename)
+{
+    std::vector<Real> x_data, y_data, elevation_data, slope_data, aspect_data;
+    std::vector<int>  fuel_model_data;
+
+    read_landscape_file(filename, x_data, y_data, elevation_data,
+                        slope_data, aspect_data, fuel_model_data);
+
+    int n_points = static_cast<int>(x_data.size());
+
+    Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
+    Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
+    Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
+    Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
+    Gpu::DeviceVector<Real> d_sx, d_sy;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> slope_sorted  = reorder_values(slope_data,  sidx);
+    std::vector<Real> aspect_sorted = reorder_values(aspect_data, sidx);
+    // Convert int fuel model to Real for interpolation
+    std::vector<Real> fuel_real(fuel_model_data.begin(), fuel_model_data.end());
+    std::vector<Real> fuel_sorted   = reorder_values(fuel_real, sidx);
+
+    Gpu::DeviceVector<Real> d_sslope(n_points), d_saspect(n_points), d_sfuel(n_points);
+    Gpu::copy(Gpu::hostToDevice, slope_sorted.begin(),  slope_sorted.end(),  d_sslope.begin());
+    Gpu::copy(Gpu::hostToDevice, aspect_sorted.begin(), aspect_sorted.end(), d_saspect.begin());
+    Gpu::copy(Gpu::hostToDevice, fuel_sorted.begin(),   fuel_sorted.end(),   d_sfuel.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* slope_ptr  = d_sslope.data();
+    Real const* aspect_ptr = d_saspect.data();
+    Real const* fuel_ptr   = d_sfuel.data();
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    for (MFIter mfi(slope_out); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const s  = slope_out.array(mfi);
+        auto const a  = aspect_out.array(mfi);
+        auto const f  = fuel_model_out.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = problo[0] + (i + Real(0.5)) * dx[0];
+            Real y = problo[1] + (j + Real(0.5)) * dx[1];
+            s(i, j, k) = cell_list_interp(cl, slope_ptr,  x, y);
+            a(i, j, k) = cell_list_interp(cl, aspect_ptr, x, y);
+            // Round to nearest integer: fuel model is a discrete category
+            f(i, j, k) = std::round(cell_list_interp(cl, fuel_ptr, x, y));
+        });
+    }
+
+    amrex::Print() << "Interpolated landscape slope/aspect/fuel from " << n_points << " data points\n";
+}
+
 #endif // LANDSCAPE_FILE_H

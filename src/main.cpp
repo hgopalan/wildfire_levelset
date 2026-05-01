@@ -201,34 +201,50 @@ int main(int argc, char* argv[])
 #endif
 
     // Initialize terrain slopes
-    // Priority: landscape_file > terrain_file
-    // If landscape file is specified, ignore terrain file slope/elevation
+    // Priority: terrain_file > landscape_file
+    // If terrain file is specified, ignore landscape file slope/elevation
     std::unique_ptr<MultiFab> terrain_slopes;
-    if (!inputs.rothermel.landscape_file.empty()) {
-      // Create MultiFab for slopes (2 components: slope_x, slope_y)
-      terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
-      compute_slopes_from_landscape(*terrain_slopes, geom, inputs.rothermel.landscape_file);
-      amrex::Print() << "Initialized terrain slopes from landscape file: " 
-		     << inputs.rothermel.landscape_file << "\n";
-      if (!inputs.rothermel.terrain_file.empty()) {
-        amrex::Print() << "NOTE: Ignoring terrain_file because landscape_file takes precedence\n";
-      }
-    } else if (!inputs.rothermel.terrain_file.empty()) {
+    if (!inputs.rothermel.terrain_file.empty()) {
       // Create MultiFab for slopes (2 components: slope_x, slope_y)
       terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
       compute_slopes_from_terrain(*terrain_slopes, geom, inputs.rothermel.terrain_file);
       amrex::Print() << "Initialized terrain slopes from terrain file: " 
 		     << inputs.rothermel.terrain_file << "\n";
+      if (!inputs.rothermel.landscape_file.empty()) {
+        amrex::Print() << "NOTE: Ignoring landscape_file because terrain_file takes precedence\n";
+      }
+    } else if (!inputs.rothermel.landscape_file.empty()) {
+      // Create MultiFab for slopes (2 components: slope_x, slope_y)
+      terrain_slopes = std::make_unique<MultiFab>(ba, dm, 2, 0);
+      compute_slopes_from_landscape(*terrain_slopes, geom, inputs.rothermel.landscape_file);
+      amrex::Print() << "Initialized terrain slopes from landscape file: " 
+		     << inputs.rothermel.landscape_file << "\n";
     }
 
     // Create elevation MultiFab (1 component, no ghost cells).
-    // Populated from landscape or terrain file when available; zero otherwise.
+    // Populated from terrain or landscape file when available; zero otherwise.
     MultiFab elevation_mf(ba, dm, 1, 0);
     elevation_mf.setVal(0.0);
-    if (!inputs.rothermel.landscape_file.empty()) {
-      compute_elevation_from_landscape(elevation_mf, geom, inputs.rothermel.landscape_file);
-    } else if (!inputs.rothermel.terrain_file.empty()) {
+    if (!inputs.rothermel.terrain_file.empty()) {
       compute_elevation_from_terrain(elevation_mf, geom, inputs.rothermel.terrain_file);
+    } else if (!inputs.rothermel.landscape_file.empty()) {
+      compute_elevation_from_landscape(elevation_mf, geom, inputs.rothermel.landscape_file);
+    }
+
+    // Create slope (degrees), aspect (degrees), and fuel model MultiFabs.
+    // Populated from terrain or landscape file when available; zero otherwise.
+    MultiFab slope_mf(ba, dm, 1, 0);
+    MultiFab aspect_mf(ba, dm, 1, 0);
+    MultiFab fuel_model_mf(ba, dm, 1, 0);
+    slope_mf.setVal(0.0);
+    aspect_mf.setVal(0.0);
+    fuel_model_mf.setVal(0.0);
+    if (!inputs.rothermel.terrain_file.empty() && terrain_slopes) {
+      compute_slope_aspect_from_slopes(*terrain_slopes, slope_mf, aspect_mf);
+      // fuel_model is not available from terrain file; remains 0
+    } else if (!inputs.rothermel.landscape_file.empty()) {
+      compute_landscape_slope_aspect_fuel(slope_mf, aspect_mf, fuel_model_mf,
+                                          geom, inputs.rothermel.landscape_file);
     }
 
     // ---------------- dt from CFL --------------------------
@@ -252,15 +268,15 @@ int main(int argc, char* argv[])
 				   , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				   "elevation"
+				   "elevation", "slope", "aspect", "fuel_model"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				   "elevation"
+				   "elevation", "slope", "aspect", "fuel_model"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -270,6 +286,9 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, crown_fire_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 1, 0);
       MultiFab::Copy(plotmf, albini_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1, 4, 0);
       MultiFab::Copy(plotmf, elevation_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4, 1, 0);
+      MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
+      MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
+      MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
       WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
       
       // Write negative phi x-y data files
@@ -355,15 +374,15 @@ int main(int argc, char* argv[])
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation"
+				     "elevation", "slope", "aspect", "fuel_model"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation"
+				     "elevation", "slope", "aspect", "fuel_model"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -373,6 +392,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, crown_fire_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 1, 0);
 	MultiFab::Copy(plotmf, albini_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1, 4, 0);
 	MultiFab::Copy(plotmf, elevation_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4, 1, 0);
+	MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
+	MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
+	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	
@@ -401,15 +423,15 @@ int main(int argc, char* argv[])
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation"
+				     "elevation", "slope", "aspect", "fuel_model"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation"
+				     "elevation", "slope", "aspect", "fuel_model"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -419,6 +441,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, crown_fire_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 1, 0);
 	MultiFab::Copy(plotmf, albini_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1, 4, 0);
 	MultiFab::Copy(plotmf, elevation_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4, 1, 0);
+	MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
+	MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
+	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	
