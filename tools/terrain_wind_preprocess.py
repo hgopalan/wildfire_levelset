@@ -103,6 +103,11 @@ Options
                           --sources cog,lfps      (skip MSPC)
                           --sources mspc,cog,lfps (try Azure first)
                           --sources lfps          (USGS only)
+  --no-vintage-fallback Disable automatic vintage fallback.  By default, when
+                        all sources fail for the requested vintage the script
+                        retries with the next older vintage (2020 → 2016 →
+                        2014).  Pass this flag to raise an error immediately
+                        instead.
   --help                Show this message and exit.
 
 LANDFIRE data sources
@@ -131,6 +136,10 @@ order specified by ``--sources`` (default: ``cog,mspc,lfps``):
 Pass ``--use-lfps`` to skip directly to the LFPS source (equivalent to
 ``--sources lfps``).  Custom ``--*-product`` overrides cannot be resolved to
 a COG or MSPC path and automatically fall back to LFPS.
+
+When all sources fail for the requested vintage, the script automatically
+retries with the next older vintage in the sequence ``2020 → 2016 → 2014``.
+Disable this with ``--no-vintage-fallback``.
 """
 
 import argparse
@@ -153,6 +162,11 @@ import zipfile
 #: ``mspc`` – Microsoft Planetary Computer STAC catalog (Azure Blob COGs).
 #: ``lfps`` – Legacy LANDFIRE Product Service REST API hosted by USGS.
 _LANDFIRE_SOURCES = ("cog", "mspc", "lfps")
+
+#: Ordered list of LANDFIRE vintage years tried when automatic vintage fallback
+#: is enabled (newest first).  When all sources fail for the requested vintage,
+#: ``create_landscape`` retries with the next older vintage in this sequence.
+_VINTAGE_FALLBACK_ORDER = (2020, 2016, 2014)
 
 # ---------------------------------------------------------------------------
 # LANDFIRE LFPS API constants
@@ -1307,12 +1321,18 @@ def create_landscape(output_path, bbox, vintage=2020,
                      project_utm=True, subsample=1,
                      keep_nonburnable=False, cache_dir=None,
                      timeout_s=300, use_cog=True,
-                     sources=None):
+                     sources=None, vintage_fallback=True):
     """Download LANDFIRE rasters and write an ASCII landscape file.
 
     Sources are tried in the order given by *sources* (default
     ``['cog', 'mspc', 'lfps']``).  Each source is attempted in turn; if a
     source fails, the next one is tried automatically.
+
+    When all sources fail for the requested vintage and *vintage_fallback* is
+    ``True`` (the default), the function retries with the next older vintage
+    in the sequence ``2020 → 2016 → 2014``.  A warning is printed each time
+    the vintage is downgraded.  Fallback is skipped when custom product IDs
+    are supplied or when *use_cog* is ``False``.
 
     Parameters
     ----------
@@ -1344,117 +1364,166 @@ def create_landscape(output_path, bbox, vintage=2020,
         Ordered list of source names to try.  Valid entries: ``'cog'``
         (AWS S3 COG), ``'mspc'`` (Microsoft Planetary Computer), ``'lfps'``
         (USGS LFPS REST API).  Defaults to ``['cog', 'mspc', 'lfps']``.
+    vintage_fallback : bool
+        When ``True`` (default) and all sources fail for *vintage*, the
+        function automatically retries with the next older vintage in
+        ``_VINTAGE_FALLBACK_ORDER`` (``2020 → 2016 → 2014``).  Set to
+        ``False`` to disable this behaviour and raise immediately after all
+        sources fail for the requested vintage.
     """
-    layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
-
-    lid_elev   = elev_product   or layer_defaults["elev"]
-    lid_slope  = slope_product  or layer_defaults["slope"]
-    lid_aspect = aspect_product or layer_defaults["aspect"]
-    lid_fuel   = fuel_product   or layer_defaults["fuel13"]
-
-    layer_ids = [lid_elev, lid_slope, lid_aspect, lid_fuel]
-
-    # -----------------------------------------------------------------------
-    # Resolve effective source list
-    # -----------------------------------------------------------------------
     _have_overrides = any((elev_product, slope_product,
                            aspect_product, fuel_product))
 
+    # -----------------------------------------------------------------------
+    # Build the ordered list of vintages to attempt.
+    # Fallback is disabled when custom product IDs are set (those are
+    # vintage-specific user choices) or when use_cog=False (legacy LFPS mode).
+    # -----------------------------------------------------------------------
+    if vintage_fallback and not _have_overrides and use_cog:
+        if vintage in _VINTAGE_FALLBACK_ORDER:
+            _fb_start = _VINTAGE_FALLBACK_ORDER.index(vintage)
+            vintages_to_try = list(_VINTAGE_FALLBACK_ORDER[_fb_start:])
+        else:
+            # Custom/unknown vintage: no fallback sequence available
+            vintages_to_try = [vintage]
+    else:
+        vintages_to_try = [vintage]
+
+    # -----------------------------------------------------------------------
+    # Resolve fixed (non-vintage-dependent) parts of the source list.
+    # -----------------------------------------------------------------------
     if not use_cog:
-        # Legacy behaviour: --use-lfps forces LFPS only
-        effective_sources = ["lfps"]
+        _fixed_sources = ["lfps"]
     elif _have_overrides:
-        # Custom product IDs cannot be resolved to COG/MSPC paths
         print(
             "WARNING: Custom --*-product IDs are not supported by the COG or "
             "MSPC downloaders; using LFPS API only.",
             file=sys.stderr,
         )
-        effective_sources = ["lfps"]
+        _fixed_sources = ["lfps"]
     else:
-        effective_sources = list(sources) if sources else ["cog", "mspc", "lfps"]
-        # Remove cog/mspc for vintages without a known mapping
-        if vintage not in _COG_LAYERS and "cog" in effective_sources:
+        _fixed_sources = list(sources) if sources else ["cog", "mspc", "lfps"]
+
+    # -----------------------------------------------------------------------
+    # Outer loop: try each vintage in turn.
+    # -----------------------------------------------------------------------
+    layer_map = None
+    last_exc = None
+
+    for v_idx, v_attempt in enumerate(vintages_to_try):
+        if v_idx > 0:
             print(
-                f"WARNING: No COG layer mapping for vintage {vintage}; "
+                f"WARNING: All LANDFIRE sources failed for vintage "
+                f"{vintages_to_try[v_idx - 1]}; retrying with older "
+                f"vintage {v_attempt} …",
+                file=sys.stderr,
+            )
+
+        layer_defaults = _DEFAULT_LAYERS.get(v_attempt, _DEFAULT_LAYERS[2020])
+        lid_elev   = elev_product   or layer_defaults["elev"]
+        lid_slope  = slope_product  or layer_defaults["slope"]
+        lid_aspect = aspect_product or layer_defaults["aspect"]
+        lid_fuel   = fuel_product   or layer_defaults["fuel13"]
+        layer_ids  = [lid_elev, lid_slope, lid_aspect, lid_fuel]
+
+        # -------------------------------------------------------------------
+        # Filter sources that have no mapping for this vintage.
+        # -------------------------------------------------------------------
+        effective_sources = list(_fixed_sources)
+        if v_attempt not in _COG_LAYERS and "cog" in effective_sources:
+            print(
+                f"WARNING: No COG layer mapping for vintage {v_attempt}; "
                 "skipping 'cog' source.",
                 file=sys.stderr,
             )
             effective_sources = [s for s in effective_sources if s != "cog"]
-        if vintage not in _MSPC_ASSET_KEYS and "mspc" in effective_sources:
+        if v_attempt not in _MSPC_ASSET_KEYS and "mspc" in effective_sources:
             print(
-                f"WARNING: No MSPC asset key mapping for vintage {vintage}; "
+                f"WARNING: No MSPC asset key mapping for vintage {v_attempt}; "
                 "skipping 'mspc' source.",
                 file=sys.stderr,
             )
             effective_sources = [s for s in effective_sources if s != "mspc"]
 
-    if not effective_sources:
-        raise RuntimeError(
-            "No LANDFIRE download sources remain after filtering.  "
-            "Pass --sources lfps to use the USGS LFPS API."
-        )
+        if not effective_sources:
+            raise RuntimeError(
+                "No LANDFIRE download sources remain after filtering.  "
+                "Pass --sources lfps to use the USGS LFPS API."
+            )
 
-    # -----------------------------------------------------------------------
-    # Try each source in order
-    # -----------------------------------------------------------------------
-    layer_map = None
-    last_exc = None
+        # -------------------------------------------------------------------
+        # Inner loop: try each source for this vintage.
+        # -------------------------------------------------------------------
+        vintage_layer_map = None
 
-    for source in effective_sources:
-        try:
-            if source == "cog":
-                print("Fetching LANDFIRE layers from COG (AWS S3 / HTTPS) …")
-                layer_map = download_landfire_cog(
-                    bbox, vintage=vintage,
-                    lid_elev=lid_elev, lid_slope=lid_slope,
-                    lid_aspect=lid_aspect, lid_fuel=lid_fuel,
-                )
-            elif source == "mspc":
-                print("Fetching LANDFIRE layers from Microsoft Planetary "
-                      "Computer (MSPC) …")
-                layer_map = download_landfire_mspc(
-                    bbox, vintage=vintage,
-                    lid_elev=lid_elev, lid_slope=lid_slope,
-                    lid_aspect=lid_aspect, lid_fuel=lid_fuel,
-                )
-            elif source == "lfps":
-                print("Fetching LANDFIRE layers from USGS LFPS API …")
-                layer_map = download_landfire(bbox, layer_ids,
-                                             cache_dir=cache_dir,
-                                             timeout_s=timeout_s)
-            else:
-                print(
-                    f"WARNING: Unknown LANDFIRE source '{source}'; skipping.",
-                    file=sys.stderr,
-                )
-                continue
+        for source in effective_sources:
+            try:
+                if source == "cog":
+                    print(
+                        f"Fetching LANDFIRE layers from COG (AWS S3 / HTTPS) …"
+                    )
+                    vintage_layer_map = download_landfire_cog(
+                        bbox, vintage=v_attempt,
+                        lid_elev=lid_elev, lid_slope=lid_slope,
+                        lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                    )
+                elif source == "mspc":
+                    print(
+                        "Fetching LANDFIRE layers from Microsoft Planetary "
+                        "Computer (MSPC) …"
+                    )
+                    vintage_layer_map = download_landfire_mspc(
+                        bbox, vintage=v_attempt,
+                        lid_elev=lid_elev, lid_slope=lid_slope,
+                        lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                    )
+                elif source == "lfps":
+                    print("Fetching LANDFIRE layers from USGS LFPS API …")
+                    vintage_layer_map = download_landfire(
+                        bbox, layer_ids,
+                        cache_dir=cache_dir,
+                        timeout_s=timeout_s,
+                    )
+                else:
+                    print(
+                        f"WARNING: Unknown LANDFIRE source '{source}'; "
+                        "skipping.",
+                        file=sys.stderr,
+                    )
+                    continue
 
-            # Source succeeded
-            break
+                # Source succeeded for this vintage
+                break
 
-        except Exception as exc:
-            remaining = effective_sources[effective_sources.index(source) + 1:]
-            if remaining:
-                print(
-                    f"WARNING: LANDFIRE source '{source}' failed "
-                    f"({type(exc).__name__}: {exc}); "
-                    f"trying next source: {remaining[0]} …",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"WARNING: LANDFIRE source '{source}' failed "
-                    f"({type(exc).__name__}: {exc}); no more sources to try.",
-                    file=sys.stderr,
-                )
-            last_exc = exc
-            layer_map = None
+            except Exception as exc:
+                remaining = effective_sources[
+                    effective_sources.index(source) + 1:]
+                if remaining:
+                    print(
+                        f"WARNING: LANDFIRE source '{source}' failed "
+                        f"({type(exc).__name__}: {exc}); "
+                        f"trying next source: {remaining[0]} …",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"WARNING: LANDFIRE source '{source}' failed "
+                        f"({type(exc).__name__}: {exc}); "
+                        "no more sources to try.",
+                        file=sys.stderr,
+                    )
+                last_exc = exc
+                vintage_layer_map = None
+
+        if vintage_layer_map is not None:
+            layer_map = vintage_layer_map
+            break  # success – stop trying older vintages
 
     if layer_map is None:
+        vintages_tried = ", ".join(str(v) for v in vintages_to_try)
         raise RuntimeError(
-            f"All LANDFIRE download sources failed: "
-            f"{', '.join(effective_sources)}. "
+            f"All LANDFIRE download sources failed for vintage(s) "
+            f"{vintages_tried}. "
             "Check your internet connection or try a different --sources "
             "combination.  Last error: " + str(last_exc)
         ) from last_exc
@@ -2380,6 +2449,15 @@ def _build_parser():
             "--sources lfps  (USGS only).  Overridden by --use-lfps."
         ),
     )
+    parser.add_argument(
+        "--no-vintage-fallback", action="store_true",
+        help=(
+            "Disable automatic vintage fallback.  By default, when all "
+            "sources fail for the requested vintage the script retries with "
+            "the next older vintage (2020 → 2016 → 2014).  Pass this flag "
+            "to raise an error immediately instead."
+        ),
+    )
 
     # Local-file landscape mode
     local = parser.add_argument_group(
@@ -2575,6 +2653,7 @@ def main(argv=None):
                 timeout_s=args.timeout,
                 use_cog=not args.use_lfps,
                 sources=landfire_sources,
+                vintage_fallback=not args.no_vintage_fallback,
             )
 
         # Report UTM extents

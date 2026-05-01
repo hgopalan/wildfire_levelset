@@ -1413,6 +1413,7 @@ class TestCreateLandscapeSources(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["cog"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire_cog = orig
@@ -1436,6 +1437,7 @@ class TestCreateLandscapeSources(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["lfps"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire = orig
@@ -1459,6 +1461,7 @@ class TestCreateLandscapeSources(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["mspc"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire_mspc = orig
@@ -1488,6 +1491,7 @@ class TestCreateLandscapeSources(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["cog", "mspc"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire_cog = orig_cog
@@ -1524,6 +1528,7 @@ class TestCreateLandscapeSources(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["cog", "mspc", "lfps"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire_cog = orig_cog
@@ -1590,7 +1595,248 @@ class TestCreateLandscapeSources(unittest.TestCase):
         self.assertEqual(calls, ["lfps"])
 
 
-class TestSourcesCLI(unittest.TestCase):
+class TestVintageFallback(unittest.TestCase):
+    """Test automatic vintage fallback in create_landscape()."""
+
+    _BBOX = (-105.1, 40.0, -105.0, 40.1)
+
+    def _patch_all_fail(self, vintages_per_source=None):
+        """Return (calls, orig_cog, orig_mspc, orig_lfps) where each fake
+        downloader appends (source, vintage) to *calls* then raises
+        RuntimeError.  After the test, restore originals from the returned
+        tuple.
+        """
+        calls = []
+
+        def _fake_cog(bbox, vintage=2020, **kw):
+            calls.append(("cog", vintage))
+            raise RuntimeError(f"cog unavailable for vintage {vintage}")
+
+        def _fake_mspc(bbox, vintage=2020, **kw):
+            calls.append(("mspc", vintage))
+            raise RuntimeError(f"mspc unavailable for vintage {vintage}")
+
+        def _fake_lfps(bbox, layer_ids, **kw):
+            # Derive vintage hint from the product IDs (e.g. "ELEV2016")
+            joined = " ".join(layer_ids)
+            v = 2020
+            for yr in (2014, 2016, 2020):
+                if str(yr) in joined:
+                    v = yr
+                    break
+            calls.append(("lfps", v))
+            raise RuntimeError(f"lfps unavailable (products: {layer_ids})")
+
+        orig_cog  = twp.download_landfire_cog
+        orig_mspc = twp.download_landfire_mspc
+        orig_lfps = twp.download_landfire
+        twp.download_landfire_cog  = _fake_cog
+        twp.download_landfire_mspc = _fake_mspc
+        twp.download_landfire      = _fake_lfps
+        return calls, orig_cog, orig_mspc, orig_lfps
+
+    def _restore(self, orig_cog, orig_mspc, orig_lfps):
+        twp.download_landfire_cog  = orig_cog
+        twp.download_landfire_mspc = orig_mspc
+        twp.download_landfire      = orig_lfps
+
+    # ------------------------------------------------------------------
+
+    def test_fallback_order_constant(self):
+        """_VINTAGE_FALLBACK_ORDER must be (2020, 2016, 2014) in that order."""
+        self.assertEqual(twp._VINTAGE_FALLBACK_ORDER, (2020, 2016, 2014))
+
+    def test_all_sources_fail_triggers_fallback_to_2016_and_2014(self):
+        """When all sources fail for 2020, retries are made with 2016 then 2014."""
+        calls, orig_cog, orig_mspc, orig_lfps = self._patch_all_fail()
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                twp.create_landscape(
+                    "/tmp/fake_vf.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog", "mspc", "lfps"],
+                    vintage_fallback=True,
+                )
+        finally:
+            self._restore(orig_cog, orig_mspc, orig_lfps)
+
+        vintages_tried = [v for _, v in calls]
+        self.assertIn(2020, vintages_tried, "Should have tried vintage 2020")
+        self.assertIn(2016, vintages_tried, "Should have fallen back to 2016")
+        self.assertIn(2014, vintages_tried, "Should have fallen back to 2014")
+        # Error message should mention all vintages attempted
+        self.assertIn("2020", str(ctx.exception))
+
+    def test_no_vintage_fallback_flag_disables_retry(self):
+        """vintage_fallback=False must not attempt any older vintage."""
+        calls, orig_cog, orig_mspc, orig_lfps = self._patch_all_fail()
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake_vf.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog"],
+                    vintage_fallback=False,
+                )
+        finally:
+            self._restore(orig_cog, orig_mspc, orig_lfps)
+
+        vintages_tried = [v for _, v in calls]
+        self.assertEqual(vintages_tried, [2020],
+                         "With fallback disabled, only 2020 should be tried")
+
+    def test_vintage_2016_falls_back_to_2014_only(self):
+        """Starting at vintage=2016, only 2014 is tried as fallback (not 2020)."""
+        calls, orig_cog, orig_mspc, orig_lfps = self._patch_all_fail()
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake_vf.lcp",
+                    bbox=self._BBOX,
+                    vintage=2016,
+                    sources=["cog"],
+                    vintage_fallback=True,
+                )
+        finally:
+            self._restore(orig_cog, orig_mspc, orig_lfps)
+
+        vintages_tried = [v for _, v in calls]
+        self.assertNotIn(2020, vintages_tried,
+                         "vintage=2016 fallback must not go back to 2020")
+        self.assertIn(2016, vintages_tried)
+        self.assertIn(2014, vintages_tried)
+
+    def test_vintage_2014_no_fallback_available(self):
+        """Starting at vintage=2014 (oldest), no further fallback is possible."""
+        calls, orig_cog, orig_mspc, orig_lfps = self._patch_all_fail()
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake_vf.lcp",
+                    bbox=self._BBOX,
+                    vintage=2014,
+                    sources=["cog"],
+                    vintage_fallback=True,
+                )
+        finally:
+            self._restore(orig_cog, orig_mspc, orig_lfps)
+
+        vintages_tried = [v for _, v in calls]
+        self.assertEqual(vintages_tried, [2014],
+                         "vintage=2014 has no older fallback")
+
+    def test_fallback_stops_when_older_vintage_succeeds(self):
+        """Fallback stops as soon as a vintage/source pair succeeds.
+
+        Verify that if cog fails for 2020 but would succeed for 2016, then
+        the call list contains 2020 (failed) and 2016 (attempted), but NOT
+        2014 (because 2016 succeeded before 2014 was reached).
+        """
+        calls = []
+
+        def _fake_cog(bbox, vintage=2020, **kw):
+            calls.append(("cog", vintage))
+            if vintage == 2020:
+                raise RuntimeError("2020 unavailable")
+            # vintage 2016: return a minimal layer_map so the download
+            # step "succeeds".  Downstream rasterio processing will fail,
+            # but with a different error – we catch that below.
+            return {
+                "ELEV2016":   b"fake",
+                "SlpD2016":   b"fake",
+                "Asp2016":    b"fake",
+                "F13_FBFM13": b"fake",
+            }
+
+        orig_cog  = twp.download_landfire_cog
+        orig_mspc = twp.download_landfire_mspc
+        orig_lfps = twp.download_landfire
+        twp.download_landfire_cog = _fake_cog
+        # mspc and lfps should never be called (only "cog" source requested)
+        twp.download_landfire_mspc = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("mspc should not be called"))
+        twp.download_landfire = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("lfps should not be called"))
+        try:
+            # The download part succeeds for vintage 2016, but downstream
+            # rasterio processing of the fake bytes will raise some error.
+            # We accept any exception except AssertionError here.
+            try:
+                twp.create_landscape(
+                    "/tmp/fake_vf2.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog"],
+                    vintage_fallback=True,
+                )
+            except AssertionError:
+                raise
+            except Exception:
+                pass  # expected – fake bytes cause downstream failure
+        finally:
+            twp.download_landfire_cog  = orig_cog
+            twp.download_landfire_mspc = orig_mspc
+            twp.download_landfire      = orig_lfps
+
+        vintages_tried = [v for _, v in calls]
+        self.assertIn(2020, vintages_tried)
+        self.assertIn(2016, vintages_tried)
+        self.assertNotIn(2014, vintages_tried,
+                         "2014 should not be tried after 2016 succeeded")
+
+    def test_vintage_fallback_disabled_for_custom_products(self):
+        """Custom product overrides disable vintage fallback (only lfps, once)."""
+        calls = []
+
+        def _fake_lfps(bbox, layer_ids, **kw):
+            calls.append("lfps")
+            raise RuntimeError("lfps unavailable")
+
+        orig_lfps = twp.download_landfire
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake_vf3.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    fuel_product="CUSTOM_FUEL",
+                    vintage_fallback=True,  # must be ignored with custom products
+                )
+        finally:
+            twp.download_landfire = orig_lfps
+
+        # Only one lfps call: no vintage fallback with custom product overrides
+        self.assertEqual(len(calls), 1)
+
+    def test_vintage_fallback_disabled_when_use_cog_false(self):
+        """use_cog=False (legacy LFPS-only mode) also disables vintage fallback."""
+        calls = []
+
+        def _fake_lfps(bbox, layer_ids, **kw):
+            calls.append("lfps")
+            raise RuntimeError("lfps unavailable")
+
+        orig_lfps = twp.download_landfire
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake_vf4.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    use_cog=False,
+                    vintage_fallback=True,  # must be ignored with use_cog=False
+                )
+        finally:
+            twp.download_landfire = orig_lfps
+
+        # Only one lfps call: no vintage fallback in legacy mode
+        self.assertEqual(len(calls), 1)
+
+
     """Test --sources and --use-lfps CLI argument parsing."""
 
     def _parse(self, argv):
@@ -1710,6 +1956,7 @@ class TestDownloadLandFireMspcOffline(unittest.TestCase):
                     bbox=self._BBOX,
                     vintage=2020,
                     sources=["mspc", "lfps"],
+                    vintage_fallback=False,
                 )
         finally:
             twp.download_landfire_mspc = orig_mspc
