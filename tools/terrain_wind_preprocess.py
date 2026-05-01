@@ -8,9 +8,11 @@ rasters, and extract wind data from a WRF-style netCDF file.
 
 Key behaviours
 --------------
-* If ``--wrf-file`` is supplied, the bounding box (lat/lon min/max) is read
-  from the WRF netCDF automatically; any ``--lat-min/max/lon-min/max`` values
-  on the command line are **ignored**.
+* If ``--wrf-file`` is supplied, the bounding box (lat/lon min/max) is derived
+  from the WRF netCDF automatically: the domain centre is computed and the
+  bounding box is clipped to **±0.45 degrees** in each direction (total span
+  0.9° × 0.9°, within the SRTM 1-degree-tile download limit).  Any
+  ``--lat-min/max/lon-min/max`` values on the command line are **ignored**.
 * Unless ``--no-terrain`` is given, SRTM elevation is used for the terrain
   and landscape files.  The ``HGT_M`` variable inside the WRF file is *never*
   used for the terrain output.
@@ -757,8 +759,15 @@ def _write_wind(path, x_utm, y_utm, u, v):
             fh.write(f"{x:.2f} {y:.2f} {float(uv):.6f} {float(vv):.6f}\n")
 
 
+_WRF_BBOX_HALF_SPAN = 0.45  # degrees; SRTM download limit is 1°×1°
+
+
 def read_wrf_bbox(wrf_path):
-    """Read the lat/lon bounding box from a WRF netCDF file.
+    """Read a clipped lat/lon bounding box from a WRF netCDF file.
+
+    The bounding box is centred on the domain centre and extends
+    ``_WRF_BBOX_HALF_SPAN`` degrees (0.45°) in each direction, keeping the
+    total span below the SRTM 1-degree-tile download limit.
 
     Parameters
     ----------
@@ -768,7 +777,8 @@ def read_wrf_bbox(wrf_path):
     Returns
     -------
     tuple of float
-        (lat_min, lat_max, lon_min, lon_max) in WGS-84 decimal degrees.
+        (lat_min, lat_max, lon_min, lon_max) in WGS-84 decimal degrees,
+        each being ``center ± 0.45``.
     """
     import numpy as np
 
@@ -787,11 +797,14 @@ def read_wrf_bbox(wrf_path):
         lat_arr = lat_arr[0]
         lon_arr = lon_arr[0]
 
+    center_lat = 0.5 * (float(np.min(lat_arr)) + float(np.max(lat_arr)))
+    center_lon = 0.5 * (float(np.min(lon_arr)) + float(np.max(lon_arr)))
+
     return (
-        float(np.min(lat_arr)),
-        float(np.max(lat_arr)),
-        float(np.min(lon_arr)),
-        float(np.max(lon_arr)),
+        center_lat - _WRF_BBOX_HALF_SPAN,
+        center_lat + _WRF_BBOX_HALF_SPAN,
+        center_lon - _WRF_BBOX_HALF_SPAN,
+        center_lon + _WRF_BBOX_HALF_SPAN,
     )
 
 
@@ -1114,7 +1127,9 @@ def interpolate_wind_to_grid(wrf_x, wrf_y, u, v, target_x, target_y):
     return u_interp.reshape(target_shape), v_interp.reshape(target_shape)
 
 
-def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1):
+def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1,
+                     lat_min=None, lat_max=None,
+                     lon_min=None, lon_max=None):
     """Extract wind and coordinate data from a WRF netCDF file.
 
     Parameters
@@ -1127,6 +1142,11 @@ def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1):
         Vertical model level for wind (default 0 = lowest level).
     subsample : int
         Keep every *subsample*-th point in each dimension (default 1).
+    lat_min, lat_max, lon_min, lon_max : float or None
+        Optional lat/lon bounding box (WGS-84 degrees).  When all four are
+        provided the WRF grid is clipped to the tightest rectangular sub-grid
+        whose grid points all fall within the specified bounds before UTM
+        projection and subsampling.
 
     Returns
     -------
@@ -1192,6 +1212,28 @@ def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1):
         raise ValueError(
             f"Unexpected V shape {V_2d_stag.shape} for domain ({ny}, {nx})"
         )
+
+    # Clip to lat/lon bounds if provided
+    clip_bounds = (lat_min is not None and lat_max is not None
+                   and lon_min is not None and lon_max is not None)
+    if clip_bounds:
+        mask = ((lat_2d >= lat_min) & (lat_2d <= lat_max) &
+                (lon_2d >= lon_min) & (lon_2d <= lon_max))
+        rows, cols = np.where(mask)
+        if rows.size == 0:
+            raise ValueError(
+                f"No WRF grid points fall within the lat/lon bounds "
+                f"lat=[{lat_min}, {lat_max}] lon=[{lon_min}, {lon_max}]."
+            )
+        r0, r1 = int(rows.min()), int(rows.max()) + 1
+        c0, c1 = int(cols.min()), int(cols.max()) + 1
+        lat_2d = lat_2d[r0:r1, c0:c1]
+        lon_2d = lon_2d[r0:r1, c0:c1]
+        u_mass = u_mass[r0:r1, c0:c1]
+        v_mass = v_mass[r0:r1, c0:c1]
+        ny, nx = lat_2d.shape
+        print(f"Clipped WRF wind grid to lat=[{lat_min:.4f}, {lat_max:.4f}] "
+              f"lon=[{lon_min:.4f}, {lon_max:.4f}]: {ny}×{nx} points.")
 
     # Project to UTM
     print(f"Projecting {ny}×{nx} WRF grid to UTM …")
@@ -1313,8 +1355,9 @@ def _build_parser():
     parser.add_argument(
         "--wrf-file", default=None, metavar="FILE",
         help=(
-            "WRF netCDF file.  If given, the lat/lon bounding box is read "
-            "from the file; --lat-min/max/lon-min/max are ignored."
+            "WRF netCDF file.  If given, the lat/lon bounding box is centred "
+            "on the domain centre and clipped to ±0.45° in each direction; "
+            "--lat-min/max/lon-min/max are ignored."
         ),
     )
 
@@ -1432,7 +1475,7 @@ def main(argv=None):
             print(f"ERROR: WRF file not found: {args.wrf_file}", file=sys.stderr)
             sys.exit(1)
         lat_min, lat_max, lon_min, lon_max = read_wrf_bbox(args.wrf_file)
-        print(f"Bounding box from WRF file: "
+        print(f"Bounding box from WRF file (centre ±0.45°): "
               f"lat=[{lat_min:.4f}, {lat_max:.4f}] "
               f"lon=[{lon_min:.4f}, {lon_max:.4f}]")
     else:
@@ -1595,6 +1638,10 @@ def main(argv=None):
                 time_index=t_idx,
                 level=args.level,
                 subsample=args.subsample,
+                lat_min=lat_min,
+                lat_max=lat_max,
+                lon_min=lon_min,
+                lon_max=lon_max,
             )
 
             wind_out = (_wind_output_path(wind_base_out, pos)
