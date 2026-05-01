@@ -18,3 +18,4 @@ __pycache__/
 env/
 venv/
 build_2d/
+inputs.i
