@@ -60,7 +60,8 @@ static void compute_rothermel_R(MultiFab& R_mf,
             // Boundary checks use vel_bx (which includes ghost cells) so no
             // out-of-range access occurs at domain edges.
             constexpr Real MAX_WIND_SPEED_MS = 25.0;
-            if (std::sqrt(ux*ux + uy*uy) > MAX_WIND_SPEED_MS) {
+            constexpr Real MAX_WIND_SPEED_SQ = MAX_WIND_SPEED_MS * MAX_WIND_SPEED_MS;
+            if (ux*ux + uy*uy > MAX_WIND_SPEED_SQ) {
                 Real ux_mean = 0.0, uy_mean = 0.0;
                 int cnt = 0;
                 if (vel_bx.contains(IntVect(i-1,j,k))) {
