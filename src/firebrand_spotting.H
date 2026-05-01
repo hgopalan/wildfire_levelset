@@ -22,6 +22,7 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParallelDescriptor.H>
 #include <random>
 #include <vector>
 #include <cmath>
@@ -129,10 +130,10 @@ static void generate_firebrand_spots(
         return; // Spotting disabled
     }
     
-#if defined(AMREX_USE_MPI) || defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
+#if defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
     amrex::Abort("Firebrand spotting data update requires serial execution. "
-                 "Parallel execution (MPI/OMP/GPU) is not yet supported for spotting_data updates. "
-                 "Please rebuild with AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
+                 "Parallel execution (OMP/GPU) is not yet supported for spotting_data updates. "
+                 "Please rebuild with AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
 #endif
     
     const Real phi_thresh = 0.1; // Threshold for identifying fire front
@@ -147,9 +148,24 @@ static void generate_firebrand_spots(
     GpuArray<Real, AMREX_SPACEDIM> gdx{dx[0], dx[1]};
 #endif
     
-    // Setup random number generator
-    std::random_device rd;
-    std::mt19937 gen(sp.random_seed == 0 ? rd() : sp.random_seed + step);
+    // Setup random number generator with a seed that is identical on all MPI ranks.
+    unsigned rng_seed;
+    if (sp.random_seed == 0) {
+#ifdef AMREX_USE_MPI
+        if (ParallelDescriptor::IOProcessor()) {
+            rng_seed = std::random_device{}();
+        }
+        MPI_Bcast(&rng_seed, 1,
+                  ParallelDescriptor::Mpi_typemap<unsigned>::type(),
+                  ParallelDescriptor::IOProcessorNumber(),
+                  ParallelDescriptor::Communicator());
+#else
+        rng_seed = std::random_device{}();
+#endif
+    } else {
+        rng_seed = static_cast<unsigned>(sp.random_seed + step);
+    }
+    std::mt19937 gen(rng_seed);
     std::uniform_real_distribution<Real> uniform(0.0, 1.0);
     std::normal_distribution<Real> normal(0.0, 1.0);
     
@@ -205,6 +221,40 @@ static void generate_firebrand_spots(
         }
     }
     
+#ifdef AMREX_USE_MPI
+    // Gather fire-front data from all MPI ranks so every rank generates
+    // the same global set of firebrand spots (deterministic with shared seed).
+    {
+        int local_n = static_cast<int>(xarray.size());
+        int nprocs = ParallelDescriptor::NProcs();
+        std::vector<int> counts(nprocs), displs(nprocs);
+        MPI_Allgather(&local_n, 1, MPI_INT,
+                      counts.data(), 1, MPI_INT,
+                      ParallelDescriptor::Communicator());
+        int total = 0;
+        for (int r = 0; r < nprocs; ++r) { displs[r] = total; total += counts[r]; }
+
+        auto allgatherv_real = [&](std::vector<Real>& v) {
+            std::vector<Real> all(total);
+            MPI_Allgatherv(v.data(), local_n,
+                           ParallelDescriptor::Mpi_typemap<Real>::type(),
+                           all.data(), counts.data(), displs.data(),
+                           ParallelDescriptor::Mpi_typemap<Real>::type(),
+                           ParallelDescriptor::Communicator());
+            v = std::move(all);
+        };
+        allgatherv_real(xarray);
+        allgatherv_real(yarray);
+        allgatherv_real(probabilities);
+        allgatherv_real(wind_x);
+        allgatherv_real(wind_y);
+#if (AMREX_SPACEDIM == 3)
+        allgatherv_real(zarray);
+        allgatherv_real(wind_z);
+#endif
+    }
+#endif
+
     // Second pass: generate spots stochastically
     std::vector<Real> spot_x, spot_y;
 #if (AMREX_SPACEDIM == 3)

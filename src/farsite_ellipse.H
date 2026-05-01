@@ -33,6 +33,7 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParallelDescriptor.H>
 
 using namespace amrex;
 
@@ -373,6 +374,44 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     }
   }
   }
+
+#ifdef AMREX_USE_MPI
+  // Gather spread positions from all MPI ranks so every rank stamps the
+  // complete global fire front into its local boxes.
+  {
+    int local_n = static_cast<int>(xarray.size());
+    int nprocs = ParallelDescriptor::NProcs();
+    std::vector<int> counts(nprocs), displs(nprocs);
+    MPI_Allgather(&local_n, 1, MPI_INT,
+                  counts.data(), 1, MPI_INT,
+                  ParallelDescriptor::Communicator());
+    int total = 0;
+    for (int r = 0; r < nprocs; ++r) { displs[r] = total; total += counts[r]; }
+
+    std::vector<Real> all_x(total), all_y(total);
+    MPI_Allgatherv(xarray.data(), local_n,
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   all_x.data(), counts.data(), displs.data(),
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   ParallelDescriptor::Communicator());
+    MPI_Allgatherv(yarray.data(), local_n,
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   all_y.data(), counts.data(), displs.data(),
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   ParallelDescriptor::Communicator());
+    xarray = std::move(all_x);
+    yarray = std::move(all_y);
+#if (AMREX_SPACEDIM == 3)
+    std::vector<Real> all_z(total);
+    MPI_Allgatherv(zarray.data(), local_n,
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   all_z.data(), counts.data(), displs.data(),
+                   ParallelDescriptor::Mpi_typemap<Real>::type(),
+                   ParallelDescriptor::Communicator());
+    zarray = std::move(all_z);
+#endif
+  }
+#endif
 
   // -------------------------------------------------------------------------
   // Reset phi everywhere, then stamp new fire-front positions

@@ -13,6 +13,12 @@ option(LEVELSET_USE_VENDORED_AMREX "Prefer building the vendored AMReX submodule
 option(LEVELSET_DIM_2D "Build for 2D instead of 3D" OFF)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
 option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
+option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
+
+if(LEVELSET_ENABLE_MPI)
+  find_package(MPI REQUIRED)
+  message(STATUS "MPI parallelism enabled (${MPI_CXX_COMPILER})")
+endif()
 
 if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt")
   message(STATUS "Using vendored AMReX from ${AMREX_SUBMODULE_DIR}")
@@ -24,7 +30,11 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
     set(AMReX_SPACEDIM "3" CACHE STRING "AMReX spatial dimensions for wildfire_levelset" FORCE)
     message(STATUS "Building for 3D (AMReX_SPACEDIM=3)")
   endif()
-  set(AMReX_MPI OFF CACHE BOOL "Build AMReX without MPI" FORCE)
+  if(LEVELSET_ENABLE_MPI)
+    set(AMReX_MPI ON CACHE BOOL "Build AMReX with MPI" FORCE)
+  else()
+    set(AMReX_MPI OFF CACHE BOOL "Build AMReX without MPI" FORCE)
+  endif()
   set(AMReX_OMP OFF CACHE BOOL "Build AMReX without OpenMP" FORCE)
   set(AMReX_GPU_BACKEND NONE CACHE STRING "Build AMReX without a GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
@@ -63,6 +73,9 @@ add_executable(levelset
                src/parse_inputs.cpp                
               )
 target_link_libraries(levelset PRIVATE AMReX::amrex)
+if(LEVELSET_ENABLE_MPI)
+  target_link_libraries(levelset PRIVATE MPI::MPI_CXX)
+endif()
 
 # Recommended warnings
 if (MSVC)

@@ -37,6 +37,7 @@
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParallelDescriptor.H>
 #include <random>
 #include <vector>
 #include <cmath>
@@ -175,9 +176,9 @@ static void compute_albini_spotting(
         return;
     }
 
-#if defined(AMREX_USE_MPI) || defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
+#if defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
     amrex::Abort("Albini spotting requires serial execution. "
-                 "Rebuild with AMReX_MPI=OFF, AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
+                 "Rebuild with AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
 #endif
 
     const Real phi_thresh = Real(0.1);
@@ -207,6 +208,18 @@ static void compute_albini_spotting(
             }
         }
     }
+
+#ifdef AMREX_USE_MPI
+    // Each MFIter rank iterates over disjoint valid boxes (guaranteed by AMReX's
+    // DistributionMapping), so summing across ranks assembles the full wind field
+    // without double-counting.
+    MPI_Allreduce(MPI_IN_PLACE, u_arr.data(), nx * ny,
+                  ParallelDescriptor::Mpi_typemap<Real>::type(),
+                  MPI_SUM, ParallelDescriptor::Communicator());
+    MPI_Allreduce(MPI_IN_PLACE, v_arr.data(), nx * ny,
+                  ParallelDescriptor::Mpi_typemap<Real>::type(),
+                  MPI_SUM, ParallelDescriptor::Communicator());
+#endif
 
     // ---- Identify fire-front cells and compute lofting heights ----
     struct FrontCell {
@@ -251,10 +264,80 @@ static void compute_albini_spotting(
         }
     }
 
+#ifdef AMREX_USE_MPI
+    // Gather fire-front cells from all MPI ranks so every rank integrates
+    // the same trajectories and applies the same spot ignitions.
+    {
+        int local_n = static_cast<int>(front_cells.size());
+        int nprocs = ParallelDescriptor::NProcs();
+        std::vector<int> counts(nprocs), displs(nprocs);
+        MPI_Allgather(&local_n, 1, MPI_INT,
+                      counts.data(), 1, MPI_INT,
+                      ParallelDescriptor::Communicator());
+        int total = 0;
+        for (int r = 0; r < nprocs; ++r) { displs[r] = total; total += counts[r]; }
+
+        // Serialise struct fields into flat arrays
+        std::vector<Real> fc_x(local_n), fc_y(local_n), fc_Hz(local_n), fc_IB(local_n);
+        std::vector<int>  fc_i(local_n), fc_j(local_n);
+        for (int n = 0; n < local_n; ++n) {
+            fc_x[n]  = front_cells[n].x;
+            fc_y[n]  = front_cells[n].y;
+            fc_Hz[n] = front_cells[n].H_z;
+            fc_IB[n] = front_cells[n].I_B;
+            fc_i[n]  = front_cells[n].i;
+            fc_j[n]  = front_cells[n].j;
+        }
+
+        auto allgatherv_real = [&](std::vector<Real>& v) {
+            std::vector<Real> all(total);
+            MPI_Allgatherv(v.data(), local_n,
+                           ParallelDescriptor::Mpi_typemap<Real>::type(),
+                           all.data(), counts.data(), displs.data(),
+                           ParallelDescriptor::Mpi_typemap<Real>::type(),
+                           ParallelDescriptor::Communicator());
+            v = std::move(all);
+        };
+        auto allgatherv_int = [&](std::vector<int>& v) {
+            std::vector<int> all(total);
+            MPI_Allgatherv(v.data(), local_n, MPI_INT,
+                           all.data(), counts.data(), displs.data(), MPI_INT,
+                           ParallelDescriptor::Communicator());
+            v = std::move(all);
+        };
+
+        allgatherv_real(fc_x);  allgatherv_real(fc_y);
+        allgatherv_real(fc_Hz); allgatherv_real(fc_IB);
+        allgatherv_int(fc_i);   allgatherv_int(fc_j);
+
+        front_cells.clear();
+        front_cells.reserve(total);
+        for (int n = 0; n < total; ++n) {
+            front_cells.push_back({fc_x[n], fc_y[n], fc_i[n], fc_j[n],
+                                   fc_Hz[n], fc_IB[n]});
+        }
+    }
+#endif
+
     // ---- Stochastic firebrand generation and trajectory integration ----
-    std::mt19937 gen(asp.random_seed == 0
-                     ? std::random_device{}()
-                     : static_cast<unsigned>(asp.random_seed + step));
+    // Use a seed that is identical on all MPI ranks for deterministic results.
+    unsigned rng_seed;
+    if (asp.random_seed == 0) {
+#ifdef AMREX_USE_MPI
+        if (ParallelDescriptor::IOProcessor()) {
+            rng_seed = std::random_device{}();
+        }
+        MPI_Bcast(&rng_seed, 1,
+                  ParallelDescriptor::Mpi_typemap<unsigned>::type(),
+                  ParallelDescriptor::IOProcessorNumber(),
+                  ParallelDescriptor::Communicator());
+#else
+        rng_seed = std::random_device{}();
+#endif
+    } else {
+        rng_seed = static_cast<unsigned>(asp.random_seed + step);
+    }
+    std::mt19937 gen(rng_seed);
     std::uniform_real_distribution<Real> uniform(Real(0.0), Real(1.0));
 
     // Stores landing locations (x, y) and source index
