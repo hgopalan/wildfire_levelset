@@ -1220,23 +1220,39 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
     is made.
     """
 
-    def _make_fake_cog_bytes(self, shape=(4, 4), value=100.0):
+    _BBOX = (-105.1, 40.0, -105.0, 40.1)
+    _SHAPE = (4, 4)
+
+    def _make_fake_read_result(self):
+        """Return (data, transform, crs, nodata) using the class-level constants."""
+        try:
+            import numpy as np
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        data = np.ones(self._SHAPE, dtype=np.float64)
+        tf = from_bounds(*self._BBOX, self._SHAPE[1], self._SHAPE[0])
+        crs = CRS.from_epsg(4326)
+        return data, tf, crs, -9999.0
+
+    def _make_fake_cog_bytes(self, value=100.0):
         """Return minimal in-memory GeoTIFF bytes using rasterio MemoryFile."""
         try:
             import numpy as np
-            import rasterio
             from rasterio.io import MemoryFile
             from rasterio.crs import CRS
             from rasterio.transform import from_bounds
         except ImportError:
             raise unittest.SkipTest("rasterio not installed")
 
-        data = np.full(shape, value, dtype=np.float64)
+        data = np.full(self._SHAPE, value, dtype=np.float64)
         # Use a simple WGS-84 transform over a tiny area
-        tf = from_bounds(-105.1, 40.0, -105.0, 40.1, shape[1], shape[0])
+        tf = from_bounds(*self._BBOX, self._SHAPE[1], self._SHAPE[0])
         with MemoryFile() as mf:
-            with mf.open(driver="GTiff", height=shape[0], width=shape[1],
-                         count=1, dtype=data.dtype,
+            with mf.open(driver="GTiff", height=self._SHAPE[0],
+                         width=self._SHAPE[1], count=1, dtype=data.dtype,
                          crs=CRS.from_epsg(4326), transform=tf,
                          nodata=-9999.0) as ds:
                 ds.write(data, 1)
@@ -1244,25 +1260,11 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
 
     def test_download_landfire_cog_returns_four_layers(self):
         """download_landfire_cog should return exactly four layer entries."""
-        try:
-            import numpy as np
-            import rasterio
-            from rasterio.crs import CRS
-            from rasterio.transform import from_bounds
-        except ImportError:
-            raise unittest.SkipTest("rasterio not installed")
-
-        bbox = (-105.1, 40.0, -105.0, 40.1)
-        shape = (4, 4)
-        fake_data = np.ones(shape, dtype=np.float64)
-        fake_tf = from_bounds(*bbox, shape[1], shape[0])
-        fake_crs = CRS.from_epsg(4326)
-
-        # Patch _read_landfire_cog to avoid any network call
+        fake = self._make_fake_read_result()
         original = twp._read_landfire_cog
-        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        twp._read_landfire_cog = lambda url, b: fake
         try:
-            result = twp.download_landfire_cog(bbox, vintage=2020)
+            result = twp.download_landfire_cog(self._BBOX, vintage=2020)
         finally:
             twp._read_landfire_cog = original
 
@@ -1270,24 +1272,11 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
 
     def test_download_landfire_cog_keys_match_default_layers(self):
         """The returned dict keys should match the 2020 default layer IDs."""
-        try:
-            import numpy as np
-            import rasterio
-            from rasterio.crs import CRS
-            from rasterio.transform import from_bounds
-        except ImportError:
-            raise unittest.SkipTest("rasterio not installed")
-
-        bbox = (-105.1, 40.0, -105.0, 40.1)
-        shape = (4, 4)
-        fake_data = np.ones(shape, dtype=np.float64)
-        fake_tf = from_bounds(*bbox, shape[1], shape[0])
-        fake_crs = CRS.from_epsg(4326)
-
+        fake = self._make_fake_read_result()
         original = twp._read_landfire_cog
-        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        twp._read_landfire_cog = lambda url, b: fake
         try:
-            result = twp.download_landfire_cog(bbox, vintage=2020)
+            result = twp.download_landfire_cog(self._BBOX, vintage=2020)
         finally:
             twp._read_landfire_cog = original
 
@@ -1296,24 +1285,11 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
 
     def test_download_landfire_cog_values_are_bytes(self):
         """Each value in the returned dict should be bytes (in-memory GeoTIFF)."""
-        try:
-            import numpy as np
-            import rasterio
-            from rasterio.crs import CRS
-            from rasterio.transform import from_bounds
-        except ImportError:
-            raise unittest.SkipTest("rasterio not installed")
-
-        bbox = (-105.1, 40.0, -105.0, 40.1)
-        shape = (4, 4)
-        fake_data = np.ones(shape, dtype=np.float64)
-        fake_tf = from_bounds(*bbox, shape[1], shape[0])
-        fake_crs = CRS.from_epsg(4326)
-
+        fake = self._make_fake_read_result()
         original = twp._read_landfire_cog
-        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        twp._read_landfire_cog = lambda url, b: fake
         try:
-            result = twp.download_landfire_cog(bbox, vintage=2020)
+            result = twp.download_landfire_cog(self._BBOX, vintage=2020)
         finally:
             twp._read_landfire_cog = original
 
@@ -1330,7 +1306,7 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
 
         def _fake_download_landfire(bbox, layer_ids, **kwargs):
             calls.append(("lfps", layer_ids))
-            raise RuntimeError("stop here")  # abort after recording the call
+            raise RuntimeError("Intentionally raised to halt test execution")
 
         original = twp.download_landfire
         twp.download_landfire = _fake_download_landfire
@@ -1338,7 +1314,7 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 twp.create_landscape(
                     "/tmp/fake.lcp",
-                    bbox=(-105.1, 40.0, -105.0, 40.1),
+                    bbox=self._BBOX,
                     vintage=2020,
                     use_cog=False,
                 )
@@ -1354,7 +1330,7 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
 
         def _fake_download_landfire_cog(bbox, **kwargs):
             calls.append("cog")
-            raise RuntimeError("stop here")
+            raise RuntimeError("Intentionally raised to halt test execution")
 
         original = twp.download_landfire_cog
         twp.download_landfire_cog = _fake_download_landfire_cog
@@ -1362,7 +1338,7 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
             with self.assertRaises(Exception):
                 twp.create_landscape(
                     "/tmp/fake.lcp",
-                    bbox=(-105.1, 40.0, -105.0, 40.1),
+                    bbox=self._BBOX,
                     vintage=2020,
                     use_cog=True,
                 )

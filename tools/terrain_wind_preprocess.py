@@ -1002,16 +1002,17 @@ def create_landscape(output_path, bbox, vintage=2020,
     lid_fuel   = fuel_product   or layer_defaults["fuel13"]
 
     # Custom product IDs cannot be mapped to a COG path; fall back to LFPS.
-    _have_overrides = any([elev_product, slope_product,
-                           aspect_product, fuel_product])
-    _use_cog = use_cog and not _have_overrides and vintage in _COG_LAYERS
+    _have_overrides = any((elev_product, slope_product,
+                           aspect_product, fuel_product))
+    _vintage_has_cog = vintage in _COG_LAYERS
+    _use_cog = use_cog and not _have_overrides and _vintage_has_cog
     if use_cog and _have_overrides:
         print(
             "WARNING: Custom --*-product IDs are not supported by the COG "
             "downloader; falling back to LFPS API.",
             file=sys.stderr,
         )
-    if use_cog and vintage not in _COG_LAYERS:
+    if use_cog and not _vintage_has_cog:
         print(
             f"WARNING: No COG layer mapping for vintage {vintage}; "
             "falling back to LFPS API.",
