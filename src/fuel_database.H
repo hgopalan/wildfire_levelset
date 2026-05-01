@@ -213,11 +213,231 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         32.0      // rho_p [lb/ft³]
     };
     
+    // =========================================================================
+    // Scott & Burgan (2005) 40 Standard Fire Behavior Fuel Models
+    // =========================================================================
+    // Reference: Scott, J.H. and Burgan, R.E. (2005). "Standard Fire Behavior
+    // Fuel Models: A Comprehensive Set for Use with Rothermel's Surface Fire
+    // Spread Model." Gen. Tech. Rep. RMRS-GTR-153. Fort Collins, CO: USDA
+    // Forest Service, Rocky Mountain Research Station. 72 pp.
+    //
+    // Parameters use the same units as Anderson 13 models above.
+    // SAV (sigma) is the effective (weighted-average) value for the fuel complex.
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // NON-BURNABLE (NB)
+    // -------------------------------------------------------------------------
+    database["NB1"] = {
+        "NB1", "Urban/Developed",
+        0.0, 0.0, 0.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["NB2"] = {
+        "NB2", "Snow/Ice",
+        0.0, 0.0, 0.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["NB3"] = {
+        "NB3", "Agriculture",
+        0.0, 0.0, 0.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["NB8"] = {
+        "NB8", "Open Water",
+        0.0, 0.0, 0.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["NB9"] = {
+        "NB9", "Bare Ground",
+        0.0, 0.0, 0.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // GRASS (GR)
+    // -------------------------------------------------------------------------
+    database["GR1"] = {
+        "GR1", "Short, Sparse Dry Climate Grass",
+        0.010, 2200.0, 0.4, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR2"] = {
+        "GR2", "Low Load, Dry Climate Grass",
+        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR3"] = {
+        "GR3", "Low Load, Very Coarse, Humid Climate Grass",
+        0.023, 1500.0, 2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR4"] = {
+        "GR4", "Moderate Load, Dry Climate Grass",
+        0.087, 2000.0, 2.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR5"] = {
+        "GR5", "Low Load, Humid Climate Grass",
+        0.023, 1800.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR6"] = {
+        "GR6", "Moderate Load, Humid Climate Grass",
+        0.165, 2200.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR7"] = {
+        "GR7", "High Load, Dry Climate Grass",
+        0.230, 2000.0, 3.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR8"] = {
+        "GR8", "High Load, Very Coarse, Humid Climate Grass",
+        0.345, 1500.0, 4.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GR9"] = {
+        "GR9", "Very High Load, Dry Climate Grass",
+        0.414, 2200.0, 5.0, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // GRASS-SHRUB (GS)
+    // -------------------------------------------------------------------------
+    database["GS1"] = {
+        "GS1", "Low Load, Dry Climate Grass-Shrub",
+        0.046, 2000.0, 0.9, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GS2"] = {
+        "GS2", "Moderate Load, Dry Climate Grass-Shrub",
+        0.046, 2000.0, 1.5, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GS3"] = {
+        "GS3", "Moderate Load, Humid Climate Grass-Shrub",
+        0.115, 1800.0, 1.8, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["GS4"] = {
+        "GS4", "High Load, Humid Climate Grass-Shrub",
+        0.253, 1800.0, 2.1, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // SHRUB (SH)
+    // -------------------------------------------------------------------------
+    database["SH1"] = {
+        "SH1", "Low Load, Dry Climate Shrub",
+        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH2"] = {
+        "SH2", "Moderate Load, Dry Climate Shrub",
+        0.138, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH3"] = {
+        "SH3", "Moderate Load, Humid Climate Shrub",
+        0.138, 1600.0, 2.4, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH4"] = {
+        "SH4", "Low Load, Humid Climate Shrub",
+        0.092, 2000.0, 3.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH5"] = {
+        "SH5", "High Load, Dry Climate Shrub",
+        0.345, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH6"] = {
+        "SH6", "Low Load, Humid Climate Shrub",
+        0.276, 750.0,  2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH7"] = {
+        "SH7", "Very High Load, Dry Climate Shrub",
+        0.460, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH8"] = {
+        "SH8", "High Load, Humid Climate Shrub",
+        0.322, 1300.0, 3.0, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SH9"] = {
+        "SH9", "Very High Load, Humid Climate Shrub",
+        0.414, 1500.0, 4.4, 0.40, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // TIMBER-UNDERSTORY (TU)
+    // -------------------------------------------------------------------------
+    database["TU1"] = {
+        "TU1", "Low Load, Dry Climate Timber-Grass-Shrub",
+        0.023, 2000.0, 0.6, 0.20, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TU2"] = {
+        "TU2", "Moderate Load, Humid Climate Timber-Shrub",
+        0.069, 2000.0, 1.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TU3"] = {
+        "TU3", "Moderate Load, Humid Climate Timber-Grass-Shrub",
+        0.138, 1800.0, 1.3, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TU4"] = {
+        "TU4", "Dwarf Conifer Understory",
+        0.230, 2300.0, 0.5, 0.12, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TU5"] = {
+        "TU5", "Very High Load, Dry Climate Timber-Shrub",
+        0.322, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // TIMBER LITTER (TL)
+    // -------------------------------------------------------------------------
+    database["TL1"] = {
+        "TL1", "Low Load, Compact Conifer Litter",
+        0.069, 2000.0, 0.2, 0.30, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL2"] = {
+        "TL2", "Low Load, Broadleaf Litter",
+        0.069, 1600.0, 0.2, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL3"] = {
+        "TL3", "Moderate Load Conifer Litter",
+        0.115, 2000.0, 0.3, 0.20, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL4"] = {
+        "TL4", "Small Downed Logs",
+        0.115, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL5"] = {
+        "TL5", "High Load Conifer Litter",
+        0.230, 2000.0, 0.6, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL6"] = {
+        "TL6", "High Load Broadleaf Litter",
+        0.253, 2000.0, 0.3, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL7"] = {
+        "TL7", "Large Downed Logs",
+        0.322, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL8"] = {
+        "TL8", "Long, Needle Litter",
+        0.184, 1800.0, 0.3, 0.35, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["TL9"] = {
+        "TL9", "Very High Load, Broadleaf Litter",
+        0.322, 1600.0, 0.6, 0.35, 8000.0, 0.0555, 0.010, 32.0
+    };
+
+    // -------------------------------------------------------------------------
+    // SLASH-BLOWDOWN (SB)
+    // -------------------------------------------------------------------------
+    database["SB1"] = {
+        "SB1", "Low Load Activity Fuel",
+        0.069, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SB2"] = {
+        "SB2", "Moderate Load Activity Fuel or Low Load Blowdown",
+        0.184, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SB3"] = {
+        "SB3", "High Load Activity Fuel or Moderate Load Blowdown",
+        0.322, 1500.0, 1.2, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+    database["SB4"] = {
+        "SB4", "High Load Blowdown",
+        0.529, 1500.0, 2.7, 0.25, 8000.0, 0.0555, 0.010, 32.0
+    };
+
     // -------------------------------------------------------------------------
     // COMMON ALIASES AND VARIATIONS
     // -------------------------------------------------------------------------
     
-    // Numeric aliases (1-13)
+    // Numeric aliases (1-13) for Anderson 13 models
     for (int i = 1; i <= 13; ++i) {
         std::string fm_key = "FM" + std::to_string(i);
         if (database.count(fm_key) > 0) {
@@ -291,10 +511,32 @@ inline void apply_fuel_model(const FuelModel& model, RothermelParams& params) {
 // ============================================================================
 inline std::vector<std::string> get_available_fuel_models() {
     std::vector<std::string> models;
-    // Return only the primary FM1-FM13 models
+    // Anderson 13 models (FM1-FM13)
     for (int i = 1; i <= 13; ++i) {
         models.push_back("FM" + std::to_string(i));
     }
+    // Scott & Burgan 40 models
+    // Non-burnable
+    for (const auto& m : {"NB1","NB2","NB3","NB8","NB9"})
+        models.push_back(m);
+    // Grass
+    for (int i = 1; i <= 9; ++i)
+        models.push_back("GR" + std::to_string(i));
+    // Grass-Shrub
+    for (int i = 1; i <= 4; ++i)
+        models.push_back("GS" + std::to_string(i));
+    // Shrub
+    for (int i = 1; i <= 9; ++i)
+        models.push_back("SH" + std::to_string(i));
+    // Timber-Understory
+    for (int i = 1; i <= 5; ++i)
+        models.push_back("TU" + std::to_string(i));
+    // Timber Litter
+    for (int i = 1; i <= 9; ++i)
+        models.push_back("TL" + std::to_string(i));
+    // Slash-Blowdown
+    for (int i = 1; i <= 4; ++i)
+        models.push_back("SB" + std::to_string(i));
     return models;
 }
 
@@ -322,38 +564,40 @@ inline void print_fuel_model_info(const FuelModel& model) {
 // Print available fuel models
 // ============================================================================
 inline void print_available_fuel_models() {
-    auto models = get_available_fuel_models();
-    auto database = get_fuel_database();
-    
     amrex::Print() << "\n";
     amrex::Print() << "╔════════════════════════════════════════════════════════════════════╗\n";
-    amrex::Print() << "║            Anderson 13 Standard Fuel Models (Continental US)       ║\n";
+    amrex::Print() << "║         Anderson 13 Standard Fuel Models (Continental US)          ║\n";
     amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
-    amrex::Print() << "║                                                                    ║\n";
     amrex::Print() << "║ GRASS AND GRASS-DOMINATED:                                         ║\n";
     amrex::Print() << "║   FM1  - Short Grass (1 ft)                                        ║\n";
     amrex::Print() << "║   FM2  - Timber (Grass and Understory)                             ║\n";
     amrex::Print() << "║   FM3  - Tall Grass (2.5 ft)                                       ║\n";
-    amrex::Print() << "║                                                                    ║\n";
     amrex::Print() << "║ CHAPARRAL AND SHRUB:                                               ║\n";
     amrex::Print() << "║   FM4  - Chaparral (6 ft)                                          ║\n";
     amrex::Print() << "║   FM5  - Brush (2 ft)                                              ║\n";
     amrex::Print() << "║   FM6  - Dormant Brush, Hardwood Slash                             ║\n";
     amrex::Print() << "║   FM7  - Southern Rough                                            ║\n";
-    amrex::Print() << "║                                                                    ║\n";
     amrex::Print() << "║ TIMBER LITTER:                                                     ║\n";
     amrex::Print() << "║   FM8  - Closed Timber Litter                                      ║\n";
     amrex::Print() << "║   FM9  - Hardwood Litter                                           ║\n";
     amrex::Print() << "║   FM10 - Timber (Litter and Understory)                            ║\n";
-    amrex::Print() << "║                                                                    ║\n";
     amrex::Print() << "║ SLASH:                                                             ║\n";
     amrex::Print() << "║   FM11 - Light Logging Slash                                       ║\n";
     amrex::Print() << "║   FM12 - Medium Logging Slash                                      ║\n";
     amrex::Print() << "║   FM13 - Heavy Logging Slash                                       ║\n";
-    amrex::Print() << "║                                                                    ║\n";
     amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
-    amrex::Print() << "║ Usage: Add 'rothermel.fuel_model=FM1' to command line             ║\n";
-    amrex::Print() << "║        Also accepts: 1, SHORT_GRASS, GRASS, CHAPARRAL, etc.       ║\n";
+    amrex::Print() << "║       Scott & Burgan (2005) 40 Standard Fuel Models                ║\n";
+    amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
+    amrex::Print() << "║ NON-BURNABLE:  NB1, NB2, NB3, NB8, NB9                            ║\n";
+    amrex::Print() << "║ GRASS:         GR1, GR2, GR3, GR4, GR5, GR6, GR7, GR8, GR9       ║\n";
+    amrex::Print() << "║ GRASS-SHRUB:   GS1, GS2, GS3, GS4                                 ║\n";
+    amrex::Print() << "║ SHRUB:         SH1, SH2, SH3, SH4, SH5, SH6, SH7, SH8, SH9       ║\n";
+    amrex::Print() << "║ TIMBER-UNDERSTORY: TU1, TU2, TU3, TU4, TU5                            ║\n";
+    amrex::Print() << "║ TIMBER LITTER:     TL1, TL2, TL3, TL4, TL5, TL6, TL7, TL8, TL9       ║\n";
+    amrex::Print() << "║ SLASH-BLOWDOWN:    SB1, SB2, SB3, SB4                                 ║\n";
+    amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
+    amrex::Print() << "║ Usage: Add 'rothermel.fuel_model=FM1' to command line              ║\n";
+    amrex::Print() << "║        Also accepts: 1, SHORT_GRASS, GRASS, CHAPARRAL, GR2, etc.  ║\n";
     amrex::Print() << "╚════════════════════════════════════════════════════════════════════╝\n";
     amrex::Print() << "\n";
 }

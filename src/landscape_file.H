@@ -230,6 +230,71 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
 }
 
 // ============================================================================
+// Interpolate fuel model from landscape file data to a MultiFab.
+// Used when a terrain file provides elevation/slope/aspect but fuel
+// information is still needed from the landscape file.
+// ============================================================================
+static void compute_fuel_model_from_landscape(MultiFab& fuel_model_out,
+                                              const Geometry& geom,
+                                              const std::string& filename)
+{
+    std::vector<Real> x_data, y_data, elevation_data, slope_data, aspect_data;
+    std::vector<int>  fuel_model_data;
+
+    read_landscape_file(filename, x_data, y_data, elevation_data,
+                        slope_data, aspect_data, fuel_model_data);
+
+    int n_points = static_cast<int>(x_data.size());
+
+    Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
+    Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
+    Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
+    Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
+    Gpu::DeviceVector<Real> d_sx, d_sy;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> fuel_real(fuel_model_data.begin(), fuel_model_data.end());
+    std::vector<Real> fuel_sorted = reorder_values(fuel_real, sidx);
+
+    Gpu::DeviceVector<Real> d_sfuel(n_points);
+    Gpu::copy(Gpu::hostToDevice, fuel_sorted.begin(), fuel_sorted.end(), d_sfuel.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* fuel_ptr = d_sfuel.data();
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    for (MFIter mfi(fuel_model_out); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const f  = fuel_model_out.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = problo[0] + (i + Real(0.5)) * dx[0];
+            Real y = problo[1] + (j + Real(0.5)) * dx[1];
+            // Round to nearest integer: fuel model is a discrete category
+            f(i, j, k) = std::round(cell_list_interp(cl, fuel_ptr, x, y));
+        });
+    }
+
+    amrex::Print() << "Interpolated fuel model from landscape file with " << n_points << " data points\n";
+}
+
+// ============================================================================
 // Interpolate slope (degrees), aspect (degrees), and fuel model from
 // landscape file data to MultiFabs.  All three MultiFabs must have 1
 // component and no ghost cells.
