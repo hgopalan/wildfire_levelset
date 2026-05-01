@@ -241,22 +241,22 @@ _MSPC_LANDFIRE_COLLECTION = "landfire"
 #: item versions; the first matching key in the item's assets dict is used.
 _MSPC_ASSET_KEYS = {
     2020: {
-        "elev":   ["US_200ELEV",  "200ELEV",  "elev"],
-        "slope":  ["US_200SlpD",  "200SlpD",  "slope"],
-        "aspect": ["US_200Asp",   "200Asp",   "aspect"],
-        "fuel13": ["US_200FBFM13","200FBFM13","fuel13"],
+        "elev":   ["US_200ELEV",   "200ELEV",   "elev"],
+        "slope":  ["US_200SlpD",   "200SlpD",   "slope"],
+        "aspect": ["US_200Asp",    "200Asp",    "aspect"],
+        "fuel13": ["US_200FBFM13", "200FBFM13", "fuel13"],
     },
     2016: {
-        "elev":   ["US_140ELEV",  "140ELEV",  "elev"],
-        "slope":  ["US_140SlpD",  "140SlpD",  "slope"],
-        "aspect": ["US_140Asp",   "140Asp",   "aspect"],
-        "fuel13": ["US_140FBFM13","140FBFM13","fuel13"],
+        "elev":   ["US_140ELEV",   "140ELEV",   "elev"],
+        "slope":  ["US_140SlpD",   "140SlpD",   "slope"],
+        "aspect": ["US_140Asp",    "140Asp",    "aspect"],
+        "fuel13": ["US_140FBFM13", "140FBFM13", "fuel13"],
     },
     2014: {
-        "elev":   ["US_130ELEV",  "130ELEV",  "elev"],
-        "slope":  ["US_130SLP",   "130SLP",   "slope"],
-        "aspect": ["US_130ASP",   "130ASP",   "aspect"],
-        "fuel13": ["US_130FBFM13","130FBFM13","fuel13"],
+        "elev":   ["US_130ELEV",   "130ELEV",   "elev"],
+        "slope":  ["US_130SLP",    "130SLP",    "slope"],
+        "aspect": ["US_130ASP",    "130ASP",    "aspect"],
+        "fuel13": ["US_130FBFM13", "130FBFM13", "fuel13"],
     },
 }
 
@@ -1424,7 +1424,8 @@ def create_landscape(output_path, bbox, vintage=2020,
 
     if layer_map is None:
         raise RuntimeError(
-            f"All LANDFIRE download sources failed: {effective_sources}. "
+            f"All LANDFIRE download sources failed: "
+            f"{', '.join(effective_sources)}. "
             "Check your internet connection or try a different --sources "
             "combination.  Last error: " + str(last_exc)
         ) from last_exc
