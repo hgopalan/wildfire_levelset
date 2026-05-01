@@ -14,8 +14,9 @@ Key behaviours
   0.9° × 0.9°, within the SRTM 1-degree-tile download limit).  Any
   ``--lat-min/max/lon-min/max`` values on the command line are **ignored**.
 * Unless ``--no-terrain`` is given, SRTM elevation is used for the terrain
-  and landscape files.  The ``HGT_M`` variable inside the WRF file is *never*
-  used for the terrain output.
+  and landscape files.  When ``--no-terrain`` *and* ``--wrf-file`` are both
+  given, the ``HGT`` (or ``HGT_M``) variable from the WRF file is written as
+  the terrain output instead of downloading SRTM data.
 * If ``--interpolate-wind`` is given (requires ``--wrf-file`` and SRTM terrain
   to be active), the WRF wind fields are interpolated to the SRTM terrain grid
   and the resulting wind file shares the same (x, y) points as the terrain
@@ -785,7 +786,7 @@ def read_wrf_bbox(wrf_path):
     ds = _open_nc(wrf_path)
     try:
         lat_var = _get_var(ds, "XLAT", "lat", "latitude", "LAT")
-        lon_var = _get_var(ds, "XLONG", "lon", "longitude", "LON")
+        lon_var = _get_var(ds, "XLONG", "XLON", "lon", "longitude", "LON")
 
         lat_arr = np.array(lat_var[:], dtype=np.float64)
         lon_arr = np.array(lon_var[:], dtype=np.float64)
@@ -1158,7 +1159,7 @@ def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1,
     ds = _open_nc(wrf_path)
 
     lat_var = _get_var(ds, "XLAT", "lat", "latitude", "LAT")
-    lon_var = _get_var(ds, "XLONG", "lon", "longitude", "LON")
+    lon_var = _get_var(ds, "XLONG", "XLON", "lon", "longitude", "LON")
 
     lat_arr = np.array(lat_var[:], dtype=np.float64)
     lon_arr = np.array(lon_var[:], dtype=np.float64)
@@ -1265,7 +1266,7 @@ def convert_wrf(wrf_path, terrain_out, wind_out,
     ds = _open_nc(wrf_path)
 
     lat_var = _get_var(ds, "XLAT", "lat", "latitude", "LAT")
-    lon_var = _get_var(ds, "XLONG", "lon", "longitude", "LON")
+    lon_var = _get_var(ds, "XLONG", "XLON", "lon", "longitude", "LON")
 
     lat_arr = np.array(lat_var[:], dtype=np.float64)
     lon_arr = np.array(lon_var[:], dtype=np.float64)
@@ -1339,6 +1340,87 @@ def convert_wrf(wrf_path, terrain_out, wind_out,
 
     _write_wind(wind_out, x_utm, y_utm, u_mass, v_mass)
     print(f"Wrote wind file:    '{wind_out}' ({x_utm.size} points)")
+
+
+def extract_wrf_terrain(wrf_path, output_path, subsample=1,
+                        lat_min=None, lat_max=None,
+                        lon_min=None, lon_max=None):
+    """Extract terrain height from a WRF netCDF file and write an XYZ file.
+
+    Parameters
+    ----------
+    wrf_path : str
+        Path to the WRF output netCDF file.
+    output_path : str
+        Path for the output terrain XYZ file (utm_x utm_y z).
+    subsample : int
+        Keep every *subsample*-th point in each dimension (default 1).
+    lat_min, lat_max, lon_min, lon_max : float or None
+        Optional lat/lon bounding box for clipping the WRF grid.
+
+    Returns
+    -------
+    x_utm, y_utm : numpy.ndarray (2-D)
+        UTM coordinates of the terrain grid points.
+    """
+    import numpy as np
+
+    ds = _open_nc(wrf_path)
+    try:
+        lat_var = _get_var(ds, "XLAT", "lat", "latitude", "LAT")
+        lon_var = _get_var(ds, "XLONG", "XLON", "lon", "longitude", "LON")
+        hgt_var = _get_var(ds, "HGT_M", "HGT", "hgt", "TERRAIN",
+                           "terrain", "elevation")
+        lat_arr = np.array(lat_var[:], dtype=np.float64)
+        lon_arr = np.array(lon_var[:], dtype=np.float64)
+        hgt_arr = np.array(hgt_var[:], dtype=np.float64)
+    finally:
+        ds.close()
+
+    lat_2d = lat_arr[0] if lat_arr.ndim == 3 else lat_arr
+    lon_2d = lon_arr[0] if lon_arr.ndim == 3 else lon_arr
+    hgt_2d = hgt_arr[0] if hgt_arr.ndim == 3 else hgt_arr
+
+    # Clip to lat/lon bounds if provided
+    clip_bounds = (lat_min is not None and lat_max is not None
+                   and lon_min is not None and lon_max is not None)
+    if clip_bounds:
+        mask = ((lat_2d >= lat_min) & (lat_2d <= lat_max) &
+                (lon_2d >= lon_min) & (lon_2d <= lon_max))
+        rows, cols = np.where(mask)
+        if rows.size == 0:
+            raise ValueError(
+                f"No WRF grid points fall within the lat/lon bounds "
+                f"lat=[{lat_min}, {lat_max}] lon=[{lon_min}, {lon_max}]."
+            )
+        r0, r1 = int(rows.min()), int(rows.max()) + 1
+        c0, c1 = int(cols.min()), int(cols.max()) + 1
+        lat_2d = lat_2d[r0:r1, c0:c1]
+        lon_2d = lon_2d[r0:r1, c0:c1]
+        hgt_2d = hgt_2d[r0:r1, c0:c1]
+        ny, nx = lat_2d.shape
+        print(f"Clipped WRF terrain grid to lat=[{lat_min:.4f}, {lat_max:.4f}] "
+              f"lon=[{lon_min:.4f}, {lon_max:.4f}]: {ny}×{nx} points.")
+
+    ny, nx = lat_2d.shape
+    print(f"Projecting {ny}×{nx} WRF terrain grid to UTM …")
+    x_utm, y_utm = _latlon_to_utm(lat_2d, lon_2d)
+
+    if subsample > 1:
+        sl = slice(None, None, subsample)
+        x_utm  = x_utm [sl, sl]
+        y_utm  = y_utm [sl, sl]
+        hgt_2d = hgt_2d[sl, sl]
+        ny_out, nx_out = x_utm.shape
+        print(f"Subsampled to {ny_out}×{nx_out} = {ny_out * nx_out} points.")
+
+    with open(output_path, "w") as fh:
+        fh.write("# utm_x utm_y z (meters)\n")
+        for xv, yv, zv in zip(x_utm.ravel(), y_utm.ravel(), hgt_2d.ravel()):
+            fh.write(f"{xv:.2f} {yv:.2f} {float(zv):.6f}\n")
+    print(f"Wrote WRF terrain file: '{output_path}' ({x_utm.size} points)")
+
+    return x_utm, y_utm
 
 
 # ===========================================================================
@@ -1523,7 +1605,7 @@ def main(argv=None):
         time_indices = [args.time_index]
 
     # -----------------------------------------------------------------------
-    # SRTM terrain XYZ step
+    # SRTM terrain XYZ step  (or WRF HGT when --no-terrain + --wrf-file)
     # -----------------------------------------------------------------------
     srtm_x = srtm_y = None  # kept for wind interpolation if needed
 
@@ -1549,6 +1631,20 @@ def main(argv=None):
                 tif_path=tif_path,
                 subsample=args.subsample,
             )
+
+    elif args.wrf_file is not None:
+        # --no-terrain + --wrf-file: write terrain from WRF HGT data
+        print("\nExtracting terrain from WRF HGT data (--no-terrain mode) …")
+        out_terrain = os.path.abspath(args.terrain)
+        extract_wrf_terrain(
+            args.wrf_file,
+            out_terrain,
+            subsample=args.subsample,
+            lat_min=lat_min,
+            lat_max=lat_max,
+            lon_min=lon_min,
+            lon_max=lon_max,
+        )
 
     # -----------------------------------------------------------------------
     # LANDFIRE landscape LCP step
