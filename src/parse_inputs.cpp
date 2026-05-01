@@ -137,6 +137,7 @@ void parse_inputs(InputParameters& p)
                 << " (rothermel.landscape_fuel_type = "
                 << p.rothermel.landscape_fuel_type << ")\n";
     }
+    pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
 
     // -------- FARSITE ellipse model parameters (Richards 1990) --------
