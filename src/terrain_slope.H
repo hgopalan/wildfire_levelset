@@ -133,4 +133,96 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
     amrex::Print() << "Computed terrain slopes from unstructured data\n";
 }
 
+// ======================= Read terrain data and interpolate elevation ====================
+// Reads terrain file in X Y Z format and interpolates elevation (Z) to each cell
+// using inverse distance weighting.  The result is stored in a single-component
+// MultiFab (component 0 = elevation in the same units as the terrain file).
+// ==================================================================================
+static void compute_elevation_from_terrain(MultiFab& elevation,
+                                           const Geometry& geom,
+                                           const std::string& filename)
+{
+    // Read terrain data from file (X Y Z format)
+    std::vector<Real> x_data, y_data, z_data;
+
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        amrex::Abort("Cannot open terrain file: " + filename);
+    }
+
+    std::string line;
+    while (std::getline(infile, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream iss(line);
+        Real x, y, z;
+        if (iss >> x >> y >> z) {
+            x_data.push_back(x);
+            y_data.push_back(y);
+            z_data.push_back(z);
+        }
+    }
+    infile.close();
+
+    if (x_data.empty()) {
+        amrex::Abort("No data read from terrain file: " + filename);
+    }
+
+    // Copy data to device-accessible memory
+    Gpu::DeviceVector<Real> d_x(x_data.size());
+    Gpu::DeviceVector<Real> d_y(y_data.size());
+    Gpu::DeviceVector<Real> d_z(z_data.size());
+
+    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
+    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
+    Gpu::copy(Gpu::hostToDevice, z_data.begin(), z_data.end(), d_z.begin());
+
+    Real const* x_ptr = d_x.data();
+    Real const* y_ptr = d_y.data();
+    Real const* z_ptr = d_z.data();
+    int n_points = static_cast<int>(x_data.size());
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    for (MFIter mfi(elevation); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const elev = elevation.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = problo[0] + (i + Real(0.5)) * dx[0];
+            Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+            // Inverse distance weighting (power = 2) to interpolate elevation
+            Real epsilon = Real(1.0e-10);
+            Real sum_weights = Real(0.0);
+            Real sum_z = Real(0.0);
+            bool exact_match = false;
+            Real result = Real(0.0);
+
+            for (int n = 0; n < n_points; ++n) {
+                Real dx_val = x - x_ptr[n];
+                Real dy_val = y - y_ptr[n];
+                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
+
+                if (dist_sq < epsilon * epsilon) {
+                    result = z_ptr[n];
+                    exact_match = true;
+                    break;
+                }
+
+                Real weight = Real(1.0) / dist_sq;
+                sum_weights += weight;
+                sum_z += weight * z_ptr[n];
+            }
+
+            if (!exact_match) {
+                result = sum_z / sum_weights;
+            }
+            elev(i, j, k) = result;
+        });
+    }
+
+    amrex::Print() << "Interpolated terrain elevation from " << n_points << " data points\n";
+}
+
 #endif // TERRAIN_SLOPE_H
