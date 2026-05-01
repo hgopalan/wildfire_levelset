@@ -201,4 +201,38 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
     amrex::Print() << "Interpolated terrain elevation from " << n_points << " data points\n";
 }
 
+// ======================= Derive slope (degrees) and aspect (degrees) ====================
+// Converts a 2-component slopes MultiFab (slope_x = tan*cos, slope_y = tan*sin) into
+// slope magnitude in degrees and aspect in degrees (FARSITE convention: 0=North, CW).
+// ========================================================================================
+static void compute_slope_aspect_from_slopes(const MultiFab& slopes,
+                                             MultiFab& slope_out,
+                                             MultiFab& aspect_out)
+{
+    for (MFIter mfi(slopes); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const s  = slopes.const_array(mfi);
+        auto const sd = slope_out.array(mfi);
+        auto const ad = aspect_out.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real sx = s(i, j, k, 0); // tan(slope) * cos(aspect_math)
+            Real sy = s(i, j, k, 1); // tan(slope) * sin(aspect_math)
+
+            Real tan_slope = std::sqrt(sx * sx + sy * sy);
+            // slope in degrees
+            sd(i, j, k) = std::atan(tan_slope) * Real(180.0) / Real(M_PI);
+
+            // aspect: recover mathematical angle, then convert to FARSITE compass bearing
+            // aspect_math = atan2(sy, sx),  aspect_farsite = 90 - aspect_math
+            Real aspect_math_deg = std::atan2(sy, sx) * Real(180.0) / Real(M_PI);
+            Real aspect_farsite  = Real(90.0) - aspect_math_deg;
+            // Normalise to [0, 360)
+            aspect_farsite = std::fmod(aspect_farsite, Real(360.0));
+            if (aspect_farsite < Real(0.0)) aspect_farsite += Real(360.0);
+            ad(i, j, k) = aspect_farsite;
+        });
+    }
+}
+
 #endif // TERRAIN_SLOPE_H
