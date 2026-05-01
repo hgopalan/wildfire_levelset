@@ -1164,8 +1164,8 @@ def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1,
     lon_arr = np.array(lon_var[:], dtype=np.float64)
 
     if lat_arr.ndim == 3:
-        lat_2d = lat_arr[time_index]
-        lon_2d = lon_arr[time_index]
+        lat_2d = lat_arr[0]
+        lon_2d = lon_arr[0]
     else:
         lat_2d = lat_arr
         lon_2d = lon_arr
@@ -1271,8 +1271,8 @@ def convert_wrf(wrf_path, terrain_out, wind_out,
     lon_arr = np.array(lon_var[:], dtype=np.float64)
 
     if lat_arr.ndim == 3:
-        lat_2d = lat_arr[time_index]
-        lon_2d = lon_arr[time_index]
+        lat_2d = lat_arr[0]
+        lon_2d = lon_arr[0]
     else:
         lat_2d = lat_arr
         lon_2d = lon_arr
