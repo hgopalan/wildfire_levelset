@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Regression/unit tests for tools/landfire_to_lcp.py
+Regression/unit tests for tools/deprecated/landfire_to_lcp.py
 
 Tests:
   1. assemble_landscape() with synthetic raster arrays
@@ -26,10 +26,11 @@ import unittest
 
 import numpy as np
 
-# Add repository root to path so we can import the tool module directly
+# Add deprecated directory to path so we can import the tool module directly
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _TOOLS_DIR = os.path.join(_REPO_ROOT, "tools")
-sys.path.insert(0, _TOOLS_DIR)
+_DEPRECATED_DIR = os.path.join(_TOOLS_DIR, "deprecated")
+sys.path.insert(0, _DEPRECATED_DIR)
 
 import landfire_to_lcp as lfp  # noqa: E402
 
@@ -369,7 +370,7 @@ class TestCreateLandscapeFromFiles(unittest.TestCase):
 class TestCLI(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.script = os.path.join(_TOOLS_DIR, "landfire_to_lcp.py")
+        self.script = os.path.join(_DEPRECATED_DIR, "landfire_to_lcp.py")
 
     def test_missing_bbox_exits_nonzero(self):
         """Omitting --bbox without local-file args should exit non-zero."""

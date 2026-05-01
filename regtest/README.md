@@ -14,7 +14,8 @@ regtest/
 ├── reinitialization/     # Level-set reinitialization testing
 ├── ellipse_sdf/          # Elliptical SDF initial condition
 ├── eb_implicit/          # EB implicit function initial condition
-└── 3d_sphere/           # Full 3D fire spread simulation
+├── 3d_sphere/           # Full 3D fire spread simulation
+└── landfire_farsite/    # FARSITE with LANDFIRE landscape (Python setup step)
 ```
 
 ## Quick Start
@@ -239,6 +240,31 @@ done
 
 ---
 
+### 10. landfire_farsite ⭐
+**Purpose**: Tests FARSITE fire spread with a real (or synthetic fallback) LANDFIRE landscape.
+
+**Features**:
+- Automatic LANDFIRE data download via `srtm_landfire_to_terrain.py`
+- Synthetic Southern California chaparral fallback when offline
+- FARSITE elliptical spread with Anderson L/W ratio
+- Spatially-varying fuel model (FM4 chaparral)
+- UTM coordinate alignment between landscape and domain
+
+**Expected Runtime**: ~2-3 minutes (plus up to 2 min for LANDFIRE download)
+
+**Key Parameters**:
+- Domain: Southern California extent (UTM Zone 11N)
+- Landscape: FM4 chaparral fuel, slope 10-25°, SW-facing aspect
+- FARSITE enabled with Anderson dynamic L/W ratio
+
+**Build Requirements**: Requires Python3 with
+`pip install requests rasterio numpy pyproj elevation`
+
+**Setup Script**: `create_landscape.py` (calls `srtm_landfire_to_terrain.py`;
+falls back to synthetic data if the download fails)
+
+---
+
 ## Testing Checklist
 
 Use this checklist to verify all capabilities:
@@ -253,6 +279,7 @@ Use this checklist to verify all capabilities:
 - [ ] **Elliptical SDF**: `ellipse_sdf` creates elliptical initial conditions
 - [ ] **EB Capabilities**: `eb_implicit` uses implicit function geometries
 - [ ] **3D Capability**: `3d_sphere` runs in 3D mode
+- [ ] **LANDFIRE/FARSITE**: `landfire_farsite` runs with landscape file
 
 ## Build Configurations
 

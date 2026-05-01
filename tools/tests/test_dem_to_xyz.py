@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Regression test for tools/dem_to_xyz.py
+Regression test for tools/deprecated/dem_to_xyz.py
 
 Tests:
   1. Arc/Info ASCII Grid (.asc) – flat raster, all values readable
@@ -24,10 +24,11 @@ import sys
 import tempfile
 import unittest
 
-# Add repository root to path so we can import the tool module directly
+# Add deprecated directory to path so we can import the tool module directly
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _TOOLS_DIR = os.path.join(_REPO_ROOT, "tools")
-sys.path.insert(0, _TOOLS_DIR)
+_DEPRECATED_DIR = os.path.join(_TOOLS_DIR, "deprecated")
+sys.path.insert(0, _DEPRECATED_DIR)
 
 import dem_to_xyz  # noqa: E402  (must be after sys.path manipulation)
 
@@ -281,7 +282,7 @@ class TestCLI(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.script = os.path.join(_TOOLS_DIR, "dem_to_xyz.py")
+        self.script = os.path.join(_DEPRECATED_DIR, "dem_to_xyz.py")
 
     def test_cli_asc(self):
         """CLI invocation on an .asc file produces the expected output file."""
