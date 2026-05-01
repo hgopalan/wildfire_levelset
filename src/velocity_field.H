@@ -79,7 +79,7 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
                  : Real(1.0);
 
     // Build cell-list spatial index
-    Gpu::DeviceVector<Real> d_sx, d_sy, d_su, d_sv_val;
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_su, d_sv;
     Gpu::DeviceVector<int>  d_bstart, d_bcount;
     CellListParams cl;
 
@@ -90,9 +90,9 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     std::vector<Real> u_sorted = reorder_values(u_data, sidx);
     std::vector<Real> v_sorted = reorder_values(v_data, sidx);
     d_su.resize(n_points);
-    d_sv_val.resize(n_points);
+    d_sv.resize(n_points);
     Gpu::copy(Gpu::hostToDevice, u_sorted.begin(), u_sorted.end(), d_su.begin());
-    Gpu::copy(Gpu::hostToDevice, v_sorted.begin(), v_sorted.end(), d_sv_val.begin());
+    Gpu::copy(Gpu::hostToDevice, v_sorted.begin(), v_sorted.end(), d_sv.begin());
 
     cl.sx     = d_sx.data();
     cl.sy     = d_sy.data();
@@ -100,7 +100,7 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     cl.bcount = d_bcount.data();
 
     Real const* u_ptr = d_su.data();
-    Real const* v_ptr = d_sv_val.data();
+    Real const* v_ptr = d_sv.data();
 
     // Get domain bounds
     const auto dx     = geom.CellSizeArray();

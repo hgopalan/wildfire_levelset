@@ -146,15 +146,17 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
             Real result_aspect = cell_list_interp(cl, aspect_ptr, x, y);
 
             // Convert slope (degrees) and aspect (degrees) to slope_x and slope_y
-            // slope_x = tan(slope) * cos(aspect_radians_from_east)
-            // slope_y = tan(slope) * sin(aspect_radians_from_east)
+            // slope_x = tan(slope) * cos(aspect_math),  slope_y = tan(slope) * sin(aspect_math)
             //
-            // FARSITE aspect convention: 0=North, 90=East, 180=South, 270=West
-            // Mathematical convention: 0=East, 90=North, 180=West, 270=South
-            // Convert: aspect_math = 90 - aspect_farsite
+            // FARSITE aspect convention: 0°=North, increases clockwise (compass bearing).
+            // Mathematical (trig) convention: 0°=East, increases counter-clockwise.
+            // Relationship: aspect_math = 90° - aspect_farsite.
+            // This is exact because the cos/sin decomposition of a compass bearing α onto
+            // Cartesian (East, North) axes gives (sin α, cos α), which equals
+            // (cos(90-α), sin(90-α)) in standard trig convention.
             Real slope_radians  = result_slope * Real(M_PI) / Real(180.0);
             Real aspect_farsite = result_aspect;
-            Real aspect_math    = Real(90.0) - aspect_farsite;
+            Real aspect_math    = Real(90.0) - aspect_farsite;  // compass → trig
             Real aspect_radians = aspect_math * Real(M_PI) / Real(180.0);
 
             Real tan_slope = std::tan(slope_radians);

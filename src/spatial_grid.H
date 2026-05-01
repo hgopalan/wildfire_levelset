@@ -82,7 +82,7 @@ static std::vector<int> build_cell_list(
 
     // Cutoff = 3 * characteristic spacing  (Wendland C2 support radius)
     const Real R        = Real(3.0) * h_spacing;
-    const Real cell_sz  = std::max(R, Real(1.0));
+    const Real cell_sz  = std::max(R, Real(1.0e-6));  // guard against degenerate spacing
 
     const Real xmin = *std::min_element(hx.begin(), hx.end());
     const Real xmax = *std::max_element(hx.begin(), hx.end());
