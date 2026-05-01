@@ -119,54 +119,51 @@ See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) fo
 
 Python utilities live in the `tools/` directory.
 
-### `dem_to_xyz.py` – Convert DEM files to terrain format
+### `srtm_landfire_to_terrain.py` – Unified terrain and landscape preprocessing
 
-Converts Arc/Info ASCII Grid, SRTM HGT, or GeoTIFF elevation files to the
-space-separated `X Y Z` format required by `rothermel.terrain_file`.
-
-```bash
-python3 tools/dem_to_xyz.py input.tif terrain.csv
-python3 tools/dem_to_xyz.py input.hgt terrain.csv --project-utm --subsample 4
-```
-
-Options: `--nodata VALUE`, `--project-utm`, `--subsample N`
-
-### `landfire_to_lcp.py` – Download LANDFIRE data and build a landscape file
-
-Downloads elevation, slope, aspect, and fuel-model rasters from the LANDFIRE
-Product Service (LFPS) API for any user-specified bounding box and assembles
-them into an ASCII landscape file (`.lcp`) compatible with
-`rothermel.landscape_file`.
+Downloads SRTM elevation data and LANDFIRE fuel/slope/aspect rasters for a
+lat/lon bounding box and writes:
+1. A terrain XYZ file (`X Y Z` in UTM metres) for `rothermel.terrain_file`
+2. A landscape LCP file (`X Y ELEVATION SLOPE ASPECT FUEL_MODEL`) for
+   `rothermel.landscape_file`
 
 ```bash
-# Download LANDFIRE data for a bounding box and write landscape.lcp
-python3 tools/landfire_to_lcp.py \
-    --bbox -118.85 34.10 -118.75 34.18 \
-    landscape.lcp
+# Download both terrain (SRTM) and landscape (LANDFIRE)
+python3 tools/srtm_landfire_to_terrain.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5
 
-# Download with subsampling (every 4th pixel in each dimension)
-python3 tools/landfire_to_lcp.py \
-    --bbox -120.5 37.0 -120.0 37.5 \
-    --subsample 4 \
-    landscape.lcp
+# Custom output filenames
+python3 tools/srtm_landfire_to_terrain.py \
+    --lat-min 39.5 --lat-max 40.2 \
+    --lon-min -106 --lon-max -105.2 \
+    --terrain region_terrain.xyz \
+    --landscape region_landscape.lcp
 
-# Use locally-downloaded rasters (skip LFPS API, requires rasterio)
-python3 tools/landfire_to_lcp.py \
+# Skip landscape step (terrain only)
+python3 tools/srtm_landfire_to_terrain.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
+    --no-landscape
+
+# Use locally-downloaded rasters for landscape (no LANDFIRE API call)
+python3 tools/srtm_landfire_to_terrain.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
     --elev-file  elev.tif \
     --slope-file slope.tif \
     --aspect-file aspect.tif \
-    --fuel-file  fbfm13.tif \
-    landscape.lcp
+    --fuel-file  fbfm13.tif
 ```
 
-Options: `--bbox MIN_LON MIN_LAT MAX_LON MAX_LAT`, `--subsample N`,
-`--vintage YEAR` (default 2020), `--elev-product / --slope-product /
---aspect-product / --fuel-product` (override layer IDs), `--no-utm`,
-`--keep-nonburnable`, `--cache-dir DIR`, `--timeout N`
+Key options: `--subsample N`, `--vintage YEAR` (default 2020),
+`--fuel-product / --elev-product` (override LANDFIRE layer IDs),
+`--keep-nonburnable`, `--cache-dir DIR`, `--timeout N`, `--no-terrain`,
+`--no-landscape`
 
-Requires: `pip install requests rasterio numpy pyproj`
+Requires: `pip install elevation rasterio numpy pyproj requests`
 
-The output landscape file has the format:
+The landscape output format:
 ```
 # X Y ELEVATION SLOPE ASPECT FUEL_MODEL
 0.0 0.0 150.0 12.5 225.0 4
@@ -174,10 +171,15 @@ The output landscape file has the format:
 ...
 ```
 
-Use the landscape file in a simulation:
+Use both files in a simulation:
 ```
-rothermel.landscape_file = landscape.lcp
+rothermel.terrain_file    = terrain.xyz
+rothermel.landscape_file  = landscape.lcp
 ```
+
+> **Deprecated tools**: The individual scripts `dem_to_xyz.py`,
+> `landfire_to_lcp.py`, and `srtm_to_xyz_stl.py` have been moved to
+> `tools/deprecated/` and are superseded by `srtm_landfire_to_terrain.py`.
 
 ### `wrf_to_terrain_wind.py` – Extract terrain and wind from WRF output
 
@@ -215,7 +217,7 @@ Available regression tests:
 - `bulk_fuel_consumption` - Fuel consumption modeling
 - `3d_sphere` - Full 3D simulation (3D builds only)
 - `terrain_wind` - External terrain and wind (2D builds only)
-- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3)
+- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3 + `srtm_landfire_to_terrain`)
 
 ## Output
 
@@ -249,8 +251,8 @@ View with ParaView or other AMReX-compatible visualization tools.
 3. **Terrain Representation**
    - 2D terrain data only (no 3D terrain in 3D simulations)
    - Terrain effects use simplified slope/aspect model
-   - Automated DEM preprocessing supported via `dem_to_xyz.py` (Arc/Info ASCII, SRTM HGT, GeoTIFF)
-   - LANDFIRE landscape files (elevation, slope, aspect, fuel model) downloadable via `landfire_to_lcp.py`
+   - Automated DEM preprocessing supported via `srtm_landfire_to_terrain.py` (SRTM download + GeoTIFF conversion)
+   - LANDFIRE landscape files (elevation, slope, aspect, fuel model) downloadable via `srtm_landfire_to_terrain.py`
 
 4. **Physical Sub-models**
    - Simplified crown fire model (Van Wagner empirical criteria only)
@@ -266,7 +268,6 @@ View with ParaView or other AMReX-compatible visualization tools.
 6. **LANDFIRE Integration**
    - Automated download via LFPS API requires internet connectivity
    - Non-burnable LANDFIRE classes (urban, water, agriculture, snow/ice, barren) are filtered out by default; use `--keep-nonburnable` to retain these pixels (written as fuel code 0)
-   - Only Anderson 13 fuel model (FBFM13) is supported by the wildfire_levelset solver; Scott/Burgan 40 (FBFM40) can be downloaded with `--fuel-product F40_FBFM40` but the solver will not use the extended model numbers
 
 ### Scope for Future Work
 
@@ -293,8 +294,8 @@ View with ParaView or other AMReX-compatible visualization tools.
    - Vertical fire spread and plume dynamics
 
 5. **Data Integration**
-   - Automated readers for standard terrain formats (GeoTIFF, DEM) — partially complete via `dem_to_xyz.py`
-   - LANDFIRE data download for arbitrary extents — implemented via `landfire_to_lcp.py`
+   - Automated readers for standard terrain formats (GeoTIFF, DEM) — implemented via `srtm_landfire_to_terrain.py`
+   - LANDFIRE data download for arbitrary extents — implemented via `srtm_landfire_to_terrain.py`
    - Weather data ingestion (GRIB, NetCDF)
    - Real-time data assimilation for operational forecasting
 

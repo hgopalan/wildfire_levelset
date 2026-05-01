@@ -137,7 +137,7 @@ def _generate_synthetic_landscape(output_path, nx=_SYNTH_NX, ny=_SYNTH_NY,
 
 def _try_download_landscape(output_path, bbox, subsample, timeout_s=120):
     """Attempt to download a LANDFIRE landscape.  Returns True on success."""
-    # Add tools directory to path so we can import landfire_to_lcp
+    # Add tools directory to path so we can import srtm_landfire_to_terrain
     _this_dir = os.path.dirname(os.path.abspath(__file__))
     _repo_root = os.path.abspath(os.path.join(_this_dir, "..", ".."))
     _tools_dir = os.path.join(_repo_root, "tools")
@@ -157,7 +157,7 @@ def _try_download_landscape(output_path, bbox, subsample, timeout_s=120):
         return False
 
     try:
-        import landfire_to_lcp as lfp
+        import srtm_landfire_to_terrain as lfp
         print(f"Attempting LANDFIRE download for bbox {bbox} …")
         lfp.create_landscape(
             output_path,
