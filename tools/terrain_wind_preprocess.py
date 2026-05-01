@@ -111,6 +111,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import time
@@ -524,7 +525,7 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
     }
 
     print(f"Submitting LANDFIRE job for bbox {bbox} …")
-    resp = _requests_post(_SUBMIT_URL, data=payload, timeout=60)
+    resp = _requests_post(_SUBMIT_URL, data=payload, params={"f": "json"}, timeout=60)
     resp.raise_for_status()
     job_info = _parse_json_response(resp, "LANDFIRE job submission")
 
@@ -580,6 +581,21 @@ def _parse_json_response(resp, context="LANDFIRE API"):
             f"(HTTP {resp.status_code}). "
             "The LFPS service may be temporarily unavailable; "
             "retry later or check https://lfps.usgs.gov for service status."
+        )
+    # Detect an HTML response (e.g. a WAF redirect, maintenance page, or
+    # misconfigured proxy) so we can report a clean error instead of embedding
+    # raw HTML markup in the exception message (which renders as actual HTML
+    # when the traceback is viewed in a browser or web-based terminal).
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/html" in content_type or text.lstrip().startswith("<"):
+        m = re.search(r"<title[^>]*>([^<]+)</title>", text, re.IGNORECASE)
+        title_hint = f" (page title: {m.group(1).strip()!r})" if m else ""
+        raise RuntimeError(
+            f"{context} returned an HTML page instead of JSON "
+            f"(HTTP {resp.status_code}){title_hint}. "
+            "The LFPS service may be temporarily unavailable or is returning "
+            "a maintenance/error page. Retry later or check "
+            "https://lfps.usgs.gov for service status."
         )
     try:
         return json.loads(text)
