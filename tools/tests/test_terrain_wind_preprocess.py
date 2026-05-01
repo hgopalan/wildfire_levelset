@@ -1348,6 +1348,376 @@ class TestDownloadLandFireCogOffline(unittest.TestCase):
         self.assertIn("cog", calls)
 
 
+# ===========================================================================
+# 17. MSPC constants, download_landfire_mspc, and --sources CLI flag
+# ===========================================================================
+
+class TestMSPCConstants(unittest.TestCase):
+    """Verify the MSPC asset-key mapping constants are internally consistent."""
+
+    def test_mspc_asset_keys_vintages(self):
+        """_MSPC_ASSET_KEYS should define entries for 2014, 2016, and 2020."""
+        for year in (2014, 2016, 2020):
+            self.assertIn(year, twp._MSPC_ASSET_KEYS,
+                          f"Missing _MSPC_ASSET_KEYS entry for vintage {year}")
+
+    def test_mspc_asset_keys_layer_keys(self):
+        """Each vintage entry should have elev, slope, aspect, and fuel13."""
+        for year, layers in twp._MSPC_ASSET_KEYS.items():
+            for key in ("elev", "slope", "aspect", "fuel13"):
+                self.assertIn(key, layers,
+                              f"Missing key '{key}' in _MSPC_ASSET_KEYS[{year}]")
+
+    def test_mspc_asset_keys_are_lists(self):
+        """Each asset key entry should be a non-empty list of strings."""
+        for year, layers in twp._MSPC_ASSET_KEYS.items():
+            for layer_key, candidates in layers.items():
+                self.assertIsInstance(candidates, list)
+                self.assertGreater(len(candidates), 0,
+                                   f"Empty candidate list for ({year}, {layer_key})")
+                for c in candidates:
+                    self.assertIsInstance(c, str)
+
+    def test_mspc_stac_endpoint_is_https(self):
+        """_MSPC_STAC_ENDPOINT should be an HTTPS URL."""
+        self.assertTrue(
+            twp._MSPC_STAC_ENDPOINT.startswith("https://"),
+            "_MSPC_STAC_ENDPOINT must use HTTPS"
+        )
+
+    def test_landfire_sources_tuple(self):
+        """_LANDFIRE_SOURCES should contain 'cog', 'mspc', and 'lfps'."""
+        for name in ("cog", "mspc", "lfps"):
+            self.assertIn(name, twp._LANDFIRE_SOURCES)
+
+
+class TestCreateLandscapeSources(unittest.TestCase):
+    """Test source selection and fallback logic in create_landscape()."""
+
+    _BBOX = (-105.1, 40.0, -105.0, 40.1)
+
+    def test_sources_cog_tries_cog_first(self):
+        """sources=['cog'] should call download_landfire_cog and not LFPS."""
+        calls = []
+
+        def _fake_cog(bbox, **kwargs):
+            calls.append("cog")
+            raise RuntimeError("halt")
+
+        orig = twp.download_landfire_cog
+        twp.download_landfire_cog = _fake_cog
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog"],
+                )
+        finally:
+            twp.download_landfire_cog = orig
+
+        self.assertEqual(calls, ["cog"])
+
+    def test_sources_lfps_only(self):
+        """sources=['lfps'] should call download_landfire directly."""
+        calls = []
+
+        def _fake_lfps(bbox, layer_ids, **kwargs):
+            calls.append("lfps")
+            raise RuntimeError("halt")
+
+        orig = twp.download_landfire
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["lfps"],
+                )
+        finally:
+            twp.download_landfire = orig
+
+        self.assertEqual(calls, ["lfps"])
+
+    def test_sources_mspc_only(self):
+        """sources=['mspc'] should call download_landfire_mspc directly."""
+        calls = []
+
+        def _fake_mspc(bbox, **kwargs):
+            calls.append("mspc")
+            raise RuntimeError("halt")
+
+        orig = twp.download_landfire_mspc
+        twp.download_landfire_mspc = _fake_mspc
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["mspc"],
+                )
+        finally:
+            twp.download_landfire_mspc = orig
+
+        self.assertEqual(calls, ["mspc"])
+
+    def test_cog_fails_falls_back_to_mspc(self):
+        """When COG fails, the next source (MSPC) should be tried."""
+        calls = []
+
+        def _fake_cog(bbox, **kwargs):
+            calls.append("cog")
+            raise RuntimeError("COG unavailable")
+
+        def _fake_mspc(bbox, **kwargs):
+            calls.append("mspc")
+            raise RuntimeError("halt at mspc")
+
+        orig_cog = twp.download_landfire_cog
+        orig_mspc = twp.download_landfire_mspc
+        twp.download_landfire_cog = _fake_cog
+        twp.download_landfire_mspc = _fake_mspc
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog", "mspc"],
+                )
+        finally:
+            twp.download_landfire_cog = orig_cog
+            twp.download_landfire_mspc = orig_mspc
+
+        self.assertEqual(calls, ["cog", "mspc"])
+
+    def test_cog_and_mspc_fail_falls_back_to_lfps(self):
+        """When both COG and MSPC fail, LFPS should be tried last."""
+        calls = []
+
+        def _fake_cog(bbox, **kwargs):
+            calls.append("cog")
+            raise RuntimeError("COG unavailable")
+
+        def _fake_mspc(bbox, **kwargs):
+            calls.append("mspc")
+            raise RuntimeError("MSPC unavailable")
+
+        def _fake_lfps(bbox, layer_ids, **kwargs):
+            calls.append("lfps")
+            raise RuntimeError("halt at lfps")
+
+        orig_cog = twp.download_landfire_cog
+        orig_mspc = twp.download_landfire_mspc
+        orig_lfps = twp.download_landfire
+        twp.download_landfire_cog = _fake_cog
+        twp.download_landfire_mspc = _fake_mspc
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["cog", "mspc", "lfps"],
+                )
+        finally:
+            twp.download_landfire_cog = orig_cog
+            twp.download_landfire_mspc = orig_mspc
+            twp.download_landfire = orig_lfps
+
+        self.assertEqual(calls, ["cog", "mspc", "lfps"])
+
+    def test_use_cog_false_forces_lfps(self):
+        """use_cog=False should force LFPS regardless of sources kwarg."""
+        calls = []
+
+        def _fake_lfps(bbox, layer_ids, **kwargs):
+            calls.append("lfps")
+            raise RuntimeError("halt")
+
+        orig = twp.download_landfire
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    use_cog=False,
+                    sources=["cog", "mspc", "lfps"],
+                )
+        finally:
+            twp.download_landfire = orig
+
+        self.assertEqual(calls, ["lfps"])
+
+    def test_custom_product_forces_lfps(self):
+        """Custom --*-product overrides should skip COG/MSPC and use LFPS."""
+        calls = []
+
+        def _fake_lfps(bbox, layer_ids, **kwargs):
+            calls.append("lfps")
+            raise RuntimeError("halt")
+
+        def _should_not_be_called(bbox, **kwargs):
+            raise AssertionError("COG/MSPC should not be called with custom products")
+
+        orig_lfps = twp.download_landfire
+        orig_cog = twp.download_landfire_cog
+        orig_mspc = twp.download_landfire_mspc
+        twp.download_landfire = _fake_lfps
+        twp.download_landfire_cog = _should_not_be_called
+        twp.download_landfire_mspc = _should_not_be_called
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    fuel_product="CUSTOM_FUEL",
+                    sources=["cog", "mspc", "lfps"],
+                )
+        finally:
+            twp.download_landfire = orig_lfps
+            twp.download_landfire_cog = orig_cog
+            twp.download_landfire_mspc = orig_mspc
+
+        self.assertEqual(calls, ["lfps"])
+
+
+class TestSourcesCLI(unittest.TestCase):
+    """Test --sources and --use-lfps CLI argument parsing."""
+
+    def _parse(self, argv):
+        parser = twp._build_parser()
+        return parser.parse_args(argv)
+
+    def test_default_sources_not_set(self):
+        """--sources is None by default (resolved in main())."""
+        args = self._parse(["--lat-min", "40", "--lat-max", "40.5",
+                             "--lon-min", "-105", "--lon-max", "-104.5",
+                             "--no-terrain"])
+        self.assertIsNone(args.sources)
+
+    def test_sources_cog_lfps(self):
+        """--sources cog,lfps should parse correctly."""
+        args = self._parse(["--lat-min", "40", "--lat-max", "40.5",
+                             "--lon-min", "-105", "--lon-max", "-104.5",
+                             "--no-terrain", "--sources", "cog,lfps"])
+        self.assertEqual(args.sources, "cog,lfps")
+
+    def test_sources_mspc_cog_lfps(self):
+        """--sources mspc,cog,lfps should parse as a string."""
+        args = self._parse(["--lat-min", "40", "--lat-max", "40.5",
+                             "--lon-min", "-105", "--lon-max", "-104.5",
+                             "--no-terrain", "--sources", "mspc,cog,lfps"])
+        self.assertEqual(args.sources, "mspc,cog,lfps")
+
+    def test_use_lfps_flag(self):
+        """--use-lfps should set use_lfps=True."""
+        args = self._parse(["--lat-min", "40", "--lat-max", "40.5",
+                             "--lon-min", "-105", "--lon-max", "-104.5",
+                             "--no-terrain", "--use-lfps"])
+        self.assertTrue(args.use_lfps)
+
+    def test_invalid_source_token_exits(self):
+        """An unknown source token should cause sys.exit(1) in main()."""
+        import subprocess
+        result = subprocess.run(
+            [
+                sys.executable,
+                os.path.join(_TOOLS_DIR, "terrain_wind_preprocess.py"),
+                "--lat-min", "40", "--lat-max", "40.5",
+                "--lon-min", "-105", "--lon-max", "-104.5",
+                "--no-terrain",
+                "--sources", "bogus_source",
+            ],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("bogus_source", result.stderr)
+
+
+class TestDownloadLandFireMspcOffline(unittest.TestCase):
+    """Offline unit tests for download_landfire_mspc().
+
+    The MSPC STAC queries are monkey-patched so no real network calls occur.
+    """
+
+    _BBOX = (-105.1, 40.0, -105.0, 40.1)
+    _SHAPE = (4, 4)
+
+    def _make_fake_read_result(self):
+        try:
+            import numpy as np
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        data = np.ones(self._SHAPE, dtype=np.float64)
+        tf = from_bounds(*self._BBOX, self._SHAPE[1], self._SHAPE[0])
+        crs = CRS.from_epsg(4326)
+        return data, tf, crs, -9999.0
+
+    def test_missing_pystac_client_raises_import_error(self):
+        """download_landfire_mspc should raise ImportError if pystac_client
+        is not installed."""
+        import importlib
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _mock_import(name, *args, **kwargs):
+            if name == "pystac_client":
+                raise ImportError("Mocked missing pystac_client")
+            return original_import(name, *args, **kwargs)
+
+        builtins.__import__ = _mock_import
+        try:
+            with self.assertRaises(ImportError) as ctx:
+                twp.download_landfire_mspc(self._BBOX, vintage=2020)
+            self.assertIn("pystac-client", str(ctx.exception))
+        finally:
+            builtins.__import__ = original_import
+
+    def test_mspc_fallback_on_import_error(self):
+        """create_landscape should skip 'mspc' and try 'lfps' when
+        download_landfire_mspc raises ImportError (missing packages)."""
+        calls = []
+
+        def _fake_mspc(bbox, **kwargs):
+            calls.append("mspc")
+            raise ImportError("pystac-client not installed")
+
+        def _fake_lfps(bbox, layer_ids, **kwargs):
+            calls.append("lfps")
+            raise RuntimeError("halt")
+
+        orig_mspc = twp.download_landfire_mspc
+        orig_lfps = twp.download_landfire
+        twp.download_landfire_mspc = _fake_mspc
+        twp.download_landfire = _fake_lfps
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=self._BBOX,
+                    vintage=2020,
+                    sources=["mspc", "lfps"],
+                )
+        finally:
+            twp.download_landfire_mspc = orig_mspc
+            twp.download_landfire = orig_lfps
+
+        self.assertEqual(calls, ["mspc", "lfps"])
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
