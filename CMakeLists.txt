@@ -25,8 +25,11 @@ if(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
 elseif(LEVELSET_GPU_BACKEND STREQUAL "HIP")
   enable_language(HIP)
   message(STATUS "GPU backend: HIP")
+elseif(LEVELSET_GPU_BACKEND STREQUAL "SYCL")
+  # SYCL uses a standard C++ compiler (e.g., Intel icpx); no extra language needed
+  message(STATUS "GPU backend: SYCL (ensure icpx or DPC++ compiler is active)")
 elseif(NOT LEVELSET_GPU_BACKEND STREQUAL "NONE")
-  message(STATUS "GPU backend: ${LEVELSET_GPU_BACKEND}")
+  message(WARNING "Unknown GPU backend '${LEVELSET_GPU_BACKEND}'. Supported values: NONE CUDA HIP SYCL")
 endif()
 
 # Enable testing for regression tests

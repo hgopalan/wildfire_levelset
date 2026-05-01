@@ -327,7 +327,7 @@ View with ParaView or other AMReX-compatible visualization tools.
 |---|---|---|---|
 | **Fire spread model** | Rothermel ROS + FARSITE ellipse (level-set) | Rothermel ROS + Huygens wavelet | Rothermel ROS (level-set) |
 | **Terrain representation** | 2-D slope/aspect (constant or per-cell) | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
-| **Wind coupling** | One-way (prescribed; WRF CSV import) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
+| **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `terrain_wind_preprocess.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
 | **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
 | **Spatial resolution** | User-defined (AMReX grid) | Landscape raster resolution | WRF grid resolution |
 | **Fuel models** | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 |
