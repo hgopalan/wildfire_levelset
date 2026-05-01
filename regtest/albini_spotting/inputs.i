@@ -27,7 +27,7 @@ prob_hi_x = 331000.0
 prob_hi_y = 3776000.0
 
 # Time & output
-nsteps = 100
+final_time = 1000.0
 cfl = 0.5
 plot_int = 25
 reinit_int = -1

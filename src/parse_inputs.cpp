@@ -29,6 +29,7 @@ void parse_inputs(InputParameters& p)
     // ---------------- Inputs: time & output ----------------
     p.reinit_int   = 20;         pp.query("reinit_int",   p.reinit_int);
     p.nsteps       = 300;        pp.query("nsteps",       p.nsteps);
+    p.final_time   = -1.0;       pp.query("final_time",   p.final_time);
     p.cfl          = 0.5;        pp.query("cfl",          p.cfl);
     p.plot_int     = 50;         pp.query("plot_int",     p.plot_int);
 

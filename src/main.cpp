@@ -265,7 +265,12 @@ int main(int argc, char* argv[])
     }
 
     // ---------------- Time stepping ------------------------
-    for (int step = 1; step <= inputs.nsteps; ++step) {
+    // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
+    const bool use_final_time = (inputs.final_time > 0.0);
+    int step = 0;
+    bool time_loop_done = false;
+    while (!time_loop_done) {
+      ++step;
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
@@ -363,17 +368,25 @@ int main(int argc, char* argv[])
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", step);
 	write_negative_phi_convex_hull(phi, geom, xy_buf);
       }
+
+      // Check stopping condition
+      if (use_final_time) {
+        time_loop_done = (time >= inputs.final_time);
+      } else {
+        time_loop_done = (step >= inputs.nsteps);
+      }
     }
       // ---------------- Final write --------------------------
       // Only write final if it wasn't already written at plot_int
+      const int final_step = step;
       bool should_write_final = (inputs.plot_int <= 0);
       if (inputs.plot_int > 0) {
-          should_write_final = (inputs.nsteps % inputs.plot_int != 0);
+          should_write_final = (final_step % inputs.plot_int != 0);
       }
       if (should_write_final)
       {
 	char buf[64];
-	std::snprintf(buf, sizeof(buf), "plt%04d", inputs.nsteps);
+	std::snprintf(buf, sizeof(buf), "plt%04d", final_step);
 	Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
@@ -394,15 +407,15 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, fuel_consumption_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4, 1, 0);
 	MultiFab::Copy(plotmf, crown_fire_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1, 1, 0);
 	MultiFab::Copy(plotmf, albini_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1, 4, 0);
-	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, inputs.nsteps);
+	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	
 	// Write negative phi x-y data files for final step
 	char xy_buf[64];
-	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", inputs.nsteps);
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", final_step);
 	write_negative_phi_xy(phi, geom, xy_buf);
 	
-	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", inputs.nsteps);
+	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", final_step);
 	write_negative_phi_convex_hull(phi, geom, xy_buf);
       }
     }

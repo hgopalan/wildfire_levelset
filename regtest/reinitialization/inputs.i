@@ -12,7 +12,7 @@ prob_hi_y = 1.0
 prob_hi_z = 1.0
 
 # Time & output
-nsteps = 200
+final_time = 4.0
 cfl = 0.5
 plot_int = 10
 
