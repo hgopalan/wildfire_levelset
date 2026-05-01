@@ -94,16 +94,43 @@ Options
   --use-lfps            Force the legacy LFPS REST API for LANDFIRE download
                         instead of the default COG (S3/HTTPS) approach.  Use
                         this only if the S3 COG endpoint is unreachable.
+  --sources LIST        Comma-separated priority list of LANDFIRE sources to
+                        try in order.  Valid tokens: ``cog`` (AWS S3 COG),
+                        ``mspc`` (Microsoft Planetary Computer), ``lfps``
+                        (USGS LFPS REST API).
+                        Default: ``cog,mspc,lfps``.
+                        Examples:
+                          --sources cog,lfps      (skip MSPC)
+                          --sources mspc,cog,lfps (try Azure first)
+                          --sources lfps          (USGS only)
   --help                Show this message and exit.
 
-LANDFIRE data source
---------------------
-By default, LANDFIRE elevation, slope, aspect and fuel-model rasters are
-fetched as Cloud Optimized GeoTIFFs (COGs) from the public LANDFIRE AWS S3
-bucket (``https://s3.amazonaws.com/landfire/``).  Only the pixels within the
-requested bounding box are downloaded, so the transfer is fast and avoids the
-LFPS REST API which can fail with SSL certificate errors.  Pass ``--use-lfps``
-to revert to the legacy API if needed.
+LANDFIRE data sources
+---------------------
+The script supports three remote sources for LANDFIRE data, tried in the
+order specified by ``--sources`` (default: ``cog,mspc,lfps``):
+
+1. **cog** – Cloud Optimized GeoTIFFs from the public LANDFIRE AWS S3
+   bucket (``https://s3.amazonaws.com/landfire/``).  Only the pixels within
+   the requested bounding box are transferred.  This is the fastest option
+   and does not require any API authentication.
+
+2. **mspc** – Microsoft Planetary Computer STAC catalog.  LANDFIRE national
+   products are stored as COGs on Azure Blob Storage and served via the MSPC
+   STAC API (``https://planetarycomputer.microsoft.com/api/stac/v1``).
+   Requires the optional ``pystac-client`` and ``planetary-computer`` Python
+   packages (``pip install pystac-client planetary-computer``).  MSPC is
+   used automatically as a fallback when the AWS S3 endpoint is unreachable.
+
+3. **lfps** – LANDFIRE Product Service REST API hosted by USGS
+   (``https://lfps.usgs.gov/``).  This is the legacy option that submits an
+   asynchronous job and downloads a ZIP archive.  It is susceptible to SSL
+   certificate verification failures; ``--use-lfps`` forces this source to
+   be used without trying the others.
+
+Pass ``--use-lfps`` to skip directly to the LFPS source (equivalent to
+``--sources lfps``).  Custom ``--*-product`` overrides cannot be resolved to
+a COG or MSPC path and automatically fall back to LFPS.
 """
 
 import argparse
@@ -116,6 +143,16 @@ import sys
 import tempfile
 import time
 import zipfile
+
+# ---------------------------------------------------------------------------
+# Supported LANDFIRE source names (used by --sources and create_landscape)
+# ---------------------------------------------------------------------------
+
+#: Ordered list of source identifiers that ``create_landscape`` understands.
+#: ``cog``  – Cloud Optimized GeoTIFFs from the public LANDFIRE AWS S3 bucket.
+#: ``mspc`` – Microsoft Planetary Computer STAC catalog (Azure Blob COGs).
+#: ``lfps`` – Legacy LANDFIRE Product Service REST API hosted by USGS.
+_LANDFIRE_SOURCES = ("cog", "mspc", "lfps")
 
 # ---------------------------------------------------------------------------
 # LANDFIRE LFPS API constants
@@ -187,6 +224,41 @@ _DEFAULT_LAYERS = {
 
 # LANDFIRE FBFM13 non-burnable codes
 _NONBURNABLE_CODES = {91, 92, 93, 98, 99}
+
+# ---------------------------------------------------------------------------
+# Microsoft Planetary Computer (MSPC) LANDFIRE constants
+# ---------------------------------------------------------------------------
+
+#: STAC API root for Microsoft Planetary Computer.
+_MSPC_STAC_ENDPOINT = "https://planetarycomputer.microsoft.com/api/stac/v1"
+
+#: Collection ID for LANDFIRE on Microsoft Planetary Computer.
+_MSPC_LANDFIRE_COLLECTION = "landfire"
+
+#: Mapping from vintage year → layer key → MSPC STAC asset key.
+#: These asset keys correspond to the names used in MSPC's LANDFIRE items.
+#: The fallback list for each layer handles naming variations across MSPC
+#: item versions; the first matching key in the item's assets dict is used.
+_MSPC_ASSET_KEYS = {
+    2020: {
+        "elev":   ["US_200ELEV",  "200ELEV",  "elev"],
+        "slope":  ["US_200SlpD",  "200SlpD",  "slope"],
+        "aspect": ["US_200Asp",   "200Asp",   "aspect"],
+        "fuel13": ["US_200FBFM13","200FBFM13","fuel13"],
+    },
+    2016: {
+        "elev":   ["US_140ELEV",  "140ELEV",  "elev"],
+        "slope":  ["US_140SlpD",  "140SlpD",  "slope"],
+        "aspect": ["US_140Asp",   "140Asp",   "aspect"],
+        "fuel13": ["US_140FBFM13","140FBFM13","fuel13"],
+    },
+    2014: {
+        "elev":   ["US_130ELEV",  "130ELEV",  "elev"],
+        "slope":  ["US_130SLP",   "130SLP",   "slope"],
+        "aspect": ["US_130ASP",   "130ASP",   "aspect"],
+        "fuel13": ["US_130FBFM13","130FBFM13","fuel13"],
+    },
+}
 
 
 # ===========================================================================
@@ -860,6 +932,161 @@ def download_landfire_cog(bbox, vintage=2020,
     return result
 
 
+def download_landfire_mspc(bbox, vintage=2020,
+                           lid_elev=None, lid_slope=None,
+                           lid_aspect=None, lid_fuel=None):
+    """Download LANDFIRE rasters from Microsoft Planetary Computer (MSPC).
+
+    Queries the MSPC STAC API for LANDFIRE items that overlap *bbox*, signs
+    asset URLs using the ``planetary-computer`` library, and reads each COG
+    with a windowed rasterio read.  The result format is identical to
+    :func:`download_landfire_cog` so it is a drop-in replacement.
+
+    Parameters
+    ----------
+    bbox : tuple of float
+        ``(min_lon, min_lat, max_lon, max_lat)`` in WGS-84 degrees.
+    vintage : int
+        LANDFIRE data vintage year (2014, 2016, or 2020; default 2020).
+        If the vintage is not in ``_MSPC_ASSET_KEYS``, 2020 is used.
+    lid_elev, lid_slope, lid_aspect, lid_fuel : str or None
+        Layer IDs to use as keys in the returned dict.  Defaults to the
+        standard LFPS product IDs for *vintage*.
+
+    Returns
+    -------
+    dict
+        ``{layer_id: bytes}`` where each value is an in-memory GeoTIFF,
+        compatible with :func:`_read_raster_bytes`.
+
+    Raises
+    ------
+    ImportError
+        If ``pystac-client`` or ``planetary-computer`` is not installed.
+    RuntimeError
+        If no LANDFIRE items are found in the STAC catalog for *bbox*, or
+        if the required asset keys cannot be located in any item.
+    """
+    try:
+        import pystac_client
+    except ImportError:
+        raise ImportError(
+            "pystac-client is required to access Microsoft Planetary Computer. "
+            "Install with: pip install pystac-client planetary-computer"
+        )
+    try:
+        import planetary_computer
+    except ImportError:
+        raise ImportError(
+            "planetary-computer is required to sign MSPC asset URLs. "
+            "Install with: pip install planetary-computer"
+        )
+    try:
+        import rasterio
+        from rasterio.io import MemoryFile
+    except ImportError:
+        raise ImportError(
+            "rasterio is required to read LANDFIRE COGs. "
+            "Install with: pip install rasterio"
+        )
+
+    mspc_vintage = vintage if vintage in _MSPC_ASSET_KEYS else 2020
+    if vintage not in _MSPC_ASSET_KEYS:
+        print(
+            f"WARNING: No MSPC asset key mapping for vintage {vintage}; "
+            f"using {mspc_vintage}.",
+            file=sys.stderr,
+        )
+
+    layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
+    asset_key_candidates = _MSPC_ASSET_KEYS[mspc_vintage]
+
+    lid_map = {
+        lid_elev   or layer_defaults["elev"]:   "elev",
+        lid_slope  or layer_defaults["slope"]:  "slope",
+        lid_aspect or layer_defaults["aspect"]: "aspect",
+        lid_fuel   or layer_defaults["fuel13"]: "fuel13",
+    }
+
+    print("Querying Microsoft Planetary Computer STAC for LANDFIRE items …")
+    catalog = pystac_client.Client.open(
+        _MSPC_STAC_ENDPOINT,
+        modifier=planetary_computer.sign_inplace,
+    )
+
+    min_lon, min_lat, max_lon, max_lat = bbox
+    search = catalog.search(
+        collections=[_MSPC_LANDFIRE_COLLECTION],
+        bbox=[min_lon, min_lat, max_lon, max_lat],
+        max_items=10,
+    )
+    items = list(search.items())
+    if not items:
+        raise RuntimeError(
+            f"No LANDFIRE items found in the MSPC STAC catalog for "
+            f"bbox {bbox}.  The collection '{_MSPC_LANDFIRE_COLLECTION}' may "
+            "not cover this region or the catalog may be temporarily "
+            "unavailable.  Try a different --sources option."
+        )
+
+    print(f"  Found {len(items)} MSPC LANDFIRE item(s); using first matching.")
+
+    def _find_asset_url(item, candidates):
+        """Return the href of the first asset key found in *candidates*."""
+        for key in candidates:
+            if key in item.assets:
+                return item.assets[key].href
+            # Case-insensitive fallback
+            for asset_key in item.assets:
+                if asset_key.lower() == key.lower():
+                    return item.assets[asset_key].href
+        available = list(item.assets.keys())
+        raise RuntimeError(
+            f"Could not find any of the expected asset keys "
+            f"{candidates!r} in MSPC LANDFIRE item '{item.id}'. "
+            f"Available assets: {available}"
+        )
+
+    result = {}
+    for lid, layer_key in lid_map.items():
+        candidates = asset_key_candidates[layer_key]
+        # Search all returned items for the asset
+        asset_url = None
+        last_exc = None
+        for item in items:
+            try:
+                asset_url = _find_asset_url(item, candidates)
+                break
+            except RuntimeError as exc:
+                last_exc = exc
+                continue
+
+        if asset_url is None:
+            raise RuntimeError(
+                f"None of the {len(items)} MSPC item(s) contained assets "
+                f"matching {candidates!r} for layer '{lid}'."
+            ) from last_exc
+
+        print(f"  Reading MSPC COG for layer '{lid}' from {asset_url[:80]} …")
+        data, transform, crs, nodata = _read_landfire_cog(asset_url, bbox)
+
+        with MemoryFile() as mf:
+            with mf.open(
+                driver="GTiff",
+                height=data.shape[0],
+                width=data.shape[1],
+                count=1,
+                dtype=data.dtype,
+                crs=crs,
+                transform=transform,
+                nodata=nodata,
+            ) as ds:
+                ds.write(data, 1)
+            result[lid] = mf.read()
+
+    return result
+
+
 def _read_raster_bytes(raw_bytes):
     """Read a raster from raw bytes using rasterio."""
     import numpy as np
@@ -1050,17 +1277,44 @@ def create_landscape(output_path, bbox, vintage=2020,
                      aspect_product=None, fuel_product=None,
                      project_utm=True, subsample=1,
                      keep_nonburnable=False, cache_dir=None,
-                     timeout_s=300, use_cog=True):
+                     timeout_s=300, use_cog=True,
+                     sources=None):
     """Download LANDFIRE rasters and write an ASCII landscape file.
 
-    By default (*use_cog=True*) layers are fetched from the public LANDFIRE
-    AWS S3 COG endpoint, which avoids the LFPS REST API and its occasional
-    SSL certificate verification failures.  Set *use_cog=False* (or pass
-    ``--use-lfps`` on the command line) to use the legacy LFPS API instead.
+    Sources are tried in the order given by *sources* (default
+    ``['cog', 'mspc', 'lfps']``).  Each source is attempted in turn; if a
+    source fails, the next one is tried automatically.
 
-    If any ``*_product`` override is provided, those custom layer IDs cannot
-    be resolved to a COG path; the function automatically falls back to the
-    LFPS API in that case.
+    Parameters
+    ----------
+    output_path : str
+        Destination path for the ASCII landscape file.
+    bbox : tuple of float
+        ``(min_lon, min_lat, max_lon, max_lat)`` in WGS-84 degrees.
+    vintage : int
+        LANDFIRE data vintage year (default 2020).
+    elev_product, slope_product, aspect_product, fuel_product : str or None
+        Override LANDFIRE product IDs.  When any override is set the ``cog``
+        and ``mspc`` sources are skipped (they cannot resolve custom IDs) and
+        only ``lfps`` is tried.
+    project_utm : bool
+        Project coordinates to UTM metres (default True).
+    subsample : int
+        Keep every N-th point in each dimension (default 1).
+    keep_nonburnable : bool
+        Include non-burnable LANDFIRE pixels (default False).
+    cache_dir : str or None
+        Cache directory for LANDFIRE ZIP files (``lfps`` source only).
+    timeout_s : int
+        API polling timeout in seconds for the ``lfps`` source (default 300).
+    use_cog : bool
+        *Deprecated* convenience flag.  When *False* the effective source list
+        is forced to ``['lfps']``, overriding *sources*.  Kept for backward
+        compatibility with callers that pass ``use_cog=False``.
+    sources : list of str or None
+        Ordered list of source names to try.  Valid entries: ``'cog'``
+        (AWS S3 COG), ``'mspc'`` (Microsoft Planetary Computer), ``'lfps'``
+        (USGS LFPS REST API).  Defaults to ``['cog', 'mspc', 'lfps']``.
     """
     layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
 
@@ -1069,46 +1323,111 @@ def create_landscape(output_path, bbox, vintage=2020,
     lid_aspect = aspect_product or layer_defaults["aspect"]
     lid_fuel   = fuel_product   or layer_defaults["fuel13"]
 
-    # Custom product IDs cannot be mapped to a COG path; fall back to LFPS.
-    _have_overrides = any((elev_product, slope_product,
-                           aspect_product, fuel_product))
-    _vintage_has_cog = vintage in _COG_LAYERS
-    _use_cog = use_cog and not _have_overrides and _vintage_has_cog
-    if use_cog and _have_overrides:
-        print(
-            "WARNING: Custom --*-product IDs are not supported by the COG "
-            "downloader; falling back to LFPS API.",
-            file=sys.stderr,
-        )
-    if use_cog and not _vintage_has_cog:
-        print(
-            f"WARNING: No COG layer mapping for vintage {vintage}; "
-            "falling back to LFPS API.",
-            file=sys.stderr,
-        )
-
     layer_ids = [lid_elev, lid_slope, lid_aspect, lid_fuel]
 
-    if _use_cog:
-        print("Fetching LANDFIRE layers from COG (HTTPS/S3) …")
-        try:
-            layer_map = download_landfire_cog(
-                bbox, vintage=vintage,
-                lid_elev=lid_elev, lid_slope=lid_slope,
-                lid_aspect=lid_aspect, lid_fuel=lid_fuel,
-            )
-        except Exception as exc:
+    # -----------------------------------------------------------------------
+    # Resolve effective source list
+    # -----------------------------------------------------------------------
+    _have_overrides = any((elev_product, slope_product,
+                           aspect_product, fuel_product))
+
+    if not use_cog:
+        # Legacy behaviour: --use-lfps forces LFPS only
+        effective_sources = ["lfps"]
+    elif _have_overrides:
+        # Custom product IDs cannot be resolved to COG/MSPC paths
+        print(
+            "WARNING: Custom --*-product IDs are not supported by the COG or "
+            "MSPC downloaders; using LFPS API only.",
+            file=sys.stderr,
+        )
+        effective_sources = ["lfps"]
+    else:
+        effective_sources = list(sources) if sources else ["cog", "mspc", "lfps"]
+        # Remove cog/mspc for vintages without a known mapping
+        if vintage not in _COG_LAYERS and "cog" in effective_sources:
             print(
-                f"WARNING: COG download failed ({exc}); "
-                "retrying via LFPS API …",
+                f"WARNING: No COG layer mapping for vintage {vintage}; "
+                "skipping 'cog' source.",
                 file=sys.stderr,
             )
-            layer_map = download_landfire(bbox, layer_ids,
-                                          cache_dir=cache_dir,
-                                          timeout_s=timeout_s)
-    else:
-        layer_map = download_landfire(bbox, layer_ids,
-                                      cache_dir=cache_dir, timeout_s=timeout_s)
+            effective_sources = [s for s in effective_sources if s != "cog"]
+        if vintage not in _MSPC_ASSET_KEYS and "mspc" in effective_sources:
+            print(
+                f"WARNING: No MSPC asset key mapping for vintage {vintage}; "
+                "skipping 'mspc' source.",
+                file=sys.stderr,
+            )
+            effective_sources = [s for s in effective_sources if s != "mspc"]
+
+    if not effective_sources:
+        raise RuntimeError(
+            "No LANDFIRE download sources remain after filtering.  "
+            "Pass --sources lfps to use the USGS LFPS API."
+        )
+
+    # -----------------------------------------------------------------------
+    # Try each source in order
+    # -----------------------------------------------------------------------
+    layer_map = None
+    last_exc = None
+
+    for source in effective_sources:
+        try:
+            if source == "cog":
+                print("Fetching LANDFIRE layers from COG (AWS S3 / HTTPS) …")
+                layer_map = download_landfire_cog(
+                    bbox, vintage=vintage,
+                    lid_elev=lid_elev, lid_slope=lid_slope,
+                    lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                )
+            elif source == "mspc":
+                print("Fetching LANDFIRE layers from Microsoft Planetary "
+                      "Computer (MSPC) …")
+                layer_map = download_landfire_mspc(
+                    bbox, vintage=vintage,
+                    lid_elev=lid_elev, lid_slope=lid_slope,
+                    lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                )
+            elif source == "lfps":
+                print("Fetching LANDFIRE layers from USGS LFPS API …")
+                layer_map = download_landfire(bbox, layer_ids,
+                                             cache_dir=cache_dir,
+                                             timeout_s=timeout_s)
+            else:
+                print(
+                    f"WARNING: Unknown LANDFIRE source '{source}'; skipping.",
+                    file=sys.stderr,
+                )
+                continue
+
+            # Source succeeded
+            break
+
+        except Exception as exc:
+            remaining = effective_sources[effective_sources.index(source) + 1:]
+            if remaining:
+                print(
+                    f"WARNING: LANDFIRE source '{source}' failed "
+                    f"({type(exc).__name__}: {exc}); "
+                    f"trying next source: {remaining[0]} …",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"WARNING: LANDFIRE source '{source}' failed "
+                    f"({type(exc).__name__}: {exc}); no more sources to try.",
+                    file=sys.stderr,
+                )
+            last_exc = exc
+            layer_map = None
+
+    if layer_map is None:
+        raise RuntimeError(
+            f"All LANDFIRE download sources failed: {effective_sources}. "
+            "Check your internet connection or try a different --sources "
+            "combination.  Last error: " + str(last_exc)
+        ) from last_exc
 
     def _get_bytes(lid):
         if lid in layer_map:
@@ -2015,8 +2334,20 @@ def _build_parser():
         help=(
             "Use the legacy LFPS REST API to download LANDFIRE data instead "
             "of the default COG (S3/HTTPS) approach.  This may be needed if "
-            "the S3 endpoint is unreachable, but is susceptible to LFPS SSL "
-            "certificate verification failures."
+            "the S3 and MSPC endpoints are unreachable, but is susceptible to "
+            "LFPS SSL certificate verification failures.  Equivalent to "
+            "--sources lfps."
+        ),
+    )
+    parser.add_argument(
+        "--sources", default=None, metavar="LIST",
+        help=(
+            "Comma-separated priority list of LANDFIRE sources to try in "
+            "order.  Valid tokens: 'cog' (AWS S3 COG), 'mspc' (Microsoft "
+            "Planetary Computer), 'lfps' (USGS LFPS REST API).  "
+            "Default: 'cog,mspc,lfps'.  Examples: --sources cog,lfps  "
+            "(skip MSPC); --sources mspc,cog,lfps  (try Azure first); "
+            "--sources lfps  (USGS only).  Overridden by --use-lfps."
         ),
     )
 
@@ -2092,6 +2423,27 @@ def main(argv=None):
         sys.exit(1)
 
     bbox = (lon_min, lat_min, lon_max, lat_max)
+
+    # -----------------------------------------------------------------------
+    # Resolve LANDFIRE source priority list
+    # -----------------------------------------------------------------------
+    if args.use_lfps:
+        # --use-lfps takes precedence over --sources
+        landfire_sources = ["lfps"]
+    elif args.sources is not None:
+        raw_sources = [s.strip().lower() for s in args.sources.split(",")
+                       if s.strip()]
+        invalid = [s for s in raw_sources if s not in _LANDFIRE_SOURCES]
+        if invalid:
+            print(
+                f"ERROR: Unknown --sources token(s): {invalid}. "
+                f"Valid tokens are: {list(_LANDFIRE_SOURCES)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        landfire_sources = raw_sources
+    else:
+        landfire_sources = list(_LANDFIRE_SOURCES)  # default: cog, mspc, lfps
 
     # -----------------------------------------------------------------------
     # Resolve time indices for WRF
@@ -2192,6 +2544,7 @@ def main(argv=None):
                 cache_dir=args.cache_dir,
                 timeout_s=args.timeout,
                 use_cog=not args.use_lfps,
+                sources=landfire_sources,
             )
 
         # Report UTM extents
