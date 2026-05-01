@@ -223,8 +223,9 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
 
-            // Inverse distance weighting using sqrt(dist) for consistency with
-            // the slope interpolation in this file
+            // Inverse distance weighting using power=1 (1/dist) for consistency with
+            // compute_slopes_from_landscape in this file.  The terrain-file version
+            // uses power=2 (1/dist²) to match compute_slopes_from_terrain instead.
             Real epsilon = Real(1.0e-10);
             Real sum_weights = Real(0.0);
             Real sum_z = Real(0.0);
