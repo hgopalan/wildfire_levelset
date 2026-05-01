@@ -11,7 +11,7 @@
 #include <map>
 #include <set>
 #include <algorithm>
-#include <climits>
+#include <limits>
 #include <cmath>
 
 using namespace amrex;
@@ -216,18 +216,17 @@ static void write_negative_phi_convex_hull(const MultiFab& phi,
         {
 #endif
             for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
-                int min_i = INT_MAX, max_i = INT_MIN;
+                int min_i = std::numeric_limits<int>::max();
+                int max_i = std::numeric_limits<int>::lowest();
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
                         if (i < min_i) min_i = i;
                         if (i > max_i) max_i = i;
                     }
                 }
-                if (min_i != INT_MAX) {
-                    auto it = row_extremes.find(j);
-                    if (it == row_extremes.end()) {
-                        row_extremes[j] = {min_i, max_i};
-                    } else {
+                if (min_i != std::numeric_limits<int>::max()) {
+                    auto [it, inserted] = row_extremes.try_emplace(j, min_i, max_i);
+                    if (!inserted) {
                         if (min_i < it->second.first)  it->second.first  = min_i;
                         if (max_i > it->second.second) it->second.second = max_i;
                     }
