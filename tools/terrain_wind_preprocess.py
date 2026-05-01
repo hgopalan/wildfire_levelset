@@ -1374,7 +1374,7 @@ def _read_raster_file_clipped(path, lat_min, lat_max, lon_min, lon_max,
     path : str
         Path to the raster file.
     lat_min, lat_max : float
-        Latitude  bounds in WGS-84 decimal degrees.
+        Latitude bounds in WGS-84 decimal degrees.
     lon_min, lon_max : float
         Longitude bounds in WGS-84 decimal degrees.
     nodata_override : float or None
