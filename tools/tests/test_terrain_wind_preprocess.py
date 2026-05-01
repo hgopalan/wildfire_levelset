@@ -600,10 +600,12 @@ class TestMainNoTerrain(unittest.TestCase):
     def test_no_terrain_still_writes_wind(self):
         """--no-terrain + --wrf-file: wind file should still be created."""
         nc = self._make_nc()
+        tout = os.path.join(self.tmpdir, "terrain_wind_test.xyz")
         wout = os.path.join(self.tmpdir, "wind_no_terrain.csv")
 
         twp.main([
             "--wrf-file", nc,
+            "--terrain", tout,
             "--wind",    wout,
             "--no-terrain",
             "--no-landscape",
@@ -614,9 +616,11 @@ class TestMainNoTerrain(unittest.TestCase):
 
     def test_wind_file_has_four_columns(self):
         nc = self._make_nc()
+        tout = os.path.join(self.tmpdir, "terrain_4col.xyz")
         wout = os.path.join(self.tmpdir, "wind_4col.csv")
         twp.main([
             "--wrf-file", nc,
+            "--terrain", tout,
             "--wind",    wout,
             "--no-terrain",
             "--no-landscape",
@@ -644,10 +648,12 @@ class TestMainTimeRange(unittest.TestCase):
         """--time-range 0:2 should produce wind.csv, wind_1.csv, wind_2.csv."""
         nc = self._make_nc(n_times=3)
         base_wout = os.path.join(self.tmpdir, "wind.csv")
+        tout = os.path.join(self.tmpdir, "terrain_trange.xyz")
 
         twp.main([
             "--wrf-file",   nc,
             "--wind",       base_wout,
+            "--terrain",    tout,
             "--time-range", "0:2",
             "--no-terrain",
             "--no-landscape",
@@ -663,10 +669,12 @@ class TestMainTimeRange(unittest.TestCase):
         """A single-step --time-range should NOT produce a suffixed file."""
         nc = self._make_nc(n_times=2)
         base_wout = os.path.join(self.tmpdir, "wind_single.csv")
+        tout = os.path.join(self.tmpdir, "terrain_single.xyz")
 
         twp.main([
             "--wrf-file",   nc,
             "--wind",       base_wout,
+            "--terrain",    tout,
             "--time-range", "1:1",
             "--no-terrain",
             "--no-landscape",
@@ -680,10 +688,12 @@ class TestMainTimeRange(unittest.TestCase):
         ny, nx = 4, 5
         nc = self._make_nc(ny=ny, nx=nx, n_times=2, nz=1)
         base_wout = os.path.join(self.tmpdir, "wind_diff.csv")
+        tout = os.path.join(self.tmpdir, "terrain_diff.xyz")
 
         twp.main([
             "--wrf-file",   nc,
             "--wind",       base_wout,
+            "--terrain",    tout,
             "--time-range", "0:1",
             "--no-terrain",
             "--no-landscape",
@@ -802,6 +812,7 @@ class TestCLI(unittest.TestCase):
              "--no-landscape",
              "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertEqual(result.returncode, 0,
                          f"CLI failed:\n{result.stdout}\n{result.stderr}")
@@ -814,6 +825,7 @@ class TestCLI(unittest.TestCase):
              "--wrf-file", "no_such_file.nc",
              "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertNotEqual(result.returncode, 0)
 
@@ -823,6 +835,7 @@ class TestCLI(unittest.TestCase):
             [sys.executable, self.script, "--no-terrain", "--no-landscape",
              "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertNotEqual(result.returncode, 0)
 
@@ -838,6 +851,7 @@ class TestCLI(unittest.TestCase):
              "--wrf-file", nc, "--wind", wout_full,
              "--no-terrain", "--no-landscape", "--no-inputs"],
             check=True, capture_output=True,
+            cwd=self.tmpdir,
         )
         subprocess.run(
             [sys.executable, self.script,
@@ -845,6 +859,7 @@ class TestCLI(unittest.TestCase):
              "--no-terrain", "--no-landscape", "--no-inputs",
              "--subsample", "2"],
             check=True, capture_output=True,
+            cwd=self.tmpdir,
         )
 
         self.assertLess(_count_data_lines(wout_sub),
@@ -862,6 +877,7 @@ class TestCLI(unittest.TestCase):
              "--time-range", "0:2",
              "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertEqual(result.returncode, 0,
                          f"CLI failed:\n{result.stdout}\n{result.stderr}")
@@ -880,6 +896,7 @@ class TestCLI(unittest.TestCase):
              "--time-range", "bad",
              "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertNotEqual(result.returncode, 0)
 
@@ -895,6 +912,7 @@ class TestCLI(unittest.TestCase):
              "--time-index", "1",
              "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertEqual(result.returncode, 0,
                          f"CLI failed:\n{result.stdout}\n{result.stderr}")
@@ -912,6 +930,7 @@ class TestCLI(unittest.TestCase):
              "--no-terrain", "--no-landscape",
              "--no-wind", "--no-inputs"],
             capture_output=True, text=True,
+            cwd=self.tmpdir,
         )
         self.assertEqual(result.returncode, 0,
                          f"CLI failed:\n{result.stdout}\n{result.stderr}")
@@ -984,9 +1003,11 @@ class TestMainNoTerrainDomainBounds(unittest.TestCase):
         """--no-terrain + --wrf-file: inputs.i must contain prob_lo/hi and n_cell."""
         nc = self._make_nc(ny=10, nx=12, n_times=1)
         iout = os.path.join(self.tmpdir, "inputs_domain.i")
+        tout = os.path.join(self.tmpdir, "terrain_domain.xyz")
 
         twp.main([
             "--wrf-file", nc,
+            "--terrain",  tout,
             "--no-terrain",
             "--no-landscape",
             "--no-wind",
@@ -1008,9 +1029,11 @@ class TestMainNoTerrainDomainBounds(unittest.TestCase):
         """Domain bounds from WRF UTM extents should be large (> 1e5 m)."""
         nc = self._make_nc(ny=10, nx=12, n_times=1)
         iout = os.path.join(self.tmpdir, "inputs_domain_metres.i")
+        tout = os.path.join(self.tmpdir, "terrain_metres.xyz")
 
         twp.main([
             "--wrf-file", nc,
+            "--terrain",  tout,
             "--no-terrain",
             "--no-landscape",
             "--no-wind",
@@ -1029,9 +1052,11 @@ class TestMainNoTerrainDomainBounds(unittest.TestCase):
         """n_cell_x / n_cell_y should equal round(span / 30) for WRF UTM extents."""
         nc = self._make_nc(ny=10, nx=12, n_times=1)
         iout = os.path.join(self.tmpdir, "inputs_ncell.i")
+        tout = os.path.join(self.tmpdir, "terrain_ncell.xyz")
 
         twp.main([
             "--wrf-file", nc,
+            "--terrain",  tout,
             "--no-terrain",
             "--no-landscape",
             "--no-wind",
@@ -1063,9 +1088,11 @@ class TestMainNoTerrainDomainBounds(unittest.TestCase):
         """Fire box in inputs.i should sit at 45-55% of domain in each axis."""
         nc = self._make_nc(ny=10, nx=12, n_times=1)
         iout = os.path.join(self.tmpdir, "inputs_firebox.i")
+        tout = os.path.join(self.tmpdir, "terrain_firebox.xyz")
 
         twp.main([
             "--wrf-file", nc,
+            "--terrain",  tout,
             "--no-terrain",
             "--no-landscape",
             "--no-wind",

@@ -19,3 +19,4 @@ env/
 venv/
 build_2d/
 inputs.i
+terrain.xyz
