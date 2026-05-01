@@ -778,9 +778,10 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
 
     print(f"SRTM elevation grid: {elev_data.shape[0]}×{elev_data.shape[1]}")
     print("Reading fuel model raster …")
-    fuel_data, fuel_tf, fuel_crs, _ = _read_raster_file(fuel_path)
+    fuel_data, fuel_tf, fuel_crs, _ = _read_raster_file_clipped(
+        fuel_path, lat_min, lat_max, lon_min, lon_max)
 
-    print(f"Fuel grid: {fuel_data.shape[0]}×{fuel_data.shape[1]}")
+    print(f"Fuel grid (clipped to bbox): {fuel_data.shape[0]}×{fuel_data.shape[1]}")
     print("Interpolating SRTM elevation, slope, and aspect to fuel grid …")
     elev_data = _resample_to_grid(
         elev_data, elev_tf, elev_crs,
@@ -1357,6 +1358,103 @@ def _read_raster_file(path, nodata_override=None):
         nodata = nodata_override if nodata_override is not None else ds.nodata
         transform = ds.transform
         crs = ds.crs
+    return data, transform, crs, nodata
+
+
+def _read_raster_file_clipped(path, lat_min, lat_max, lon_min, lon_max,
+                               nodata_override=None):
+    """Read only the portion of a raster that overlaps a WGS-84 bounding box.
+
+    Uses rasterio windowed reading so the full (potentially huge) raster is
+    never loaded into memory.  The four corner points of the requested bbox
+    are projected to the raster's native CRS to build the read window.
+
+    Parameters
+    ----------
+    path : str
+        Path to the raster file.
+    lat_min, lat_max : float
+        Latitude  bounds in WGS-84 decimal degrees.
+    lon_min, lon_max : float
+        Longitude bounds in WGS-84 decimal degrees.
+    nodata_override : float or None
+        Override the raster's nodata value.
+
+    Returns
+    -------
+    data : np.ndarray (float64, 2-D)
+    transform : rasterio.Affine
+    crs : rasterio.crs.CRS
+    nodata : float or None
+    """
+    import math
+    import numpy as np
+    try:
+        import rasterio
+        from rasterio import windows as rio_windows
+    except ImportError:
+        raise ImportError(
+            "rasterio is required to process LANDFIRE rasters. "
+            "Install with: pip install rasterio"
+        )
+
+    with rasterio.open(path) as ds:
+        src_crs = ds.crs
+
+        # Project the four bbox corners to the raster's native CRS so that
+        # curved/oblique projections are handled correctly.
+        corners_lon = [lon_min, lon_min, lon_max, lon_max]
+        corners_lat = [lat_min, lat_max, lat_min, lat_max]
+
+        if src_crs is not None and src_crs.to_epsg() != 4326:
+            try:
+                from pyproj import Transformer
+                tf = Transformer.from_crs("EPSG:4326", src_crs,
+                                          always_xy=True)
+                xs_proj, ys_proj = tf.transform(corners_lon, corners_lat)
+            except Exception:
+                xs_proj, ys_proj = corners_lon, corners_lat
+        else:
+            xs_proj, ys_proj = corners_lon, corners_lat
+
+        x_min_proj = min(xs_proj)
+        x_max_proj = max(xs_proj)
+        y_min_proj = min(ys_proj)
+        y_max_proj = max(ys_proj)
+
+        # Derive the pixel window that covers the projected bbox.
+        win = rio_windows.from_bounds(
+            x_min_proj, y_min_proj, x_max_proj, y_max_proj,
+            transform=ds.transform,
+        )
+
+        # Clamp to the actual dataset extent (intersection).
+        full_win = rio_windows.Window(0, 0, ds.width, ds.height)
+        try:
+            win = win.intersection(full_win)
+        except rio_windows.WindowError:
+            # Bbox does not intersect the raster at all – return empty array.
+            empty = np.empty((0, 0), dtype=np.float64)
+            return empty, ds.transform, src_crs, nodata_override or ds.nodata
+
+        # Round to integer pixel offsets (expand slightly to avoid edge gaps).
+        col_off = max(0, int(math.floor(win.col_off)))
+        row_off = max(0, int(math.floor(win.row_off)))
+        col_end = min(ds.width,  int(math.ceil(win.col_off + win.width)))
+        row_end = min(ds.height, int(math.ceil(win.row_off + win.height)))
+
+        win_int = rio_windows.Window(
+            col_off=col_off,
+            row_off=row_off,
+            width=col_end - col_off,
+            height=row_end - row_off,
+        )
+
+        data = ds.read(1, window=win_int).astype(np.float64)
+        nodata = nodata_override if nodata_override is not None else ds.nodata
+        transform = ds.window_transform(win_int)
+        crs = src_crs
+
     return data, transform, crs, nodata
 
 
