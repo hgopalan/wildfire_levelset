@@ -1408,8 +1408,8 @@ def extract_wrf_terrain(wrf_path, output_path, subsample=1,
 
     if subsample > 1:
         sl = slice(None, None, subsample)
-        x_utm  = x_utm [sl, sl]
-        y_utm  = y_utm [sl, sl]
+        x_utm = x_utm[sl, sl]
+        y_utm = y_utm[sl, sl]
         hgt_2d = hgt_2d[sl, sl]
         ny_out, nx_out = x_utm.shape
         print(f"Subsampled to {ny_out}×{nx_out} = {ny_out * nx_out} points.")
