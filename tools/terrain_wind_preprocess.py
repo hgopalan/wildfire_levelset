@@ -920,6 +920,33 @@ def read_wrf_time_spacing(wrf_path):
     return 3600.0
 
 
+def _wrf_bbox_to_utm_domain_bounds(lat_min, lat_max, lon_min, lon_max):
+    """Convert a WRF lat/lon bounding box to UTM domain bounds.
+
+    Projects the four corners of the lat/lon bounding box to UTM metres and
+    returns the enclosing axis-aligned rectangle.
+
+    Parameters
+    ----------
+    lat_min, lat_max : float
+        Latitude bounds in WGS-84 decimal degrees.
+    lon_min, lon_max : float
+        Longitude bounds in WGS-84 decimal degrees.
+
+    Returns
+    -------
+    tuple of float
+        ``(x_lo, y_lo, x_hi, y_hi)`` in UTM metres.
+    """
+    import numpy as np
+
+    corner_lats = np.array([lat_min, lat_min, lat_max, lat_max])
+    corner_lons = np.array([lon_min, lon_max, lon_min, lon_max])
+    x_utm, y_utm = _latlon_to_utm(corner_lats, corner_lons)
+    return (float(np.min(x_utm)), float(np.min(y_utm)),
+            float(np.max(x_utm)), float(np.max(y_utm)))
+
+
 def _read_domain_bounds(file_path):
     """Read x/y min/max from a terrain XYZ or landscape LCP file.
 
@@ -1047,8 +1074,8 @@ def write_inputs_file(output_path,
             x_lo, y_lo, x_hi, y_hi = bounds
             w = x_hi - x_lo
             h = y_hi - y_lo
-            fh.write(f"box_xmin = {x_lo + 0.05 * w:.2f}\n")
-            fh.write(f"box_xmax = {x_lo + 0.10 * w:.2f}\n")
+            fh.write(f"box_xmin = {x_lo + 0.45 * w:.2f}\n")
+            fh.write(f"box_xmax = {x_lo + 0.55 * w:.2f}\n")
             fh.write(f"box_ymin = {y_lo + 0.45 * h:.2f}\n")
             fh.write(f"box_ymax = {y_lo + 0.55 * h:.2f}\n")
         else:
@@ -1057,6 +1084,11 @@ def write_inputs_file(output_path,
 
         # --- Rothermel / fuel ----------------------------------------
         fh.write("# Rothermel fuel model (edit as needed)\n")
+        if landscape_file is None:
+            fh.write(
+                "# No landscape file: defaulting to Southern California chaparral "
+                "(NFFL FM4)\n"
+            )
         fh.write("rothermel.fuel_model = FM4\n")
         fh.write("rothermel.M_f = 0.08\n")
         if terrain_file is not None:
@@ -1605,7 +1637,7 @@ def main(argv=None):
         time_indices = [args.time_index]
 
     # -----------------------------------------------------------------------
-    # SRTM terrain XYZ step  (or WRF HGT when --no-terrain + --wrf-file)
+    # SRTM terrain XYZ step
     # -----------------------------------------------------------------------
     srtm_x = srtm_y = None  # kept for wind interpolation if needed
 
@@ -1631,20 +1663,6 @@ def main(argv=None):
                 tif_path=tif_path,
                 subsample=args.subsample,
             )
-
-    elif args.wrf_file is not None:
-        # --no-terrain + --wrf-file: write terrain from WRF HGT data
-        print("\nExtracting terrain from WRF HGT data (--no-terrain mode) …")
-        out_terrain = os.path.abspath(args.terrain)
-        extract_wrf_terrain(
-            args.wrf_file,
-            out_terrain,
-            subsample=args.subsample,
-            lat_min=lat_min,
-            lat_max=lat_max,
-            lon_min=lon_min,
-            lon_max=lon_max,
-        )
 
     # -----------------------------------------------------------------------
     # LANDFIRE landscape LCP step
@@ -1784,7 +1802,9 @@ def main(argv=None):
     # Auto-generate inputs.i for a FARSITE run
     # -----------------------------------------------------------------------
     if not getattr(args, "no_inputs", False):
-        # Determine domain bounds from terrain or landscape file
+        # Determine domain bounds:
+        # 1. Prefer reading from landscape or terrain file when terrain is active.
+        # 2. When --no-terrain + --wrf-file, compute from WRF lat/lon bbox → UTM.
         domain_bounds = None
         for candidate in [
             os.path.abspath(args.landscape) if not args.no_terrain and not args.no_landscape else None,
@@ -1794,6 +1814,21 @@ def main(argv=None):
                 domain_bounds = _read_domain_bounds(candidate)
                 if domain_bounds is not None:
                     break
+
+        if domain_bounds is None and args.no_terrain and args.wrf_file is not None:
+            # No terrain file: derive domain extents directly from the WRF
+            # lat/lon bounding box converted to UTM at 30 m resolution.
+            print("Computing domain bounds from WRF bbox UTM extents "
+                  "(--no-terrain mode) …")
+            domain_bounds = _wrf_bbox_to_utm_domain_bounds(
+                lat_min, lat_max, lon_min, lon_max
+            )
+            x_lo, y_lo, x_hi, y_hi = domain_bounds
+            n_x = max(1, round((x_hi - x_lo) / 30.0))
+            n_y = max(1, round((y_hi - y_lo) / 30.0))
+            print(f"  UTM extents: x=[{x_lo:.0f}, {x_hi:.0f}]  "
+                  f"y=[{y_lo:.0f}, {y_hi:.0f}]")
+            print(f"  n_cell_x = {n_x}  n_cell_y = {n_y}  (30 m resolution)")
 
         # Determine WRF time spacing and final_time
         wind_time_spacing = None

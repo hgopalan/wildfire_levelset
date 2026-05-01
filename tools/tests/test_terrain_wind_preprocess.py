@@ -869,6 +869,230 @@ class TestCLI(unittest.TestCase):
                          "wind file should NOT exist with --no-wind")
 
 
+# ===========================================================================
+# 13. write_inputs_file: fire box centered, --no-landscape FM4 default
+# ===========================================================================
+
+class TestWriteInputsFile(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_fire_box_centered(self):
+        """Fire ignition box should be centred in the domain (45-55%)."""
+        path = os.path.join(self.tmpdir, "inputs_center.i")
+        bounds = (500000.0, 4000000.0, 503000.0, 4003000.0)  # 3 km × 3 km
+        twp.write_inputs_file(path, domain_bounds=bounds)
+
+        x_lo, y_lo, x_hi, y_hi = bounds
+        w = x_hi - x_lo
+        h = y_hi - y_lo
+        expected_xmin = x_lo + 0.45 * w
+        expected_xmax = x_lo + 0.55 * w
+        expected_ymin = y_lo + 0.45 * h
+        expected_ymax = y_lo + 0.55 * h
+
+        with open(path) as fh:
+            content = fh.read()
+        self.assertIn(f"box_xmin = {expected_xmin:.2f}", content)
+        self.assertIn(f"box_xmax = {expected_xmax:.2f}", content)
+        self.assertIn(f"box_ymin = {expected_ymin:.2f}", content)
+        self.assertIn(f"box_ymax = {expected_ymax:.2f}", content)
+
+    def test_no_landscape_defaults_fm4(self):
+        """When no landscape_file is given, inputs.i should use FM4 (S. California)."""
+        path = os.path.join(self.tmpdir, "inputs_nolcp.i")
+        twp.write_inputs_file(path, landscape_file=None)
+        with open(path) as fh:
+            content = fh.read()
+        self.assertIn("rothermel.fuel_model = FM4", content)
+        self.assertIn("Southern California", content)
+
+    def test_landscape_file_no_default_comment(self):
+        """When a landscape_file is given, no S.California default comment."""
+        path = os.path.join(self.tmpdir, "inputs_withlcp.i")
+        twp.write_inputs_file(path, landscape_file="/some/path/landscape.lcp")
+        with open(path) as fh:
+            content = fh.read()
+        self.assertIn("rothermel.fuel_model = FM4", content)
+        # The landscape file should suppress the 'defaulting to Southern California' note
+        self.assertNotIn("defaulting to Southern California", content)
+
+
+# ===========================================================================
+# 14. main() --no-terrain: domain bounds in inputs.i from WRF UTM extents
+# ===========================================================================
+
+class TestMainNoTerrainDomainBounds(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def _make_nc(self, **kwargs):
+        path = os.path.join(self.tmpdir, "wrf_domain_bounds.nc")
+        return _make_wrf_nc(path, **kwargs)
+
+    def test_inputs_has_domain_bounds_no_terrain(self):
+        """--no-terrain + --wrf-file: inputs.i must contain prob_lo/hi and n_cell."""
+        nc = self._make_nc(ny=10, nx=12, n_times=1)
+        iout = os.path.join(self.tmpdir, "inputs_domain.i")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+            "--inputs", iout,
+        ])
+
+        self.assertTrue(os.path.isfile(iout))
+        with open(iout) as fh:
+            content = fh.read()
+        # Domain bounds must appear as uncommented lines
+        self.assertRegex(content, r"(?m)^prob_lo_x\s*=")
+        self.assertRegex(content, r"(?m)^prob_lo_y\s*=")
+        self.assertRegex(content, r"(?m)^prob_hi_x\s*=")
+        self.assertRegex(content, r"(?m)^prob_hi_y\s*=")
+        self.assertRegex(content, r"(?m)^n_cell_x\s*=")
+        self.assertRegex(content, r"(?m)^n_cell_y\s*=")
+
+    def test_inputs_domain_bounds_are_metres(self):
+        """Domain bounds from WRF UTM extents should be large (> 1e5 m)."""
+        nc = self._make_nc(ny=10, nx=12, n_times=1)
+        iout = os.path.join(self.tmpdir, "inputs_domain_metres.i")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+            "--inputs", iout,
+        ])
+
+        import re
+        with open(iout) as fh:
+            content = fh.read()
+        m = re.search(r"^prob_lo_x\s*=\s*([\d.]+)", content, re.MULTILINE)
+        self.assertIsNotNone(m, "prob_lo_x not found")
+        self.assertGreater(float(m.group(1)), 1e5,
+                           "prob_lo_x should be in UTM metres (> 100 000 m)")
+
+    def test_inputs_n_cell_at_30m_resolution(self):
+        """n_cell_x / n_cell_y should equal round(span / 30) for WRF UTM extents."""
+        nc = self._make_nc(ny=10, nx=12, n_times=1)
+        iout = os.path.join(self.tmpdir, "inputs_ncell.i")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+            "--inputs", iout,
+        ])
+
+        import re
+        with open(iout) as fh:
+            content = fh.read()
+
+        def _get(key):
+            m = re.search(rf"^{key}\s*=\s*([\d.]+)", content, re.MULTILINE)
+            self.assertIsNotNone(m, f"{key} not found")
+            return float(m.group(1))
+
+        x_lo = _get("prob_lo_x")
+        x_hi = _get("prob_hi_x")
+        y_lo = _get("prob_lo_y")
+        y_hi = _get("prob_hi_y")
+        n_cell_x = int(_get("n_cell_x"))
+        n_cell_y = int(_get("n_cell_y"))
+
+        expected_nx = max(1, round((x_hi - x_lo) / 30.0))
+        expected_ny = max(1, round((y_hi - y_lo) / 30.0))
+        self.assertEqual(n_cell_x, expected_nx)
+        self.assertEqual(n_cell_y, expected_ny)
+
+    def test_inputs_fire_box_centered(self):
+        """Fire box in inputs.i should sit at 45-55% of domain in each axis."""
+        nc = self._make_nc(ny=10, nx=12, n_times=1)
+        iout = os.path.join(self.tmpdir, "inputs_firebox.i")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+            "--inputs", iout,
+        ])
+
+        import re
+        with open(iout) as fh:
+            content = fh.read()
+
+        def _get(key):
+            m = re.search(rf"^{key}\s*=\s*([\d.]+)", content, re.MULTILINE)
+            self.assertIsNotNone(m, f"{key} not found in inputs.i")
+            return float(m.group(1))
+
+        x_lo = _get("prob_lo_x")
+        x_hi = _get("prob_hi_x")
+        y_lo = _get("prob_lo_y")
+        y_hi = _get("prob_hi_y")
+        box_xmin = _get("box_xmin")
+        box_xmax = _get("box_xmax")
+        box_ymin = _get("box_ymin")
+        box_ymax = _get("box_ymax")
+
+        w = x_hi - x_lo
+        h = y_hi - y_lo
+        self.assertAlmostEqual(box_xmin, x_lo + 0.45 * w, delta=1.0)
+        self.assertAlmostEqual(box_xmax, x_lo + 0.55 * w, delta=1.0)
+        self.assertAlmostEqual(box_ymin, y_lo + 0.45 * h, delta=1.0)
+        self.assertAlmostEqual(box_ymax, y_lo + 0.55 * h, delta=1.0)
+
+
+# ===========================================================================
+# 15. _wrf_bbox_to_utm_domain_bounds
+# ===========================================================================
+
+class TestWrfBboxToUtmDomainBounds(unittest.TestCase):
+
+    def test_returns_four_floats(self):
+        result = twp._wrf_bbox_to_utm_domain_bounds(37.0, 37.9, -120.0, -119.1)
+        self.assertEqual(len(result), 4)
+        for v in result:
+            self.assertIsInstance(v, float)
+
+    def test_x_lo_less_than_x_hi(self):
+        x_lo, y_lo, x_hi, y_hi = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.9, -120.0, -119.1
+        )
+        self.assertLess(x_lo, x_hi)
+        self.assertLess(y_lo, y_hi)
+
+    def test_utm_in_metres(self):
+        x_lo, y_lo, x_hi, y_hi = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.9, -120.0, -119.1
+        )
+        for v in (x_lo, x_hi, y_lo, y_hi):
+            self.assertGreater(abs(v), 1e5,
+                               "Expected UTM coordinates to be in metres (> 1e5)")
+
+    def test_wider_bbox_gives_wider_utm(self):
+        """A wider lat/lon span should produce a wider UTM span."""
+        _, _, x_hi_narrow, _ = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.1, -120.0, -119.9
+        )
+        x_lo_narrow, _, _, _ = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.1, -120.0, -119.9
+        )
+        _, _, x_hi_wide, _ = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.1, -120.0, -119.0
+        )
+        x_lo_wide, _, _, _ = twp._wrf_bbox_to_utm_domain_bounds(
+            37.0, 37.1, -120.0, -119.0
+        )
+        self.assertGreater(x_hi_wide - x_lo_wide,
+                           x_hi_narrow - x_lo_narrow)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
