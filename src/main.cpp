@@ -201,8 +201,8 @@ int main(int argc, char* argv[])
 #endif
 
     // Initialize terrain slopes
-    // Priority: terrain_file > landscape_file
-    // If terrain file is specified, ignore landscape file slope/elevation
+    // Priority for elevation/slope/aspect: terrain_file > landscape_file
+    // Fuel model always comes from landscape_file when present (terrain file has no fuel data)
     std::unique_ptr<MultiFab> terrain_slopes;
     if (!inputs.rothermel.terrain_file.empty()) {
       // Create MultiFab for slopes (2 components: slope_x, slope_y)
@@ -211,7 +211,8 @@ int main(int argc, char* argv[])
       amrex::Print() << "Initialized terrain slopes from terrain file: " 
 		     << inputs.rothermel.terrain_file << "\n";
       if (!inputs.rothermel.landscape_file.empty()) {
-        amrex::Print() << "NOTE: Ignoring landscape_file because terrain_file takes precedence\n";
+        amrex::Print() << "NOTE: terrain_file takes precedence for elevation/slope/aspect; "
+                          "landscape_file used for fuel model only\n";
       }
     } else if (!inputs.rothermel.landscape_file.empty()) {
       // Create MultiFab for slopes (2 components: slope_x, slope_y)
@@ -223,6 +224,7 @@ int main(int argc, char* argv[])
 
     // Create elevation MultiFab (1 component, no ghost cells).
     // Populated from terrain or landscape file when available; zero otherwise.
+    // terrain_file takes precedence over landscape_file for elevation.
     MultiFab elevation_mf(ba, dm, 1, 0);
     elevation_mf.setVal(0.0);
     if (!inputs.rothermel.terrain_file.empty()) {
@@ -233,6 +235,8 @@ int main(int argc, char* argv[])
 
     // Create slope (degrees), aspect (degrees), and fuel model MultiFabs.
     // Populated from terrain or landscape file when available; zero otherwise.
+    // terrain_file takes precedence for slope/aspect; fuel model always comes
+    // from landscape_file when present (terrain file carries no fuel data).
     MultiFab slope_mf(ba, dm, 1, 0);
     MultiFab aspect_mf(ba, dm, 1, 0);
     MultiFab fuel_model_mf(ba, dm, 1, 0);
@@ -241,7 +245,10 @@ int main(int argc, char* argv[])
     fuel_model_mf.setVal(0.0);
     if (!inputs.rothermel.terrain_file.empty() && terrain_slopes) {
       compute_slope_aspect_from_slopes(*terrain_slopes, slope_mf, aspect_mf);
-      // fuel_model is not available from terrain file; remains 0
+      // fuel_model is not available from terrain file; use landscape file if present
+      if (!inputs.rothermel.landscape_file.empty()) {
+        compute_fuel_model_from_landscape(fuel_model_mf, geom, inputs.rothermel.landscape_file);
+      }
     } else if (!inputs.rothermel.landscape_file.empty()) {
       compute_landscape_slope_aspect_fuel(slope_mf, aspect_mf, fuel_model_mf,
                                           geom, inputs.rothermel.landscape_file);
