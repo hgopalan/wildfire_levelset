@@ -268,8 +268,8 @@ int main(int argc, char* argv[])
     // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
     const bool use_final_time = (inputs.final_time > 0.0);
     int step = 0;
-    bool time_loop_done = false;
-    while (!time_loop_done) {
+    while ((use_final_time && time < inputs.final_time) ||
+           (!use_final_time && step < inputs.nsteps)) {
       ++step;
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
@@ -367,13 +367,6 @@ int main(int argc, char* argv[])
 	
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", step);
 	write_negative_phi_convex_hull(phi, geom, xy_buf);
-      }
-
-      // Check stopping condition
-      if (use_final_time) {
-        time_loop_done = (time >= inputs.final_time);
-      } else {
-        time_loop_done = (step >= inputs.nsteps);
       }
     }
       // ---------------- Final write --------------------------

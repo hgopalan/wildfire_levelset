@@ -1580,8 +1580,7 @@ def main(argv=None):
 
     if args.wrf_file is not None and not args.no_wind:
         multi_time = len(time_indices) > 1
-        base_wind_out = os.path.abspath(args.wind)
-        wind_base_out = base_wind_out
+        wind_base_out = os.path.abspath(args.wind)
 
         for pos, t_idx in enumerate(time_indices):
             print(f"\nExtracting WRF wind for time index {t_idx} …")
@@ -1592,8 +1591,8 @@ def main(argv=None):
                 subsample=args.subsample,
             )
 
-            wind_out = (_wind_output_path(base_wind_out, pos)
-                        if multi_time else base_wind_out)
+            wind_out = (_wind_output_path(wind_base_out, pos)
+                        if multi_time else wind_base_out)
 
             if args.interpolate_wind:
                 if args.no_terrain:
