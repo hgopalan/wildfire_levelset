@@ -731,8 +731,10 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
 
     Downloads SRTM elevation data for the given bounding box, derives slope
     and aspect via finite differences (see :func:`_compute_slope_aspect_from_srtm_tif`),
-    and combines the result with a locally supplied fuel model raster.  This
-    is the backend for ``--srtm-slope-aspect``.
+    then interpolates (bilinear resampling) the SRTM elevation, slope, and
+    aspect onto the fuel raster's grid.  The output grid therefore matches
+    the resolution and extent of *fuel_path*.  This is the backend for
+    ``--srtm-slope-aspect``.
 
     Parameters
     ----------
@@ -778,10 +780,22 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
     print("Reading fuel model raster …")
     fuel_data, fuel_tf, fuel_crs, _ = _read_raster_file(fuel_path)
 
-    xs, ys, elev, slope, aspect, fuel = assemble_landscape(
-        elev_data, elev_tf, elev_crs, elev_nd,
+    print(f"Fuel grid: {fuel_data.shape[0]}×{fuel_data.shape[1]}")
+    print("Interpolating SRTM elevation, slope, and aspect to fuel grid …")
+    elev_data = _resample_to_grid(
+        elev_data, elev_tf, elev_crs,
+        fuel_data, fuel_tf, fuel_crs, resampling="bilinear")
+    slope_data = _resample_to_grid(
         slope_data, elev_tf, elev_crs,
+        fuel_data, fuel_tf, fuel_crs, resampling="bilinear")
+    aspect_data = _resample_to_grid(
         aspect_data, elev_tf, elev_crs,
+        fuel_data, fuel_tf, fuel_crs, resampling="bilinear")
+
+    xs, ys, elev, slope, aspect, fuel = assemble_landscape(
+        elev_data, fuel_tf, fuel_crs, elev_nd,
+        slope_data, fuel_tf, fuel_crs,
+        aspect_data, fuel_tf, fuel_crs,
         fuel_data, fuel_tf, fuel_crs,
         project_utm=project_utm, subsample=subsample,
         keep_nonburnable=keep_nonburnable,
