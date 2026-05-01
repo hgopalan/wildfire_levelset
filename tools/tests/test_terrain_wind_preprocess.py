@@ -1754,11 +1754,16 @@ class TestVintageFallback(unittest.TestCase):
         orig_mspc = twp.download_landfire_mspc
         orig_lfps = twp.download_landfire
         twp.download_landfire_cog = _fake_cog
+
+        def _mspc_should_not_be_called(*a, **k):
+            raise AssertionError("mspc should not be called")
+
+        def _lfps_should_not_be_called(*a, **k):
+            raise AssertionError("lfps should not be called")
+
         # mspc and lfps should never be called (only "cog" source requested)
-        twp.download_landfire_mspc = lambda *a, **k: (_ for _ in ()).throw(
-            AssertionError("mspc should not be called"))
-        twp.download_landfire = lambda *a, **k: (_ for _ in ()).throw(
-            AssertionError("lfps should not be called"))
+        twp.download_landfire_mspc = _mspc_should_not_be_called
+        twp.download_landfire = _lfps_should_not_be_called
         try:
             # The download part succeeds for vintage 2016, but downstream
             # rasterio processing of the fake bytes will raise some error.
@@ -1837,6 +1842,30 @@ class TestVintageFallback(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class TestNoVintageFallbackCLI(unittest.TestCase):
+    """Test --no-vintage-fallback CLI flag parsing."""
+
+    def _parse(self, argv):
+        parser = twp._build_parser()
+        return parser.parse_args(argv)
+
+    def _base_argv(self):
+        return ["--lat-min", "40", "--lat-max", "40.5",
+                "--lon-min", "-105", "--lon-max", "-104.5",
+                "--no-terrain"]
+
+    def test_default_vintage_fallback_enabled(self):
+        """By default --no-vintage-fallback is False (fallback is on)."""
+        args = self._parse(self._base_argv())
+        self.assertFalse(args.no_vintage_fallback)
+
+    def test_flag_disables_fallback(self):
+        """--no-vintage-fallback should set the flag to True."""
+        args = self._parse(self._base_argv() + ["--no-vintage-fallback"])
+        self.assertTrue(args.no_vintage_fallback)
+
+
+class TestSourcesCLI(unittest.TestCase):
     """Test --sources and --use-lfps CLI argument parsing."""
 
     def _parse(self, argv):

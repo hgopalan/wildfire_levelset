@@ -1459,9 +1459,7 @@ def create_landscape(output_path, bbox, vintage=2020,
         for source in effective_sources:
             try:
                 if source == "cog":
-                    print(
-                        f"Fetching LANDFIRE layers from COG (AWS S3 / HTTPS) …"
-                    )
+                    print("Fetching LANDFIRE layers from COG (AWS S3 / HTTPS) …")
                     vintage_layer_map = download_landfire_cog(
                         bbox, vintage=v_attempt,
                         lid_elev=lid_elev, lid_slope=lid_slope,
