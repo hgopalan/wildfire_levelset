@@ -37,6 +37,7 @@ struct InputParameters {
     // Time & output
     int reinit_int;
     int nsteps;
+    amrex::Real final_time;   // simulation stop time [s]; if > 0 overrides nsteps
     amrex::Real cfl;
     int plot_int;
 

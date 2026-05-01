@@ -154,6 +154,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--wind",     wout,
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         self.assertTrue(os.path.isfile(wout))
@@ -203,6 +204,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--wind",     wout,
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         self.assertFalse(os.path.isfile(tout),
@@ -214,7 +216,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
     # Test 4: --time-range
     # -------------------------------------------------------------------
     def test_04_time_range_multiple_files(self):
-        """--time-range 0:2 produces wind_t0.csv, wind_t1.csv, wind_t2.csv."""
+        """--time-range 0:2 produces wind4.csv, wind4_1.csv, wind4_2.csv."""
         nc_path = os.path.join(self.tmpdir, "wrf4.nc")
         _make_wrf_nc(nc_path, ny=5, nx=6, n_times=3)
         base_wout = os.path.join(self.tmpdir, "wind4.csv")
@@ -225,10 +227,11 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--time-range", "0:2",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
-        for t in range(3):
-            expected_path = twp._wind_output_path(base_wout, t)
+        for pos in range(3):
+            expected_path = twp._wind_output_path(base_wout, pos)
             self.assertTrue(os.path.isfile(expected_path),
                             f"Expected time-step file not found: {expected_path}")
             self.assertGreater(_count(expected_path), 0)
@@ -246,6 +249,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--time-range", "0:1",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         def _read_u(path):
@@ -257,6 +261,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                     vals.append(float(line.split()[2]))
             return np.array(vals)
 
+        # position 0 → wind4b.csv (t=0), position 1 → wind4b_1.csv (t=1)
         u0 = _read_u(twp._wind_output_path(base_wout, 0))
         u1 = _read_u(twp._wind_output_path(base_wout, 1))
         # At t=1 the offset should be +100
@@ -280,10 +285,11 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--time-index", "1",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         self.assertTrue(os.path.isfile(wout))
-        # Suffixed version must NOT exist
+        # Suffixed version must NOT exist (position=1 → wind5_1.csv)
         self.assertFalse(os.path.isfile(twp._wind_output_path(wout, 1)))
 
     def test_05b_time_index_u_values(self):
@@ -299,6 +305,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             "--time-index", "1",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         u_vals = []
@@ -353,6 +360,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                 "--wind",           wout,
                 "--interpolate-wind",
                 "--no-landscape",
+                "--no-inputs",
             ])
         finally:
             twp.create_terrain_xyz_return_grid = original_fn
@@ -402,6 +410,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                 "--terrain",   tout,
                 "--no-landscape",
                 "--no-wind",
+                "--no-inputs",
             ])
         finally:
             twp.create_terrain_xyz = original_fn
@@ -467,11 +476,11 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
 
         twp.main([
             "--wrf-file", nc_path, "--wind", wout_full,
-            "--no-terrain", "--no-landscape",
+            "--no-terrain", "--no-landscape", "--no-inputs",
         ])
         twp.main([
             "--wrf-file", nc_path, "--wind", wout_sub,
-            "--no-terrain", "--no-landscape",
+            "--no-terrain", "--no-landscape", "--no-inputs",
             "--subsample", "2",
         ])
 
@@ -492,6 +501,110 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
             twp._parse_time_range("5:2")
         with self.assertRaises(ValueError):
             twp._parse_time_range("abc")
+
+    # -------------------------------------------------------------------
+    # Test 11: write_inputs_file produces a valid FARSITE inputs.i
+    # -------------------------------------------------------------------
+    def test_11_write_inputs_file(self):
+        """write_inputs_file writes a FARSITE inputs.i with expected keys."""
+        out = os.path.join(self.tmpdir, "inputs_test.i")
+        twp.write_inputs_file(
+            output_path=out,
+            wind_base_file=os.path.join(self.tmpdir, "wind.csv"),
+            multi_time=True,
+            wind_time_spacing=3600.0,
+            final_time=7200.0,
+            domain_bounds=(330000.0, 3775000.0, 331000.0, 3776000.0),
+        )
+        self.assertTrue(os.path.isfile(out))
+        content = open(out).read()
+        self.assertIn("final_time = 7200.0", content)
+        self.assertIn("use_time_dependent_wind = 1", content)
+        self.assertIn("wind_time_spacing = 3600.0", content)
+        self.assertIn("skip_levelset = 1", content)
+        self.assertIn("farsite.enable = 1", content)
+        self.assertIn("spotting.enable = 0", content)
+        self.assertIn("crown.enable = 0", content)
+        self.assertIn("albini_spotting.enable = 0", content)
+        self.assertIn("prob_lo_x = 330000.00", content)
+        self.assertIn("prob_hi_x = 331000.00", content)
+
+    # -------------------------------------------------------------------
+    # Test 12: read_wrf_time_spacing reads XTIME variable
+    # -------------------------------------------------------------------
+    def test_12_read_wrf_time_spacing_xtime(self):
+        """read_wrf_time_spacing returns correct spacing from XTIME (minutes)."""
+        try:
+            import netCDF4 as nc
+        except ImportError:
+            self.skipTest("netCDF4 not installed")
+
+        nc_path = os.path.join(self.tmpdir, "wrf_xtime.nc")
+        ds = nc.Dataset(nc_path, "w", format="NETCDF4")
+        ds.createDimension("Time", 3)
+        xtime_var = ds.createVariable("XTIME", "f4", ("Time",))
+        xtime_var[:] = [0.0, 60.0, 120.0]  # 60-minute spacing
+        ds.close()
+
+        spacing = twp.read_wrf_time_spacing(nc_path)
+        self.assertAlmostEqual(spacing, 3600.0, places=1)
+
+    # -------------------------------------------------------------------
+    # Test 13: inputs.i auto-generated with --time-range sets final_time
+    # -------------------------------------------------------------------
+    def test_13_auto_inputs_time_range(self):
+        """--time-range 0:2 with XTIME spacing → final_time in inputs.i."""
+        try:
+            import netCDF4 as nc
+        except ImportError:
+            self.skipTest("netCDF4 not installed")
+
+        nc_path = os.path.join(self.tmpdir, "wrf_tr.nc")
+        # Create WRF file with XTIME (60-min spacing) and 3 time steps
+        ds = nc.Dataset(nc_path, "w", format="NETCDF4")
+        ds.createDimension("Time", 3)
+        ds.createDimension("south_north", 4)
+        ds.createDimension("west_east", 5)
+        ds.createDimension("bottom_top", 1)
+        ds.createDimension("south_north_stag", 5)
+        ds.createDimension("west_east_stag", 6)
+
+        import numpy as np
+        xlat = ds.createVariable("XLAT", "f4", ("Time", "south_north", "west_east"))
+        xlong = ds.createVariable("XLONG", "f4", ("Time", "south_north", "west_east"))
+        for t in range(3):
+            xlat[t] = np.array([[37.0 + j * 0.01 for _ in range(5)]
+                                 for j in range(4)], dtype=np.float32)
+            xlong[t] = np.array([[-120.0 + i * 0.01 for i in range(5)]
+                                  for _ in range(4)], dtype=np.float32)
+        u_var = ds.createVariable("U", "f4",
+                                  ("Time", "bottom_top", "south_north", "west_east_stag"))
+        v_var = ds.createVariable("V", "f4",
+                                  ("Time", "bottom_top", "south_north_stag", "west_east"))
+        u_var[:] = 1.0
+        v_var[:] = 0.5
+        xtime = ds.createVariable("XTIME", "f4", ("Time",))
+        xtime[:] = [0.0, 60.0, 120.0]
+        ds.close()
+
+        wout = os.path.join(self.tmpdir, "wind_tr.csv")
+        inputs_out = os.path.join(self.tmpdir, "inputs_tr.i")
+
+        twp.main([
+            "--wrf-file",   nc_path,
+            "--wind",       wout,
+            "--time-range", "0:2",
+            "--no-terrain",
+            "--no-landscape",
+            "--inputs",     inputs_out,
+        ])
+
+        self.assertTrue(os.path.isfile(inputs_out))
+        content = open(inputs_out).read()
+        # final_time = (2 - 0) * 3600 = 7200 s
+        self.assertIn("final_time = 7200.0", content)
+        self.assertIn("use_time_dependent_wind = 1", content)
+        self.assertIn("wind_time_spacing = 3600.0", content)
 
 
 # -----------------------------------------------------------------------

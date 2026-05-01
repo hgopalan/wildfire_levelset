@@ -119,77 +119,83 @@ See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) fo
 
 Python utilities live in the `tools/` directory.
 
-### `srtm_landfire_to_terrain.py` – Unified terrain and landscape preprocessing
+### `terrain_wind_preprocess.py` – Unified terrain, landscape, and wind preprocessing
 
-Downloads SRTM elevation data and LANDFIRE fuel/slope/aspect rasters for a
-lat/lon bounding box and writes:
-1. A terrain XYZ file (`X Y Z` in UTM metres) for `rothermel.terrain_file`
-2. A landscape LCP file (`X Y ELEVATION SLOPE ASPECT FUEL_MODEL`) for
-   `rothermel.landscape_file`
+The primary preprocessing tool. Downloads SRTM elevation data and LANDFIRE
+fuel/slope/aspect rasters for a lat/lon bounding box, extracts wind from a
+WRF-style netCDF file, and automatically writes a ready-to-run `inputs.i` file
+for a FARSITE simulation (no firebrand spotting, no crown fire).
 
 ```bash
-# Download both terrain (SRTM) and landscape (LANDFIRE)
-python3 tools/srtm_landfire_to_terrain.py \
+# SRTM terrain + LANDFIRE landscape from a lat/lon bounding box
+python3 tools/terrain_wind_preprocess.py \
     --lat-min 40 --lat-max 40.5 \
     --lon-min -105 --lon-max -104.5
 
-# Custom output filenames
-python3 tools/srtm_landfire_to_terrain.py \
-    --lat-min 39.5 --lat-max 40.2 \
-    --lon-min -106 --lon-max -105.2 \
-    --terrain region_terrain.xyz \
-    --landscape region_landscape.lcp
+# Add WRF wind (bbox is read automatically from the WRF file)
+python3 tools/terrain_wind_preprocess.py \
+    --wrf-file wrfout_d01 \
+    --wind wind.csv
 
-# Skip landscape step (terrain only)
-python3 tools/srtm_landfire_to_terrain.py \
+# Extract a range of WRF time steps and compute final_time automatically
+python3 tools/terrain_wind_preprocess.py \
+    --wrf-file wrfout_d01 \
+    --wind wind.csv \
+    --time-range 0:5
+
+# Skip SRTM download; extract wind only
+python3 tools/terrain_wind_preprocess.py \
+    --wrf-file wrfout_d01 \
+    --wind wind.csv \
+    --no-terrain --no-landscape
+
+# Use local rasters for landscape (no LANDFIRE API call)
+python3 tools/terrain_wind_preprocess.py \
     --lat-min 40 --lat-max 40.5 \
     --lon-min -105 --lon-max -104.5 \
-    --no-landscape
-
-# Use locally-downloaded rasters for landscape (no LANDFIRE API call)
-python3 tools/srtm_landfire_to_terrain.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --elev-file  elev.tif \
+    --elev-file elev.tif \
     --slope-file slope.tif \
     --aspect-file aspect.tif \
-    --fuel-file  fbfm13.tif
+    --fuel-file fbfm13.tif
 ```
 
-Key options: `--subsample N`, `--vintage YEAR` (default 2020),
-`--fuel-product / --elev-product` (override LANDFIRE layer IDs),
-`--keep-nonburnable`, `--cache-dir DIR`, `--timeout N`, `--no-terrain`,
-`--no-landscape`
+Key options:
+- `--wrf-file FILE` – WRF netCDF; bounding box is read from file automatically
+- `--time-range T1:TN` – extract WRF time steps T1…TN (inclusive); the tool
+  sets `final_time = (TN − T1) × wind_time_spacing` in the generated `inputs.i`
+- `--time-index N` – single WRF time step (default: 0)
+- `--interpolate-wind` – interpolate WRF wind to the SRTM terrain grid
+- `--subsample N` – keep every N-th point (default: 1)
+- `--inputs FILE` – output `inputs.i` filename (default: `inputs.i`)
+- `--no-inputs` – skip `inputs.i` generation
+- `--no-terrain` / `--no-landscape` / `--no-wind` – skip individual steps
+- `--vintage YEAR` – LANDFIRE vintage year (default: 2020)
+- `--keep-nonburnable` – retain non-burnable LANDFIRE pixels
+- `--cache-dir DIR`, `--timeout N` – LANDFIRE download options
+- `--elev-file`, `--slope-file`, `--aspect-file`, `--fuel-file` – local rasters
 
-Requires: `pip install elevation rasterio numpy pyproj requests`
+Requires: `pip install elevation rasterio numpy pyproj requests netCDF4`
 
-The landscape output format:
-```
-# X Y ELEVATION SLOPE ASPECT FUEL_MODEL
-0.0 0.0 150.0 12.5 225.0 4
-30.0 0.0 152.0 13.1 220.0 4
-...
-```
+The tool writes:
+1. `terrain.xyz` – UTM terrain (`X Y Z`) for `rothermel.terrain_file`
+2. `landscape.lcp` – FARSITE landscape (`X Y ELEVATION SLOPE ASPECT FUEL_MODEL`)
+   for `rothermel.landscape_file`
+3. `wind.csv` (or `wind.csv`, `wind_1.csv`, … for multiple time steps) – wind
+   field for `velocity_file`
+4. `inputs.i` – ready-to-run FARSITE inputs file (no spotting, no crown)
 
-Use both files in a simulation:
+Use the generated files in a simulation:
 ```
 rothermel.terrain_file    = terrain.xyz
 rothermel.landscape_file  = landscape.lcp
+velocity_file             = wind.csv
 ```
 
-> **Deprecated tools**: The individual scripts `dem_to_xyz.py`,
-> `landfire_to_lcp.py`, and `srtm_to_xyz_stl.py` have been moved to
-> `tools/deprecated/` and are superseded by `srtm_landfire_to_terrain.py`.
-
-### `wrf_to_terrain_wind.py` – Extract terrain and wind from WRF output
-
-Reads a WRF-style netCDF file, de-staggers the wind components, reprojects
-to UTM, and writes separate terrain and wind CSV files.
-
-```bash
-python3 tools/wrf_to_terrain_wind.py wrfout_d01 terrain.csv wind.csv
-python3 tools/wrf_to_terrain_wind.py wrfout_d01 terrain.csv wind.csv --subsample 2
-```
+> **Deprecated tools**: The following scripts have been moved to
+> `tools/deprecated/` and are superseded by `terrain_wind_preprocess.py`:
+> `dem_to_xyz.py`, `landfire_to_lcp.py`, `srtm_to_xyz_stl.py`,
+> `srtm_landfire_to_terrain.py`, `wrf_to_terrain_wind.py`, and
+> `utm_convert.py`.
 
 ## Testing
 

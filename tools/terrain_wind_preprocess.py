@@ -832,13 +832,234 @@ def _parse_time_range(time_range_str):
     return list(range(t1, tn + 1))
 
 
-def _wind_output_path(base_path, t_idx):
-    """Return a time-stamped wind output path derived from *base_path*.
+def _wind_output_path(base_path, position):
+    """Return the wind output path for *position* (0-based) within a time range.
 
-    Example: 'wind.csv' + t=2  → 'wind_t2.csv'
+    position=0 returns *base_path* unchanged (e.g. ``wind.csv``).
+    position>0 inserts ``_<position>`` before the file extension
+    (e.g. position=1 → ``wind_1.csv``, position=2 → ``wind_2.csv``).
+
+    This matches the naming convention expected by ``velocity_field.H`` for
+    time-dependent wind-field loading (base file at t=0, ``base_N.csv`` at
+    subsequent time steps).
     """
+    if position == 0:
+        return base_path
     root, ext = os.path.splitext(base_path)
-    return f"{root}_t{t_idx}{ext}"
+    return f"{root}_{position}{ext}"
+
+
+def read_wrf_time_spacing(wrf_path):
+    """Return the time spacing (seconds) between consecutive WRF snapshots.
+
+    Tries ``XTIME`` (float, minutes from start) first, then ``Times``
+    (character array in ``YYYY-MM-DD_HH:MM:SS`` format).  Falls back to
+    3600 s (1 hour) if neither variable is present or only one snapshot
+    exists.
+
+    Parameters
+    ----------
+    wrf_path : str
+        Path to the WRF output netCDF file.
+
+    Returns
+    -------
+    float
+        Time spacing in seconds.
+    """
+    import numpy as np
+
+    ds = _open_nc(wrf_path)
+    try:
+        if "XTIME" in ds.variables:
+            xtime = np.array(ds.variables["XTIME"][:], dtype=np.float64)
+            if xtime.size > 1:
+                return float((xtime[1] - xtime[0]) * 60.0)
+
+        if "Times" in ds.variables:
+            times_var = ds.variables["Times"]
+            if times_var.shape[0] > 1:
+                try:
+                    from datetime import datetime
+
+                    def _parse_wrf_time(chars):
+                        s = "".join(c.decode("utf-8") if isinstance(c, bytes)
+                                    else c for c in chars).strip().replace("_", "T")
+                        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                            try:
+                                return datetime.strptime(s, fmt)
+                            except ValueError:
+                                continue
+                        return None
+
+                    t0 = _parse_wrf_time(times_var[0])
+                    t1 = _parse_wrf_time(times_var[1])
+                    if t0 is not None and t1 is not None:
+                        return float((t1 - t0).total_seconds())
+                except Exception:
+                    pass
+    finally:
+        ds.close()
+
+    print("WARNING: Could not determine WRF time spacing; defaulting to 3600 s",
+          file=sys.stderr)
+    return 3600.0
+
+
+def _read_domain_bounds(file_path):
+    """Read x/y min/max from a terrain XYZ or landscape LCP file.
+
+    Returns
+    -------
+    tuple of float or None
+        (x_min, y_min, x_max, y_max), or ``None`` if the file cannot be read.
+    """
+    xs, ys = [], []
+    try:
+        with open(file_path) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        xs.append(float(parts[0]))
+                        ys.append(float(parts[1]))
+                    except ValueError:
+                        pass
+    except OSError:
+        return None
+    if not xs:
+        return None
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def write_inputs_file(output_path,
+                      terrain_file=None,
+                      landscape_file=None,
+                      wind_base_file=None,
+                      multi_time=False,
+                      wind_time_spacing=None,
+                      final_time=None,
+                      domain_bounds=None):
+    """Write an ``inputs.i`` file configured for a pure FARSITE run.
+
+    The generated file enables FARSITE elliptical fire spread and disables
+    firebrand spotting, crown-fire initiation, and level-set advection.
+
+    Parameters
+    ----------
+    output_path : str
+        Destination path for the ``inputs.i`` file.
+    terrain_file : str or None
+        Path to the terrain XYZ file (``rothermel.terrain_file``).
+    landscape_file : str or None
+        Path to the landscape LCP file (``rothermel.landscape_file``).
+    wind_base_file : str or None
+        Base path for the wind CSV file (``velocity_file``).
+    multi_time : bool
+        Whether multiple wind time steps were extracted
+        (enables ``use_time_dependent_wind``).
+    wind_time_spacing : float or None
+        Wind time-step spacing in seconds for ``wind_time_spacing``.
+    final_time : float or None
+        Simulation stop time in seconds for ``final_time``.
+    domain_bounds : tuple of float or None
+        ``(x_min, y_min, x_max, y_max)`` in UTM metres.  Used to set
+        ``prob_lo`` / ``prob_hi`` and a default box ignition.  When
+        ``None``, placeholder comments are written instead.
+    """
+    bounds = domain_bounds  # may be None
+
+    with open(output_path, "w") as fh:
+        fh.write(
+            "# inputs.i – FARSITE run (no spotting, no crown fire)\n"
+            "# Auto-generated by terrain_wind_preprocess.py\n"
+            "#\n"
+            "# Edit the ignition box extents and fuel model before running.\n\n"
+        )
+
+        # --- Grid & domain -------------------------------------------
+        fh.write("# Grid & domain\n")
+        fh.write("n_cell = 64\n")
+        fh.write("max_grid_size = 32\n")
+        if bounds is not None:
+            x_lo, y_lo, x_hi, y_hi = bounds
+            fh.write(f"prob_lo_x = {x_lo:.2f}\n")
+            fh.write(f"prob_lo_y = {y_lo:.2f}\n")
+            fh.write(f"prob_hi_x = {x_hi:.2f}\n")
+            fh.write(f"prob_hi_y = {y_hi:.2f}\n")
+        else:
+            fh.write("# prob_lo_x = <x_min from terrain/landscape>\n")
+            fh.write("# prob_lo_y = <y_min from terrain/landscape>\n")
+            fh.write("# prob_hi_x = <x_max from terrain/landscape>\n")
+            fh.write("# prob_hi_y = <y_max from terrain/landscape>\n")
+        fh.write("\n")
+
+        # --- Time & output -------------------------------------------
+        fh.write("# Time & output\n")
+        if final_time is not None and final_time > 0.0:
+            fh.write(f"final_time = {final_time:.1f}\n")
+        else:
+            fh.write("# final_time = <simulation_duration_seconds>\n")
+        fh.write("cfl = 0.5\n")
+        fh.write("plot_int = 10\n")
+        fh.write("reinit_int = -1\n\n")
+
+        # --- Wind / velocity -----------------------------------------
+        fh.write("# Wind\n")
+        if wind_base_file is not None:
+            fh.write(f"velocity_file = {os.path.basename(wind_base_file)}\n")
+        else:
+            fh.write("# velocity_file = wind.csv\n")
+        if multi_time:
+            fh.write("use_time_dependent_wind = 1\n")
+            if wind_time_spacing is not None:
+                fh.write(f"wind_time_spacing = {wind_time_spacing:.1f}\n")
+        else:
+            fh.write("use_time_dependent_wind = 0\n")
+        fh.write("\n")
+
+        # --- Ignition source (box) -----------------------------------
+        fh.write("# Initial ignition source (adjust extents to your fire location)\n")
+        fh.write("source_type = box\n")
+        if bounds is not None:
+            x_lo, y_lo, x_hi, y_hi = bounds
+            w = x_hi - x_lo
+            h = y_hi - y_lo
+            fh.write(f"box_xmin = {x_lo + 0.05 * w:.2f}\n")
+            fh.write(f"box_xmax = {x_lo + 0.10 * w:.2f}\n")
+            fh.write(f"box_ymin = {y_lo + 0.45 * h:.2f}\n")
+            fh.write(f"box_ymax = {y_lo + 0.55 * h:.2f}\n")
+        else:
+            fh.write("# box_xmin / box_xmax / box_ymin / box_ymax = <UTM metres>\n")
+        fh.write("\n")
+
+        # --- Rothermel / fuel ----------------------------------------
+        fh.write("# Rothermel fuel model (edit as needed)\n")
+        fh.write("rothermel.fuel_model = FM4\n")
+        fh.write("rothermel.M_f = 0.08\n")
+        if terrain_file is not None:
+            fh.write(f"rothermel.terrain_file = {os.path.basename(terrain_file)}\n")
+        if landscape_file is not None:
+            fh.write(
+                f"rothermel.landscape_file = {os.path.basename(landscape_file)}\n"
+            )
+        fh.write("\n")
+
+        # --- FARSITE model (no spotting, no crown) -------------------
+        fh.write("# FARSITE ellipse model (Richards 1990)\n")
+        fh.write("skip_levelset = 1\n")
+        fh.write("farsite.enable = 1\n")
+        fh.write("farsite.use_anderson_LW = 1\n")
+        fh.write("farsite.phi_threshold = 0.1\n\n")
+
+        fh.write("# Disabled sub-models\n")
+        fh.write("spotting.enable = 0\n")
+        fh.write("crown.enable = 0\n")
+        fh.write("albini_spotting.enable = 0\n")
+
+    print(f"Wrote inputs file: '{output_path}'.")
 
 
 def interpolate_wind_to_grid(wrf_x, wrf_y, u, v, target_x, target_y):
@@ -1180,6 +1401,16 @@ def _build_parser():
     local.add_argument("--fuel-file",   default=None, metavar="PATH",
                        help="Local fuel model raster")
 
+    # inputs.i generation
+    parser.add_argument(
+        "--inputs", default="inputs.i", metavar="FILE",
+        help="Output inputs.i file for a FARSITE run (default: inputs.i)",
+    )
+    parser.add_argument(
+        "--no-inputs", action="store_true",
+        help="Skip automatic generation of the inputs.i file",
+    )
+
     return parser
 
 
@@ -1344,10 +1575,14 @@ def main(argv=None):
     # -----------------------------------------------------------------------
     # WRF wind extraction step
     # -----------------------------------------------------------------------
+    wind_base_out = None   # set below if wind was extracted
+    multi_time = False
+
     if args.wrf_file is not None and not args.no_wind:
         multi_time = len(time_indices) > 1
+        wind_base_out = os.path.abspath(args.wind)
 
-        for t_idx in time_indices:
+        for pos, t_idx in enumerate(time_indices):
             print(f"\nExtracting WRF wind for time index {t_idx} …")
             wrf_x, wrf_y, u_mass, v_mass = extract_wrf_wind(
                 args.wrf_file,
@@ -1356,9 +1591,8 @@ def main(argv=None):
                 subsample=args.subsample,
             )
 
-            base_wind_out = os.path.abspath(args.wind)
-            wind_out = (_wind_output_path(base_wind_out, t_idx)
-                        if multi_time else base_wind_out)
+            wind_out = (_wind_output_path(wind_base_out, pos)
+                        if multi_time else wind_base_out)
 
             if args.interpolate_wind:
                 if args.no_terrain:
@@ -1396,6 +1630,50 @@ def main(argv=None):
 
             print(f"Wrote wind file: '{wind_out}' ({wrf_x.size} points, "
                   f"utm_x utm_y u v, time index {t_idx})")
+
+    # -----------------------------------------------------------------------
+    # Auto-generate inputs.i for a FARSITE run
+    # -----------------------------------------------------------------------
+    if not getattr(args, "no_inputs", False):
+        # Determine domain bounds from terrain or landscape file
+        domain_bounds = None
+        for candidate in [
+            os.path.abspath(args.landscape) if not args.no_terrain and not args.no_landscape else None,
+            os.path.abspath(args.terrain) if not args.no_terrain else None,
+        ]:
+            if candidate is not None and os.path.isfile(candidate):
+                domain_bounds = _read_domain_bounds(candidate)
+                if domain_bounds is not None:
+                    break
+
+        # Determine WRF time spacing and final_time
+        wind_time_spacing = None
+        final_time = None
+
+        if args.wrf_file is not None:
+            wind_time_spacing = read_wrf_time_spacing(args.wrf_file)
+
+        if args.time_range is not None and wind_time_spacing is not None:
+            t_indices = _parse_time_range(args.time_range)
+            if len(t_indices) > 1:
+                t1 = t_indices[0]
+                tn = t_indices[-1]
+                final_time = (tn - t1) * wind_time_spacing
+
+        terrain_out = os.path.abspath(args.terrain) if not args.no_terrain else None
+        landscape_out = (os.path.abspath(args.landscape)
+                         if not args.no_terrain and not args.no_landscape else None)
+
+        write_inputs_file(
+            output_path=os.path.abspath(args.inputs),
+            terrain_file=terrain_out if (terrain_out and os.path.isfile(terrain_out)) else None,
+            landscape_file=landscape_out if (landscape_out and os.path.isfile(landscape_out)) else None,
+            wind_base_file=wind_base_out,
+            multi_time=multi_time,
+            wind_time_spacing=wind_time_spacing,
+            final_time=final_time,
+            domain_bounds=domain_bounds,
+        )
 
 
 if __name__ == "__main__":

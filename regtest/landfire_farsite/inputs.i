@@ -18,7 +18,7 @@ prob_hi_y = 3775300.0
 prob_hi_z = 1.0
 
 # Time & output
-nsteps = 50
+final_time = 180.0
 cfl = 0.5
 plot_int = 10
 

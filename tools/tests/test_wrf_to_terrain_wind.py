@@ -25,10 +25,11 @@ import unittest
 
 import numpy as np
 
-# Add repository root / tools to path
+# Add repository root / tools/deprecated to path
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _TOOLS_DIR = os.path.join(_REPO_ROOT, "tools")
-sys.path.insert(0, _TOOLS_DIR)
+_DEPRECATED_DIR = os.path.join(_TOOLS_DIR, "deprecated")
+sys.path.insert(0, _DEPRECATED_DIR)
 
 import wrf_to_terrain_wind as w2tw  # noqa: E402
 
@@ -409,7 +410,7 @@ class TestConvertWrf(unittest.TestCase):
 class TestCLI(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.script = os.path.join(_TOOLS_DIR, "wrf_to_terrain_wind.py")
+        self.script = os.path.join(_DEPRECATED_DIR, "wrf_to_terrain_wind.py")
 
     def _make_nc(self, **kwargs):
         path = os.path.join(self.tmpdir, "wrfout_cli.nc")

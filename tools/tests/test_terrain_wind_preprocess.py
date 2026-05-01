@@ -148,18 +148,20 @@ class TestParseTimeRange(unittest.TestCase):
 
 class TestWindOutputPath(unittest.TestCase):
 
-    def test_csv_extension(self):
-        self.assertEqual(twp._wind_output_path("wind.csv", 0), "wind_t0.csv")
+    def test_csv_extension_zero(self):
+        """position=0 returns base path unchanged."""
+        self.assertEqual(twp._wind_output_path("wind.csv", 0), "wind.csv")
 
-    def test_nonzero_index(self):
-        self.assertEqual(twp._wind_output_path("wind.csv", 7), "wind_t7.csv")
+    def test_csv_extension_nonzero(self):
+        """position>0 inserts _N before extension."""
+        self.assertEqual(twp._wind_output_path("wind.csv", 7), "wind_7.csv")
 
     def test_path_with_directory(self):
         result = twp._wind_output_path("/tmp/output/wind.csv", 2)
-        self.assertEqual(result, "/tmp/output/wind_t2.csv")
+        self.assertEqual(result, "/tmp/output/wind_2.csv")
 
     def test_no_extension(self):
-        self.assertEqual(twp._wind_output_path("wind", 1), "wind_t1")
+        self.assertEqual(twp._wind_output_path("wind", 1), "wind_1")
 
 
 # ===========================================================================
@@ -516,7 +518,7 @@ class TestMainTimeRange(unittest.TestCase):
         return _make_wrf_nc(path, **kwargs)
 
     def test_multiple_wind_files_created(self):
-        """--time-range 0:2 should produce wind_t0.csv, wind_t1.csv, wind_t2.csv."""
+        """--time-range 0:2 should produce wind.csv, wind_1.csv, wind_2.csv."""
         nc = self._make_nc(n_times=3)
         base_wout = os.path.join(self.tmpdir, "wind.csv")
 
@@ -526,10 +528,11 @@ class TestMainTimeRange(unittest.TestCase):
             "--time-range", "0:2",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
-        for t in range(3):
-            expected = twp._wind_output_path(base_wout, t)
+        for pos in range(3):
+            expected = twp._wind_output_path(base_wout, pos)
             self.assertTrue(os.path.isfile(expected),
                             f"Expected wind file not found: {expected}")
 
@@ -544,8 +547,9 @@ class TestMainTimeRange(unittest.TestCase):
             "--time-range", "1:1",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
-        # single time-step: no _t1 suffix expected
+        # single time-step: no suffix expected
         self.assertTrue(os.path.isfile(base_wout))
 
     def test_wind_values_differ_between_time_steps(self):
@@ -560,6 +564,7 @@ class TestMainTimeRange(unittest.TestCase):
             "--time-range", "0:1",
             "--no-terrain",
             "--no-landscape",
+            "--no-inputs",
         ])
 
         def _read_u(path):
@@ -571,6 +576,7 @@ class TestMainTimeRange(unittest.TestCase):
                     vals.append(float(line.split()[2]))
             return np.array(vals)
 
+        # position 0 → wind_diff.csv, position 1 → wind_diff_1.csv
         u0 = _read_u(twp._wind_output_path(base_wout, 0))
         u1 = _read_u(twp._wind_output_path(base_wout, 1))
         self.assertFalse(np.allclose(u0, u1),
@@ -670,7 +676,8 @@ class TestCLI(unittest.TestCase):
              "--wrf-file", nc,
              "--wind",     wout,
              "--no-terrain",
-             "--no-landscape"],
+             "--no-landscape",
+             "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0,
@@ -682,7 +689,7 @@ class TestCLI(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, self.script,
              "--wrf-file", "no_such_file.nc",
-             "--no-terrain", "--no-landscape"],
+             "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
@@ -690,7 +697,8 @@ class TestCLI(unittest.TestCase):
     def test_cli_missing_bbox_without_wrf(self):
         """No --wrf-file and no bbox args should exit non-zero."""
         result = subprocess.run(
-            [sys.executable, self.script, "--no-terrain", "--no-landscape"],
+            [sys.executable, self.script, "--no-terrain", "--no-landscape",
+             "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
@@ -705,13 +713,13 @@ class TestCLI(unittest.TestCase):
         subprocess.run(
             [sys.executable, self.script,
              "--wrf-file", nc, "--wind", wout_full,
-             "--no-terrain", "--no-landscape"],
+             "--no-terrain", "--no-landscape", "--no-inputs"],
             check=True, capture_output=True,
         )
         subprocess.run(
             [sys.executable, self.script,
              "--wrf-file", nc, "--wind", wout_sub,
-             "--no-terrain", "--no-landscape",
+             "--no-terrain", "--no-landscape", "--no-inputs",
              "--subsample", "2"],
             check=True, capture_output=True,
         )
@@ -729,14 +737,14 @@ class TestCLI(unittest.TestCase):
              "--wrf-file",   nc,
              "--wind",       base_wout,
              "--time-range", "0:2",
-             "--no-terrain", "--no-landscape"],
+             "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0,
                          f"CLI failed:\n{result.stdout}\n{result.stderr}")
 
-        for t in range(3):
-            expected = twp._wind_output_path(base_wout, t)
+        for pos in range(3):
+            expected = twp._wind_output_path(base_wout, pos)
             self.assertTrue(os.path.isfile(expected),
                             f"Missing time-step file: {expected}")
 
@@ -747,7 +755,7 @@ class TestCLI(unittest.TestCase):
             [sys.executable, self.script,
              "--wrf-file",   nc,
              "--time-range", "bad",
-             "--no-terrain", "--no-landscape"],
+             "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
@@ -762,7 +770,7 @@ class TestCLI(unittest.TestCase):
              "--wrf-file",   nc,
              "--wind",       wout,
              "--time-index", "1",
-             "--no-terrain", "--no-landscape"],
+             "--no-terrain", "--no-landscape", "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0,
@@ -779,7 +787,7 @@ class TestCLI(unittest.TestCase):
              "--wrf-file", nc,
              "--wind",     wout,
              "--no-terrain", "--no-landscape",
-             "--no-wind"],
+             "--no-wind", "--no-inputs"],
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0,
