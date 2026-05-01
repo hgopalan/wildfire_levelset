@@ -58,6 +58,13 @@ Usage examples
       --wind wind.csv \\
       --time-range 0:5
 
+  # Local fuel file + SRTM-derived elevation/slope/aspect (no LANDFIRE download)
+  python3 terrain_wind_preprocess.py \\
+      --lat-min 40 --lat-max 40.5 \\
+      --lon-min -105 --lon-max -104.5 \\
+      --fuel-file path/to/fuel.tif \\
+      --srtm-slope-aspect
+
 Options
 -------
   --wrf-file FILE       WRF netCDF file; if given the lat/lon bbox is read
@@ -91,6 +98,12 @@ Options
   --slope-file PATH     Local slope raster.
   --aspect-file PATH    Local aspect raster.
   --fuel-file PATH      Local fuel model raster.
+  --srtm-slope-aspect   When ``--fuel-file`` is provided without
+                        ``--elev-file``, ``--slope-file``, and
+                        ``--aspect-file``, derive elevation, slope, and
+                        aspect from SRTM data for the bounding box instead
+                        of downloading them from LANDFIRE.  Requires the
+                        ``elevation`` package (``pip install elevation``).
   --use-lfps            Force the legacy LFPS REST API for LANDFIRE download
                         instead of the default COG (S3/HTTPS) approach.  Use
                         this only if the S3 COG endpoint is unreachable.
@@ -611,6 +624,169 @@ def create_terrain_xyz_return_grid(lat_min, lat_max, lon_min, lon_max,
             os.remove(tif_path)
 
     return utm_x, utm_y, z
+
+
+def _compute_slope_aspect_from_srtm_tif(tif_path):
+    """Compute slope and aspect from a downloaded SRTM GeoTIFF.
+
+    Derives slope (degrees from horizontal) and aspect (degrees clockwise
+    from North) using finite differences on the elevation array.  Cell sizes
+    are converted from geographic degrees to approximate metres at the
+    raster's centre latitude so that the gradient has consistent units.
+
+    Spurious zero-elevation pixels are corrected with :func:`_fix_srtm_zeros`
+    before computing the gradient (matching the treatment in
+    :func:`tiff_to_xyz_utm`).
+
+    Parameters
+    ----------
+    tif_path : str
+        Path to an SRTM GeoTIFF (expected to be in EPSG:4326).
+
+    Returns
+    -------
+    tuple
+        ``(elev_data, slope_data, aspect_data, transform, crs, nodata)``
+        where all three data arrays share the same *transform* and *crs* as
+        the input raster so they can be passed directly to
+        :func:`assemble_landscape`.
+    """
+    import numpy as np
+    try:
+        import rasterio
+    except ImportError:
+        raise ImportError(
+            "rasterio is required to read SRTM GeoTIFF files. "
+            "Install with: pip install rasterio"
+        )
+
+    with rasterio.open(tif_path) as src:
+        elev_data = src.read(1).astype(np.float64)
+        transform = src.transform
+        crs = src.crs
+        nodata = src.nodata
+
+    # Replace negative elevations (ocean) and fix SRTM tile-seam artefacts.
+    elev_data = np.where(elev_data < 0, 0.0, elev_data)
+    elev_data = _fix_srtm_zeros(elev_data)
+
+    h, w = elev_data.shape
+
+    # Determine cell sizes in metres.  For a geographic CRS (EPSG:4326) the
+    # pixel spacing is in degrees; convert using the centre latitude.
+    src_epsg = None
+    try:
+        src_epsg = crs.to_epsg()
+    except (AttributeError, Exception):
+        # crs.to_epsg() may raise various exceptions across rasterio/pyproj
+        # versions; fall back to the pixel-size heuristic below.
+        pass
+
+    if src_epsg == 4326 or (src_epsg is None and abs(transform.a) < 1.0):
+        # Geographic (degrees) → metres approximation at centre latitude
+        center_col = w / 2.0
+        center_row = h / 2.0
+        lon_c, lat_c = transform * (center_col, center_row)
+        lat_rad = math.radians(lat_c)
+        m_per_deg_lat = 111320.0
+        m_per_deg_lon = 111320.0 * math.cos(lat_rad)
+        cell_size_x = abs(transform.a) * m_per_deg_lon  # east–west   (m)
+        cell_size_y = abs(transform.e) * m_per_deg_lat  # north–south (m)
+    else:
+        # Already in a metric CRS
+        cell_size_x = abs(transform.a)
+        cell_size_y = abs(transform.e)
+
+    # np.gradient(f, d_row, d_col) — the spacing arguments must match the
+    # axis order (rows first, then columns), so cell_size_y (north–south) is
+    # listed before cell_size_x (east–west).
+    #   dz_row  = ∂z / ∂(south direction)   [row index increases southward]
+    #   dz_col  = ∂z / ∂(east  direction)
+    dz_row, dz_col = np.gradient(elev_data, cell_size_y, cell_size_x)
+
+    # Convert to cardinal directions.
+    # North is opposite to the row-increasing (south) direction.
+    dz_east = dz_col
+    dz_north = -dz_row
+
+    # Slope: steepness in degrees from horizontal.
+    slope_rad = np.arctan(np.sqrt(dz_east ** 2 + dz_north ** 2))
+    slope_data = np.degrees(slope_rad)
+
+    # Aspect: direction of steepest *descent*, degrees clockwise from North
+    # (0 = North, 90 = East, 180 = South, 270 = West).
+    # The gradient (dz_east, dz_north) points *uphill*; adding 180° reverses it.
+    aspect_data = (
+        np.degrees(np.arctan2(dz_east, dz_north)) + 180.0
+    ) % 360.0
+
+    return elev_data, slope_data, aspect_data, transform, crs, nodata
+
+
+def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
+                                     lon_min, lon_max, fuel_path,
+                                     tif_path=None, project_utm=True,
+                                     subsample=1, keep_nonburnable=False):
+    """Create a landscape file using SRTM-derived terrain and a local fuel raster.
+
+    Downloads SRTM elevation data for the given bounding box, derives slope
+    and aspect via finite differences (see :func:`_compute_slope_aspect_from_srtm_tif`),
+    and combines the result with a locally supplied fuel model raster.  This
+    is the backend for ``--srtm-slope-aspect``.
+
+    Parameters
+    ----------
+    output_path : str
+        Destination path for the ASCII landscape file (``.lcp``).
+    lat_min, lat_max : float
+        Latitude bounds in WGS-84 decimal degrees.
+    lon_min, lon_max : float
+        Longitude bounds in WGS-84 decimal degrees.
+    fuel_path : str
+        Path to a local fuel model raster file (GeoTIFF or similar).
+    tif_path : str or None
+        Path for the intermediate SRTM GeoTIFF.  A temporary file is
+        created and removed automatically when ``None``.
+    project_utm : bool
+        Project coordinates to UTM metres (default ``True``).
+    subsample : int
+        Keep every N-th point in each dimension (default ``1``).
+    keep_nonburnable : bool
+        Include non-burnable pixels in the output (default ``False``).
+    """
+    _tmp_tif = tif_path is None
+    if _tmp_tif:
+        tmp = tempfile.NamedTemporaryFile(suffix=".tif", delete=False)
+        tif_path = tmp.name
+        tmp.close()
+
+    try:
+        print(
+            f"Downloading SRTM data for bbox "
+            f"({lat_min},{lon_min}) – ({lat_max},{lon_max}) …"
+        )
+        download_srtm(lat_min, lat_max, lon_min, lon_max, tif_path)
+
+        print("Computing slope and aspect from SRTM elevation …")
+        elev_data, slope_data, aspect_data, elev_tf, elev_crs, elev_nd = \
+            _compute_slope_aspect_from_srtm_tif(tif_path)
+    finally:
+        if _tmp_tif and os.path.isfile(tif_path):
+            os.remove(tif_path)
+
+    print(f"SRTM elevation grid: {elev_data.shape[0]}×{elev_data.shape[1]}")
+    print("Reading fuel model raster …")
+    fuel_data, fuel_tf, fuel_crs, _ = _read_raster_file(fuel_path)
+
+    xs, ys, elev, slope, aspect, fuel = assemble_landscape(
+        elev_data, elev_tf, elev_crs, elev_nd,
+        slope_data, elev_tf, elev_crs,
+        aspect_data, elev_tf, elev_crs,
+        fuel_data, fuel_tf, fuel_crs,
+        project_utm=project_utm, subsample=subsample,
+        keep_nonburnable=keep_nonburnable,
+    )
+    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel)
 
 
 # ===========================================================================
@@ -2469,6 +2645,16 @@ def _build_parser():
                        help="Local aspect raster")
     local.add_argument("--fuel-file",   default=None, metavar="PATH",
                        help="Local fuel model raster")
+    local.add_argument(
+        "--srtm-slope-aspect", action="store_true",
+        help=(
+            "When --fuel-file is given without --elev-file, --slope-file, "
+            "and --aspect-file, derive elevation, slope, and aspect from "
+            "SRTM data for the bounding box instead of downloading them "
+            "from LANDFIRE.  Requires the 'elevation' package "
+            "(pip install elevation)."
+        ),
+    )
 
     # inputs.i generation
     parser.add_argument(
@@ -2527,6 +2713,25 @@ def main(argv=None):
     if args.subsample < 1:
         print("ERROR: --subsample must be >= 1", file=sys.stderr)
         sys.exit(1)
+
+    # --srtm-slope-aspect requires --fuel-file
+    if args.srtm_slope_aspect and args.fuel_file is None:
+        print(
+            "ERROR: --srtm-slope-aspect requires --fuel-file to be specified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Warn if --srtm-slope-aspect is combined with explicit terrain files
+    if args.srtm_slope_aspect and any(
+        f is not None for f in [args.elev_file, args.slope_file, args.aspect_file]
+    ):
+        print(
+            "WARNING: --srtm-slope-aspect is set but --elev-file, --slope-file, "
+            "or --aspect-file was also provided; the SRTM-terrain path will be "
+            "skipped and the explicit local files will be used instead.",
+            file=sys.stderr,
+        )
 
     bbox = (lon_min, lat_min, lon_max, lat_max)
 
@@ -2609,11 +2814,36 @@ def main(argv=None):
     # -----------------------------------------------------------------------
     if not args.no_terrain and not args.no_landscape:
         out_lcp = os.path.abspath(args.landscape)
+
+        # Check whether the user wants SRTM-derived terrain (elev/slope/aspect)
+        # combined with a locally supplied fuel raster.
+        using_srtm_terrain = (
+            args.srtm_slope_aspect
+            and args.fuel_file is not None
+            and args.elev_file is None
+            and args.slope_file is None
+            and args.aspect_file is None
+        )
+
+        # "local files" mode: at least one of the four rasters was supplied
+        # explicitly (but not the SRTM-terrain case handled above).
         local_files = [args.elev_file, args.slope_file,
                        args.aspect_file, args.fuel_file]
-        using_local = any(f is not None for f in local_files)
+        using_local = any(f is not None for f in local_files) and not using_srtm_terrain
 
-        if using_local:
+        if using_srtm_terrain:
+            tif_path = (os.path.abspath(args.tif)
+                        if args.tif is not None else None)
+            create_landscape_srtm_with_fuel(
+                out_lcp,
+                lat_min=lat_min, lat_max=lat_max,
+                lon_min=lon_min, lon_max=lon_max,
+                fuel_path=args.fuel_file,
+                tif_path=tif_path,
+                subsample=args.subsample,
+                keep_nonburnable=args.keep_nonburnable,
+            )
+        elif using_local:
             missing = [
                 name for name, val in [
                     ("--elev-file",   args.elev_file),
