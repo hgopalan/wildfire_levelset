@@ -792,7 +792,7 @@ def download_landfire_cog(bbox, vintage=2020,
     return result
 
 
-
+def _read_raster_bytes(raw_bytes):
     """Read a raster from raw bytes using rasterio."""
     import numpy as np
     try:
