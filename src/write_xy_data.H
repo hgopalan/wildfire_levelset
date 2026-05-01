@@ -8,8 +8,10 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <map>
 #include <set>
 #include <algorithm>
+#include <limits>
 #include <cmath>
 
 using namespace amrex;
@@ -181,15 +183,20 @@ static std::vector<std::pair<Real, Real>> compute_convex_hull(
 }
 
 // ======================= Write convex hull of negative phi values =================
-// Writes the convex hull of all cells where phi < 0 as x-y file
+// Writes the convex hull of all cells where phi < 0 as x-y file.
+// For speed, only the leftmost and rightmost negative-phi cell per grid row is
+// collected; interior cells cannot lie on the convex hull so discarding them has
+// no effect on the result while drastically reducing the point count.
 // ==================================================================================
 static void write_negative_phi_convex_hull(const MultiFab& phi, 
                                            const Geometry& geom, 
                                            const std::string& filename)
 {
-    // Collect all negative phi cell centers
-    std::vector<std::pair<Real, Real>> negative_points;
-    
+    // For each row j, track the minimum and maximum i index of negative phi cells.
+    // Using only these extremal cells reduces the candidate count from O(N_cells)
+    // to O(N_rows) before the convex hull computation.
+    std::map<int, std::pair<int,int>> row_extremes; // j -> {min_i, max_i}
+
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
 
@@ -200,7 +207,7 @@ static void write_negative_phi_convex_hull(const MultiFab& phi,
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const phi_arr = phi.array(mfi);
-        
+
         // Loop over valid cells
 #if (AMREX_SPACEDIM == 3)
         for (int k = bx.smallEnd(2); k <= bx.bigEnd(2); ++k) {
@@ -209,15 +216,36 @@ static void write_negative_phi_convex_hull(const MultiFab& phi,
         {
 #endif
             for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+                int min_i = std::numeric_limits<int>::max();
+                int max_i = std::numeric_limits<int>::lowest();
                 for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
                     if (phi_arr(i,j,k,0) < 0.0) {
-                        // Compute cell center coordinates
-                        Real x = problo[0] + (i + Real(0.5)) * dx[0];
-                        Real y = problo[1] + (j + Real(0.5)) * dx[1];
-                        negative_points.push_back({x, y});
+                        if (i < min_i) min_i = i;
+                        if (i > max_i) max_i = i;
+                    }
+                }
+                if (min_i != std::numeric_limits<int>::max()) {
+                    auto [it, inserted] = row_extremes.try_emplace(j, min_i, max_i);
+                    if (!inserted) {
+                        if (min_i < it->second.first)  it->second.first  = min_i;
+                        if (max_i > it->second.second) it->second.second = max_i;
                     }
                 }
             }
+        }
+    }
+
+    // Convert extremal indices to (x, y) coordinates
+    std::vector<std::pair<Real, Real>> negative_points;
+    negative_points.reserve(row_extremes.size() * 2);
+    for (const auto& kv : row_extremes) {
+        int j = kv.first;
+        Real y = problo[1] + (j + Real(0.5)) * dx[1];
+        Real x_left  = problo[0] + (kv.second.first  + Real(0.5)) * dx[0];
+        Real x_right = problo[0] + (kv.second.second + Real(0.5)) * dx[0];
+        negative_points.push_back({x_left, y});
+        if (kv.second.first != kv.second.second) {
+            negative_points.push_back({x_right, y});
         }
     }
     
