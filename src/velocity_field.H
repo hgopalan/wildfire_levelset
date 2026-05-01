@@ -7,6 +7,8 @@
 #include <cmath>
 #include <AMReX_Gpu.H>
 
+#include "spatial_grid.H"
+
 // ======================= Initialize velocity (constant) ==========================
 static void init_velocity_constant(MultiFab& vel, const Geometry& geom, Real ux, Real uy, Real uz)
 {
@@ -61,74 +63,64 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     if (x_data.empty()) {
         amrex::Abort("No data read from velocity file: " + filename);
     }
-    
+
     amrex::Print() << "Read " << x_data.size() << " velocity data points from " << filename << "\n";
 
-    // Characteristic data spacing for Gaussian kernel bandwidth
     int n_points = static_cast<int>(x_data.size());
+
+    // Characteristic data spacing
     Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
     Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
     Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
     Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
 
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_u(u_data.size());
-    Gpu::DeviceVector<Real> d_v(v_data.size());
-    
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data.begin(), u_data.end(), d_u.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data.begin(), v_data.end(), d_v.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* u_ptr = d_u.data();
-    Real const* v_ptr = d_v.data();
-    
+    // Build cell-list spatial index
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_su, d_sv_val;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> u_sorted = reorder_values(u_data, sidx);
+    std::vector<Real> v_sorted = reorder_values(v_data, sidx);
+    d_su.resize(n_points);
+    d_sv_val.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, u_sorted.begin(), u_sorted.end(), d_su.begin());
+    Gpu::copy(Gpu::hostToDevice, v_sorted.begin(), v_sorted.end(), d_sv_val.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* u_ptr = d_su.data();
+    Real const* v_ptr = d_sv_val.data();
+
     // Get domain bounds
-    const auto dx = geom.CellSizeArray();
+    const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
-    // Interpolate onto MultiFab using Gaussian RBF for a smooth wind field
+
+    // Interpolate onto MultiFab using Wendland C² RBF with cell-list index
     for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const v = vel.array(mfi);
-        
+        auto const v  = vel.array(mfi);
+
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Gaussian RBF: weight = exp(-dist²/(2h²)) – smooth, no bullseye artefacts
-            Real two_h2 = Real(2.0) * h * h;
-            Real sum_weights = Real(0.0);
-            Real sum_u = Real(0.0);
-            Real sum_v = Real(0.0);
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                Real weight = std::exp(-dist_sq / two_h2);
-                sum_weights += weight;
-                sum_u += weight * u_ptr[n];
-                sum_v += weight * v_ptr[n];
-            }
-            
-            if (sum_weights > Real(0.0)) {
-                v(i,j,k,0) = sum_u / sum_weights;
-                v(i,j,k,1) = sum_v / sum_weights;
-                v(i,j,k,2) = Real(0.0);
-            }
+
+            v(i,j,k,0) = cell_list_interp(cl, u_ptr, x, y);
+            v(i,j,k,1) = cell_list_interp(cl, v_ptr, x, y);
+            v(i,j,k,2) = Real(0.0);
         });
     }
-    
+
     amrex::Print() << "Velocity field interpolated from unstructured data\n";
 }
 
@@ -184,86 +176,68 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
     if (x_data1.size() != x_data2.size()) {
         amrex::Abort("Wind field files must have the same number of data points");
     }
-    
+
     int n_points = static_cast<int>(x_data1.size());
 
-    // Characteristic data spacing for Gaussian kernel bandwidth
+    // Characteristic data spacing
     Real x_min_d = *std::min_element(x_data1.begin(), x_data1.end());
     Real x_max_d = *std::max_element(x_data1.begin(), x_data1.end());
     Real y_min_d = *std::min_element(y_data1.begin(), y_data1.end());
     Real y_max_d = *std::max_element(y_data1.begin(), y_data1.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
 
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(n_points);
-    Gpu::DeviceVector<Real> d_y(n_points);
-    Gpu::DeviceVector<Real> d_u1(n_points);
-    Gpu::DeviceVector<Real> d_v1(n_points);
-    Gpu::DeviceVector<Real> d_u2(n_points);
-    Gpu::DeviceVector<Real> d_v2(n_points);
-    
-    Gpu::copy(Gpu::hostToDevice, x_data1.begin(), x_data1.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data1.begin(), y_data1.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data1.begin(), u_data1.end(), d_u1.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data1.begin(), v_data1.end(), d_v1.begin());
-    Gpu::copy(Gpu::hostToDevice, u_data2.begin(), u_data2.end(), d_u2.begin());
-    Gpu::copy(Gpu::hostToDevice, v_data2.begin(), v_data2.end(), d_v2.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* u1_ptr = d_u1.data();
-    Real const* v1_ptr = d_v1.data();
-    Real const* u2_ptr = d_u2.data();
-    Real const* v2_ptr = d_v2.data();
-    
+    // Build cell-list spatial index (positions taken from snapshot 1)
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_su1, d_sv1, d_su2, d_sv2;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data1, y_data1, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> u1_sorted = reorder_values(u_data1, sidx);
+    std::vector<Real> v1_sorted = reorder_values(v_data1, sidx);
+    std::vector<Real> u2_sorted = reorder_values(u_data2, sidx);
+    std::vector<Real> v2_sorted = reorder_values(v_data2, sidx);
+
+    d_su1.resize(n_points); d_sv1.resize(n_points);
+    d_su2.resize(n_points); d_sv2.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, u1_sorted.begin(), u1_sorted.end(), d_su1.begin());
+    Gpu::copy(Gpu::hostToDevice, v1_sorted.begin(), v1_sorted.end(), d_sv1.begin());
+    Gpu::copy(Gpu::hostToDevice, u2_sorted.begin(), u2_sorted.end(), d_su2.begin());
+    Gpu::copy(Gpu::hostToDevice, v2_sorted.begin(), v2_sorted.end(), d_sv2.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* u1_ptr = d_su1.data();
+    Real const* v1_ptr = d_sv1.data();
+    Real const* u2_ptr = d_su2.data();
+    Real const* v2_ptr = d_sv2.data();
+
     // Get domain bounds
-    const auto dx = geom.CellSizeArray();
+    const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
-    // Interpolate onto MultiFab using Gaussian RBF and temporal interpolation
+
+    // Interpolate onto MultiFab using Wendland C² RBF with cell-list and temporal blend
     for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const v = vel.array(mfi);
-        
+        auto const v  = vel.array(mfi);
+
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Gaussian RBF: weight = exp(-dist²/(2h²)) – smooth, no bullseye artefacts
-            Real two_h2 = Real(2.0) * h * h;
-            Real sum_weights = Real(0.0);
-            Real sum_u1 = Real(0.0);
-            Real sum_v1 = Real(0.0);
-            Real sum_u2 = Real(0.0);
-            Real sum_v2 = Real(0.0);
-            Real u1_val = Real(0.0);
-            Real v1_val = Real(0.0);
-            Real u2_val = Real(0.0);
-            Real v2_val = Real(0.0);
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                Real weight = std::exp(-dist_sq / two_h2);
-                sum_weights += weight;
-                sum_u1 += weight * u1_ptr[n];
-                sum_v1 += weight * v1_ptr[n];
-                sum_u2 += weight * u2_ptr[n];
-                sum_v2 += weight * v2_ptr[n];
-            }
-            
-            if (sum_weights > Real(0.0)) {
-                u1_val = sum_u1 / sum_weights;
-                v1_val = sum_v1 / sum_weights;
-                u2_val = sum_u2 / sum_weights;
-                v2_val = sum_v2 / sum_weights;
-            }
-            
+
+            Real u1_val = cell_list_interp(cl, u1_ptr, x, y);
+            Real v1_val = cell_list_interp(cl, v1_ptr, x, y);
+            Real u2_val = cell_list_interp(cl, u2_ptr, x, y);
+            Real v2_val = cell_list_interp(cl, v2_ptr, x, y);
+
             // Linear interpolation in time
             v(i,j,k,0) = u1_val + time_fraction * (u2_val - u1_val);
             v(i,j,k,1) = v1_val + time_fraction * (v2_val - v1_val);

@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "spatial_grid.H"
+
 using namespace amrex;
 
 // ============================================================================
@@ -93,83 +95,68 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
                        slope_data, aspect_data, fuel_model_data);
     
     // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_slope(slope_data.size());
-    Gpu::DeviceVector<Real> d_aspect(aspect_data.size());
-    
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, slope_data.begin(), slope_data.end(), d_slope.begin());
-    Gpu::copy(Gpu::hostToDevice, aspect_data.begin(), aspect_data.end(), d_aspect.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* slope_ptr = d_slope.data();
-    Real const* aspect_ptr = d_aspect.data();
-    int n_points = static_cast<int>(x_data.size());
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_sslope, d_saspect;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
 
-    // Characteristic data spacing for Gaussian kernel bandwidth
+    // Characteristic data spacing
+    int n_points = static_cast<int>(x_data.size());
     Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
     Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
     Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
     Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> slope_sorted  = reorder_values(slope_data,  sidx);
+    std::vector<Real> aspect_sorted = reorder_values(aspect_data, sidx);
+    d_sslope.resize(n_points);
+    d_saspect.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, slope_sorted.begin(),  slope_sorted.end(),  d_sslope.begin());
+    Gpu::copy(Gpu::hostToDevice, aspect_sorted.begin(), aspect_sorted.end(), d_saspect.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* slope_ptr  = d_sslope.data();
+    Real const* aspect_ptr = d_saspect.data();
     
     // Get domain bounds and cell size
-    const auto dx = geom.CellSizeArray();
+    const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
     
-    // Compute slopes for each cell using Gaussian RBF interpolation
-    // slopes has 2 components: slope_x (∂z/∂x) and slope_y (∂z/∂y)
+    // Compute slopes for each cell using Wendland C² RBF with cell-list index
     for (MFIter mfi(slopes); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const s = slopes.array(mfi);
+        auto const s  = slopes.array(mfi);
         
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            
-            // Gaussian RBF: weight = exp(-dist²/(2h²)) – smooth, no bullseye artefacts
-            Real two_h2 = Real(2.0) * h * h;
-            Real sum_weights = Real(0.0);
-            Real sum_slope = Real(0.0);
-            Real sum_aspect = Real(0.0);
-            Real result_slope = Real(0.0);
-            Real result_aspect = Real(0.0);
-            
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                Real weight = std::exp(-dist_sq / two_h2);
-                sum_weights += weight;
-                sum_slope  += weight * slope_ptr[n];
-                sum_aspect += weight * aspect_ptr[n];
-            }
-            
-            if (sum_weights > Real(0.0)) {
-                result_slope  = sum_slope  / sum_weights;
-                result_aspect = sum_aspect / sum_weights;
-            }
-            
+
+            Real result_slope  = cell_list_interp(cl, slope_ptr,  x, y);
+            Real result_aspect = cell_list_interp(cl, aspect_ptr, x, y);
+
             // Convert slope (degrees) and aspect (degrees) to slope_x and slope_y
             // slope_x = tan(slope) * cos(aspect_radians_from_east)
             // slope_y = tan(slope) * sin(aspect_radians_from_east)
-            // 
+            //
             // FARSITE aspect convention: 0=North, 90=East, 180=South, 270=West
             // Mathematical convention: 0=East, 90=North, 180=West, 270=South
             // Convert: aspect_math = 90 - aspect_farsite
-            
-            Real slope_radians = result_slope * Real(M_PI) / Real(180.0);
+            Real slope_radians  = result_slope * Real(M_PI) / Real(180.0);
             Real aspect_farsite = result_aspect;
-            Real aspect_math = Real(90.0) - aspect_farsite; // Convert to math convention
+            Real aspect_math    = Real(90.0) - aspect_farsite;
             Real aspect_radians = aspect_math * Real(M_PI) / Real(180.0);
-            
+
             Real tan_slope = std::tan(slope_radians);
             s(i, j, k, 0) = tan_slope * std::cos(aspect_radians); // slope_x
             s(i, j, k, 1) = tan_slope * std::sin(aspect_radians); // slope_y
@@ -193,29 +180,35 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
     read_landscape_file(filename, x_data, y_data, elevation_data,
                         slope_data, aspect_data, fuel_model_data);
 
-    // Copy coordinates and elevation to device memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_elev(elevation_data.size());
+    // Copy coordinates and elevation to device memory using cell-list index
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_selev;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
 
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(),         x_data.end(),         d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(),         y_data.end(),         d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, elevation_data.begin(), elevation_data.end(), d_elev.begin());
-
-    Real const* x_ptr    = d_x.data();
-    Real const* y_ptr    = d_y.data();
-    Real const* elev_ptr = d_elev.data();
     int n_points = static_cast<int>(x_data.size());
-
-    // Characteristic data spacing for Gaussian kernel bandwidth
     Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
     Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
     Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
     Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> elev_sorted = reorder_values(elevation_data, sidx);
+    d_selev.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, elev_sorted.begin(), elev_sorted.end(), d_selev.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* elev_ptr = d_selev.data();
 
     const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
@@ -227,22 +220,7 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-
-            // Gaussian RBF: weight = exp(-dist²/(2h²)) for smooth interpolation
-            Real two_h2 = Real(2.0) * h * h;
-            Real sum_weights = Real(0.0);
-            Real sum_z = Real(0.0);
-
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                Real weight = std::exp(-dist_sq / two_h2);
-                sum_weights += weight;
-                sum_z += weight * elev_ptr[n];
-            }
-
-            elev(i, j, k) = (sum_weights > Real(0.0)) ? sum_z / sum_weights : Real(0.0);
+            elev(i, j, k) = cell_list_interp(cl, elev_ptr, x, y);
         });
     }
 
