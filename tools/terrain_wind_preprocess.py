@@ -319,13 +319,19 @@ def download_srtm(lat_min, lat_max, lon_min, lon_max, out_tif):
 
 
 def _fix_srtm_zeros(z):
-    """Replace spurious zero-elevation pixels with interpolated values.
+    """Replace spurious zero-elevation pixels with interpolated or mean values.
 
     SRTM tiles sometimes contain random zero values at tile borders that are
-    not genuine sea-level points.  A zero is treated as spurious when it is
-    surrounded by cells whose elevation is > 0.  Such cells are filled by
-    linear interpolation from the nearest valid (non-zero) neighbours using
-    ``scipy.interpolate.griddata``.
+    not genuine sea-level points.
+
+    * Isolated spurious zeros (at least one immediate non-zero neighbour) are
+      filled by linear interpolation from the nearest valid neighbours using
+      ``scipy.interpolate.griddata``.
+    * Clusters of nearby zeros where the surrounding window at a larger scale
+      contains non-zero values (i.e. the zeros are abrupt relative to the rest
+      of the grid) are replaced with the mean elevation of the entire grid.
+      This handles the case where multiple adjacent zero pixels prevent the
+      local-neighbour check from identifying them as spurious.
 
     Parameters
     ----------
@@ -353,38 +359,61 @@ def _fix_srtm_zeros(z):
         mode="nearest",
     ).astype(bool)
 
-    if not np.any(spurious):
-        return z
-
-    print(f"  Fixing {int(np.sum(spurious))} spurious zero elevation pixels …")
     z_out = z.copy()
     h, w = z.shape
     rows, cols = np.mgrid[0:h, 0:w]
 
-    valid = ~spurious
-    try:
-        from scipy.interpolate import griddata
+    if np.any(spurious):
+        print(f"  Fixing {int(np.sum(spurious))} spurious zero elevation pixels …")
+        valid = ~spurious
+        try:
+            from scipy.interpolate import griddata
 
-        pts_valid = np.column_stack([rows[valid].ravel(), cols[valid].ravel()])
-        pts_spurious = np.column_stack(
-            [rows[spurious].ravel(), cols[spurious].ravel()]
-        )
-        z_out[spurious] = griddata(
-            pts_valid, z[valid].ravel(), pts_spurious, method="linear", fill_value=0.0
-        )
-    except ImportError:
-        # Fallback: replace each spurious cell with the mean of its valid neighbours
-        for r, c in zip(rows[spurious].ravel(), cols[spurious].ravel()):
-            neighbours = []
-            for dr in (-1, 0, 1):
-                for dc in (-1, 0, 1):
-                    if dr == 0 and dc == 0:
-                        continue
-                    rr, cc = r + dr, c + dc
-                    if 0 <= rr < h and 0 <= cc < w and z[rr, cc] > 0.0:
-                        neighbours.append(z[rr, cc])
-            if neighbours:
-                z_out[r, c] = float(np.mean(neighbours))
+            pts_valid = np.column_stack([rows[valid].ravel(), cols[valid].ravel()])
+            pts_spurious = np.column_stack(
+                [rows[spurious].ravel(), cols[spurious].ravel()]
+            )
+            z_out[spurious] = griddata(
+                pts_valid, z[valid].ravel(), pts_spurious, method="linear",
+                fill_value=0.0,
+            )
+        except ImportError:
+            # Fallback: replace each spurious cell with the mean of its valid neighbours
+            for r, c in zip(rows[spurious].ravel(), cols[spurious].ravel()):
+                neighbours = []
+                for dr in (-1, 0, 1):
+                    for dc in (-1, 0, 1):
+                        if dr == 0 and dc == 0:
+                            continue
+                        rr, cc = r + dr, c + dc
+                        if 0 <= rr < h and 0 <= cc < w and z[rr, cc] > 0.0:
+                            neighbours.append(z[rr, cc])
+                if neighbours:
+                    z_out[r, c] = float(np.mean(neighbours))
+
+    # Handle clusters of nearby zeros that were missed by the local-neighbour
+    # check above (all neighbours were also zero).  Any zero that is abrupt
+    # relative to the overall grid is replaced with the global mean elevation.
+    remaining_zeros = z_out == 0.0
+    if np.any(remaining_zeros) and np.any(z_out > 0.0):
+        # Use the mean of all positive-elevation cells as the fill value so
+        # that genuine sea-level areas (if any) do not inflate the estimate.
+        grid_mean = float(np.mean(z_out[z_out > 0.0]))
+        # A remaining zero is treated as abrupt (spurious cluster) when its
+        # larger neighbourhood (11×11 window) contains at least one non-zero
+        # value, indicating the zero patch is embedded in elevated terrain.
+        abrupt = generic_filter(
+            z_out,
+            lambda p: float((p[len(p) // 2] == 0.0) and np.any(p > 0.0)),
+            size=11,
+            mode="nearest",
+        ).astype(bool)
+        if np.any(abrupt):
+            print(
+                f"  Fixing {int(np.sum(abrupt))} abrupt zero-cluster pixels "
+                f"with grid mean ({grid_mean:.1f} m) …"
+            )
+            z_out[abrupt] = grid_mean
 
     return z_out
 
