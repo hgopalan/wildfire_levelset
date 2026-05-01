@@ -32,15 +32,18 @@ static void compute_rothermel_R(MultiFab& R_mf,
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
 
+    // Compute the domain-mean wind components so that extreme wind-speed cells
+    // (> 25 m/s) can be replaced with the global mean of the flow field rather
+    // than only the mean of their four immediate neighbours.  The latter fails
+    // when multiple adjacent cells are all extreme (e.g. near SRTM tile seams).
+    const Long ncells_vel = vel.boxArray().numPts();
+    const Real ux_global_mean = (ncells_vel > 0) ? vel.sum(0) / Real(ncells_vel) : Real(0.0);
+    const Real uy_global_mean = (ncells_vel > 0) ? vel.sum(1) / Real(ncells_vel) : Real(0.0);
+
     for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const v = vel.const_array(mfi);
         auto const R = R_mf.array(mfi);
-
-        // Box covering the vel array including ghost cells (host-side, captured
-        // by value so device code can call Box::contains() without touching the
-        // MultiFab).
-        const Box vel_bx = vel[mfi].box();
 
         // Get slopes array if terrain file was provided
         const bool use_terrain = (slopes != nullptr);
@@ -54,33 +57,15 @@ static void compute_rothermel_R(MultiFab& R_mf,
             Real ux = v(i,j,k,0);
             Real uy = v(i,j,k,1);
 
-            // Clamp extreme wind speeds (> 25 m/s) that arise from abrupt
-            // terrain jumps at SRTM tile seams.  Replace with the mean of the
-            // four immediate neighbours to avoid Rothermel R going crazy.
-            // Boundary checks use vel_bx (which includes ghost cells) so no
-            // out-of-range access occurs at domain edges.
+            // Clamp extreme wind speeds (> 25 m/s) with the mean of the entire
+            // flow field.  Using the global mean (rather than just the four
+            // immediate neighbours) handles clusters of adjacent extreme cells
+            // where a local-neighbour average would still be unreliable.
             constexpr Real MAX_WIND_SPEED_MS = 25.0;
             constexpr Real MAX_WIND_SPEED_SQ = MAX_WIND_SPEED_MS * MAX_WIND_SPEED_MS;
             if (ux*ux + uy*uy > MAX_WIND_SPEED_SQ) {
-                Real ux_mean = 0.0, uy_mean = 0.0;
-                int cnt = 0;
-                if (vel_bx.contains(IntVect(AMREX_D_DECL(i-1,j,k)))) {
-                    ux_mean += v(i-1,j,k,0); uy_mean += v(i-1,j,k,1); ++cnt;
-                }
-                if (vel_bx.contains(IntVect(AMREX_D_DECL(i+1,j,k)))) {
-                    ux_mean += v(i+1,j,k,0); uy_mean += v(i+1,j,k,1); ++cnt;
-                }
-                if (vel_bx.contains(IntVect(AMREX_D_DECL(i,j-1,k)))) {
-                    ux_mean += v(i,j-1,k,0); uy_mean += v(i,j-1,k,1); ++cnt;
-                }
-                if (vel_bx.contains(IntVect(AMREX_D_DECL(i,j+1,k)))) {
-                    ux_mean += v(i,j+1,k,0); uy_mean += v(i,j+1,k,1); ++cnt;
-                }
-                if (cnt > 0) {
-                    Real inv = Real(1.0) / Real(cnt);
-                    ux = ux_mean * inv;
-                    uy = uy_mean * inv;
-                }
+                ux = ux_global_mean;
+                uy = uy_global_mean;
             }
 
             // Wind speed in ft/min (Rothermel units)
