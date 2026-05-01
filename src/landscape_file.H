@@ -184,4 +184,79 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
     amrex::Print() << "Computed slopes from landscape file with " << n_points << " data points\n";
 }
 
+// ============================================================================
+// Interpolate elevation from landscape file data to a MultiFab.
+// Uses inverse distance weighting on the elevation column of the file.
+// ============================================================================
+static void compute_elevation_from_landscape(MultiFab& elevation,
+                                             const Geometry& geom,
+                                             const std::string& filename)
+{
+    std::vector<Real> x_data, y_data, elevation_data, slope_data, aspect_data;
+    std::vector<int>  fuel_model_data;
+
+    read_landscape_file(filename, x_data, y_data, elevation_data,
+                        slope_data, aspect_data, fuel_model_data);
+
+    // Copy coordinates and elevation to device memory
+    Gpu::DeviceVector<Real> d_x(x_data.size());
+    Gpu::DeviceVector<Real> d_y(y_data.size());
+    Gpu::DeviceVector<Real> d_elev(elevation_data.size());
+
+    Gpu::copy(Gpu::hostToDevice, x_data.begin(),         x_data.end(),         d_x.begin());
+    Gpu::copy(Gpu::hostToDevice, y_data.begin(),         y_data.end(),         d_y.begin());
+    Gpu::copy(Gpu::hostToDevice, elevation_data.begin(), elevation_data.end(), d_elev.begin());
+
+    Real const* x_ptr    = d_x.data();
+    Real const* y_ptr    = d_y.data();
+    Real const* elev_ptr = d_elev.data();
+    int n_points = static_cast<int>(x_data.size());
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    for (MFIter mfi(elevation); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const elev = elevation.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = problo[0] + (i + Real(0.5)) * dx[0];
+            Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+            // Inverse distance weighting using power=1 (1/dist) for consistency with
+            // compute_slopes_from_landscape in this file.  The terrain-file version
+            // uses power=2 (1/dist²) to match compute_slopes_from_terrain instead.
+            Real epsilon = Real(1.0e-10);
+            Real sum_weights = Real(0.0);
+            Real sum_z = Real(0.0);
+            bool exact_match = false;
+            Real result = Real(0.0);
+
+            for (int n = 0; n < n_points; ++n) {
+                Real dx_val = x - x_ptr[n];
+                Real dy_val = y - y_ptr[n];
+                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
+
+                if (dist_sq < epsilon * epsilon) {
+                    result = elev_ptr[n];
+                    exact_match = true;
+                    break;
+                }
+
+                Real dist   = std::sqrt(dist_sq);
+                Real weight = Real(1.0) / (dist + epsilon);
+                sum_weights += weight;
+                sum_z += weight * elev_ptr[n];
+            }
+
+            if (!exact_match && sum_weights > epsilon) {
+                result = sum_z / sum_weights;
+            }
+            elev(i, j, k) = result;
+        });
+    }
+
+    amrex::Print() << "Interpolated landscape elevation from " << n_points << " data points\n";
+}
+
 #endif // LANDSCAPE_FILE_H

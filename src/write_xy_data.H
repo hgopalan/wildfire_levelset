@@ -27,6 +27,10 @@ static void write_negative_phi_xy(const MultiFab& phi,
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
     
+    // Ensure any pending GPU kernels that wrote to phi have completed
+    // before reading its values on the host.
+    Gpu::streamSynchronize();
+
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const phi_arr = phi.array(mfi);
@@ -188,7 +192,11 @@ static void write_negative_phi_convex_hull(const MultiFab& phi,
     
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
+
+    // Ensure any pending GPU kernels that wrote to phi have completed
+    // before reading its values on the host.
+    Gpu::streamSynchronize();
+
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const phi_arr = phi.array(mfi);

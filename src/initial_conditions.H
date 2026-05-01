@@ -82,14 +82,17 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
 
     const int npts = static_cast<int>(pts_x.size());
 
-    // Raw pointers captured by [=] in the ParallelFor lambda.
-    // The project currently builds with AMReX_GPU_BACKEND=NONE so these host
-    // pointers are safe to access inside the (CPU) ParallelFor / AMREX_GPU_DEVICE
-    // lambda.  When GPU support is enabled the vectors must be replaced with
-    // amrex::Gpu::DeviceVector and the data copied to device before launching.
-    const amrex::Real* px = pts_x.data();
-    const amrex::Real* py = pts_y.data();
-    const amrex::Real* pz = pts_z.data();
+    // Copy ignition-point arrays to device memory so the ParallelFor kernel
+    // can access them safely on GPU as well as CPU.
+    amrex::Gpu::DeviceVector<amrex::Real> d_pts_x(npts);
+    amrex::Gpu::DeviceVector<amrex::Real> d_pts_y(npts);
+    amrex::Gpu::DeviceVector<amrex::Real> d_pts_z(npts);
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_x.begin(), pts_x.end(), d_pts_x.begin());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_y.begin(), pts_y.end(), d_pts_y.begin());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_z.begin(), pts_z.end(), d_pts_z.begin());
+    const amrex::Real* px = d_pts_x.data();
+    const amrex::Real* py = d_pts_y.data();
+    const amrex::Real* pz = d_pts_z.data();
 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
