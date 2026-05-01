@@ -20,6 +20,7 @@ struct RothermelParams {
     amrex::Real slope_y;      // ∂z/∂y = tan(slope angle in y-direction)  default: 0.0
     std::string terrain_file; // Path to terrain file (X Y Z format) for spatially-varying slopes
     std::string landscape_file; // Path to FARSITE landscape file (.lcp or ASCII) with elevation, slope, aspect, fuel data
+    std::string landscape_fuel_type; // Fuel model system in landscape file: "13" (FBFM13) or "40" (FBFM40)
     // --- Unit conversions ---
     // Velocity field is in m/s; Rothermel needs ft/min
     amrex::Real wind_conv;    // ft/min per (sim velocity unit)            default: 196.85

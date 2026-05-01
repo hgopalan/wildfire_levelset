@@ -88,6 +88,11 @@ Options
   --level N             WRF vertical level for wind (default: 0 = lowest).
   --keep-nonburnable    Include non-burnable LANDFIRE pixels.
   --vintage YEAR        LANDFIRE vintage year (default: 2020).
+  --fuel-model-type {13,40}
+                        Fuel model system: '13' for Anderson 13 (FBFM13,
+                        codes 1-13, default) or '40' for Scott & Burgan 40
+                        (FBFM40, codes 101-204).  Selects the correct
+                        LANDFIRE raster and pixel-code filter.
   --fuel-product ID     Override LANDFIRE fuel model product ID.
   --elev-product ID     Override LANDFIRE elevation product ID.
   --slope-product ID    Override LANDFIRE slope product ID.
@@ -213,18 +218,21 @@ _COG_LAYERS = {
         "slope":  "US_200/US_200SlpD.tif",
         "aspect": "US_200/US_200Asp.tif",
         "fuel13": "US_200/US_200FBFM13.tif",
+        "fuel40": "US_200/US_200FBFM40.tif",
     },
     2016: {
         "elev":   "US_140/US_140ELEV.tif",
         "slope":  "US_140/US_140SlpD.tif",
         "aspect": "US_140/US_140Asp.tif",
         "fuel13": "US_140/US_140FBFM13.tif",
+        "fuel40": "US_140/US_140FBFM40.tif",
     },
     2014: {
         "elev":   "US_130/US_130ELEV.tif",
         "slope":  "US_130/US_130SLP.tif",
         "aspect": "US_130/US_130ASP.tif",
         "fuel13": "US_130/US_130FBFM13.tif",
+        "fuel40": "US_130/US_130FBFM40.tif",
     },
 }
 
@@ -234,22 +242,25 @@ _DEFAULT_LAYERS = {
         "slope":  "SlpD2020",
         "aspect": "Asp2020",
         "fuel13": "F13_FBFM13",
+        "fuel40": "F40_FBFM40",
     },
     2016: {
         "elev":   "ELEV2016",
         "slope":  "SlpD2016",
         "aspect": "Asp2016",
         "fuel13": "F13_FBFM13",
+        "fuel40": "F40_FBFM40",
     },
     2014: {
         "elev":   "ELEV2014",
         "slope":  "SLP",
         "aspect": "ASP",
         "fuel13": "F13_FBFM13",
+        "fuel40": "F40_FBFM40",
     },
 }
 
-# LANDFIRE FBFM13 non-burnable codes
+# Non-burnable LANDFIRE codes (same set applies to both FBFM13 and FBFM40)
 _NONBURNABLE_CODES = {91, 92, 93, 98, 99}
 
 # ---------------------------------------------------------------------------
@@ -272,18 +283,21 @@ _MSPC_ASSET_KEYS = {
         "slope":  ["US_200SlpD",   "200SlpD",   "slope"],
         "aspect": ["US_200Asp",    "200Asp",    "aspect"],
         "fuel13": ["US_200FBFM13", "200FBFM13", "fuel13"],
+        "fuel40": ["US_200FBFM40", "200FBFM40", "fuel40"],
     },
     2016: {
         "elev":   ["US_140ELEV",   "140ELEV",   "elev"],
         "slope":  ["US_140SlpD",   "140SlpD",   "slope"],
         "aspect": ["US_140Asp",    "140Asp",    "aspect"],
         "fuel13": ["US_140FBFM13", "140FBFM13", "fuel13"],
+        "fuel40": ["US_140FBFM40", "140FBFM40", "fuel40"],
     },
     2014: {
         "elev":   ["US_130ELEV",   "130ELEV",   "elev"],
         "slope":  ["US_130SLP",    "130SLP",    "slope"],
         "aspect": ["US_130ASP",    "130ASP",    "aspect"],
         "fuel13": ["US_130FBFM13", "130FBFM13", "fuel13"],
+        "fuel40": ["US_130FBFM40", "130FBFM40", "fuel40"],
     },
 }
 
@@ -726,7 +740,8 @@ def _compute_slope_aspect_from_srtm_tif(tif_path):
 def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
                                      lon_min, lon_max, fuel_path,
                                      tif_path=None, project_utm=True,
-                                     subsample=1, keep_nonburnable=False):
+                                     subsample=1, keep_nonburnable=False,
+                                     fuel_type="13"):
     """Create a landscape file using SRTM-derived terrain and a local fuel raster.
 
     Downloads SRTM elevation data for the given bounding box, derives slope
@@ -755,6 +770,10 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
         Keep every N-th point in each dimension (default ``1``).
     keep_nonburnable : bool
         Include non-burnable pixels in the output (default ``False``).
+    fuel_type : str
+        Fuel model system used in *fuel_path*: ``"13"`` for Anderson 13
+        (FBFM13, codes 1–13, default) or ``"40"`` for Scott & Burgan 40
+        (FBFM40, codes 101–204).
     """
     _tmp_tif = tif_path is None
     if _tmp_tif:
@@ -800,8 +819,9 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
         fuel_data, fuel_tf, fuel_crs,
         project_utm=project_utm, subsample=subsample,
         keep_nonburnable=keep_nonburnable,
+        fuel_type=fuel_type,
     )
-    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel)
+    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel, fuel_type=fuel_type)
 
 
 # ===========================================================================
@@ -1082,7 +1102,8 @@ def _read_landfire_cog(cog_url, bbox):
 
 def download_landfire_cog(bbox, vintage=2020,
                           lid_elev=None, lid_slope=None,
-                          lid_aspect=None, lid_fuel=None):
+                          lid_aspect=None, lid_fuel=None,
+                          fuel_type="13"):
     """Download LANDFIRE rasters from Cloud Optimized GeoTIFFs on AWS S3.
 
     Reads the four LANDFIRE layers (elevation, slope, aspect, fuel model)
@@ -1101,6 +1122,9 @@ def download_landfire_cog(bbox, vintage=2020,
         Layer IDs to use as keys in the returned dict.  Defaults to the
         standard LFPS product IDs for *vintage* so that the return value is
         a drop-in replacement for :func:`download_landfire`.
+    fuel_type : str
+        Fuel model system: ``"13"`` for Anderson 13 (FBFM13, default) or
+        ``"40"`` for Scott & Burgan 40 (FBFM40).
 
     Returns
     -------
@@ -1135,11 +1159,12 @@ def download_landfire_cog(bbox, vintage=2020,
     layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
     cog_paths = _COG_LAYERS[cog_vintage]
 
+    fuel_key = "fuel40" if fuel_type == "40" else "fuel13"
     layers = {
-        lid_elev   or layer_defaults["elev"]:   cog_paths["elev"],
-        lid_slope  or layer_defaults["slope"]:  cog_paths["slope"],
-        lid_aspect or layer_defaults["aspect"]: cog_paths["aspect"],
-        lid_fuel   or layer_defaults["fuel13"]: cog_paths["fuel13"],
+        lid_elev   or layer_defaults["elev"]:      cog_paths["elev"],
+        lid_slope  or layer_defaults["slope"]:     cog_paths["slope"],
+        lid_aspect or layer_defaults["aspect"]:    cog_paths["aspect"],
+        lid_fuel   or layer_defaults[fuel_key]:    cog_paths[fuel_key],
     }
 
     result = {}
@@ -1168,7 +1193,8 @@ def download_landfire_cog(bbox, vintage=2020,
 
 def download_landfire_mspc(bbox, vintage=2020,
                            lid_elev=None, lid_slope=None,
-                           lid_aspect=None, lid_fuel=None):
+                           lid_aspect=None, lid_fuel=None,
+                           fuel_type="13"):
     """Download LANDFIRE rasters from Microsoft Planetary Computer (MSPC).
 
     Queries the MSPC STAC API for LANDFIRE items that overlap *bbox*, signs
@@ -1186,6 +1212,9 @@ def download_landfire_mspc(bbox, vintage=2020,
     lid_elev, lid_slope, lid_aspect, lid_fuel : str or None
         Layer IDs to use as keys in the returned dict.  Defaults to the
         standard LFPS product IDs for *vintage*.
+    fuel_type : str
+        Fuel model system: ``"13"`` for Anderson 13 (FBFM13, default) or
+        ``"40"`` for Scott & Burgan 40 (FBFM40).
 
     Returns
     -------
@@ -1235,11 +1264,12 @@ def download_landfire_mspc(bbox, vintage=2020,
     layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
     asset_key_candidates = _MSPC_ASSET_KEYS[mspc_vintage]
 
+    fuel_key = "fuel40" if fuel_type == "40" else "fuel13"
     lid_map = {
-        lid_elev   or layer_defaults["elev"]:   "elev",
-        lid_slope  or layer_defaults["slope"]:  "slope",
-        lid_aspect or layer_defaults["aspect"]: "aspect",
-        lid_fuel   or layer_defaults["fuel13"]: "fuel13",
+        lid_elev   or layer_defaults["elev"]:      "elev",
+        lid_slope  or layer_defaults["slope"]:     "slope",
+        lid_aspect or layer_defaults["aspect"]:    "aspect",
+        lid_fuel   or layer_defaults[fuel_key]:    fuel_key,
     }
 
     print("Querying Microsoft Planetary Computer STAC for LANDFIRE items …")
@@ -1543,8 +1573,18 @@ def assemble_landscape(elev_data, elev_transform, elev_crs, elev_nodata,
                        fuel_data, fuel_transform, fuel_crs,
                        project_utm=True,
                        subsample=1,
-                       keep_nonburnable=False):
-    """Merge four rasters into flat arrays suitable for writing a .lcp file."""
+                       keep_nonburnable=False,
+                       fuel_type="13"):
+    """Merge four rasters into flat arrays suitable for writing a .lcp file.
+
+    Parameters
+    ----------
+    fuel_type : str
+        Fuel model system used in *fuel_data*: ``"13"`` for Anderson 13
+        (FBFM13, codes 1–13) or ``"40"`` for Scott & Burgan 40 (FBFM40,
+        codes 101–204).  Determines which pixel values are kept as burnable
+        when *keep_nonburnable* is ``False``.
+    """
     import numpy as np
 
     if slope_data.shape != elev_data.shape:
@@ -1578,7 +1618,25 @@ def assemble_landscape(elev_data, elev_transform, elev_crs, elev_nodata,
     if not keep_nonburnable:
         for code in _NONBURNABLE_CODES:
             mask &= fuel_int != code
-        mask &= (fuel_int >= 1) & (fuel_int <= 13)
+        if fuel_type == "40":
+            # Scott & Burgan 40 burnable codes:
+            #   GR (Grass):       101–109
+            #   GS (Grass-Shrub): 121–124
+            #   SH (Shrub):       141–149
+            #   TU (Timber-Understory): 161–165
+            #   TL (Timber Litter):     181–189
+            #   SB (Slash-Blowdown):    201–204
+            mask &= (
+                ((fuel_int >= 101) & (fuel_int <= 109)) |
+                ((fuel_int >= 121) & (fuel_int <= 124)) |
+                ((fuel_int >= 141) & (fuel_int <= 149)) |
+                ((fuel_int >= 161) & (fuel_int <= 165)) |
+                ((fuel_int >= 181) & (fuel_int <= 189)) |
+                ((fuel_int >= 201) & (fuel_int <= 204))
+            )
+        else:
+            # Anderson 13 burnable codes: 1–13
+            mask &= (fuel_int >= 1) & (fuel_int <= 13)
 
     if subsample > 1:
         skip = np.zeros(elev_data.shape, dtype=bool)
@@ -1589,14 +1647,15 @@ def assemble_landscape(elev_data, elev_transform, elev_crs, elev_nodata,
             slope_data[mask], aspect_data[mask], fuel_int[mask].astype(float))
 
 
-def _write_lcp(path, xs, ys, elev, slope, aspect, fuel):
+def _write_lcp(path, xs, ys, elev, slope, aspect, fuel, fuel_type="13"):
     """Write an ASCII landscape file (.lcp)."""
+    fuel_system = "FBFM40 (Scott & Burgan 40)" if fuel_type == "40" else "FBFM13 (Anderson 13, NFFL 1-13)"
     with open(path, "w") as fh:
         fh.write(
             "# Landscape file generated by terrain_wind_preprocess.py\n"
             "# Format: X Y ELEVATION SLOPE ASPECT FUEL_MODEL\n"
             "# Units: X/Y metres, ELEVATION metres, SLOPE degrees,\n"
-            "#        ASPECT degrees (0=North), FUEL_MODEL NFFL 1-13\n"
+            f"#        ASPECT degrees (0=North), FUEL_MODEL {fuel_system}\n"
         )
         for x, y, z, s, a, f in zip(xs, ys, elev, slope, aspect, fuel):
             fh.write(f"{x:.2f} {y:.2f} {z:.2f} {s:.2f} {a:.2f} {int(f)}\n")
@@ -1609,7 +1668,8 @@ def create_landscape(output_path, bbox, vintage=2020,
                      project_utm=True, subsample=1,
                      keep_nonburnable=False, cache_dir=None,
                      timeout_s=300, use_cog=True,
-                     sources=None, vintage_fallback=True):
+                     sources=None, vintage_fallback=True,
+                     fuel_type="13"):
     """Download LANDFIRE rasters and write an ASCII landscape file.
 
     Sources are tried in the order given by *sources* (default
@@ -1658,7 +1718,15 @@ def create_landscape(output_path, bbox, vintage=2020,
         ``_VINTAGE_FALLBACK_ORDER`` (``2020 → 2016 → 2014``).  Set to
         ``False`` to disable this behaviour and raise immediately after all
         sources fail for the requested vintage.
+    fuel_type : str
+        Fuel model system to download: ``"13"`` for Anderson 13 (FBFM13,
+        default) or ``"40"`` for Scott & Burgan 40 (FBFM40).
     """
+    if fuel_type not in ("13", "40"):
+        raise ValueError(
+            f"fuel_type must be '13' or '40', got: {fuel_type!r}"
+        )
+    print(f"Fuel model system: {'FBFM13 (Anderson 13)' if fuel_type == '13' else 'FBFM40 (Scott & Burgan 40)'}")
     _have_overrides = any((elev_product, slope_product,
                            aspect_product, fuel_product))
 
@@ -1711,7 +1779,8 @@ def create_landscape(output_path, bbox, vintage=2020,
         lid_elev   = elev_product   or layer_defaults["elev"]
         lid_slope  = slope_product  or layer_defaults["slope"]
         lid_aspect = aspect_product or layer_defaults["aspect"]
-        lid_fuel   = fuel_product   or layer_defaults["fuel13"]
+        fuel_key   = "fuel40" if fuel_type == "40" else "fuel13"
+        lid_fuel   = fuel_product   or layer_defaults[fuel_key]
         layer_ids  = [lid_elev, lid_slope, lid_aspect, lid_fuel]
 
         # -------------------------------------------------------------------
@@ -1752,6 +1821,7 @@ def create_landscape(output_path, bbox, vintage=2020,
                         bbox, vintage=v_attempt,
                         lid_elev=lid_elev, lid_slope=lid_slope,
                         lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                        fuel_type=fuel_type,
                     )
                 elif source == "mspc":
                     print(
@@ -1762,6 +1832,7 @@ def create_landscape(output_path, bbox, vintage=2020,
                         bbox, vintage=v_attempt,
                         lid_elev=lid_elev, lid_slope=lid_slope,
                         lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+                        fuel_type=fuel_type,
                     )
                 elif source == "lfps":
                     print("Fetching LANDFIRE layers from USGS LFPS API …")
@@ -1843,15 +1914,25 @@ def create_landscape(output_path, bbox, vintage=2020,
         fuel_data, fuel_tf, fuel_crs,
         project_utm=project_utm, subsample=subsample,
         keep_nonburnable=keep_nonburnable,
+        fuel_type=fuel_type,
     )
-    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel)
+    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel, fuel_type=fuel_type)
 
 
 def create_landscape_from_files(output_path, elev_path, slope_path,
                                  aspect_path, fuel_path,
                                  project_utm=True, subsample=1,
-                                 keep_nonburnable=False, elev_nodata=None):
-    """Create a landscape file from local raster files (no download needed)."""
+                                 keep_nonburnable=False, elev_nodata=None,
+                                 fuel_type="13"):
+    """Create a landscape file from local raster files (no download needed).
+
+    Parameters
+    ----------
+    fuel_type : str
+        Fuel model system used in *fuel_path*: ``"13"`` for Anderson 13
+        (FBFM13, codes 1–13, default) or ``"40"`` for Scott & Burgan 40
+        (FBFM40, codes 101–204).
+    """
     print("Reading elevation raster …")
     elev_data, elev_tf, elev_crs, elev_nd = _read_raster_file(
         elev_path, nodata_override=elev_nodata)
@@ -1871,8 +1952,9 @@ def create_landscape_from_files(output_path, elev_path, slope_path,
         fuel_data, fuel_tf, fuel_crs,
         project_utm=project_utm, subsample=subsample,
         keep_nonburnable=keep_nonburnable,
+        fuel_type=fuel_type,
     )
-    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel)
+    _write_lcp(output_path, xs, ys, elev, slope, aspect, fuel, fuel_type=fuel_type)
 
 
 # ===========================================================================
@@ -2706,6 +2788,17 @@ def _build_parser():
                         help="Override LANDFIRE aspect product ID")
     parser.add_argument("--fuel-product",   default=None, metavar="ID",
                         help="Override LANDFIRE fuel model product ID")
+    parser.add_argument(
+        "--fuel-model-type", default="13", choices=["13", "40"],
+        metavar="{13,40}",
+        help=(
+            "Fuel model system to download and process: '13' for Anderson 13 "
+            "(FBFM13, codes 1–13, default) or '40' for Scott & Burgan 40 "
+            "(FBFM40, codes 101–204).  Affects which LANDFIRE raster is "
+            "fetched and which pixel codes are kept as burnable in the "
+            "output LCP file."
+        ),
+    )
     parser.add_argument("--keep-nonburnable", action="store_true",
                         help="Include non-burnable LANDFIRE pixels in LCP output")
     parser.add_argument("--cache-dir", default=None, metavar="DIR",
@@ -2954,6 +3047,7 @@ def main(argv=None):
                 tif_path=tif_path,
                 subsample=args.subsample,
                 keep_nonburnable=args.keep_nonburnable,
+                fuel_type=args.fuel_model_type,
             )
         elif using_local:
             missing = [
@@ -2977,6 +3071,7 @@ def main(argv=None):
                 args.aspect_file, args.fuel_file,
                 subsample=args.subsample,
                 keep_nonburnable=args.keep_nonburnable,
+                fuel_type=args.fuel_model_type,
             )
         else:
             create_landscape(
@@ -2994,6 +3089,7 @@ def main(argv=None):
                 use_cog=not args.use_lfps,
                 sources=landfire_sources,
                 vintage_fallback=not args.no_vintage_fallback,
+                fuel_type=args.fuel_model_type,
             )
 
         # Report UTM extents

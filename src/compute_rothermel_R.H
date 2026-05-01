@@ -7,6 +7,7 @@
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
+#include <AMReX_Gpu.H>
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 
@@ -14,14 +15,26 @@ using namespace amrex;
 
 // ============================================================================
 // Compute Rothermel rate of spread R and store in MultiFab
+//
+// Optional parameters for spatially-varying fuel models from a landscape file:
+//   fuel_model_mf  – per-cell integer fuel codes (from landscape file)
+//   fuel_table     – GPU-accessible array of RothermelComputed indexed by code
+//   fuel_table_size – number of entries in fuel_table
+//
+// When fuel_model_mf and fuel_table are provided, each cell uses the Rothermel
+// parameters (R0, C, B, beta_ratio_E, beta) corresponding to its local fuel
+// code.  Codes outside [0, fuel_table_size) fall back to the global default.
 // ============================================================================
 static void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab& vel,
                                 const Geometry& geom,
                                 const RothermelParams& rp,
-                                const MultiFab* slopes = nullptr)
+                                const MultiFab* slopes = nullptr,
+                                const MultiFab* fuel_model_mf = nullptr,
+                                const RothermelComputed* fuel_table = nullptr,
+                                int fuel_table_size = 0)
 {
-    // Compute Rothermel (1972) fire spread parameters
+    // Compute Rothermel (1972) fire spread parameters (global default)
     const RothermelComputed rc = compute_rothermel_params(rp);
     const Real R0 = rc.R0;
     const Real C = rc.C;
@@ -31,6 +44,10 @@ static void compute_rothermel_R(MultiFab& R_mf,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+
+    const bool use_fuel_table = (fuel_model_mf != nullptr &&
+                                  fuel_table != nullptr &&
+                                  fuel_table_size > 0);
 
     // Compute the domain-mean wind components so that extreme wind-speed cells
     // (> 25 m/s) can be replaced with the global mean of the flow field rather
@@ -52,6 +69,12 @@ static void compute_rothermel_R(MultiFab& R_mf,
             s = slopes->const_array(mfi);
         }
 
+        // Get per-cell fuel model codes if available
+        Array4<const Real> fm;
+        if (use_fuel_table) {
+            fm = fuel_model_mf->const_array(mfi);
+        }
+
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // Horizontal wind components
             Real ux = v(i,j,k,0);
@@ -68,11 +91,30 @@ static void compute_rothermel_R(MultiFab& R_mf,
                 uy = uy_global_mean;
             }
 
+            // Per-cell or global Rothermel parameters
+            Real cell_R0 = R0;
+            Real cell_C  = C;
+            Real cell_B  = B;
+            Real cell_beta_ratio_E = beta_ratio_E;
+            Real cell_beta = beta;
+
+            if (use_fuel_table) {
+                int code = static_cast<int>(fm(i, j, k));
+                if (code >= 0 && code < fuel_table_size) {
+                    const RothermelComputed& frc = fuel_table[code];
+                    cell_R0          = frc.R0;
+                    cell_C           = frc.C;
+                    cell_B           = frc.B;
+                    cell_beta_ratio_E = frc.beta_ratio_E;
+                    cell_beta        = frc.beta;
+                }
+            }
+
             // Wind speed in ft/min (Rothermel units)
             Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
 
             // Wind factor φ_w (Rothermel Eq. 47)
-            Real phi_w = (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : 0.0;
+            Real phi_w = (U_ftmin > 0.0) ? cell_C * std::pow(U_ftmin, cell_B) * cell_beta_ratio_E : 0.0;
 
             // Slope factor φ_s: use terrain-based if available, otherwise constant
             Real phi_s;
@@ -84,14 +126,14 @@ static void compute_rothermel_R(MultiFab& R_mf,
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                phi_s = std::max(PHI_S_COEFFICIENT * std::pow(beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
+                phi_s = std::max(PHI_S_COEFFICIENT * std::pow(cell_beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
             } else {
                 // Use constant phi_s from RothermelComputed
                 phi_s = phi_s_const;
             }
 
             // Rate of spread [ft/min] → simulation units
-            R(i,j,k) = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            R(i,j,k) = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
         });
     }
 }
