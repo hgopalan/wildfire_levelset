@@ -1663,6 +1663,19 @@ def main(argv=None):
                 tif_path=tif_path,
                 subsample=args.subsample,
             )
+    elif args.no_terrain and args.wrf_file is not None:
+        # When --no-terrain is set together with --wrf-file, write the WRF
+        # HGT / HGT_M field as the terrain output instead of downloading SRTM.
+        out_terrain = os.path.abspath(args.terrain)
+        extract_wrf_terrain(
+            args.wrf_file,
+            out_terrain,
+            subsample=args.subsample,
+            lat_min=lat_min,
+            lat_max=lat_max,
+            lon_min=lon_min,
+            lon_max=lon_max,
+        )
 
     # -----------------------------------------------------------------------
     # LANDFIRE landscape LCP step
@@ -1844,7 +1857,11 @@ def main(argv=None):
                 tn = t_indices[-1]
                 final_time = (tn - t1) * wind_time_spacing
 
-        terrain_out = os.path.abspath(args.terrain) if not args.no_terrain else None
+        terrain_out = (
+            os.path.abspath(args.terrain)
+            if (not args.no_terrain or args.wrf_file is not None)
+            else None
+        )
         landscape_out = (os.path.abspath(args.landscape)
                          if not args.no_terrain and not args.no_landscape else None)
 
