@@ -778,7 +778,7 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
 
     print(f"SRTM elevation grid: {elev_data.shape[0]}×{elev_data.shape[1]}")
     print("Reading fuel model raster …")
-    fuel_data, fuel_tf, fuel_crs, fuel_nd = _read_raster_file(fuel_path)
+    fuel_data, fuel_tf, fuel_crs, _ = _read_raster_file(fuel_path)
 
     print(f"Fuel grid: {fuel_data.shape[0]}×{fuel_data.shape[1]}")
     print("Interpolating SRTM elevation, slope, and aspect to fuel grid …")
