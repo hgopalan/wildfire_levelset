@@ -87,11 +87,23 @@ Options
   --aspect-product ID   Override LANDFIRE aspect product ID.
   --cache-dir DIR       Cache directory for LANDFIRE ZIP files.
   --timeout N           LANDFIRE API polling timeout in seconds (default: 300).
-  --elev-file PATH      Local elevation raster (skips LFPS download).
+  --elev-file PATH      Local elevation raster (skips download).
   --slope-file PATH     Local slope raster.
   --aspect-file PATH    Local aspect raster.
   --fuel-file PATH      Local fuel model raster.
+  --use-lfps            Force the legacy LFPS REST API for LANDFIRE download
+                        instead of the default COG (S3/HTTPS) approach.  Use
+                        this only if the S3 COG endpoint is unreachable.
   --help                Show this message and exit.
+
+LANDFIRE data source
+--------------------
+By default, LANDFIRE elevation, slope, aspect and fuel-model rasters are
+fetched as Cloud Optimized GeoTIFFs (COGs) from the public LANDFIRE AWS S3
+bucket (``https://s3.amazonaws.com/landfire/``).  Only the pixels within the
+requested bounding box are downloaded, so the transfer is fast and avoids the
+LFPS REST API which can fail with SSL certificate errors.  Pass ``--use-lfps``
+to revert to the legacy API if needed.
 """
 
 import argparse
@@ -115,6 +127,37 @@ _LFPS_BASE = (
 _SUBMIT_URL = f"{_LFPS_BASE}/submitJob"
 _JOB_URL    = f"{_LFPS_BASE}/jobs/{{jobId}}"
 _RESULT_URL = f"{_LFPS_BASE}/jobs/{{jobId}}/results/Output_File"
+
+# ---------------------------------------------------------------------------
+# LANDFIRE Cloud Optimized GeoTIFF (COG) constants
+# ---------------------------------------------------------------------------
+
+#: Base HTTPS URL for the public LANDFIRE AWS S3 bucket.
+_LANDFIRE_COG_BASE = "https://s3.amazonaws.com/landfire/"
+
+#: Mapping from vintage year → layer key → relative COG path on S3.
+#: These correspond to LANDFIRE national products hosted as COGs; only the
+#: pixels inside the requested bounding box are transferred.
+_COG_LAYERS = {
+    2020: {
+        "elev":   "US_200/US_200ELEV.tif",
+        "slope":  "US_200/US_200SlpD.tif",
+        "aspect": "US_200/US_200Asp.tif",
+        "fuel13": "US_200/US_200FBFM13.tif",
+    },
+    2016: {
+        "elev":   "US_140/US_140ELEV.tif",
+        "slope":  "US_140/US_140SlpD.tif",
+        "aspect": "US_140/US_140Asp.tif",
+        "fuel13": "US_140/US_140FBFM13.tif",
+    },
+    2014: {
+        "elev":   "US_130/US_130ELEV.tif",
+        "slope":  "US_130/US_130SLP.tif",
+        "aspect": "US_130/US_130ASP.tif",
+        "fuel13": "US_130/US_130FBFM13.tif",
+    },
+}
 
 _DEFAULT_LAYERS = {
     2020: {
@@ -586,7 +629,170 @@ def download_landfire(bbox, layer_ids, cache_dir=None, timeout_s=300):
     return layer_map
 
 
-def _read_raster_bytes(raw_bytes):
+def _read_landfire_cog(cog_url, bbox):
+    """Read a LANDFIRE COG clipped to *bbox* (min_lon, min_lat, max_lon, max_lat).
+
+    Opens the remote Cloud Optimized GeoTIFF via HTTPS and downloads only the
+    window of pixels that falls within *bbox*.  No API polling or ZIP
+    extraction is required.
+
+    Parameters
+    ----------
+    cog_url : str
+        Full HTTPS URL of the COG file.
+    bbox : tuple of float
+        ``(min_lon, min_lat, max_lon, max_lat)`` in WGS-84 degrees.
+
+    Returns
+    -------
+    tuple
+        ``(data, transform, crs, nodata)`` where *data* is a 2-D float64
+        array, *transform* is a rasterio ``Affine`` for the windowed region,
+        *crs* is the dataset CRS, and *nodata* is the nodata sentinel value.
+    """
+    import numpy as np
+    try:
+        import rasterio
+        from rasterio.windows import from_bounds
+    except ImportError:
+        raise ImportError(
+            "rasterio is required to read LANDFIRE COGs. "
+            "Install with: pip install rasterio"
+        )
+
+    min_lon, min_lat, max_lon, max_lat = bbox
+
+    env_opts = {
+        "GDAL_HTTP_MAX_RETRY": "3",
+        "GDAL_HTTP_RETRY_DELAY": "2",
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff",
+    }
+
+    print(f"  Reading COG window from {cog_url} …")
+    with rasterio.Env(**env_opts):
+        with rasterio.open(cog_url) as ds:
+            src_crs = ds.crs
+            nodata = ds.nodata
+
+            # Transform the WGS-84 bbox to the dataset's native CRS for windowing.
+            # LANDFIRE COGs use Albers Equal Area (EPSG:5070), not WGS-84.
+            if src_crs.to_epsg() == 4326:
+                win_min_x, win_min_y = min_lon, min_lat
+                win_max_x, win_max_y = max_lon, max_lat
+            else:
+                try:
+                    from pyproj import Transformer
+                    t = Transformer.from_crs(
+                        "EPSG:4326", src_crs, always_xy=True
+                    )
+                    corners_x, corners_y = t.transform(
+                        [min_lon, max_lon, min_lon, max_lon],
+                        [min_lat, min_lat, max_lat, max_lat],
+                    )
+                    win_min_x, win_max_x = min(corners_x), max(corners_x)
+                    win_min_y, win_max_y = min(corners_y), max(corners_y)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Failed to transform bbox to COG CRS ({src_crs}): {exc}"
+                    ) from exc
+
+            window = from_bounds(
+                win_min_x, win_min_y, win_max_x, win_max_y, ds.transform
+            )
+            win_transform = ds.window_transform(window)
+            data = ds.read(1, window=window).astype(np.float64)
+
+    return data, win_transform, src_crs, nodata
+
+
+def download_landfire_cog(bbox, vintage=2020,
+                          lid_elev=None, lid_slope=None,
+                          lid_aspect=None, lid_fuel=None):
+    """Download LANDFIRE rasters from Cloud Optimized GeoTIFFs on AWS S3.
+
+    Reads the four LANDFIRE layers (elevation, slope, aspect, fuel model)
+    from the public LANDFIRE AWS S3 bucket via HTTPS windowed reads.  Only
+    pixels within *bbox* are transferred, so no job submission or ZIP
+    extraction is needed and the download avoids the LFPS SSL endpoint.
+
+    Parameters
+    ----------
+    bbox : tuple of float
+        ``(min_lon, min_lat, max_lon, max_lat)`` in WGS-84 degrees.
+    vintage : int
+        LANDFIRE data vintage year (2014, 2016, or 2020; default 2020).
+        If the vintage is not in ``_COG_LAYERS``, 2020 is used as a fallback.
+    lid_elev, lid_slope, lid_aspect, lid_fuel : str or None
+        Layer IDs to use as keys in the returned dict.  Defaults to the
+        standard LFPS product IDs for *vintage* so that the return value is
+        a drop-in replacement for :func:`download_landfire`.
+
+    Returns
+    -------
+    dict
+        ``{layer_id: bytes}`` where each value is an in-memory GeoTIFF,
+        compatible with :func:`_read_raster_bytes`.
+
+    Raises
+    ------
+    ValueError
+        If no COG layer mapping exists for the requested vintage.
+    RuntimeError
+        If the bbox-to-CRS transformation or the rasterio read fails.
+    """
+    try:
+        import rasterio
+        from rasterio.io import MemoryFile
+    except ImportError:
+        raise ImportError(
+            "rasterio is required to read LANDFIRE COGs. "
+            "Install with: pip install rasterio"
+        )
+
+    cog_vintage = vintage if vintage in _COG_LAYERS else 2020
+    if vintage not in _COG_LAYERS:
+        print(
+            f"WARNING: No COG layer mapping for vintage {vintage}; "
+            f"using {cog_vintage}.",
+            file=sys.stderr,
+        )
+
+    layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
+    cog_paths = _COG_LAYERS[cog_vintage]
+
+    layers = {
+        lid_elev   or layer_defaults["elev"]:   cog_paths["elev"],
+        lid_slope  or layer_defaults["slope"]:  cog_paths["slope"],
+        lid_aspect or layer_defaults["aspect"]: cog_paths["aspect"],
+        lid_fuel   or layer_defaults["fuel13"]: cog_paths["fuel13"],
+    }
+
+    result = {}
+    for lid, rel_path in layers.items():
+        cog_url = _LANDFIRE_COG_BASE + rel_path
+        data, transform, crs, nodata = _read_landfire_cog(cog_url, bbox)
+
+        # Encode as an in-memory GeoTIFF so _read_raster_bytes() can consume
+        # the result without modification.
+        with MemoryFile() as mf:
+            with mf.open(
+                driver="GTiff",
+                height=data.shape[0],
+                width=data.shape[1],
+                count=1,
+                dtype=data.dtype,
+                crs=crs,
+                transform=transform,
+                nodata=nodata,
+            ) as ds:
+                ds.write(data, 1)
+            result[lid] = mf.read()
+
+    return result
+
+
+
     """Read a raster from raw bytes using rasterio."""
     import numpy as np
     try:
@@ -776,8 +982,18 @@ def create_landscape(output_path, bbox, vintage=2020,
                      aspect_product=None, fuel_product=None,
                      project_utm=True, subsample=1,
                      keep_nonburnable=False, cache_dir=None,
-                     timeout_s=300):
-    """Download LANDFIRE rasters and write an ASCII landscape file."""
+                     timeout_s=300, use_cog=True):
+    """Download LANDFIRE rasters and write an ASCII landscape file.
+
+    By default (*use_cog=True*) layers are fetched from the public LANDFIRE
+    AWS S3 COG endpoint, which avoids the LFPS REST API and its occasional
+    SSL certificate verification failures.  Set *use_cog=False* (or pass
+    ``--use-lfps`` on the command line) to use the legacy LFPS API instead.
+
+    If any ``*_product`` override is provided, those custom layer IDs cannot
+    be resolved to a COG path; the function automatically falls back to the
+    LFPS API in that case.
+    """
     layer_defaults = _DEFAULT_LAYERS.get(vintage, _DEFAULT_LAYERS[2020])
 
     lid_elev   = elev_product   or layer_defaults["elev"]
@@ -785,9 +1001,45 @@ def create_landscape(output_path, bbox, vintage=2020,
     lid_aspect = aspect_product or layer_defaults["aspect"]
     lid_fuel   = fuel_product   or layer_defaults["fuel13"]
 
+    # Custom product IDs cannot be mapped to a COG path; fall back to LFPS.
+    _have_overrides = any([elev_product, slope_product,
+                           aspect_product, fuel_product])
+    _use_cog = use_cog and not _have_overrides and vintage in _COG_LAYERS
+    if use_cog and _have_overrides:
+        print(
+            "WARNING: Custom --*-product IDs are not supported by the COG "
+            "downloader; falling back to LFPS API.",
+            file=sys.stderr,
+        )
+    if use_cog and vintage not in _COG_LAYERS:
+        print(
+            f"WARNING: No COG layer mapping for vintage {vintage}; "
+            "falling back to LFPS API.",
+            file=sys.stderr,
+        )
+
     layer_ids = [lid_elev, lid_slope, lid_aspect, lid_fuel]
-    layer_map = download_landfire(bbox, layer_ids,
-                                  cache_dir=cache_dir, timeout_s=timeout_s)
+
+    if _use_cog:
+        print("Fetching LANDFIRE layers from COG (HTTPS/S3) …")
+        try:
+            layer_map = download_landfire_cog(
+                bbox, vintage=vintage,
+                lid_elev=lid_elev, lid_slope=lid_slope,
+                lid_aspect=lid_aspect, lid_fuel=lid_fuel,
+            )
+        except Exception as exc:
+            print(
+                f"WARNING: COG download failed ({exc}); "
+                "retrying via LFPS API …",
+                file=sys.stderr,
+            )
+            layer_map = download_landfire(bbox, layer_ids,
+                                          cache_dir=cache_dir,
+                                          timeout_s=timeout_s)
+    else:
+        layer_map = download_landfire(bbox, layer_ids,
+                                      cache_dir=cache_dir, timeout_s=timeout_s)
 
     def _get_bytes(lid):
         if lid in layer_map:
@@ -1684,16 +1936,27 @@ def _build_parser():
     parser.add_argument("--keep-nonburnable", action="store_true",
                         help="Include non-burnable LANDFIRE pixels in LCP output")
     parser.add_argument("--cache-dir", default=None, metavar="DIR",
-                        help="Directory to cache downloaded LANDFIRE ZIP files")
+                        help="Directory to cache downloaded LANDFIRE ZIP files "
+                             "(only used with --use-lfps)")
     parser.add_argument("--timeout", type=int, default=300, metavar="N",
-                        help="LANDFIRE API polling timeout in seconds (default: 300)")
+                        help="LANDFIRE API polling timeout in seconds "
+                             "(default: 300; only used with --use-lfps)")
+    parser.add_argument(
+        "--use-lfps", action="store_true",
+        help=(
+            "Use the legacy LFPS REST API to download LANDFIRE data instead "
+            "of the default COG (S3/HTTPS) approach.  This may be needed if "
+            "the S3 endpoint is unreachable, but is susceptible to LFPS SSL "
+            "certificate verification failures."
+        ),
+    )
 
     # Local-file landscape mode
     local = parser.add_argument_group(
         "local files mode (use pre-existing rasters instead of downloading)"
     )
     local.add_argument("--elev-file",   default=None, metavar="PATH",
-                       help="Local elevation raster (skips LFPS download)")
+                       help="Local elevation raster (skips download)")
     local.add_argument("--slope-file",  default=None, metavar="PATH",
                        help="Local slope raster")
     local.add_argument("--aspect-file", default=None, metavar="PATH",
@@ -1859,6 +2122,7 @@ def main(argv=None):
                 keep_nonburnable=args.keep_nonburnable,
                 cache_dir=args.cache_dir,
                 timeout_s=args.timeout,
+                use_cog=not args.use_lfps,
             )
 
         # Report UTM extents

@@ -1170,6 +1170,208 @@ class TestWrfBboxToUtmDomainBounds(unittest.TestCase):
                            x_hi_narrow - x_lo_narrow)
 
 
+# ===========================================================================
+# 16. COG constants and download_landfire_cog (offline / unit tests)
+# ===========================================================================
+
+class TestCOGConstants(unittest.TestCase):
+    """Verify the COG layer mapping constants are internally consistent."""
+
+    def test_cog_layers_vintages(self):
+        """_COG_LAYERS should define entries for 2014, 2016, and 2020."""
+        for year in (2014, 2016, 2020):
+            self.assertIn(year, twp._COG_LAYERS,
+                          f"Missing _COG_LAYERS entry for vintage {year}")
+
+    def test_cog_layers_keys(self):
+        """Each vintage entry should have elev, slope, aspect, and fuel13."""
+        for year, layers in twp._COG_LAYERS.items():
+            for key in ("elev", "slope", "aspect", "fuel13"):
+                self.assertIn(key, layers,
+                              f"Missing key '{key}' for vintage {year}")
+
+    def test_cog_paths_end_with_tif(self):
+        """All COG paths should end with .tif."""
+        for year, layers in twp._COG_LAYERS.items():
+            for key, path in layers.items():
+                self.assertTrue(
+                    path.endswith(".tif"),
+                    f"COG path for ({year}, {key}) does not end with .tif: {path}"
+                )
+
+    def test_cog_base_url_is_https(self):
+        """_LANDFIRE_COG_BASE should be an HTTPS URL."""
+        self.assertTrue(
+            twp._LANDFIRE_COG_BASE.startswith("https://"),
+            "_LANDFIRE_COG_BASE must use HTTPS"
+        )
+
+    def test_default_layers_match_cog_coverage(self):
+        """_DEFAULT_LAYERS vintages with a COG mapping should align."""
+        for year in twp._COG_LAYERS:
+            self.assertIn(year, twp._DEFAULT_LAYERS,
+                          f"_DEFAULT_LAYERS missing vintage {year}")
+
+
+class TestDownloadLandFireCogOffline(unittest.TestCase):
+    """Test download_landfire_cog without a real network connection.
+
+    The function's rasterio call is monkey-patched so that no HTTP request
+    is made.
+    """
+
+    def _make_fake_cog_bytes(self, shape=(4, 4), value=100.0):
+        """Return minimal in-memory GeoTIFF bytes using rasterio MemoryFile."""
+        try:
+            import numpy as np
+            import rasterio
+            from rasterio.io import MemoryFile
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        data = np.full(shape, value, dtype=np.float64)
+        # Use a simple WGS-84 transform over a tiny area
+        tf = from_bounds(-105.1, 40.0, -105.0, 40.1, shape[1], shape[0])
+        with MemoryFile() as mf:
+            with mf.open(driver="GTiff", height=shape[0], width=shape[1],
+                         count=1, dtype=data.dtype,
+                         crs=CRS.from_epsg(4326), transform=tf,
+                         nodata=-9999.0) as ds:
+                ds.write(data, 1)
+            return mf.read()
+
+    def test_download_landfire_cog_returns_four_layers(self):
+        """download_landfire_cog should return exactly four layer entries."""
+        try:
+            import numpy as np
+            import rasterio
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        bbox = (-105.1, 40.0, -105.0, 40.1)
+        shape = (4, 4)
+        fake_data = np.ones(shape, dtype=np.float64)
+        fake_tf = from_bounds(*bbox, shape[1], shape[0])
+        fake_crs = CRS.from_epsg(4326)
+
+        # Patch _read_landfire_cog to avoid any network call
+        original = twp._read_landfire_cog
+        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        try:
+            result = twp.download_landfire_cog(bbox, vintage=2020)
+        finally:
+            twp._read_landfire_cog = original
+
+        self.assertEqual(len(result), 4)
+
+    def test_download_landfire_cog_keys_match_default_layers(self):
+        """The returned dict keys should match the 2020 default layer IDs."""
+        try:
+            import numpy as np
+            import rasterio
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        bbox = (-105.1, 40.0, -105.0, 40.1)
+        shape = (4, 4)
+        fake_data = np.ones(shape, dtype=np.float64)
+        fake_tf = from_bounds(*bbox, shape[1], shape[0])
+        fake_crs = CRS.from_epsg(4326)
+
+        original = twp._read_landfire_cog
+        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        try:
+            result = twp.download_landfire_cog(bbox, vintage=2020)
+        finally:
+            twp._read_landfire_cog = original
+
+        expected_keys = set(twp._DEFAULT_LAYERS[2020].values())
+        self.assertEqual(set(result.keys()), expected_keys)
+
+    def test_download_landfire_cog_values_are_bytes(self):
+        """Each value in the returned dict should be bytes (in-memory GeoTIFF)."""
+        try:
+            import numpy as np
+            import rasterio
+            from rasterio.crs import CRS
+            from rasterio.transform import from_bounds
+        except ImportError:
+            raise unittest.SkipTest("rasterio not installed")
+
+        bbox = (-105.1, 40.0, -105.0, 40.1)
+        shape = (4, 4)
+        fake_data = np.ones(shape, dtype=np.float64)
+        fake_tf = from_bounds(*bbox, shape[1], shape[0])
+        fake_crs = CRS.from_epsg(4326)
+
+        original = twp._read_landfire_cog
+        twp._read_landfire_cog = lambda url, b: (fake_data, fake_tf, fake_crs, -9999.0)
+        try:
+            result = twp.download_landfire_cog(bbox, vintage=2020)
+        finally:
+            twp._read_landfire_cog = original
+
+        for lid, raw in result.items():
+            self.assertIsInstance(raw, bytes,
+                                  f"Value for layer '{lid}' is not bytes")
+            # Minimal sanity: should be a valid GeoTIFF (starts with TIFF magic)
+            self.assertIn(raw[:4], (b"II\x2a\x00", b"MM\x00\x2a"),
+                          f"Layer '{lid}' bytes do not look like a GeoTIFF")
+
+    def test_create_landscape_use_cog_false_uses_lfps(self):
+        """create_landscape(use_cog=False) should call download_landfire, not COG."""
+        calls = []
+
+        def _fake_download_landfire(bbox, layer_ids, **kwargs):
+            calls.append(("lfps", layer_ids))
+            raise RuntimeError("stop here")  # abort after recording the call
+
+        original = twp.download_landfire
+        twp.download_landfire = _fake_download_landfire
+        try:
+            with self.assertRaises(RuntimeError):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=(-105.1, 40.0, -105.0, 40.1),
+                    vintage=2020,
+                    use_cog=False,
+                )
+        finally:
+            twp.download_landfire = original
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "lfps")
+
+    def test_create_landscape_use_cog_true_uses_cog(self):
+        """create_landscape(use_cog=True) should call download_landfire_cog first."""
+        calls = []
+
+        def _fake_download_landfire_cog(bbox, **kwargs):
+            calls.append("cog")
+            raise RuntimeError("stop here")
+
+        original = twp.download_landfire_cog
+        twp.download_landfire_cog = _fake_download_landfire_cog
+        try:
+            with self.assertRaises(Exception):
+                twp.create_landscape(
+                    "/tmp/fake.lcp",
+                    bbox=(-105.1, 40.0, -105.0, 40.1),
+                    vintage=2020,
+                    use_cog=True,
+                )
+        finally:
+            twp.download_landfire_cog = original
+
+        self.assertIn("cog", calls)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
