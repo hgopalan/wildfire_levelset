@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "spatial_grid.H"
+
 using namespace amrex;
 
 // ======================= Read terrain data and compute slopes ====================
@@ -49,86 +51,70 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
     if (x_data.empty()) {
         amrex::Abort("No data read from terrain file: " + filename);
     }
-    
+
     amrex::Print() << "Read " << x_data.size() << " terrain data points from " << filename << "\n";
-    
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_z(z_data.size());
-    
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, z_data.begin(), z_data.end(), d_z.begin());
-    
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* z_ptr = d_z.data();
+
     int n_points = static_cast<int>(x_data.size());
 
-    // Estimate characteristic data spacing for Gaussian kernel bandwidth.
-    // h ≈ sqrt(area / n_points) – the mean grid spacing for a regular grid.
+    // Characteristic data spacing: h ≈ sqrt(area / N)
     Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
     Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
     Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
     Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
 
+    // Build cell-list spatial index (cutoff R = 3h, bin size = R).
+    // Points within R of a query are found in O(K) rather than O(N).
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_sz;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    // Reorder z to match sorted layout and copy to device
+    std::vector<Real> z_sorted = reorder_values(z_data, sidx);
+    d_sz.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, z_sorted.begin(), z_sorted.end(), d_sz.begin());
+
+    // Set device pointers in params
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* z_ptr = d_sz.data();
+
     // Get domain bounds and cell size
-    const auto dx = geom.CellSizeArray();
+    const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
-    
-    // Compute slopes for each cell using finite differences
-    // slopes has 2 components: slope_x (∂z/∂x) and slope_y (∂z/∂y)
+
+    // Compute slopes for each cell using central finite differences.
+    // Elevation at stencil points is interpolated via Wendland C² RBF with
+    // the cell-list index – O(K) per cell instead of O(N).
     for (MFIter mfi(slopes); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto const s = slopes.array(mfi);
-        
+        auto const s  = slopes.array(mfi);
+
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // Compute cell center coordinates
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
 
-            // Gaussian RBF interpolation: weight = exp(-dist²/(2h²)).
-            // Avoids IDW bullseye artefacts, producing a smooth field.
-            Real two_h2 = Real(2.0) * h * h;
+            Real z_xplus  = cell_list_interp(cl, z_ptr, x + dx[0], y);
+            Real z_xminus = cell_list_interp(cl, z_ptr, x - dx[0], y);
+            Real z_yplus  = cell_list_interp(cl, z_ptr, x,          y + dx[1]);
+            Real z_yminus = cell_list_interp(cl, z_ptr, x,          y - dx[1]);
 
-            // Helper: Gaussian-weighted interpolation of z at (px, py)
-            auto interpolate_z = [&](Real px, Real py) -> Real {
-                Real sum_weights = Real(0.0);
-                Real sum_z = Real(0.0);
-
-                for (int n = 0; n < n_points; ++n) {
-                    Real dx_val = px - x_ptr[n];
-                    Real dy_val = py - y_ptr[n];
-                    Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                    Real weight = std::exp(-dist_sq / two_h2);
-                    sum_weights += weight;
-                    sum_z += weight * z_ptr[n];
-                }
-
-                return (sum_weights > Real(0.0)) ? sum_z / sum_weights : Real(0.0);
-            };
-            
-            // Interpolate elevation at cell center and neighbors
-            // Note: z_center is computed but not used in the slope calculation
-            // Real z_center = interpolate_z(x, y);
-            Real z_xplus  = interpolate_z(x + dx[0], y);
-            Real z_xminus = interpolate_z(x - dx[0], y);
-            Real z_yplus  = interpolate_z(x, y + dx[1]);
-            Real z_yminus = interpolate_z(x, y - dx[1]);
-            
-            // Compute slopes using central differences
-            // slope_x = ∂z/∂x = tan(angle_x)
-            // slope_y = ∂z/∂y = tan(angle_y)
+            // slope_x = ∂z/∂x,  slope_y = ∂z/∂y  (central differences)
             s(i,j,k,0) = (z_xplus - z_xminus) / (Real(2.0) * dx[0]);
             s(i,j,k,1) = (z_yplus - z_yminus) / (Real(2.0) * dx[1]);
         });
     }
-    
+
     amrex::Print() << "Computed terrain slopes from unstructured data\n";
 }
 
@@ -166,29 +152,37 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
         amrex::Abort("No data read from terrain file: " + filename);
     }
 
-    // Copy data to device-accessible memory
-    Gpu::DeviceVector<Real> d_x(x_data.size());
-    Gpu::DeviceVector<Real> d_y(y_data.size());
-    Gpu::DeviceVector<Real> d_z(z_data.size());
-
-    Gpu::copy(Gpu::hostToDevice, x_data.begin(), x_data.end(), d_x.begin());
-    Gpu::copy(Gpu::hostToDevice, y_data.begin(), y_data.end(), d_y.begin());
-    Gpu::copy(Gpu::hostToDevice, z_data.begin(), z_data.end(), d_z.begin());
-
-    Real const* x_ptr = d_x.data();
-    Real const* y_ptr = d_y.data();
-    Real const* z_ptr = d_z.data();
     int n_points = static_cast<int>(x_data.size());
 
-    // Characteristic data spacing for Gaussian kernel bandwidth
+    // Characteristic data spacing
     Real x_min_d = *std::min_element(x_data.begin(), x_data.end());
     Real x_max_d = *std::max_element(x_data.begin(), x_data.end());
     Real y_min_d = *std::min_element(y_data.begin(), y_data.end());
     Real y_max_d = *std::max_element(y_data.begin(), y_data.end());
-    Real area = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
     Real h = (area > Real(0.0) && n_points > 1)
                  ? std::sqrt(area / static_cast<Real>(n_points))
                  : Real(1.0);
+
+    // Build cell-list spatial index
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_sz;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data, y_data, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> z_sorted = reorder_values(z_data, sidx);
+    d_sz.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, z_sorted.begin(), z_sorted.end(), d_sz.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* z_ptr = d_sz.data();
 
     const auto dx     = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
@@ -200,22 +194,7 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-
-            // Gaussian RBF: weight = exp(-dist²/(2h²)) for smooth interpolation
-            Real two_h2 = Real(2.0) * h * h;
-            Real sum_weights = Real(0.0);
-            Real sum_z = Real(0.0);
-
-            for (int n = 0; n < n_points; ++n) {
-                Real dx_val = x - x_ptr[n];
-                Real dy_val = y - y_ptr[n];
-                Real dist_sq = dx_val * dx_val + dy_val * dy_val;
-                Real weight = std::exp(-dist_sq / two_h2);
-                sum_weights += weight;
-                sum_z += weight * z_ptr[n];
-            }
-
-            elev(i, j, k) = (sum_weights > Real(0.0)) ? sum_z / sum_weights : Real(0.0);
+            elev(i, j, k) = cell_list_interp(cl, z_ptr, x, y);
         });
     }
 
