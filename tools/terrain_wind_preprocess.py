@@ -226,10 +226,6 @@ def _fix_srtm_zeros(z):
     # A zero is spurious only when at least one immediate neighbour is > 0
     from scipy.ndimage import generic_filter
 
-    def _has_nonzero_neighbour(patch):
-        centre = patch[len(patch) // 2]
-        return (centre == 0.0) and np.any(patch > 0.0)
-
     spurious = generic_filter(
         z,
         lambda p: float((p[len(p) // 2] == 0.0) and np.any(p > 0.0)),

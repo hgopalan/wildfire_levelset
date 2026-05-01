@@ -36,7 +36,12 @@ static void compute_rothermel_R(MultiFab& R_mf,
         const Box& bx = mfi.validbox();
         auto const v = vel.const_array(mfi);
         auto const R = R_mf.array(mfi);
-        
+
+        // Box covering the vel array including ghost cells (host-side, captured
+        // by value so device code can call Box::contains() without touching the
+        // MultiFab).
+        const Box vel_bx = vel[mfi].box();
+
         // Get slopes array if terrain file was provided
         const bool use_terrain = (slopes != nullptr);
         Array4<const Real> s;
@@ -52,12 +57,29 @@ static void compute_rothermel_R(MultiFab& R_mf,
             // Clamp extreme wind speeds (> 25 m/s) that arise from abrupt
             // terrain jumps at SRTM tile seams.  Replace with the mean of the
             // four immediate neighbours to avoid Rothermel R going crazy.
+            // Boundary checks use vel_bx (which includes ghost cells) so no
+            // out-of-range access occurs at domain edges.
             constexpr Real MAX_WIND_SPEED_MS = 25.0;
             if (std::sqrt(ux*ux + uy*uy) > MAX_WIND_SPEED_MS) {
-                ux = 0.25 * (v(i-1,j,k,0) + v(i+1,j,k,0)
-                           + v(i,j-1,k,0) + v(i,j+1,k,0));
-                uy = 0.25 * (v(i-1,j,k,1) + v(i+1,j,k,1)
-                           + v(i,j-1,k,1) + v(i,j+1,k,1));
+                Real ux_mean = 0.0, uy_mean = 0.0;
+                int cnt = 0;
+                if (vel_bx.contains(IntVect(i-1,j,k))) {
+                    ux_mean += v(i-1,j,k,0); uy_mean += v(i-1,j,k,1); ++cnt;
+                }
+                if (vel_bx.contains(IntVect(i+1,j,k))) {
+                    ux_mean += v(i+1,j,k,0); uy_mean += v(i+1,j,k,1); ++cnt;
+                }
+                if (vel_bx.contains(IntVect(i,j-1,k))) {
+                    ux_mean += v(i,j-1,k,0); uy_mean += v(i,j-1,k,1); ++cnt;
+                }
+                if (vel_bx.contains(IntVect(i,j+1,k))) {
+                    ux_mean += v(i,j+1,k,0); uy_mean += v(i,j+1,k,1); ++cnt;
+                }
+                if (cnt > 0) {
+                    Real inv = Real(1.0) / Real(cnt);
+                    ux = ux_mean * inv;
+                    uy = uy_mean * inv;
+                }
             }
 
             // Wind speed in ft/min (Rothermel units)
