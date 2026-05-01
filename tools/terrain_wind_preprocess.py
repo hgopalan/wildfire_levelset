@@ -1227,11 +1227,11 @@ def extract_wrf_wind(wrf_path, time_index=0, level=0, subsample=1,
             )
         r0, r1 = int(rows.min()), int(rows.max()) + 1
         c0, c1 = int(cols.min()), int(cols.max()) + 1
-        lat_2d  = lat_2d [r0:r1, c0:c1]
-        lon_2d  = lon_2d [r0:r1, c0:c1]
-        u_mass  = u_mass [r0:r1, c0:c1]
-        v_mass  = v_mass [r0:r1, c0:c1]
-        ny, nx  = lat_2d.shape
+        lat_2d = lat_2d[r0:r1, c0:c1]
+        lon_2d = lon_2d[r0:r1, c0:c1]
+        u_mass = u_mass[r0:r1, c0:c1]
+        v_mass = v_mass[r0:r1, c0:c1]
+        ny, nx = lat_2d.shape
         print(f"Clipped WRF wind grid to lat=[{lat_min:.4f}, {lat_max:.4f}] "
               f"lon=[{lon_min:.4f}, {lon_max:.4f}]: {ny}×{nx} points.")
 

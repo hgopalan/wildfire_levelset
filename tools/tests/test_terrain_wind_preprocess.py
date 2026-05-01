@@ -389,6 +389,23 @@ class TestExtractWrfWind(unittest.TestCase):
         self.assertEqual(x_clip.shape, u_clip.shape)
         self.assertEqual(x_clip.shape, v_clip.shape)
 
+        # Round-trip: convert UTM back to lat/lon and verify within clip bounds
+        try:
+            from pyproj import Transformer
+            center_lon_approx = (clip_lon_min + clip_lon_max) / 2.0
+            center_lat_approx = (clip_lat_min + clip_lat_max) / 2.0
+            zone = int((center_lon_approx + 180.0) / 6.0) + 1
+            epsg = 32600 + zone if center_lat_approx >= 0.0 else 32700 + zone
+            t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+            lons_back, lats_back = t.transform(x_clip.ravel(), y_clip.ravel())
+            # All clipped points must lie within the requested bounds
+            self.assertTrue(np.all(lats_back >= clip_lat_min - 1e-6))
+            self.assertTrue(np.all(lats_back <= clip_lat_max + 1e-6))
+            self.assertTrue(np.all(lons_back >= clip_lon_min - 1e-6))
+            self.assertTrue(np.all(lons_back <= clip_lon_max + 1e-6))
+        except ImportError:
+            pass  # pyproj not installed; shape checks above are sufficient
+
 
 # ===========================================================================
 # 7. interpolate_wind_to_grid
