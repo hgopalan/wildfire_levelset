@@ -198,6 +198,141 @@ def download_srtm(lat_min, lat_max, lon_min, lon_max, out_tif):
     )
 
 
+def _fix_srtm_zeros(z):
+    """Replace spurious zero-elevation pixels with interpolated values.
+
+    SRTM tiles sometimes contain random zero values at tile borders that are
+    not genuine sea-level points.  A zero is treated as spurious when it is
+    surrounded by cells whose elevation is > 0.  Such cells are filled by
+    linear interpolation from the nearest valid (non-zero) neighbours using
+    ``scipy.interpolate.griddata``.
+
+    Parameters
+    ----------
+    z : numpy.ndarray (2-D, float)
+        Elevation grid, potentially containing spurious zeros.
+
+    Returns
+    -------
+    numpy.ndarray
+        Copy of *z* with spurious zeros replaced.
+    """
+    import numpy as np
+
+    zero_mask = z == 0.0
+    if not np.any(zero_mask):
+        return z
+
+    # A zero is spurious only when at least one immediate neighbour is > 0
+    from scipy.ndimage import generic_filter
+
+    def _has_nonzero_neighbour(patch):
+        centre = patch[len(patch) // 2]
+        return (centre == 0.0) and np.any(patch > 0.0)
+
+    spurious = generic_filter(
+        z,
+        lambda p: float((p[len(p) // 2] == 0.0) and np.any(p > 0.0)),
+        size=3,
+        mode="nearest",
+    ).astype(bool)
+
+    if not np.any(spurious):
+        return z
+
+    print(f"  Fixing {int(np.sum(spurious))} spurious zero elevation pixels …")
+    z_out = z.copy()
+    h, w = z.shape
+    rows, cols = np.mgrid[0:h, 0:w]
+
+    valid = ~spurious
+    try:
+        from scipy.interpolate import griddata
+
+        pts_valid = np.column_stack([rows[valid].ravel(), cols[valid].ravel()])
+        pts_spurious = np.column_stack(
+            [rows[spurious].ravel(), cols[spurious].ravel()]
+        )
+        z_out[spurious] = griddata(
+            pts_valid, z[valid].ravel(), pts_spurious, method="linear", fill_value=0.0
+        )
+    except ImportError:
+        # Fallback: replace each spurious cell with the mean of its valid neighbours
+        for r, c in zip(rows[spurious].ravel(), cols[spurious].ravel()):
+            neighbours = []
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    rr, cc = r + dr, c + dc
+                    if 0 <= rr < h and 0 <= cc < w and z[rr, cc] > 0.0:
+                        neighbours.append(z[rr, cc])
+            if neighbours:
+                z_out[r, c] = float(np.mean(neighbours))
+
+    return z_out
+
+
+def _smooth_terrain_border(z, fraction=0.2):
+    """Smooth the outer *fraction* of the terrain grid to reduce tile-seam artefacts.
+
+    A Gaussian-smoothed version of the full grid is blended into the border
+    region.  The blend weight transitions linearly from 1 (fully smoothed) at
+    the grid edges to 0 (original values) at the interior boundary of the
+    border band, so there is no hard discontinuity.
+
+    Parameters
+    ----------
+    z : numpy.ndarray (2-D, float)
+        Elevation grid.
+    fraction : float
+        Width of the border band expressed as a fraction of the grid dimension
+        (default 0.2 → outer 20 % on each side).
+
+    Returns
+    -------
+    numpy.ndarray
+        Smoothed copy of *z*.
+    """
+    import numpy as np
+
+    try:
+        from scipy.ndimage import gaussian_filter
+    except ImportError:
+        print(
+            "WARNING: scipy not available; skipping terrain border smoothing.",
+            file=sys.stderr,
+        )
+        return z
+
+    h, w = z.shape
+    border_h = max(1, int(h * fraction))
+    border_w = max(1, int(w * fraction))
+
+    # Gaussian sigma proportional to border width for effective smoothing
+    sigma = max(1.0, min(border_h, border_w) / 4.0)
+    z_smooth = gaussian_filter(z, sigma=sigma)
+
+    # Build a 2-D blending weight: 1.0 at edges, 0.0 at interior boundary
+    weight = np.zeros((h, w), dtype=np.float64)
+
+    # Vertical ramp (top and bottom)
+    ramp_v = np.linspace(1.0, 0.0, border_h, endpoint=False)
+    weight[:border_h, :] = np.maximum(weight[:border_h, :],
+                                       ramp_v[:, np.newaxis])
+    weight[-border_h:, :] = np.maximum(weight[-border_h:, :],
+                                        ramp_v[::-1, np.newaxis])
+
+    # Horizontal ramp (left and right)
+    ramp_h = np.linspace(1.0, 0.0, border_w, endpoint=False)
+    weight[:, :border_w] = np.maximum(weight[:, :border_w],
+                                       ramp_h[np.newaxis, :])
+    weight[:, -border_w:] = np.maximum(weight[:, -border_w:],
+                                        ramp_h[np.newaxis, ::-1])
+
+    return z * (1.0 - weight) + z_smooth * weight
+
+
 def tiff_to_xyz_utm(tif_path, subsample=1):
     """Read a GeoTIFF and return (utm_x, utm_y, z) 2-D arrays in UTM metres."""
     import numpy as np
@@ -226,6 +361,12 @@ def tiff_to_xyz_utm(tif_path, subsample=1):
         lon, lat = rasterio_xy(src.transform, rows_idx.ravel(), cols_idx.ravel())
         lon = np.array(lon, dtype=np.float64).reshape(h, w)
         lat = np.array(lat, dtype=np.float64).reshape(h, w)
+
+    # Fix spurious zero-elevation pixels caused by SRTM tile-seam artefacts
+    z = _fix_srtm_zeros(z)
+
+    # Smooth the outer 20 % border to reduce tile-seam elevation discontinuities
+    z = _smooth_terrain_border(z, fraction=0.2)
 
     center_lon = float(np.nanmean(lon))
     center_lat = float(np.nanmean(lat))

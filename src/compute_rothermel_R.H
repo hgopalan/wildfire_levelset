@@ -49,6 +49,17 @@ static void compute_rothermel_R(MultiFab& R_mf,
             Real ux = v(i,j,k,0);
             Real uy = v(i,j,k,1);
 
+            // Clamp extreme wind speeds (> 25 m/s) that arise from abrupt
+            // terrain jumps at SRTM tile seams.  Replace with the mean of the
+            // four immediate neighbours to avoid Rothermel R going crazy.
+            constexpr Real MAX_WIND_SPEED_MS = 25.0;
+            if (std::sqrt(ux*ux + uy*uy) > MAX_WIND_SPEED_MS) {
+                ux = 0.25 * (v(i-1,j,k,0) + v(i+1,j,k,0)
+                           + v(i,j-1,k,0) + v(i,j+1,k,0));
+                uy = 0.25 * (v(i-1,j,k,1) + v(i+1,j,k,1)
+                           + v(i,j-1,k,1) + v(i,j+1,k,1));
+            }
+
             // Wind speed in ft/min (Rothermel units)
             Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
 
