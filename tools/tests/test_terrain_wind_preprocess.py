@@ -1617,10 +1617,11 @@ class TestVintageFallback(unittest.TestCase):
             raise RuntimeError(f"mspc unavailable for vintage {vintage}")
 
         def _fake_lfps(bbox, layer_ids, **kw):
-            # Derive vintage hint from the product IDs (e.g. "ELEV2016")
+            # Derive vintage hint from the product IDs (e.g. "ELEV2016").
+            # Iterate newest-first so the most recent year matched wins.
             joined = " ".join(layer_ids)
             v = 2020
-            for yr in (2014, 2016, 2020):
+            for yr in (2020, 2016, 2014):
                 if str(yr) in joined:
                     v = yr
                     break
