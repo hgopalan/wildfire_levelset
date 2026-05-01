@@ -981,15 +981,21 @@ def write_inputs_file(output_path,
 
         # --- Grid & domain -------------------------------------------
         fh.write("# Grid & domain\n")
-        fh.write("n_cell = 64\n")
-        fh.write("max_grid_size = 32\n")
         if bounds is not None:
             x_lo, y_lo, x_hi, y_hi = bounds
+            n_cell_x = max(1, round((x_hi - x_lo) / 30.0))
+            n_cell_y = max(1, round((y_hi - y_lo) / 30.0))
+            fh.write(f"n_cell_x = {n_cell_x}\n")
+            fh.write(f"n_cell_y = {n_cell_y}\n")
+            fh.write(f"max_grid_size = {max(1, max(n_cell_x, n_cell_y) // 2)}\n")
             fh.write(f"prob_lo_x = {x_lo:.2f}\n")
             fh.write(f"prob_lo_y = {y_lo:.2f}\n")
             fh.write(f"prob_hi_x = {x_hi:.2f}\n")
             fh.write(f"prob_hi_y = {y_hi:.2f}\n")
         else:
+            fh.write("# n_cell_x = <round((x_max - x_min) / 30)>  # 30 m resolution\n")
+            fh.write("# n_cell_y = <round((y_max - y_min) / 30)>  # 30 m resolution\n")
+            fh.write("# max_grid_size = <n_cell_x or n_cell_y / 2>\n")
             fh.write("# prob_lo_x = <x_min from terrain/landscape>\n")
             fh.write("# prob_lo_y = <y_min from terrain/landscape>\n")
             fh.write("# prob_hi_x = <x_max from terrain/landscape>\n")
