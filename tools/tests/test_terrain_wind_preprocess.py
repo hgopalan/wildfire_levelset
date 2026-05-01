@@ -594,6 +594,8 @@ class TestMainNoTerrain(unittest.TestCase):
         # Heights must be non-negative multiples of 10 (0, 10, 20, 30, 40)
         for z in z_values:
             self.assertGreaterEqual(z, 0.0)
+            self.assertAlmostEqual(z % 10, 0.0, places=3,
+                                   msg=f"z={z} is not a multiple of 10")
 
     def test_no_terrain_still_writes_wind(self):
         """--no-terrain + --wrf-file: wind file should still be created."""
