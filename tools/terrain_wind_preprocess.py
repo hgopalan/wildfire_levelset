@@ -128,6 +128,10 @@ _SUBMIT_URL = f"{_LFPS_BASE}/submitJob"
 _JOB_URL    = f"{_LFPS_BASE}/jobs/{{jobId}}"
 _RESULT_URL = f"{_LFPS_BASE}/jobs/{{jobId}}/results/Output_File"
 
+# lfps.usgs.gov uses a self-signed certificate; track whether we have already
+# printed the SSL-warning so it appears only once per run.
+_LFPS_SSL_WARNED = False
+
 # ---------------------------------------------------------------------------
 # LANDFIRE Cloud Optimized GeoTIFF (COG) constants
 # ---------------------------------------------------------------------------
@@ -569,12 +573,41 @@ def _submit_lfps_job(bbox, layer_ids, timeout_s=300):
 
 def _requests_get(url, **kwargs):
     import requests
+    if url.startswith(_LFPS_BASE):
+        kwargs.setdefault("verify", False)
+        _suppress_lfps_ssl_warning()
     return requests.get(url, **kwargs)
 
 
 def _requests_post(url, **kwargs):
     import requests
+    if url.startswith(_LFPS_BASE):
+        kwargs.setdefault("verify", False)
+        _suppress_lfps_ssl_warning()
     return requests.post(url, **kwargs)
+
+
+def _suppress_lfps_ssl_warning():
+    """Print a one-time notice and suppress urllib3 warnings for the LFPS host.
+
+    lfps.usgs.gov serves a self-signed certificate that Python's default SSL
+    context rejects.  We disable verification for that host only and notify
+    the user once so the intent is transparent.
+    """
+    global _LFPS_SSL_WARNED
+    if _LFPS_SSL_WARNED:
+        return
+    _LFPS_SSL_WARNED = True
+    print(
+        "WARNING: SSL certificate verification disabled for lfps.usgs.gov "
+        "(self-signed certificate in chain). "
+        "Ensure you trust this host before proceeding."
+    )
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except (ImportError, AttributeError):
+        pass
 
 
 def _download_zip(url, cache_dir=None):
