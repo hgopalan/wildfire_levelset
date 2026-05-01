@@ -519,7 +519,7 @@ class TestConvertWrf(unittest.TestCase):
 
 
 # ===========================================================================
-# 9. main() - --no-terrain: terrain step skipped, wind still extracted
+# 9. main() - --no-terrain + --wrf-file: WRF HGT_M written as terrain file
 # ===========================================================================
 
 class TestMainNoTerrain(unittest.TestCase):
@@ -530,8 +530,8 @@ class TestMainNoTerrain(unittest.TestCase):
         path = os.path.join(self.tmpdir, "wrf_no_terrain.nc")
         return _make_wrf_nc(path, **kwargs)
 
-    def test_no_terrain_skips_terrain_file(self):
-        """--no-terrain: terrain file must NOT be created."""
+    def test_no_terrain_with_wrf_writes_terrain_file(self):
+        """--no-terrain + --wrf-file: WRF HGT_M must be written as terrain file."""
         nc = self._make_nc()
         tout = os.path.join(self.tmpdir, "terrain.xyz")
         wout = os.path.join(self.tmpdir, "wind.csv")
@@ -544,11 +544,59 @@ class TestMainNoTerrain(unittest.TestCase):
             "--no-landscape",
         ])
 
-        self.assertFalse(os.path.isfile(tout),
-                         "terrain file should NOT exist with --no-terrain")
+        self.assertTrue(os.path.isfile(tout),
+                        "terrain file SHOULD exist when --no-terrain + --wrf-file")
+
+    def test_no_terrain_with_wrf_terrain_has_three_columns(self):
+        """--no-terrain + --wrf-file: terrain file must have three columns (x y z)."""
+        nc = self._make_nc()
+        tout = os.path.join(self.tmpdir, "terrain_3col.xyz")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--terrain", tout,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+        ])
+
+        self.assertTrue(os.path.isfile(tout))
+        with open(tout) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                self.assertEqual(len(line.split()), 3,
+                                 f"Expected 3 columns, got: {line!r}")
+
+    def test_no_terrain_with_wrf_terrain_z_values(self):
+        """--no-terrain + --wrf-file: terrain z values must match HGT_M (j*10)."""
+        # _make_wrf_nc sets hgt_m[t, j, :] = j * 10 for all i
+        nc = self._make_nc(ny=5, nx=4)
+        tout = os.path.join(self.tmpdir, "terrain_z.xyz")
+
+        twp.main([
+            "--wrf-file", nc,
+            "--terrain", tout,
+            "--no-terrain",
+            "--no-landscape",
+            "--no-wind",
+        ])
+
+        z_values = []
+        with open(tout) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                z_values.append(float(parts[2]))
+
+        self.assertGreater(len(z_values), 0)
+        # Heights must be non-negative multiples of 10 (0, 10, 20, 30, 40)
+        for z in z_values:
+            self.assertGreaterEqual(z, 0.0)
 
     def test_no_terrain_still_writes_wind(self):
-        """--no-terrain: wind file should still be created."""
+        """--no-terrain + --wrf-file: wind file should still be created."""
         nc = self._make_nc()
         wout = os.path.join(self.tmpdir, "wind_no_terrain.csv")
 
