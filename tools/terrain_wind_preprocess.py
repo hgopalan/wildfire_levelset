@@ -2777,7 +2777,7 @@ def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
         )
 
     if ux == 0.0 and uy == 0.0:
-        raise ValueError("ux and uy are both zero – no wind to process.")
+        raise ValueError("ux and uy are both zero - no wind to process.")
 
     # ------------------------------------------------------------------
     # 1.  Read terrain XYZ file.
@@ -2835,13 +2835,13 @@ def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
     dy = float(y_uniq[1] - y_uniq[0]) if ny > 1 else spacing
 
     X_grid, Y_grid = np.meshgrid(x_uniq, y_uniq)          # (ny, nx)
-    pts_src = np.column_stack([xs, ys])
+    terrain_points = np.column_stack([xs, ys])
 
-    z_terrain = griddata(pts_src, zs, (X_grid, Y_grid), method='linear')
+    z_terrain = griddata(terrain_points, zs, (X_grid, Y_grid), method='linear')
     # Fill any NaN boundary cells with nearest-neighbour.
     nan_mask = np.isnan(z_terrain)
     if np.any(nan_mask):
-        z_nn = griddata(pts_src, zs, (X_grid, Y_grid), method='nearest')
+        z_nn = griddata(terrain_points, zs, (X_grid, Y_grid), method='nearest')
         z_terrain[nan_mask] = z_nn[nan_mask]
 
     # ------------------------------------------------------------------
@@ -2851,6 +2851,8 @@ def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
     #     active cell: z_above > 0
     # ------------------------------------------------------------------
     z_base = float(np.nanmin(z_terrain))
+    # nz levels: 0, dz, 2·dz, …  The +1 ensures the top level is at or above
+    # z_max (e.g. z_max=200, dz=30 → levels end at 210 m, satisfying ≥200 m).
     nz = int(np.ceil(z_max / dz)) + 1
     z_levels = z_base + np.arange(nz, dtype=np.float64) * dz   # (nz,)
 
@@ -3038,10 +3040,13 @@ def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
     has_col = kb < nz                    # columns with ≥1 active cell
 
     # z_above and corrected wind at the first active level.
-    kb_safe = np.where(has_col, kb, 0)
-    z_ab_kb = z_above[jj, ii, kb_safe]         # (ny, nx)
-    u_kb    = u_corr [jj, ii, kb_safe]
-    v_kb    = v_corr [jj, ii, kb_safe]
+    # kb_clamped: kb clipped to [0, nz-1] so it is always a valid array index
+    # (columns with no active cell have kb == nz; the clamp avoids out-of-bounds
+    # access while the has_col mask ensures those values are discarded).
+    kb_clamped = np.where(has_col, kb, 0)
+    z_ab_kb = z_above[jj, ii, kb_clamped]         # (ny, nx)
+    u_kb    = u_corr [jj, ii, kb_clamped]
+    v_kb    = v_corr [jj, ii, kb_clamped]
 
     # Case A: z_ref is at or below the first cell centre → log-law rescaling.
     case_a = has_col & (z_ref <= z_ab_kb)
@@ -3054,11 +3059,11 @@ def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
     )
 
     # Case B: z_ref is above the first cell → interpolate to level kb+1.
-    kb1_safe = np.where(has_col & (kb + 1 < nz), kb + 1, kb_safe)
-    has_kb1  = has_col & (kb + 1 < nz) & active[jj, ii, kb1_safe]
-    z_ab_kb1 = z_above[jj, ii, kb1_safe]
-    u_kb1    = u_corr [jj, ii, kb1_safe]
-    v_kb1    = v_corr [jj, ii, kb1_safe]
+    kb1_clamped = np.where(has_col & (kb + 1 < nz), kb + 1, kb_clamped)
+    has_kb1  = has_col & (kb + 1 < nz) & active[jj, ii, kb1_clamped]
+    z_ab_kb1 = z_above[jj, ii, kb1_clamped]
+    u_kb1    = u_corr [jj, ii, kb1_clamped]
+    v_kb1    = v_corr [jj, ii, kb1_clamped]
 
     dz_interval = np.where(z_ab_kb1 > z_ab_kb, z_ab_kb1 - z_ab_kb, 1.0)
     frac = np.clip((z_ref - z_ab_kb) / dz_interval, 0.0, 1.0)
