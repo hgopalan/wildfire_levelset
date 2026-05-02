@@ -27,6 +27,11 @@ Key behaviours
   extension, e.g. ``wind_t0.csv``, ``wind_t1.csv``, …
 * ``--time-index N`` (single time step, default 0) is the legacy flag and
   takes precedence when ``--time-range`` is not supplied.
+* When **no** ``--wrf-file`` is given but ``--ux`` or ``--uy`` is non-zero,
+  the script automatically runs a **mass-consistent wind solver** to produce a
+  terrain-adjusted 2-D wind field at 10 m above terrain and writes it to
+  ``--wind`` (default ``wind.csv``).  A terrain XYZ file must already exist or
+  be generated in the same run (i.e. do not pass ``--no-terrain``).
 
 Usage examples
 --------------
@@ -65,6 +70,16 @@ Usage examples
       --fuel-file path/to/fuel.tif \\
       --srtm-slope-aspect
 
+  # Mass-consistent wind from constant 10-m reference wind (no WRF file needed)
+  #   Builds SRTM terrain, then solves the 3-D divergence-free wind equation
+  #   with a log-law initial condition (z0 = 0.1 m, dz = 30 m, H_max = 200 m)
+  #   and writes the corrected 2-D wind at 10 m above terrain to wind.csv.
+  python3 terrain_wind_preprocess.py \\
+      --lat-min 40 --lat-max 40.5 \\
+      --lon-min -105 --lon-max -104.5 \\
+      --ux 5.0 --uy 2.0 \\
+      --wind wind.csv
+
 Options
 -------
   --wrf-file FILE       WRF netCDF file; if given the lat/lon bbox is read
@@ -76,12 +91,17 @@ Options
   --terrain FILE        Output terrain XYZ file   (default: terrain.xyz)
   --landscape FILE      Output landscape LCP file  (default: landscape.lcp)
   --wind FILE           Output wind CSV file       (default: wind.csv)
-                        Requires --wrf-file.
+                        Written by --wrf-file extraction or the mass-consistent
+                        solver (--ux / --uy).
   --tif FILE            Intermediate SRTM GeoTIFF (temp file if not given).
   --subsample N         Keep every N-th point (default: 1).
   --no-terrain          Skip SRTM terrain and landscape steps.
   --no-landscape        Skip the LANDFIRE landscape step.
   --no-wind             Skip the wind extraction step.
+  --ux SPEED            x-component of reference 10-m wind speed [m/s] for
+                        the mass-consistent solver (default: 0.0).
+  --uy SPEED            y-component of reference 10-m wind speed [m/s]
+                        (default: 0.0).
   --interpolate-wind    Interpolate WRF wind to SRTM terrain grid.
   --time-range T1:TN    Time index range (inclusive) to extract from WRF.
   --time-index N        Single WRF time index (default: 0).
@@ -2700,6 +2720,381 @@ def extract_wrf_terrain(wrf_path, output_path, subsample=1,
 
 
 # ===========================================================================
+# Mass-consistent wind solver
+# ===========================================================================
+
+def mass_consistent_wind(terrain_xyz_path, ux, uy, output_path,
+                          z0=0.1, z_ref=10.0, dz=30.0, z_max=200.0):
+    """Solve a 3-D mass-consistent (divergence-free) wind field over terrain.
+
+    Implements the Sasaki (1958) / Sherman (1978) variational approach:
+
+    1. Build a 3-D terrain-following grid: horizontal spacing from the terrain
+       file, vertical levels every *dz* metres above the terrain base up to
+       *z_max* metres.
+    2. Initialise the wind field with a log-law profile anchored at *z_ref*
+       (10 m) above each terrain column::
+
+           u0(x, y, z) = ux * ln(max(z-z_t, z0)/z0) / ln(z_ref/z0)
+
+    3. Solve ∇²λ = ∇·u0 with boundary conditions:
+       * λ = 0 at the top and all four horizontal sides  (Dirichlet)
+       * ∂λ/∂z = 0 at the terrain surface               (Neumann)
+
+    4. Correct the initial field: u = u0 − ∂λ/∂x,  v = v0 − ∂λ/∂y.
+
+    5. Interpolate the corrected u, v to height *z_ref* above each terrain
+       column and write the result to *output_path* in the solver's CSV
+       format (columns: ``utm_x utm_y u v``).
+
+    Parameters
+    ----------
+    terrain_xyz_path : str
+        Path to a terrain XYZ file (space-separated: x y z, metres).
+    ux, uy : float
+        Reference wind-speed components at *z_ref* above terrain (m/s).
+    output_path : str
+        Destination CSV file (will be overwritten if it exists).
+    z0 : float
+        Aerodynamic roughness length (m).  Default 0.1 m.
+    z_ref : float
+        Reference height for *ux* / *uy* (m).  Default 10 m.
+    dz : float
+        Vertical grid spacing above the terrain base (m).  Default 30 m.
+    z_max : float
+        Maximum domain height above the terrain base (m).  Default 200 m.
+    """
+    import numpy as np
+
+    try:
+        from scipy.sparse import csr_matrix
+        from scipy.sparse.linalg import spsolve
+        from scipy.interpolate import griddata
+    except ImportError:
+        raise ImportError(
+            "scipy is required for the mass-consistent wind solver. "
+            "Install with: pip install scipy"
+        )
+
+    if ux == 0.0 and uy == 0.0:
+        raise ValueError("ux and uy are both zero – no wind to process.")
+
+    # ------------------------------------------------------------------
+    # 1.  Read terrain XYZ file.
+    # ------------------------------------------------------------------
+    print("Mass-consistent wind solver: reading terrain …")
+    xs, ys, zs = [], [], []
+    with open(terrain_xyz_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    xs.append(float(parts[0]))
+                    ys.append(float(parts[1]))
+                    zs.append(float(parts[2]))
+                except ValueError:
+                    continue
+
+    xs = np.asarray(xs, dtype=np.float64)
+    ys = np.asarray(ys, dtype=np.float64)
+    zs = np.asarray(zs, dtype=np.float64)
+
+    if xs.size == 0:
+        raise ValueError(f"No terrain data read from: {terrain_xyz_path}")
+
+    # ------------------------------------------------------------------
+    # 2.  Reconstruct a regular 2-D horizontal grid via griddata so that
+    #     the solver works with both regular and unstructured inputs.
+    # ------------------------------------------------------------------
+    x_min, x_max = float(np.min(xs)), float(np.max(xs))
+    y_min, y_max = float(np.min(ys)), float(np.max(ys))
+
+    # Estimate horizontal spacing from point density.
+    n_pts = xs.size
+    x_span = max(x_max - x_min, 1.0)
+    y_span = max(y_max - y_min, 1.0)
+    spacing = float(np.sqrt(x_span * y_span / n_pts))
+    # Round to the nearest 1 m (avoid extremely fine grids from noisy inputs).
+    spacing = max(1.0, round(spacing))
+
+    x_uniq = np.arange(x_min, x_max + spacing * 0.5, spacing)
+    y_uniq = np.arange(y_min, y_max + spacing * 0.5, spacing)
+    nx = len(x_uniq)
+    ny = len(y_uniq)
+
+    if nx < 2 or ny < 2:
+        raise ValueError(
+            "Terrain file yields a grid smaller than 2×2 – "
+            "cannot run the mass-consistent solver."
+        )
+
+    dx = float(x_uniq[1] - x_uniq[0]) if nx > 1 else spacing
+    dy = float(y_uniq[1] - y_uniq[0]) if ny > 1 else spacing
+
+    X_grid, Y_grid = np.meshgrid(x_uniq, y_uniq)          # (ny, nx)
+    pts_src = np.column_stack([xs, ys])
+
+    z_terrain = griddata(pts_src, zs, (X_grid, Y_grid), method='linear')
+    # Fill any NaN boundary cells with nearest-neighbour.
+    nan_mask = np.isnan(z_terrain)
+    if np.any(nan_mask):
+        z_nn = griddata(pts_src, zs, (X_grid, Y_grid), method='nearest')
+        z_terrain[nan_mask] = z_nn[nan_mask]
+
+    # ------------------------------------------------------------------
+    # 3.  Build the 3-D grid.
+    #     z_levels[k] = z_base + k*dz  (k = 0 … nz-1)
+    #     z_above[j, i, k] = z_levels[k] − z_terrain[j, i]
+    #     active cell: z_above > 0
+    # ------------------------------------------------------------------
+    z_base = float(np.nanmin(z_terrain))
+    nz = int(np.ceil(z_max / dz)) + 1
+    z_levels = z_base + np.arange(nz, dtype=np.float64) * dz   # (nz,)
+
+    # Broadcast to (ny, nx, nz).
+    z_above = (z_levels[np.newaxis, np.newaxis, :]
+               - z_terrain[:, :, np.newaxis])
+    active = z_above > 0.0   # (ny, nx, nz)
+
+    print(f"  Grid: nx={nx}, ny={ny}, nz={nz}, "
+          f"dx={dx:.1f} m, dy={dy:.1f} m, dz={dz:.1f} m")
+    print(f"  Elevation range: {z_base:.1f} – "
+          f"{float(np.nanmax(z_terrain)):.1f} m;  "
+          f"domain top: {z_levels[-1]:.1f} m")
+    print(f"  Active cells: {int(np.sum(active))} / {nx * ny * nz}")
+
+    # ------------------------------------------------------------------
+    # 4.  Log-law initial wind field.
+    # ------------------------------------------------------------------
+    ln_ref = np.log(z_ref / z0)
+    scale = np.log(np.maximum(z_above, z0) / z0) / ln_ref   # (ny, nx, nz)
+    scale[~active] = 0.0
+    u0 = ux * scale
+    v0 = uy * scale
+    # w0 = 0 everywhere.
+
+    # ------------------------------------------------------------------
+    # 5.  Divergence of u0 (right-hand side of Poisson equation).
+    #
+    #   u0(x, y, z) = ux * ln(max(z - z_t(x,y), z0)/z0) / ln_ref
+    #   ∂u0/∂x = −ux * (∂z_t/∂x) / (max(z_above, z0) * ln_ref)
+    #   ∂v0/∂y = −uy * (∂z_t/∂y) / (max(z_above, z0) * ln_ref)
+    #   ∂w0/∂z = 0
+    # ------------------------------------------------------------------
+    dzt_dx = np.zeros((ny, nx), dtype=np.float64)
+    dzt_dy = np.zeros((ny, nx), dtype=np.float64)
+
+    dzt_dx[:, 1:-1] = (z_terrain[:, 2:] - z_terrain[:, :-2]) / (2.0 * dx)
+    dzt_dx[:, 0]    = (z_terrain[:, 1]  - z_terrain[:, 0])  / dx
+    dzt_dx[:, -1]   = (z_terrain[:, -1] - z_terrain[:, -2]) / dx
+
+    dzt_dy[1:-1, :] = (z_terrain[2:, :] - z_terrain[:-2, :]) / (2.0 * dy)
+    dzt_dy[0, :]    = (z_terrain[1, :]  - z_terrain[0, :])  / dy
+    dzt_dy[-1, :]   = (z_terrain[-1, :] - z_terrain[-2, :]) / dy
+
+    z_above_clamped = np.maximum(z_above, z0)   # avoid log(0)
+    div_u0 = (
+        -(ux * dzt_dx[:, :, np.newaxis] + uy * dzt_dy[:, :, np.newaxis])
+        / (z_above_clamped * ln_ref)
+    )
+    div_u0[~active] = 0.0
+
+    # ------------------------------------------------------------------
+    # 6.  Assemble the sparse Poisson system  A · λ = b.
+    #
+    #   ∂²λ/∂x² + ∂²λ/∂y² + ∂²λ/∂z² = ∇·u0
+    #
+    #   BCs (encoded in the stencil):
+    #     λ = 0      at top (k = nz−1) and all four lateral faces
+    #                  → Dirichlet: boundary contribution omitted, but its
+    #                    −1/h² is kept in the diagonal.
+    #     ∂λ/∂z = 0 at terrain bottom (k = k_bottom[j,i])
+    #                  → Neumann ghost: λ[k−1] = λ[k]; the −z term
+    #                    contributes nothing to either diagonal or off-diag.
+    # ------------------------------------------------------------------
+    # Map active (j,i,k) → 1-D unknown index.
+    n_act = int(np.sum(active))
+    act_idx = np.full((ny, nx, nz), -1, dtype=np.int64)
+    act_idx[active] = np.arange(n_act, dtype=np.int64)
+
+    # (J[m], I[m], K[m]) = 3-D coordinates of active cell m.
+    J, I, K = (arr.astype(np.int64) for arr in np.where(active))
+
+    # First active level in each column  (Neumann BC applied here for −z).
+    any_active = np.any(active, axis=2)   # (ny, nx)
+    k_bottom = np.where(any_active,
+                        np.argmax(active, axis=2).astype(np.int64),
+                        np.int64(nz))     # (ny, nx)
+    is_terrain_bottom = (K == k_bottom[J, I])   # (n_act,)
+
+    dx2, dy2, dz2 = dx * dx, dy * dy, dz * dz
+
+    # Accumulators for COO sparse matrix.
+    diag = np.zeros(n_act, dtype=np.float64)
+    off_rows = []
+    off_cols = []
+    off_data = []
+
+    def _add_direction(dj, di, dk, h2, neumann_mask):
+        """Accumulate contributions for one stencil direction."""
+        J2 = J + dj
+        I2 = I + di
+        K2 = K + dk
+
+        in_bounds = (
+            (J2 >= 0) & (J2 < ny) &
+            (I2 >= 0) & (I2 < nx) &
+            (K2 >= 0) & (K2 < nz)
+        )
+        # Neumann cells: skip entirely (no diagonal or off-diagonal term).
+        process = ~neumann_mask
+
+        # Clipped indices for safe array lookup (invalid results discarded
+        # by the masks below).
+        J2c = np.clip(J2, 0, ny - 1)
+        I2c = np.clip(I2, 0, nx - 1)
+        K2c = np.clip(K2, 0, nz - 1)
+
+        has_active_nb = in_bounds & process & active[J2c, I2c, K2c]
+
+        # Off-diagonal entry for active neighbour.
+        if np.any(has_active_nb):
+            off_rows.append(np.where(has_active_nb)[0])
+            off_cols.append(act_idx[J2c[has_active_nb],
+                                    I2c[has_active_nb],
+                                    K2c[has_active_nb]])
+            off_data.append(np.full(int(np.sum(has_active_nb)), 1.0 / h2))
+            diag[has_active_nb] -= 1.0 / h2
+
+        # Dirichlet λ = 0 for processed cells whose neighbour is absent
+        # (domain boundary or terrain face in x / y).
+        dirichlet = process & ~has_active_nb
+        diag[dirichlet] -= 1.0 / h2
+
+    no_neumann = np.zeros(n_act, dtype=bool)
+
+    _add_direction( 0, +1,  0, dx2, no_neumann)        # +x
+    _add_direction( 0, -1,  0, dx2, no_neumann)        # −x
+    _add_direction(+1,  0,  0, dy2, no_neumann)        # +y
+    _add_direction(-1,  0,  0, dy2, no_neumann)        # −y
+    _add_direction( 0,  0, +1, dz2, no_neumann)        # +z
+    _add_direction( 0,  0, -1, dz2, is_terrain_bottom) # −z (Neumann at terrain)
+
+    # Build CSR matrix.
+    all_rows = np.concatenate([np.arange(n_act)] + off_rows)
+    all_cols = np.concatenate([np.arange(n_act)] + off_cols)
+    all_data = np.concatenate([diag]             + off_data)
+
+    print(f"  Solving Poisson system ({n_act} unknowns, "
+          f"{all_data.size} non-zeros) …")
+
+    A = csr_matrix((all_data, (all_rows, all_cols)), shape=(n_act, n_act))
+    rhs = div_u0[active]
+
+    lam_flat = spsolve(A, rhs)
+    if not np.all(np.isfinite(lam_flat)):
+        raise RuntimeError(
+            "Poisson solve produced non-finite values. "
+            "Check terrain data quality and grid resolution."
+        )
+
+    # Reshape λ to 3-D (inactive cells remain zero).
+    lam = np.zeros((ny, nx, nz), dtype=np.float64)
+    lam[active] = lam_flat
+
+    # ------------------------------------------------------------------
+    # 7.  Correct the wind field: u = u0 − ∂λ/∂x,  v = v0 − ∂λ/∂y.
+    #     Central differences; one-sided at domain edges.
+    # ------------------------------------------------------------------
+    dlam_dx = np.zeros_like(lam)
+    dlam_dy = np.zeros_like(lam)
+
+    dlam_dx[:, 1:-1, :] = (lam[:, 2:, :] - lam[:, :-2, :]) / (2.0 * dx)
+    dlam_dx[:, 0, :]    = (lam[:, 1, :]  - lam[:, 0, :])   / dx
+    dlam_dx[:, -1, :]   = (lam[:, -1, :] - lam[:, -2, :])  / dx
+
+    dlam_dy[1:-1, :, :] = (lam[2:, :, :] - lam[:-2, :, :]) / (2.0 * dy)
+    dlam_dy[0, :, :]    = (lam[1, :, :]  - lam[0, :, :])   / dy
+    dlam_dy[-1, :, :]   = (lam[-1, :, :] - lam[-2, :, :])  / dy
+
+    u_corr = u0 - dlam_dx
+    v_corr = v0 - dlam_dy
+    u_corr[~active] = 0.0
+    v_corr[~active] = 0.0
+
+    # ------------------------------------------------------------------
+    # 8.  Extract corrected wind at z_ref (10 m) above each terrain column.
+    #
+    #     For each column (j, i) with first active level kb:
+    #       • if z_ref ≤ z_above[kb]: scale down from kb using log-law ratio
+    #       • else: linearly interpolate between kb and kb+1
+    # ------------------------------------------------------------------
+    jj = np.arange(ny)[:, np.newaxis]   # (ny, 1)
+    ii = np.arange(nx)[np.newaxis, :]   # (1, nx)
+    kb = k_bottom.astype(np.int64)       # (ny, nx)
+    has_col = kb < nz                    # columns with ≥1 active cell
+
+    # z_above and corrected wind at the first active level.
+    kb_safe = np.where(has_col, kb, 0)
+    z_ab_kb = z_above[jj, ii, kb_safe]         # (ny, nx)
+    u_kb    = u_corr [jj, ii, kb_safe]
+    v_kb    = v_corr [jj, ii, kb_safe]
+
+    # Case A: z_ref is at or below the first cell centre → log-law rescaling.
+    case_a = has_col & (z_ref <= z_ab_kb)
+    log_denom = np.log(np.maximum(z_ab_kb, z0) / z0)
+    # Avoid division by zero where log_denom == 0 (flat terrain at base).
+    log_scale = np.where(
+        log_denom > 0.0,
+        np.log(z_ref / z0) / log_denom,
+        1.0
+    )
+
+    # Case B: z_ref is above the first cell → interpolate to level kb+1.
+    kb1_safe = np.where(has_col & (kb + 1 < nz), kb + 1, kb_safe)
+    has_kb1  = has_col & (kb + 1 < nz) & active[jj, ii, kb1_safe]
+    z_ab_kb1 = z_above[jj, ii, kb1_safe]
+    u_kb1    = u_corr [jj, ii, kb1_safe]
+    v_kb1    = v_corr [jj, ii, kb1_safe]
+
+    dz_interval = np.where(z_ab_kb1 > z_ab_kb, z_ab_kb1 - z_ab_kb, 1.0)
+    frac = np.clip((z_ref - z_ab_kb) / dz_interval, 0.0, 1.0)
+    case_b = has_col & ~case_a & has_kb1
+
+    u_out = np.where(
+        case_a, u_kb * log_scale,
+        np.where(case_b,
+                 u_kb + frac * (u_kb1 - u_kb),
+                 np.where(has_col, u_kb, 0.0))
+    )
+    v_out = np.where(
+        case_a, v_kb * log_scale,
+        np.where(case_b,
+                 v_kb + frac * (v_kb1 - v_kb),
+                 np.where(has_col, v_kb, 0.0))
+    )
+
+    # ------------------------------------------------------------------
+    # 9.  Write output CSV (utm_x  utm_y  u  v).
+    # ------------------------------------------------------------------
+    with open(output_path, 'w') as fh:
+        fh.write(f"# utm_x utm_y u v (m/s) at {z_ref:.1f} m above terrain\n")
+        fh.write("# mass-consistent wind field\n")
+        for j in range(ny):
+            for i in range(nx):
+                fh.write(
+                    f"{x_uniq[i]:.3f} {y_uniq[j]:.3f} "
+                    f"{float(u_out[j, i]):.6f} {float(v_out[j, i]):.6f}\n"
+                )
+
+    print(f"  Mass-consistent wind written to '{output_path}' "
+          f"({nx * ny} points at {z_ref:.1f} m above terrain).")
+
+
+# ===========================================================================
 # CLI
 # ===========================================================================
 
@@ -2736,7 +3131,8 @@ def _build_parser():
                         help="Output landscape LCP file  (default: landscape.lcp)")
     parser.add_argument("--wind",      default="wind.csv",
                         help="Output wind CSV file       (default: wind.csv); "
-                             "requires --wrf-file")
+                             "written by --wrf-file extraction or the "
+                             "mass-consistent solver (--ux / --uy)")
     parser.add_argument("--tif", default=None, metavar="FILE",
                         help="Path for the intermediate SRTM GeoTIFF "
                              "(temporary file used and removed if not specified)")
@@ -2748,6 +3144,22 @@ def _build_parser():
                         help="Skip the LANDFIRE landscape LCP step")
     parser.add_argument("--no-wind",      action="store_true",
                         help="Skip the WRF wind extraction step")
+
+    # Mass-consistent wind solver (no WRF file required)
+    parser.add_argument(
+        "--ux", type=float, default=0.0, metavar="SPEED",
+        help=(
+            "x-component of the reference 10-m wind speed (m/s) used as "
+            "the initial condition for the mass-consistent solver.  When "
+            "this or --uy is non-zero and --wrf-file is not given the "
+            "mass-consistent solver runs automatically and writes the "
+            "terrain-adjusted 2-D wind field to --wind."
+        ),
+    )
+    parser.add_argument(
+        "--uy", type=float, default=0.0, metavar="SPEED",
+        help="y-component of the reference 10-m wind speed (m/s).",
+    )
 
     # Wind-specific options
     parser.add_argument(
@@ -3178,6 +3590,36 @@ def main(argv=None):
 
             print(f"Wrote wind file: '{wind_out}' ({wrf_x.size} points, "
                   f"utm_x utm_y u v, time index {t_idx})")
+
+    # -----------------------------------------------------------------------
+    # Mass-consistent wind solver step
+    # Triggered when --ux or --uy is non-zero and no --wrf-file is provided.
+    # Requires the terrain XYZ file to exist (generated above or pre-existing).
+    # -----------------------------------------------------------------------
+    run_mass_consistent = (
+        not args.no_wind
+        and args.wrf_file is None
+        and (args.ux != 0.0 or args.uy != 0.0)
+    )
+
+    if run_mass_consistent:
+        terrain_for_wind = os.path.abspath(args.terrain)
+        if not os.path.isfile(terrain_for_wind):
+            print(
+                f"WARNING: terrain file '{terrain_for_wind}' not found; "
+                "skipping mass-consistent wind solver.\n"
+                "  Generate terrain first (omit --no-terrain) or point "
+                "--terrain at an existing XYZ file.",
+                file=sys.stderr,
+            )
+        else:
+            wind_base_out = os.path.abspath(args.wind)
+            mass_consistent_wind(
+                terrain_xyz_path=terrain_for_wind,
+                ux=args.ux,
+                uy=args.uy,
+                output_path=wind_base_out,
+            )
 
     # -----------------------------------------------------------------------
     # Auto-generate inputs.i for a FARSITE run
