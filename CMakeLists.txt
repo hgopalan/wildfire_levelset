@@ -1,12 +1,4 @@
 cmake_minimum_required(VERSION 3.20)
-project(LevelSet LANGUAGES CXX C)
-
-# Enable testing for regression tests
-enable_testing()
-
-# Require C++17 (AMReX supports C++17+)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(AMREX_SUBMODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/amrex")
 option(LEVELSET_USE_VENDORED_AMREX "Prefer building the vendored AMReX submodule" ON)
@@ -14,6 +6,34 @@ option(LEVELSET_DIM_2D "Build for 2D instead of 3D" OFF)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
 option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
+set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
+    "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
+set_property(CACHE LEVELSET_GPU_BACKEND PROPERTY STRINGS NONE CUDA HIP SYCL)
+
+project(LevelSet LANGUAGES CXX C)
+
+# Require C++17 (AMReX supports C++17+)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Enable additional language(s) required for the selected GPU backend
+if(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  message(STATUS "GPU backend: CUDA")
+elseif(LEVELSET_GPU_BACKEND STREQUAL "HIP")
+  enable_language(HIP)
+  message(STATUS "GPU backend: HIP")
+elseif(LEVELSET_GPU_BACKEND STREQUAL "SYCL")
+  # SYCL uses a standard C++ compiler (e.g., Intel icpx); no extra language needed
+  message(STATUS "GPU backend: SYCL (ensure icpx or DPC++ compiler is active)")
+elseif(NOT LEVELSET_GPU_BACKEND STREQUAL "NONE")
+  message(WARNING "Unknown GPU backend '${LEVELSET_GPU_BACKEND}'. Supported values: NONE CUDA HIP SYCL")
+endif()
+
+# Enable testing for regression tests
+enable_testing()
 
 if(LEVELSET_ENABLE_MPI)
   find_package(MPI REQUIRED)
@@ -36,7 +56,7 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
     set(AMReX_MPI OFF CACHE BOOL "Build AMReX without MPI" FORCE)
   endif()
   set(AMReX_OMP OFF CACHE BOOL "Build AMReX without OpenMP" FORCE)
-  set(AMReX_GPU_BACKEND NONE CACHE STRING "Build AMReX without a GPU backend" FORCE)
+  set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
   set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
