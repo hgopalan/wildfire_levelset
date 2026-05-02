@@ -15,6 +15,24 @@ struct RothermelParams {
     amrex::Real S_T;          // total mineral content (fraction)          default: 0.0555
     amrex::Real S_e;          // effective mineral content (fraction)      default: 0.010
     amrex::Real rho_p;        // particle density [lb/ft³]                 default: 32.0
+    // --- Per-class fuel moistures (Rothermel 1972 multi-class path) ---
+    // Default to M_f for dead classes; live class defaults are set in parse_inputs.cpp.
+    // When all are equal to M_f, behaviour is identical to the single-class path.
+    amrex::Real M_d1;         // 1-hr  dead moisture (fraction)            default: M_f
+    amrex::Real M_d10;        // 10-hr dead moisture (fraction)            default: M_f
+    amrex::Real M_d100;       // 100-hr dead moisture (fraction)           default: M_f
+    amrex::Real M_lh;         // live herbaceous moisture (fraction)       default: 0.90
+    amrex::Real M_lw;         // live woody moisture (fraction)            default: 1.20
+    // --- Per-class fuel loads and SAVs (populated from FuelModel database) ---
+    // When all loads are zero the single-class path (w0/sigma/M_f/M_x) is used.
+    amrex::Real w_d1;         // 1-hr  dead load [lb/ft²]                  default: 0.0
+    amrex::Real sigma_d1;     // 1-hr  dead SAV  [ft⁻¹]                    default: 0.0
+    amrex::Real w_d10;        // 10-hr dead load [lb/ft²]                  default: 0.0
+    amrex::Real w_d100;       // 100-hr dead load [lb/ft²]                 default: 0.0
+    amrex::Real w_lh;         // live herbaceous load [lb/ft²]             default: 0.0
+    amrex::Real sigma_lh;     // live herbaceous SAV [ft⁻¹]                default: 0.0
+    amrex::Real w_lw;         // live woody load [lb/ft²]                  default: 0.0
+    amrex::Real sigma_lw;     // live woody SAV [ft⁻¹]                     default: 0.0
     // --- Terrain slope (constant over domain) ---
     amrex::Real slope_x;      // ∂z/∂x = tan(slope angle in x-direction)  default: 0.0
     amrex::Real slope_y;      // ∂z/∂y = tan(slope angle in y-direction)  default: 0.0

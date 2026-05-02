@@ -173,7 +173,8 @@ Rothermel Fuel Properties
   Example: ``fuel_model = 3``
 
 **fuel_moisture** (default: 0.05)
-  Fuel moisture content (fraction, 0.0-1.0).
+  Fuel moisture content (fraction, 0.0-1.0).  Used as the default for all
+  dead size classes when per-class moistures are not specified.
   
   Example: ``fuel_moisture = 0.08``
 
@@ -191,6 +192,63 @@ For custom fuel (``fuel_model = 0``), specify all fuel properties:
 * ``fuel_density``: Particle density [lb/ft³]
 * ``fuel_st``: Total mineral content [fraction]
 * ``fuel_se``: Effective mineral content [fraction]
+
+Per-Class Fuel Moisture (Multi-Class Rothermel Path)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a fuel model from the database is selected (e.g.
+``rothermel.fuel_model = FM4``), per-class fuel loads and SAV ratios are
+populated automatically and the full multi-class Rothermel (1972) formulation
+is used for reaction intensity and moisture damping.
+
+The following per-class moisture inputs allow independent moisture contents
+for each fuel size class.  Dead-class defaults match ``rothermel.M_f``; live
+defaults are physical equilibrium values.
+
+**rothermel.M_d1** (default: equal to ``rothermel.M_f``)
+  1-hr dead fuel moisture (fraction).  Fine sticks and fine herbaceous litter.
+
+  Example: ``rothermel.M_d1 = 0.06``
+
+**rothermel.M_d10** (default: equal to ``rothermel.M_f``)
+  10-hr dead fuel moisture (fraction).  Small woody material (0.25–1 in).
+
+  Example: ``rothermel.M_d10 = 0.08``
+
+**rothermel.M_d100** (default: equal to ``rothermel.M_f``)
+  100-hr dead fuel moisture (fraction).  Medium woody material (1–3 in).
+
+  Example: ``rothermel.M_d100 = 0.10``
+
+**rothermel.M_lh** (default: 0.90)
+  Live herbaceous fuel moisture (fraction).  Green grass and forbs.
+
+  Example: ``rothermel.M_lh = 0.60``
+
+**rothermel.M_lw** (default: 1.20)
+  Live woody fuel moisture (fraction).  Shrubs and small trees.
+
+  Example: ``rothermel.M_lw = 1.00``
+
+Per-Class Fuel Loads (Advanced Override)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters override the per-class loads provided by the fuel model
+database entry.  They are not normally needed; use ``rothermel.fuel_model`` to
+select a standard model instead.
+
+* ``rothermel.w_d1``    — 1-hr dead fuel load [lb/ft²]
+* ``rothermel.sigma_d1``— 1-hr dead SAV [ft⁻¹]
+* ``rothermel.w_d10``   — 10-hr dead fuel load [lb/ft²]  (SAV = 109 ft⁻¹)
+* ``rothermel.w_d100``  — 100-hr dead fuel load [lb/ft²] (SAV = 30 ft⁻¹)
+* ``rothermel.w_lh``    — live herbaceous fuel load [lb/ft²]
+* ``rothermel.sigma_lh``— live herbaceous SAV [ft⁻¹]
+* ``rothermel.w_lw``    — live woody fuel load [lb/ft²]
+* ``rothermel.sigma_lw``— live woody SAV [ft⁻¹]
+
+When all per-class loads are zero the solver falls back to the single-class
+aggregate path (``rothermel.w0`` / ``rothermel.sigma`` / ``rothermel.M_f``)
+preserving backward compatibility.
 
 Wind Parameters
 ^^^^^^^^^^^^^^^
@@ -570,6 +628,12 @@ FARSITE with Landscape File
     # This ignores any terrain_file if specified
     rothermel.fuel_model = FM4
     rothermel.M_f = 0.08
+    # Optional: differentiate dead/live moisture by size class
+    rothermel.M_d1   = 0.06   # 1-hr dead moisture
+    rothermel.M_d10  = 0.08   # 10-hr dead moisture
+    rothermel.M_d100 = 0.10   # 100-hr dead moisture
+    rothermel.M_lh   = 0.60   # live herbaceous moisture
+    rothermel.M_lw   = 1.00   # live woody moisture
     rothermel.landscape_file = socal_chaparral_landscape.lcp
     
     # Skip level set advection, use FARSITE only
