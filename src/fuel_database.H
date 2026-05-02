@@ -39,13 +39,13 @@ struct FuelModel {
     // 10-hr dead SAV (109 ft⁻¹) and 100-hr dead SAV (30 ft⁻¹) are universal
     // constants and are not stored here; they are used directly in the model.
     amrex::Real w_d1    = 0.0;  // 1-hr  dead load [lb/ft²]
-    amrex::Real sigma_d1= 0.0;  // 1-hr  dead SAV  [ft⁻¹]
+    amrex::Real sigma_d1 = 0.0;  // 1-hr  dead SAV  [ft⁻¹]
     amrex::Real w_d10   = 0.0;  // 10-hr dead load [lb/ft²]
     amrex::Real w_d100  = 0.0;  // 100-hr dead load [lb/ft²]
     amrex::Real w_lh    = 0.0;  // live herbaceous load [lb/ft²]
-    amrex::Real sigma_lh= 0.0;  // live herbaceous SAV [ft⁻¹]
+    amrex::Real sigma_lh = 0.0;  // live herbaceous SAV [ft⁻¹]
     amrex::Real w_lw    = 0.0;  // live woody load [lb/ft²]
-    amrex::Real sigma_lw= 0.0;  // live woody SAV [ft⁻¹]
+    amrex::Real sigma_lw = 0.0;  // live woody SAV [ft⁻¹]
 };
 
 // ============================================================================
@@ -788,14 +788,14 @@ inline void apply_fuel_model(const FuelModel& model, RothermelParams& params) {
     params.S_e    = model.S_e;
     params.rho_p  = model.rho_p;
     // Per-class fuel loads and SAVs
-    params.w_d1    = model.w_d1;
-    params.sigma_d1= model.sigma_d1;
-    params.w_d10   = model.w_d10;
-    params.w_d100  = model.w_d100;
-    params.w_lh    = model.w_lh;
-    params.sigma_lh= model.sigma_lh;
-    params.w_lw    = model.w_lw;
-    params.sigma_lw= model.sigma_lw;
+    params.w_d1     = model.w_d1;
+    params.sigma_d1 = model.sigma_d1;
+    params.w_d10    = model.w_d10;
+    params.w_d100   = model.w_d100;
+    params.w_lh     = model.w_lh;
+    params.sigma_lh = model.sigma_lh;
+    params.w_lw     = model.w_lw;
+    params.sigma_lw = model.sigma_lw;
     // Note: M_f (fuel moisture), per-class moistures, slope, and unit
     // conversions are NOT changed here as they are environmental/simulation-
     // specific parameters set by the user.

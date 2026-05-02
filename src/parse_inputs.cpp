@@ -153,11 +153,11 @@ void parse_inputs(InputParameters& p)
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
-    pp.query("rothermel.sigma_d1",p.rothermel.sigma_d1);
+    pp.query("rothermel.sigma_d1", p.rothermel.sigma_d1);
     pp.query("rothermel.w_d10",   p.rothermel.w_d10);
     pp.query("rothermel.w_d100",  p.rothermel.w_d100);
     pp.query("rothermel.w_lh",    p.rothermel.w_lh);
-    pp.query("rothermel.sigma_lh",p.rothermel.sigma_lh);
+    pp.query("rothermel.sigma_lh", p.rothermel.sigma_lh);
     pp.query("rothermel.w_lw",    p.rothermel.w_lw);
     pp.query("rothermel.sigma_lw",p.rothermel.sigma_lw);
 
