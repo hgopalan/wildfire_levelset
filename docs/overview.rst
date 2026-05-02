@@ -9,32 +9,32 @@ Summary Flow
 The wildfire simulation follows these key steps for each timestep:
 
 1. **Setup inputs** (landscape, fuel, weather, wind)
-   
+
    Parse configuration parameters for terrain, fuel properties, weather conditions, and wind field.
 
 2. **Compute surface ROS via Rothermel/Level Set**
-   
-   Calculate rate of spread using Rothermel fire spread equations with terrain and wind corrections.
+
+   Calculate rate of spread using Rothermel fire spread equations with terrain and wind corrections. When a landscape file is provided, per-cell fuel models are used from a pre-built lookup table.
 
 3. **Generate elliptical wavelets per vertex**
-   
+
    Create Huygens wavelets with elliptical shapes at each fire front vertex based on local spread rates.
 
 4. **Merge to new perimeter**
-   
+
    Combine wavelets to form new fire perimeter using level set or FARSITE methods.
 
 5. **Apply crown/spotting sub-models**
-   
-   Evaluate crown fire initiation criteria and firebrand spotting probability to generate new ignition points.
+
+   Evaluate crown fire initiation criteria and firebrand spotting (stochastic and/or physics-based Albini) to generate new ignition points.
 
 6. **Simulate post-frontal burnout**
-   
+
    Compute bulk fuel consumption fraction for areas behind the fire front.
 
 7. **Update states, record outputs, step time**
-   
-   Save plotfiles with fire state, advance simulation time, update data structures.
+
+   Save plotfiles with fire state (including fireline intensity and flame length diagnostics), advance simulation time, update data structures.
 
 Fire Spread Models
 ------------------
@@ -48,7 +48,7 @@ The Length-to-Width ratio calculation is based on Anderson (1983):
 
    L/W = 0.936 \exp(0.2566 U) + 0.461 \exp(-0.1548 U) - 0.397
 
-where :math:`U` is the wind speed. This accounts for elliptical fire shape under wind influence and is used when ``use_farsite_model=true``.
+where :math:`U` is the wind speed. This accounts for elliptical fire shape under wind influence and is used when ``farsite.use_anderson_LW=1``.
 
 Rothermel Terrain Effects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -59,12 +59,12 @@ Slope correction factor based on Rothermel (1972) accounts for uphill/downhill f
 
    \phi_s = 5.275 \beta^{-0.3} \tan^2(\theta)
 
-where :math:`\beta` is the packing ratio and :math:`\theta` is the slope angle. This is used when ``use_terrain_effects=true`` and ``use_farsite_model=false``.
+where :math:`\beta` is the packing ratio and :math:`\theta` is the slope angle. This is used when terrain slopes are active (terrain or landscape file specified) and ``farsite.enable=0``.
 
 FARSITE Combined Wind and Terrain Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Vectorial combination of wind and slope effects accounts for alignment between wind direction and slope aspect with enhanced rate of spread calculations. Used when both ``use_terrain_effects=true`` and ``use_farsite_model=true``.
+Vectorial combination of wind and slope effects accounts for alignment between wind direction and slope aspect with enhanced rate of spread calculations. Used when a terrain or landscape file is specified together with the FARSITE ellipse model.
 
 Prerequisites
 -------------
@@ -73,4 +73,4 @@ Prerequisites
 * CMake (3.20+)
 * Git
 
-The project supports both 2D and 3D configurations. The default is 3D, but you can build for 2D using CMake options.
+The project supports both 2D and 3D configurations. The default is 3D, but you can build for 2D using CMake options. Time-dependent wind fields are only available in 2D builds.
