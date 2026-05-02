@@ -30,6 +30,7 @@ using namespace amrex;
 #include "compute_rothermel_R.H"
 #include "firebrand_spotting.H"
 #include "albini_spotting.H"
+#include "compute_fire_behavior.H"
 
 
 // ======================= Main ================================================
@@ -119,6 +120,12 @@ int main(int argc, char* argv[])
     //   3 – active flag at cells that received a spot ignition
     MultiFab albini_data(ba, dm, 4, 0);
     albini_data.setVal(0.0);
+
+    // Fire behavior diagnostic fields
+    MultiFab fireline_intensity_mf(ba, dm, 1, 0);  // Byram fireline intensity [kW/m]
+    MultiFab flame_length_mf(ba, dm, 1, 0);         // Byram flame length [m]
+    fireline_intensity_mf.setVal(0.0);
+    flame_length_mf.setVal(0.0);
 
 
     // ---------------- Initialize ---------------------------
@@ -293,6 +300,7 @@ int main(int argc, char* argv[])
       } else {
       amrex::Print() << "Skipping level set advection; using dt = " << dt << " for FARSITE spread\n";
     }
+    compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
     Real time = 0.0;
 
 
@@ -303,15 +311,17 @@ int main(int argc, char* argv[])
 				   , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				   "elevation", "slope", "aspect", "fuel_model"
+				   "elevation", "slope", "aspect", "fuel_model",
+				   "fireline_intensity", "flame_length"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				   "elevation", "slope", "aspect", "fuel_model"
+				   "elevation", "slope", "aspect", "fuel_model",
+				   "fireline_intensity", "flame_length"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -324,6 +334,8 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
       MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
       MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
+      MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
+      MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
       WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
       
       // Write negative phi x-y data files
@@ -358,6 +370,7 @@ int main(int argc, char* argv[])
                           terrain_slopes.get(),
                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                           d_fuel_table_ptr, fuel_table_size);
+      compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
 	advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
@@ -412,15 +425,17 @@ int main(int argc, char* argv[])
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation", "slope", "aspect", "fuel_model"
+				     "elevation", "slope", "aspect", "fuel_model",
+				     "fireline_intensity", "flame_length"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation", "slope", "aspect", "fuel_model"
+				     "elevation", "slope", "aspect", "fuel_model",
+				     "fireline_intensity", "flame_length"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -433,6 +448,8 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
 	MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
 	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
+	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
+	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	
@@ -461,15 +478,17 @@ int main(int argc, char* argv[])
 				     , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation", "slope", "aspect", "fuel_model"
+				     "elevation", "slope", "aspect", "fuel_model",
+				     "fireline_intensity", "flame_length"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
-				     "elevation", "slope", "aspect", "fuel_model"
+				     "elevation", "slope", "aspect", "fuel_model",
+				     "fireline_intensity", "flame_length"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 3, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -482,6 +501,8 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, slope_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1, 1, 0);
 	MultiFab::Copy(plotmf, aspect_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 2, 1, 0);
 	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
+	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
+	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	

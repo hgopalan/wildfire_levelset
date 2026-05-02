@@ -17,9 +17,12 @@ The documentation includes:
 
 - **Level-set advection** for fire front tracking
 - **Rothermel fire spread model** with Anderson 13 (FM1-FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4) fuel databases
-- **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio
+- **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
 - **FARSITE landscape files** (`.lcp`) with per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
+- **Per size-class fuel moisture**: 1-hr, 10-hr, 100-hr dead fuel; live herbaceous and live woody moisture inputs for the multi-class Rothermel (1972) reaction intensity
+- **Fire behavior diagnostics**: Byram (1959) fireline intensity [kW/m] and flame length [m] written to every plotfile
+- **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter contours
 - **Stochastic firebrand spotting** with probability-based model
 - **Physics-based firebrand spotting** using Albini (1983) lofting height and 2-D trajectory integration
 - **Crown fire initiation** (Van Wagner 1977)
@@ -247,6 +250,44 @@ velocity_file             = wind.csv
 > `srtm_landfire_to_terrain.py`, `wrf_to_terrain_wind.py`, and
 > `utm_convert.py`.
 
+### `plotfile_to_geotiff.py` – GIS export of fire behavior fields
+
+Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter
+contours for import into QGIS, ArcGIS, or any GIS tool.
+
+```bash
+# Export all fire-behaviour variables from one plotfile (simulation units)
+python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out
+
+# Export specific variables
+python3 tools/plotfile_to_geotiff.py plt0100 \
+    -v phi R fireline_intensity flame_length elevation \
+    --outdir gis_out
+
+# Georeference with a UTM origin (easting, northing) and EPSG code
+python3 tools/plotfile_to_geotiff.py plt0100 \
+    --utm-origin 450000 4200000 \
+    --epsg 32613 \
+    --outdir gis_out
+
+# Convert every plt#### directory in the current directory
+python3 tools/plotfile_to_geotiff.py --all --outdir gis_out
+```
+
+Key options:
+- `-v VAR [VAR …]` – export only specified variables (default: fire-behaviour subset)
+- `--all-vars` – export every variable in the plotfile
+- `--all` – process all `plt####` directories in the current working directory
+- `--outdir DIR` – output directory (default: `gis_out`)
+- `--utm-origin EASTING NORTHING` – UTM origin to add to simulation coordinates
+- `--epsg CODE` – EPSG CRS code (e.g. `32613` for UTM zone 13N)
+
+Requires: `pip install rasterio numpy` (plus `matplotlib` for GeoJSON perimeters)
+
+The tool writes, for each plotfile and variable:
+- `plt####_<variable>.tif` – single-band GeoTIFF (float32, deflate-compressed)
+- `plt####_fire_perimeter.geojson` – phi = 0 contour as GeoJSON LineString (requires matplotlib)
+
 ## Testing
 
 Run regression tests:
@@ -284,19 +325,27 @@ Plotfiles are written as `plt####` directories containing:
 - `phi` - Level-set function (signed distance or indicator)
 - `velx/y/z` - Velocity field components
 - `farsite_dx/dy/dz` - FARSITE spread displacements
-- `R` - Rothermel rate of spread
+- `R` - Rothermel rate of spread [m/s]
+- `fireline_intensity` - Byram (1959) fireline intensity [kW/m]
+- `flame_length` - Byram (1959) flame length [m]
 - `spot_prob/count/dist/active` - Stochastic spotting fields (if enabled)
 - `albini_spot_count/active` - Albini spotting fields (if enabled)
 - `fuel_consumption` - Fuel consumption fraction (if enabled)
 - `crown_fraction` - Crown fire fraction (if enabled)
+- `elevation` - Terrain elevation [m]
+- `slope` - Terrain slope [degrees]
+- `aspect` - Terrain aspect [degrees]
+- `fuel_model` - Per-cell fuel model code
 
-View with ParaView or other AMReX-compatible visualization tools.
+View with ParaView or other AMReX-compatible visualization tools.  For GIS
+import, use `tools/plotfile_to_geotiff.py` to convert plotfiles to GeoTIFF
+rasters and GeoJSON fire-perimeter contours (see Tools section below).
 
 ## Limitations and Known Constraints
 
 1. **Simplified fuel modeling**
    - Anderson 13 (FM1–FM13) and Scott & Burgan 40 fuel models are supported; custom or dynamic fuel models are not.
-   - Fuel moisture is a user-specified constant — no dynamic moisture transport.
+   - Fuel moisture is specified per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live woody) using user-supplied constants; no dynamic moisture transport in time.
    - Spatially-varying fuel is supported through FARSITE landscape files (LANDFIRE data via `terrain_wind_preprocess.py`).
 
 2. **Wind field**
@@ -305,11 +354,11 @@ View with ParaView or other AMReX-compatible visualization tools.
    - One-way coupling only — fire does not modify the wind field.
 
 3. **Terrain**
-   - 2D slope/aspect representation; true 3D terrain geometry is not modelled in 3D simulations.
-   - Landscape files provide per-cell slope and aspect for 2D simulations.
+   - Full 2-D landscape representation: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` landscape files or terrain XYZ files (consistent with the approach used in FARSITE).  True 3-D terrain geometry (for 3-D simulations) and canopy fuel layers can be added in future.
+   - Landscape files provide per-cell slope and aspect for spatially-varying terrain effects.
 
 4. **Physical sub-models**
-   - Crown fire uses Van Wagner (1977) empirical criteria only; no mechanistic crown fire spread model.
+   - Crown fire uses Van Wagner (1977) empirical criteria only; no mechanistic crown fire spread model.  Canopy fuel parameters (base height, bulk density, foliar moisture) are currently user-specified constants; spatially-varying canopy data can be added in future.
    - Firebrand transport uses either a stochastic model or the Albini (1983) 2-D trajectory; no full 3-D plume transport.
    - No radiation or convective heat transfer.
    - No post-frontal smouldering or ember cast accumulation.
@@ -325,28 +374,32 @@ View with ParaView or other AMReX-compatible visualization tools.
 
 | Capability | wildfire_levelset | FARSITE | WRF-SFIRE |
 |---|---|---|---|
-| **Fire spread model** | Rothermel ROS + FARSITE ellipse (level-set) | Rothermel ROS + Huygens wavelet | Rothermel ROS (level-set) |
-| **Terrain representation** | 2-D slope/aspect (constant or per-cell) | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
+| **Fire spread model** | Rothermel ROS + elliptical directional spread (Richards 1990); Eulerian level-set implementation of the Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
+| **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
 | **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `terrain_wind_preprocess.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
 | **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
 | **Spatial resolution** | User-defined (AMReX grid) | Landscape raster resolution | WRF grid resolution |
 | **Fuel models** | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 |
-| **Fuel moisture** | User-specified constant | Dead/live moisture per size class | Dead/live moisture (prescribed) |
+| **Fuel moisture** | Per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live woody) — user-specified constants; no dynamic transport | Dead/live moisture per size class | Dead/live moisture (prescribed) |
 | **Crown fire** | Van Wagner (1977) initiation | Van Wagner (1977) initiation | Van Wagner (1977) initiation |
 | **Firebrand spotting** | Stochastic + Albini (1983) 2-D trajectory | Albini empirical spotting | Not included by default |
 | **Bulk fuel burnout** | Residence-time model | Full burnout tracking per cell | Post-frontal fuel consumption |
 | **Multi-ignition** | CSV ignition file | Interactive ignition map | WPS/WRF fire restart |
+| **Fire behavior output** | `R` [m/s], fireline intensity [kW/m], flame length [m] in plotfiles | Spread rate, intensity in output files | Spread rate in WRF output |
 | **GPU acceleration** | Yes (AMReX CUDA/HIP/SYCL kernels) | No | No |
 | **MPI parallelism** | Yes (AMReX domain decomposition) | No | Yes (WRF MPI) |
 | **Embedded boundaries** | Yes (AMReX EB) | No | No |
 | **Operational use** | Research / prototype | Operational (US Forest Service) | Research / operational |
-| **Post-processing** | AMReX plotfiles (ParaView) | GIS shapefiles / rasters | WRF standard output (NCO/Python) |
+| **Post-processing** | AMReX plotfiles (ParaView) + GeoTIFF/GeoJSON via `plotfile_to_geotiff.py` | GIS shapefiles / rasters | WRF standard output (NCO/Python) |
 
 ### Key differences from FARSITE
 
-- **Level-set vs. Huygens wavelets**: This solver tracks the fire perimeter as the zero contour of a smooth signed-distance function; FARSITE explicitly propagates individual vertex wavelets. The level-set approach handles complex topology changes (merging fronts, islands) automatically.
+- **Eulerian level-set vs. explicit Huygens wavelets**: This solver implements the same elliptical directional spread (Richards 1990) as FARSITE, but embeds it in an Eulerian level-set framework.  The fire perimeter is tracked as the zero contour of a smooth signed-distance function rather than a chain of individually advected vertex wavelets.  The Eulerian approach handles complex topology changes (merging fronts, islands) automatically without explicit connectivity management.
+- **Full 2-D landscape terrain**: Both solvers support per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` landscape files (LANDFIRE data). Canopy fuel layers can be added to this solver in future without architectural changes.
+- **Per size-class fuel moisture**: Dead fuel moisture is specified independently for 1-hr, 10-hr, and 100-hr size classes; live herbaceous and live woody moisture are specified separately.  This mirrors FARSITE's moisture inputs and drives the multi-class Rothermel (1972) reaction intensity calculation.
 - **Embedded Boundary**: AMReX EB allows irregular obstacles (buildings, fuel breaks) on the Cartesian grid without remeshing.
 - **GPU and MPI**: The AMReX backend supports CUDA/HIP/SYCL and MPI for large domains; FARSITE is serial and CPU-only.
+- **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles directly to GeoTIFF rasters and GeoJSON fire-perimeter contours; FARSITE produces GIS shapefiles/rasters natively.
 - **No interactive GUI**: This solver is driven by an input text file and command-line arguments; FARSITE ships with a Windows GUI.
 
 ### Key differences from WRF-SFIRE
@@ -360,6 +413,7 @@ View with ParaView or other AMReX-compatible visualization tools.
 
 ## References
 
+- **Byram, G.M. (1959)**. "Combustion of forest fuels." In: Davis, K.P. (ed.) *Forest Fire: Control and Use*. McGraw-Hill, New York. pp. 61–89.
 - **Richards, G.D. (1990)**. "An elliptical growth model of forest fire fronts and its numerical solution." International Journal of Numerical Methods in Engineering.
 - **Anderson, H.E. (1983)**. "Predicting wind-driven wild land fire size and shape." Research Paper INT-305, USDA Forest Service.
 - **Anderson, H.E. (1982)**. "Aids to determining fuel models for estimating fire behavior." Research Paper INT-122, USDA Forest Service.
