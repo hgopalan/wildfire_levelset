@@ -254,12 +254,40 @@ int main(int argc, char* argv[])
                                           geom, inputs.rothermel.landscape_file);
     }
 
+    // ---------------- Fuel model lookup table for per-cell spread --------
+    // When a landscape file is present with fuel model data, precompute a
+    // RothermelComputed lookup table indexed by fuel code so the GPU kernel
+    // can use per-cell fuel parameters rather than the single global model.
+    Gpu::DeviceVector<RothermelComputed> d_fuel_table;
+    const RothermelComputed* d_fuel_table_ptr = nullptr;
+    int fuel_table_size = 0;
+
+    if (!inputs.rothermel.landscape_file.empty()) {
+        std::vector<RothermelComputed> h_fuel_table =
+            build_fuel_rothermel_table(inputs.rothermel,
+                                       inputs.rothermel.landscape_fuel_type);
+        fuel_table_size = static_cast<int>(h_fuel_table.size());
+        d_fuel_table.resize(fuel_table_size);
+        Gpu::copy(Gpu::hostToDevice,
+                  h_fuel_table.begin(), h_fuel_table.end(),
+                  d_fuel_table.begin());
+        d_fuel_table_ptr = d_fuel_table.data();
+        amrex::Print() << "Built per-cell Rothermel lookup table: "
+                       << fuel_table_size << " entries ("
+                       << (inputs.rothermel.landscape_fuel_type == "40"
+                           ? "FBFM40" : "FBFM13")
+                       << ")\n";
+    }
+
     // ---------------- dt from CFL --------------------------
     Real dt=10;
     if (inputs.skip_levelset == 0)
       {
         // Compute Rothermel wind speed R
-        compute_rothermel_R(R_mf, vel, geom, inputs.rothermel, terrain_slopes.get());
+        compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+                             terrain_slopes.get(),
+                             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                             d_fuel_table_ptr, fuel_table_size);
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
       } else {
@@ -326,7 +354,10 @@ int main(int argc, char* argv[])
       
       // --- Step 2: Compute surface ROS via Rothermel/Level Set
       // Update Rothermel wind speed R and dt
-  	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel, terrain_slopes.get());
+  	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+                          terrain_slopes.get(),
+                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                          d_fuel_table_ptr, fuel_table_size);
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
 	advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());

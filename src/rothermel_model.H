@@ -9,6 +9,7 @@
 #define ROTHERMEL_MODEL_H
 
 #include "parse_inputs.H"
+#include "fuel_database.H"
 #include <AMReX.H>
 
 // Structure to hold computed Rothermel parameters for GPU kernel
@@ -112,6 +113,49 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     rc.ros_conv  = rp.ros_conv;
     
     return rc;
+}
+
+// ============================================================================
+// Build a per-code lookup table of precomputed Rothermel parameters
+// ============================================================================
+// Creates a flat array of RothermelComputed indexed by fuel integer code, so
+// GPU kernels can look up per-cell Rothermel parameters by fuel code.
+//
+// The table size is chosen to accommodate all valid codes:
+//   FBFM13: indices 0–13   (size 14)
+//   FBFM40: indices 0–204  (size 205)
+//
+// Entries for non-burnable or unknown codes are set to the default values
+// derived from *base_params* (the global rothermel parameter set).
+//
+// The moisture content (M_f), wind conversion, and ROS conversion are taken
+// from *base_params* and shared across all per-code entries; only the
+// structural fuel parameters (w0, sigma, delta, M_x, h_heat, S_T, S_e,
+// rho_p) are varied per code.
+// ============================================================================
+
+inline std::vector<RothermelComputed> build_fuel_rothermel_table(
+    const RothermelParams& base_params,
+    const std::string& fuel_type)
+{
+    const int table_size = (fuel_type == "40") ? 205 : 14;
+    std::vector<RothermelComputed> table(table_size);
+
+    // Fill with default (base_params) values first
+    RothermelComputed default_rc = compute_rothermel_params(base_params);
+    for (auto& entry : table) entry = default_rc;
+
+    // Override entries for each known burnable fuel code
+    for (int code = 0; code < table_size; ++code) {
+        FuelModel model;
+        if (lookup_fuel_model_by_int_code(code, fuel_type, model)) {
+            RothermelParams rp = base_params;
+            apply_fuel_model(model, rp);
+            table[code] = compute_rothermel_params(rp);
+        }
+    }
+
+    return table;
 }
 
 #endif // ROTHERMEL_MODEL_H

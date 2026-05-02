@@ -124,6 +124,19 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.slope_y",   p.rothermel.slope_y);
     pp.query("rothermel.terrain_file", p.rothermel.terrain_file);
     pp.query("rothermel.landscape_file", p.rothermel.landscape_file);
+    p.rothermel.landscape_fuel_type = "13";
+    pp.query("rothermel.landscape_fuel_type", p.rothermel.landscape_fuel_type);
+    if (p.rothermel.landscape_fuel_type != "13" && p.rothermel.landscape_fuel_type != "40") {
+        amrex::Abort("rothermel.landscape_fuel_type must be '13' (FBFM13) or '40' (FBFM40)");
+    }
+    if (!p.rothermel.landscape_file.empty()) {
+        Print() << "Landscape fuel model system: "
+                << (p.rothermel.landscape_fuel_type == "40"
+                    ? "FBFM40 (Scott & Burgan 40)"
+                    : "FBFM13 (Anderson 13)")
+                << " (rothermel.landscape_fuel_type = "
+                << p.rothermel.landscape_fuel_type << ")\n";
+    }
     pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
 

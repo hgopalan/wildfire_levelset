@@ -598,8 +598,71 @@ inline void print_available_fuel_models() {
     amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
     amrex::Print() << "║ Usage: Add 'rothermel.fuel_model=FM1' to command line              ║\n";
     amrex::Print() << "║        Also accepts: 1, SHORT_GRASS, GRASS, CHAPARRAL, GR2, etc.  ║\n";
+    amrex::Print() << "║ Landscape fuel type: set 'rothermel.landscape_fuel_type=13' or    ║\n";
+    amrex::Print() << "║        '=40' to match the FBFM system in the landscape file.       ║\n";
     amrex::Print() << "╚════════════════════════════════════════════════════════════════════╝\n";
     amrex::Print() << "\n";
+}
+
+// ============================================================================
+// Lookup fuel model by integer landscape code (FBFM13 or FBFM40)
+// ============================================================================
+// Maps the integer pixel codes stored in LANDFIRE rasters to FuelModel entries.
+//
+// FBFM13 (Anderson 13) integer codes:
+//   1–13  → FM1–FM13 (burnable)
+//   91–99 → non-burnable (returns false)
+//
+// FBFM40 (Scott & Burgan 40) integer codes:
+//   101–109 → GR1–GR9   (Grass)
+//   121–124 → GS1–GS4   (Grass-Shrub)
+//   141–149 → SH1–SH9   (Shrub)
+//   161–165 → TU1–TU5   (Timber-Understory)
+//   181–189 → TL1–TL9   (Timber Litter)
+//   201–204 → SB1–SB4   (Slash-Blowdown)
+//   91–99   → non-burnable (returns false)
+//
+// Returns true when a burnable fuel model was found, false otherwise.
+// ============================================================================
+inline bool lookup_fuel_model_by_int_code(int code,
+                                          const std::string& fuel_type,
+                                          FuelModel& out_model)
+{
+    static std::map<std::string, FuelModel> database = get_fuel_database();
+
+    std::string key;
+
+    if (fuel_type == "40") {
+        // Scott & Burgan 40 codes
+        if      (code >= 101 && code <= 109) key = "GR" + std::to_string(code - 100);
+        else if (code >= 121 && code <= 124) key = "GS" + std::to_string(code - 120);
+        else if (code >= 141 && code <= 149) key = "SH" + std::to_string(code - 140);
+        else if (code >= 161 && code <= 165) key = "TU" + std::to_string(code - 160);
+        else if (code >= 181 && code <= 189) key = "TL" + std::to_string(code - 180);
+        else if (code >= 201 && code <= 204) key = "SB" + std::to_string(code - 200);
+        else return false; // non-burnable or unknown code
+    } else {
+        // Anderson 13 codes (default)
+        if (code >= 1 && code <= 13) key = "FM" + std::to_string(code);
+        else return false; // non-burnable or unknown code
+    }
+
+    auto it = database.find(key);
+    if (it != database.end()) {
+        out_model = it->second;
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// Check whether an integer landscape code is non-burnable
+// (applies to both FBFM13 and FBFM40: codes 91–99)
+// ============================================================================
+inline bool is_nonburnable_fuel_code(int code)
+{
+    return (code == 91 || code == 92 || code == 93 ||
+            code == 98 || code == 99);
 }
 
 #endif // FUEL_DATABASE_H
