@@ -3,6 +3,24 @@
 // ============================================================================
 // This file provides the Rothermel fire spread model calculations that are
 // shared between the level-set advection and FARSITE ellipse modules.
+//
+// Two computation paths are available:
+//
+//  Single-class (fallback):
+//    Used when all per-class fuel loads in RothermelParams are zero.
+//    Reproduces the original single-aggregate (w0, sigma, M_f, M_x) behaviour
+//    exactly, preserving backward compatibility.
+//
+//  Multi-class (Rothermel 1972 full formulation):
+//    Used when at least one per-class fuel load (w_d1, w_d10, w_d100, w_lh,
+//    w_lw) is non-zero.  Each size class has its own load, SAV, and moisture
+//    content.  Dead-class composite moisture damping and the live-fuel
+//    moisture-of-extinction formula (Rothermel 1972, Eq. 88) are computed
+//    explicitly.  The characteristic SAV sigma_c (load-weighted mean) drives
+//    Gamma', C, B, E, xi, eps_h, and Q_ig as in the single-class path.
+//
+// Fixed SAV constants (Rothermel 1972):
+//   10-hr dead: 109 ft⁻¹   100-hr dead: 30 ft⁻¹
 // ============================================================================
 
 #ifndef ROTHERMEL_MODEL_H
@@ -33,85 +51,186 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     using namespace amrex;
     
     RothermelComputed rc;
-    
-    // Unpack fuel parameters
-    const Real w0     = rp.w0;
-    const Real sigma  = rp.sigma;
-    const Real delta  = rp.delta;
-    const Real M_f    = rp.M_f;
-    const Real M_x    = rp.M_x;
-    const Real h_heat = rp.h_heat;
-    const Real S_T    = rp.S_T;
-    const Real S_e    = rp.S_e;
-    const Real rho_p  = rp.rho_p;
 
-    // Bulk density and packing ratio
-    const Real rho_b   = w0 / delta;                                   // Eq. 24
-    const Real beta    = rho_b / rho_p;
+    // Fixed SAV constants (ft⁻¹) for coarser dead fuel size classes
+    constexpr Real SIGMA_D10  = 109.0;
+    constexpr Real SIGMA_D100 =  30.0;
 
-    // Optimum packing ratio (Eq. 37)
-    const Real beta_op = 3.348 * std::pow(sigma, -0.8189);
+    // -----------------------------------------------------------------------
+    // Determine which computation path to use
+    // -----------------------------------------------------------------------
+    const Real total_per_class = rp.w_d1 + rp.w_d10 + rp.w_d100
+                                + rp.w_lh + rp.w_lw;
+    const bool use_multiclass = (total_per_class > 0.0);
 
-    // Optimum reaction velocity (Eq. 36)
-    const Real sigma15    = std::pow(sigma, 1.5);
-    const Real Gamma_max  = sigma15 / (495.0 + 0.0594 * sigma15);
+    // -----------------------------------------------------------------------
+    // Characteristic SAV, bulk density, and packing ratio
+    // -----------------------------------------------------------------------
+    Real sigma_c;   // characteristic (load-weighted) SAV [ft⁻¹]
+    Real rho_b;     // oven-dry bulk density [lb/ft³]
+    Real beta;      // packing ratio [-]
 
-    // A coefficient (Eq. 38)
-    const Real A = 133.0 * std::pow(sigma, -0.7913);
+    if (use_multiclass) {
+        // Load-weighted mean SAV across all size classes (Rothermel 1972 Eq. 16)
+        const Real w_total = total_per_class;
+        sigma_c = (rp.w_d1   * rp.sigma_d1
+                 + rp.w_d10  * SIGMA_D10
+                 + rp.w_d100 * SIGMA_D100
+                 + rp.w_lh   * rp.sigma_lh
+                 + rp.w_lw   * rp.sigma_lw) / w_total;
+        rho_b = w_total / rp.delta;
+    } else {
+        sigma_c = rp.sigma;
+        rho_b   = rp.w0 / rp.delta;      // Eq. 24 (single-class)
+    }
+    beta = rho_b / rp.rho_p;
 
-    // Actual reaction velocity (Eq. 38)
+    // -----------------------------------------------------------------------
+    // Optimum packing ratio and reaction velocity (Eqs. 36–38)
+    // -----------------------------------------------------------------------
+    const Real beta_op  = 3.348 * std::pow(sigma_c, -0.8189);          // Eq. 37
+    const Real sigma_c15 = std::pow(sigma_c, 1.5);
+    const Real Gamma_max = sigma_c15 / (495.0 + 0.0594 * sigma_c15);  // Eq. 36
+    const Real A         = 133.0 * std::pow(sigma_c, -0.7913);         // Eq. 38
     const Real beta_ratio = beta / beta_op;
     const Real Gamma_prime = Gamma_max * std::pow(beta_ratio, A)
-                             * std::exp(A * (1.0 - beta_ratio));
+                             * std::exp(A * (1.0 - beta_ratio));       // Eq. 38
 
-    // Net fuel load (Eq. 24)
-    const Real w_n = w0 * (1.0 - S_T);
+    // -----------------------------------------------------------------------
+    // Moisture damping and reaction intensity
+    // -----------------------------------------------------------------------
+    Real I_R;
 
-    // Moisture damping (Eq. 29)
-    const Real rm    = std::min(M_f / M_x, 1.0);
-    const Real eta_M = std::max(1.0 - 2.59*rm + 5.11*rm*rm - 3.52*rm*rm*rm, 0.0);
+    if (use_multiclass) {
+        // Per-class weighting factors: A_i = w_i * sigma_i * exp(-138/sigma_i)
+        // These weight each class's contribution to the composite moisture ratio.
+        const Real A_d1   = (rp.w_d1   > 0.0)
+                            ? rp.w_d1   * rp.sigma_d1  * std::exp(-138.0 / rp.sigma_d1)
+                            : 0.0;
+        const Real A_d10  = (rp.w_d10  > 0.0)
+                            ? rp.w_d10  * SIGMA_D10    * std::exp(-138.0 / SIGMA_D10)
+                            : 0.0;
+        const Real A_d100 = (rp.w_d100 > 0.0)
+                            ? rp.w_d100 * SIGMA_D100   * std::exp(-138.0 / SIGMA_D100)
+                            : 0.0;
+        const Real A_lh   = (rp.w_lh   > 0.0 && rp.sigma_lh > 0.0)
+                            ? rp.w_lh   * rp.sigma_lh  * std::exp(-138.0 / rp.sigma_lh)
+                            : 0.0;
+        const Real A_lw   = (rp.w_lw   > 0.0 && rp.sigma_lw > 0.0)
+                            ? rp.w_lw   * rp.sigma_lw  * std::exp(-138.0 / rp.sigma_lw)
+                            : 0.0;
 
-    // Mineral damping (Eq. 30)
-    const Real eta_s = 0.174 * std::pow(S_e, -0.19);
+        const Real A_dead = A_d1 + A_d10 + A_d100;
+        const Real A_live = A_lh + A_lw;
+        const Real A_tot  = A_dead + A_live;
 
-    // Reaction intensity [BTU/ft²/min] (Eq. 27)
-    const Real I_R = Gamma_prime * w_n * h_heat * eta_M * eta_s;
+        // Dead-class composite moisture ratio and damping coefficient
+        Real eta_M_dead = 0.0;
+        if (A_dead > 0.0) {
+            Real rm_dead = (A_d1 * rp.M_d1 + A_d10 * rp.M_d10 + A_d100 * rp.M_d100)
+                           / (A_dead * rp.M_x);
+            rm_dead = std::min(rm_dead, 1.0);
+            eta_M_dead = std::max(1.0 - 2.59*rm_dead
+                                      + 5.11*rm_dead*rm_dead
+                                      - 3.52*rm_dead*rm_dead*rm_dead, 0.0); // Eq. 29
+        }
 
-    // Propagating flux ratio (Eq. 42)
-    const Real xi = std::exp((0.792 + 0.681 * std::sqrt(sigma)) * (beta + 0.1))
-                    / (192.0 + 0.2595 * sigma);
+        // Live-class moisture of extinction (Rothermel 1972, Eq. 88 approximation)
+        // depends on the ratio of dead to live fine-fuel loading.
+        Real eta_M_live = 0.0;
+        if (A_live > 0.0) {
+            Real M_x_live = 0.30; // minimum live moisture of extinction
+            if (A_dead > 0.0) {
+                const Real mx_live_calc = 2.9 * (A_dead / A_live)
+                                        * (1.0 - eta_M_dead / 0.3) - 0.226;
+                M_x_live = std::max(mx_live_calc, 0.30);
+            }
+            Real rm_live = (A_lh * rp.M_lh + A_lw * rp.M_lw)
+                           / (A_live * M_x_live);
+            rm_live = std::min(rm_live, 1.0);
+            eta_M_live = std::max(1.0 - 2.59*rm_live
+                                      + 5.11*rm_live*rm_live
+                                      - 3.52*rm_live*rm_live*rm_live, 0.0); // Eq. 29
+        }
 
-    // Effective heating number (Eq. 14)
-    const Real eps_h = std::exp(-138.0 / sigma);
+        // Mineral damping (Eq. 30) — same for all classes
+        const Real eta_s = 0.174 * std::pow(rp.S_e, -0.19);
 
-    // Heat of preignition [BTU/lb] (Eq. 12)
-    const Real Q_ig = 250.0 + 1116.0 * M_f;
+        // Net fuel loads (Eq. 24)
+        const Real w_n_dead = (rp.w_d1 + rp.w_d10 + rp.w_d100) * (1.0 - rp.S_T);
+        const Real w_n_live = (rp.w_lh + rp.w_lw)               * (1.0 - rp.S_T);
 
-    // No-wind, no-slope rate of spread [ft/min] (Eq. 1)
-    rc.R0 = I_R * xi / (rho_b * eps_h * Q_ig);
-    
-    // Store reaction intensity for fuel consumption calculation
+        // Reaction intensity: sum of dead and live contributions (Eq. 27)
+        I_R = Gamma_prime * (w_n_dead * rp.h_heat * eta_M_dead
+                           + w_n_live * rp.h_heat * eta_M_live) * eta_s;
+
+        // Use dead 1-hr moisture for heat of preignition (fine fuel preignition)
+        const Real M_f_preignition = (rp.w_d1 > 0.0) ? rp.M_d1 : rp.M_f;
+        const Real Q_ig  = 250.0 + 1116.0 * M_f_preignition;                  // Eq. 12
+        const Real eps_h = std::exp(-138.0 / sigma_c);                         // Eq. 14
+        const Real xi    = std::exp((0.792 + 0.681 * std::sqrt(sigma_c))
+                                    * (beta + 0.1))
+                           / (192.0 + 0.2595 * sigma_c);                       // Eq. 42
+        rc.R0 = (A_tot > 0.0 && rho_b > 0.0 && eps_h > 0.0 && Q_ig > 0.0)
+                ? I_R * xi / (rho_b * eps_h * Q_ig)
+                : 0.0;                                                          // Eq. 1
+
+    } else {
+        // ----------------------------------------------------------------
+        // Single-class path (original formulation, unchanged)
+        // ----------------------------------------------------------------
+        const Real w0     = rp.w0;
+        const Real M_f    = rp.M_f;
+        const Real M_x    = rp.M_x;
+
+        // Net fuel load (Eq. 24)
+        const Real w_n = w0 * (1.0 - rp.S_T);
+
+        // Moisture damping (Eq. 29)
+        const Real rm    = std::min(M_f / M_x, 1.0);
+        const Real eta_M = std::max(1.0 - 2.59*rm + 5.11*rm*rm - 3.52*rm*rm*rm, 0.0);
+
+        // Mineral damping (Eq. 30)
+        const Real eta_s = 0.174 * std::pow(rp.S_e, -0.19);
+
+        // Reaction intensity (Eq. 27)
+        I_R = Gamma_prime * w_n * rp.h_heat * eta_M * eta_s;
+
+        // Propagating flux ratio (Eq. 42)
+        const Real xi    = std::exp((0.792 + 0.681 * std::sqrt(sigma_c)) * (beta + 0.1))
+                           / (192.0 + 0.2595 * sigma_c);
+
+        // Effective heating number (Eq. 14)
+        const Real eps_h = std::exp(-138.0 / sigma_c);
+
+        // Heat of preignition (Eq. 12)
+        const Real Q_ig  = 250.0 + 1116.0 * M_f;
+
+        // No-wind, no-slope rate of spread (Eq. 1)
+        rc.R0 = I_R * xi / (rho_b * eps_h * Q_ig);
+    }
+
     rc.I_R = I_R;
 
-    // Wind factor coefficients (Eqs. 47–48)
-    rc.C = 7.47  * std::exp(-0.133  * std::pow(sigma, 0.55));
-    rc.B = 0.02526 * std::pow(sigma, 0.54);
-    const Real E = 0.715  * std::exp(-3.59e-4 * sigma);
-
-    // Packing-ratio part of wind factor (captured for GPU)
+    // -----------------------------------------------------------------------
+    // Wind factor coefficients (Eqs. 47–48) — use sigma_c for both paths
+    // -----------------------------------------------------------------------
+    rc.C = 7.47  * std::exp(-0.133  * std::pow(sigma_c, 0.55));
+    rc.B = 0.02526 * std::pow(sigma_c, 0.54);
+    const Real E = 0.715  * std::exp(-3.59e-4 * sigma_c);
     rc.beta_ratio_E = std::pow(beta_ratio, -E);
 
     // Slope factor (Eq. 51)
     const Real tan_phi_sq = rp.slope_x * rp.slope_x + rp.slope_y * rp.slope_y;
     rc.phi_s = std::max(5.275 * std::pow(beta, -0.3) * tan_phi_sq, 0.0);
-    
-    // Store beta for terrain-based phi_s calculation
+
+    // Store beta for terrain-based phi_s recalculation in GPU kernel
     rc.beta = beta;
 
     // Unit-conversion scalars for the GPU kernel
     rc.wind_conv = rp.wind_conv;
     rc.ros_conv  = rp.ros_conv;
-    
+
     return rc;
 }
 
@@ -128,10 +247,10 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 // Entries for non-burnable or unknown codes are set to the default values
 // derived from *base_params* (the global rothermel parameter set).
 //
-// The moisture content (M_f), wind conversion, and ROS conversion are taken
-// from *base_params* and shared across all per-code entries; only the
-// structural fuel parameters (w0, sigma, delta, M_x, h_heat, S_T, S_e,
-// rho_p) are varied per code.
+// The moisture contents (M_f, M_d1, …, M_lw), wind conversion, and ROS
+// conversion are taken from *base_params* and shared across all per-code
+// entries; only the structural fuel parameters (w0, sigma, delta, M_x,
+// h_heat, S_T, S_e, rho_p, and per-class loads/SAVs) are varied per code.
 // ============================================================================
 
 inline std::vector<RothermelComputed> build_fuel_rothermel_table(
@@ -151,6 +270,8 @@ inline std::vector<RothermelComputed> build_fuel_rothermel_table(
         if (lookup_fuel_model_by_int_code(code, fuel_type, model)) {
             RothermelParams rp = base_params;
             apply_fuel_model(model, rp);
+            // Per-class moistures remain as specified in base_params so that
+            // the user-supplied moisture values apply to all fuel codes.
             table[code] = compute_rothermel_params(rp);
         }
     }

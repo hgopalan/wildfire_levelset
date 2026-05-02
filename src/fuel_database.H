@@ -33,6 +33,19 @@ struct FuelModel {
     amrex::Real S_T;       // total mineral content (fraction)
     amrex::Real S_e;       // effective mineral content (fraction)
     amrex::Real rho_p;     // particle density [lb/ft³]
+    // Per-class fuel loads and SAV ratios (Rothermel 1972 multi-class path).
+    // Default 0.0 – existing entries without per-class data retain the
+    // single-class aggregate (w0/sigma) behaviour via the fallback path.
+    // 10-hr dead SAV (109 ft⁻¹) and 100-hr dead SAV (30 ft⁻¹) are universal
+    // constants and are not stored here; they are used directly in the model.
+    amrex::Real w_d1    = 0.0;  // 1-hr  dead load [lb/ft²]
+    amrex::Real sigma_d1 = 0.0;  // 1-hr  dead SAV  [ft⁻¹]
+    amrex::Real w_d10   = 0.0;  // 10-hr dead load [lb/ft²]
+    amrex::Real w_d100  = 0.0;  // 100-hr dead load [lb/ft²]
+    amrex::Real w_lh    = 0.0;  // live herbaceous load [lb/ft²]
+    amrex::Real sigma_lh = 0.0;  // live herbaceous SAV [ft⁻¹]
+    amrex::Real w_lw    = 0.0;  // live woody load [lb/ft²]
+    amrex::Real sigma_lw = 0.0;  // live woody SAV [ft⁻¹]
 };
 
 // ============================================================================
@@ -44,6 +57,9 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     // GRASS AND GRASS-DOMINATED MODELS (1-3)
     // -------------------------------------------------------------------------
+    // Per-class loads from Rothermel (1972) Table A-1.
+    // SAVs: 1-hr = model-specific; 10-hr = 109 ft⁻¹; 100-hr = 30 ft⁻¹;
+    //       live herb/woody = 1500 ft⁻¹ (1550 ft⁻¹ for FM7).
     
     database["FM1"] = {
         "FM1", "Short Grass (1 ft)",
@@ -54,7 +70,13 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        // Per-class loads: 1-hr dead only
+        0.034, 3500.0,   // w_d1, sigma_d1
+        0.0,             // w_d10
+        0.0,             // w_d100
+        0.0, 1500.0,     // w_lh, sigma_lh
+        0.0, 1500.0      // w_lw, sigma_lw
     };
     
     database["FM2"] = {
@@ -66,7 +88,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.046, 3000.0,   // w_d1, sigma_d1
+        0.023,           // w_d10
+        0.023,           // w_d100
+        0.023, 1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM3"] = {
@@ -78,7 +105,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.138, 1500.0,   // w_d1, sigma_d1
+        0.0,             // w_d10
+        0.0,             // w_d100
+        0.0,  1500.0,    // w_lh, sigma_lh
+        0.0,  1500.0     // w_lw, sigma_lw
     };
     
     // -------------------------------------------------------------------------
@@ -94,7 +126,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.230, 2000.0,   // w_d1, sigma_d1
+        0.184,           // w_d10
+        0.092,           // w_d100
+        0.230, 1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM5"] = {
@@ -106,7 +143,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.046, 2000.0,   // w_d1, sigma_d1
+        0.023,           // w_d10
+        0.0,             // w_d100
+        0.092, 1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM6"] = {
@@ -118,7 +160,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.069, 1750.0,   // w_d1, sigma_d1
+        0.115,           // w_d10
+        0.115,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM7"] = {
@@ -130,7 +177,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.052, 1750.0,   // w_d1, sigma_d1
+        0.086,           // w_d10
+        0.069,           // w_d100
+        0.017, 1550.0,   // w_lh, sigma_lh
+        0.017, 1550.0    // w_lw, sigma_lw
     };
     
     // -------------------------------------------------------------------------
@@ -146,7 +198,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.069, 2000.0,   // w_d1, sigma_d1
+        0.046,           // w_d10
+        0.115,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM9"] = {
@@ -158,7 +215,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.134, 2500.0,   // w_d1, sigma_d1
+        0.019,           // w_d10
+        0.007,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM10"] = {
@@ -170,7 +232,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.138, 2000.0,   // w_d1, sigma_d1
+        0.092,           // w_d10
+        0.230,           // w_d100
+        0.092, 1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     // -------------------------------------------------------------------------
@@ -186,7 +253,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.069, 1500.0,   // w_d1, sigma_d1
+        0.207,           // w_d10
+        0.253,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM12"] = {
@@ -198,7 +270,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.184, 1500.0,   // w_d1, sigma_d1
+        0.644,           // w_d10
+        0.759,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     database["FM13"] = {
@@ -210,7 +287,12 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
-        32.0      // rho_p [lb/ft³]
+        32.0,     // rho_p [lb/ft³]
+        0.322, 1500.0,   // w_d1, sigma_d1
+        1.058,           // w_d10
+        1.288,           // w_d100
+        0.0,   1500.0,   // w_lh, sigma_lh
+        0.0,   1500.0    // w_lw, sigma_lw
     };
     
     // =========================================================================
@@ -221,12 +303,14 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // Spread Model." Gen. Tech. Rep. RMRS-GTR-153. Fort Collins, CO: USDA
     // Forest Service, Rocky Mountain Research Station. 72 pp.
     //
-    // Parameters use the same units as Anderson 13 models above.
-    // SAV (sigma) is the effective (weighted-average) value for the fuel complex.
+    // Per-class fuel loads are from Scott & Burgan (2005) Table A-1
+    // (ton/acre converted to lb/ft² via ×0.04591).
+    // SAVs: 10-hr = 109 ft⁻¹, 100-hr = 30 ft⁻¹, live herb = 1800 ft⁻¹,
+    //       live woody = 1500 ft⁻¹; 1-hr SAV is model-specific (σ_d1).
     // =========================================================================
 
     // -------------------------------------------------------------------------
-    // NON-BURNABLE (NB)
+    // NON-BURNABLE (NB) — no per-class data; single-class fallback (w0=0)
     // -------------------------------------------------------------------------
     database["NB1"] = {
         "NB1", "Urban/Developed",
@@ -250,43 +334,88 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     };
 
     // -------------------------------------------------------------------------
-    // GRASS (GR)
+    // GRASS (GR) — σ_lh = 1800 ft⁻¹, σ_lw = 1500 ft⁻¹
     // -------------------------------------------------------------------------
     database["GR1"] = {
         "GR1", "Short, Sparse Dry Climate Grass",
-        0.010, 2200.0, 0.4, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.010, 2200.0, 0.4, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.00459, 2200.0,   // w_d1, sigma_d1
+        0.0,               // w_d10
+        0.0,               // w_d100
+        0.01377, 1800.0,   // w_lh, sigma_lh
+        0.0,     1500.0    // w_lw, sigma_lw
     };
     database["GR2"] = {
         "GR2", "Low Load, Dry Climate Grass",
-        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.00459, 2000.0,
+        0.0,
+        0.0,
+        0.01836, 1800.0,
+        0.0,     1500.0
     };
     database["GR3"] = {
         "GR3", "Low Load, Very Coarse, Humid Climate Grass",
-        0.023, 1500.0, 2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.023, 1500.0, 2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.00459, 1500.0,
+        0.01836,
+        0.0,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["GR4"] = {
         "GR4", "Moderate Load, Dry Climate Grass",
-        0.087, 2000.0, 2.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.087, 2000.0, 2.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.02296, 2000.0,
+        0.0,
+        0.0,
+        0.02296, 1800.0,
+        0.0,     1500.0
     };
     database["GR5"] = {
         "GR5", "Low Load, Humid Climate Grass",
-        0.023, 1800.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.023, 1800.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.00459, 1800.0,
+        0.0,
+        0.0,
+        0.01836, 1800.0,
+        0.0,     1500.0
     };
     database["GR6"] = {
         "GR6", "Moderate Load, Humid Climate Grass",
-        0.165, 2200.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.165, 2200.0, 1.5, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.01836, 2200.0,
+        0.0,
+        0.0,
+        0.05508, 1800.0,
+        0.0,     1500.0
     };
     database["GR7"] = {
         "GR7", "High Load, Dry Climate Grass",
-        0.230, 2000.0, 3.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.230, 2000.0, 3.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2000.0,
+        0.0,
+        0.0,
+        0.05508, 1800.0,
+        0.0,     1500.0
     };
     database["GR8"] = {
         "GR8", "High Load, Very Coarse, Humid Climate Grass",
-        0.345, 1500.0, 4.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.345, 1500.0, 4.0, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.02755, 1500.0,
+        0.04591,
+        0.0,
+        0.05508, 1800.0,
+        0.0,     1500.0
     };
     database["GR9"] = {
         "GR9", "Very High Load, Dry Climate Grass",
-        0.414, 2200.0, 5.0, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.414, 2200.0, 5.0, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2200.0,
+        0.0,
+        0.0,
+        0.13774, 1800.0,
+        0.0,     1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -294,19 +423,39 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     database["GS1"] = {
         "GS1", "Low Load, Dry Climate Grass-Shrub",
-        0.046, 2000.0, 0.9, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.046, 2000.0, 0.9, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.00918, 2000.0,
+        0.0,
+        0.0,
+        0.01836, 1800.0,
+        0.00459, 1500.0
     };
     database["GS2"] = {
         "GS2", "Moderate Load, Dry Climate Grass-Shrub",
-        0.046, 2000.0, 1.5, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.046, 2000.0, 1.5, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.00918, 2000.0,
+        0.00918,
+        0.0,
+        0.01836, 1800.0,
+        0.01377, 1500.0
     };
     database["GS3"] = {
         "GS3", "Moderate Load, Humid Climate Grass-Shrub",
-        0.115, 1800.0, 1.8, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.115, 1800.0, 1.8, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.01377, 1800.0,
+        0.01377,
+        0.0,
+        0.05508, 1800.0,
+        0.02755, 1500.0
     };
     database["GS4"] = {
         "GS4", "High Load, Humid Climate Grass-Shrub",
-        0.253, 1800.0, 2.1, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.253, 1800.0, 2.1, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.07346, 2000.0,
+        0.02755,
+        0.0,
+        0.06881, 1800.0,
+        0.04591, 1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -314,39 +463,84 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     database["SH1"] = {
         "SH1", "Low Load, Dry Climate Shrub",
-        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.023, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.00918, 2000.0,
+        0.01836,
+        0.0,
+        0.0,     1800.0,
+        0.01377, 1500.0
     };
     database["SH2"] = {
         "SH2", "Moderate Load, Dry Climate Shrub",
-        0.138, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.138, 2000.0, 1.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 3000.0,
+        0.04591,
+        0.0,
+        0.0,     1800.0,
+        0.18364, 1500.0
     };
     database["SH3"] = {
         "SH3", "Moderate Load, Humid Climate Shrub",
-        0.138, 1600.0, 2.4, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.138, 1600.0, 2.4, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.02755, 1600.0,
+        0.0,
+        0.0,
+        0.0,     1800.0,
+        0.11478, 1500.0
     };
     database["SH4"] = {
         "SH4", "Low Load, Humid Climate Shrub",
-        0.092, 2000.0, 3.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.092, 2000.0, 3.0, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.02755, 2000.0,
+        0.02755,
+        0.0,
+        0.00918, 1800.0,
+        0.06427, 1500.0
     };
     database["SH5"] = {
         "SH5", "High Load, Dry Climate Shrub",
-        0.345, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.345, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.12947, 750.0,
+        0.09183,
+        0.0,
+        0.0,     1800.0,
+        0.14327, 1500.0
     };
     database["SH6"] = {
         "SH6", "Low Load, Humid Climate Shrub",
-        0.276, 750.0,  2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.276, 750.0,  2.0, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 750.0,
+        0.04591,
+        0.0,
+        0.0,     1800.0,
+        0.12487, 1500.0
     };
     database["SH7"] = {
         "SH7", "Very High Load, Dry Climate Shrub",
-        0.460, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0
+        0.460, 750.0,  6.0, 0.15, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 750.0,
+        0.18364,
+        0.04591,
+        0.0,     1800.0,
+        0.18364, 1500.0
     };
     database["SH8"] = {
         "SH8", "High Load, Humid Climate Shrub",
-        0.322, 1300.0, 3.0, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.322, 1300.0, 3.0, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 750.0,
+        0.18364,
+        0.0,
+        0.04591, 1800.0,
+        0.04591, 1500.0
     };
     database["SH9"] = {
         "SH9", "Very High Load, Humid Climate Shrub",
-        0.414, 1500.0, 4.4, 0.40, 8000.0, 0.0555, 0.010, 32.0
+        0.414, 1500.0, 4.4, 0.40, 8000.0, 0.0555, 0.010, 32.0,
+        0.20660, 750.0,
+        0.22957,
+        0.0,
+        0.04591, 1800.0,
+        0.04591, 1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -354,23 +548,48 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     database["TU1"] = {
         "TU1", "Low Load, Dry Climate Timber-Grass-Shrub",
-        0.023, 2000.0, 0.6, 0.20, 8000.0, 0.0555, 0.010, 32.0
+        0.023, 2000.0, 0.6, 0.20, 8000.0, 0.0555, 0.010, 32.0,
+        0.00918, 2000.0,
+        0.00459,
+        0.00459,
+        0.01377, 1800.0,
+        0.00918, 1500.0
     };
     database["TU2"] = {
         "TU2", "Moderate Load, Humid Climate Timber-Shrub",
-        0.069, 2000.0, 1.0, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.069, 2000.0, 1.0, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 3000.0,
+        0.02296,
+        0.02296,
+        0.00459, 1800.0,
+        0.00918, 1500.0
     };
     database["TU3"] = {
         "TU3", "Moderate Load, Humid Climate Timber-Grass-Shrub",
-        0.138, 1800.0, 1.3, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.138, 1800.0, 1.3, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.01377, 1800.0,
+        0.01836,
+        0.01836,
+        0.03673, 1800.0,
+        0.03673, 1500.0
     };
     database["TU4"] = {
         "TU4", "Dwarf Conifer Understory",
-        0.230, 2300.0, 0.5, 0.12, 8000.0, 0.0555, 0.010, 32.0
+        0.230, 2300.0, 0.5, 0.12, 8000.0, 0.0555, 0.010, 32.0,
+        0.22957, 2300.0,
+        0.0,
+        0.0,
+        0.0,     1800.0,
+        0.00918, 1500.0
     };
     database["TU5"] = {
         "TU5", "Very High Load, Dry Climate Timber-Shrub",
-        0.322, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.322, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 1500.0,
+        0.09183,
+        0.09183,
+        0.0,     1800.0,
+        0.04591, 1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -378,39 +597,84 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     database["TL1"] = {
         "TL1", "Low Load, Compact Conifer Litter",
-        0.069, 2000.0, 0.2, 0.30, 8000.0, 0.0555, 0.010, 32.0
+        0.069, 2000.0, 0.2, 0.30, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2000.0,
+        0.02296,
+        0.0,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL2"] = {
         "TL2", "Low Load, Broadleaf Litter",
-        0.069, 1600.0, 0.2, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.069, 1600.0, 0.2, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.02296, 2000.0,
+        0.04591,
+        0.01377,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL3"] = {
         "TL3", "Moderate Load Conifer Litter",
-        0.115, 2000.0, 0.3, 0.20, 8000.0, 0.0555, 0.010, 32.0
+        0.115, 2000.0, 0.3, 0.20, 8000.0, 0.0555, 0.010, 32.0,
+        0.01836, 2000.0,
+        0.07346,
+        0.01836,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL4"] = {
         "TL4", "Small Downed Logs",
-        0.115, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.115, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.02296, 2000.0,
+        0.03673,
+        0.03673,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL5"] = {
         "TL5", "High Load Conifer Litter",
-        0.230, 2000.0, 0.6, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.230, 2000.0, 0.6, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2000.0,
+        0.09183,
+        0.09183,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL6"] = {
         "TL6", "High Load Broadleaf Litter",
-        0.253, 2000.0, 0.3, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.253, 2000.0, 0.3, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.05508, 2000.0,
+        0.09183,
+        0.07346,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL7"] = {
         "TL7", "Large Downed Logs",
-        0.322, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.322, 2000.0, 0.4, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2000.0,
+        0.09183,
+        0.09183,
+        0.02296, 1800.0,
+        0.02296, 1500.0
     };
     database["TL8"] = {
         "TL8", "Long, Needle Litter",
-        0.184, 1800.0, 0.3, 0.35, 8000.0, 0.0555, 0.010, 32.0
+        0.184, 1800.0, 0.3, 0.35, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 1800.0,
+        0.04591,
+        0.02296,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["TL9"] = {
         "TL9", "Very High Load, Broadleaf Litter",
-        0.322, 1600.0, 0.6, 0.35, 8000.0, 0.0555, 0.010, 32.0
+        0.322, 1600.0, 0.6, 0.35, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 1600.0,
+        0.11479,
+        0.06886,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -418,19 +682,39 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     // -------------------------------------------------------------------------
     database["SB1"] = {
         "SB1", "Low Load Activity Fuel",
-        0.069, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.069, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.04591, 2000.0,
+        0.18364,
+        0.18364,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["SB2"] = {
         "SB2", "Moderate Load Activity Fuel or Low Load Blowdown",
-        0.184, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.184, 1500.0, 1.0, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.09183, 2000.0,
+        0.27546,
+        0.18364,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["SB3"] = {
         "SB3", "High Load Activity Fuel or Moderate Load Blowdown",
-        0.322, 1500.0, 1.2, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.322, 1500.0, 1.2, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.22957, 2000.0,
+        0.41323,
+        0.18364,
+        0.0,     1800.0,
+        0.0,     1500.0
     };
     database["SB4"] = {
         "SB4", "High Load Blowdown",
-        0.529, 1500.0, 2.7, 0.25, 8000.0, 0.0555, 0.010, 32.0
+        0.529, 1500.0, 2.7, 0.25, 8000.0, 0.0555, 0.010, 32.0,
+        0.22957, 2000.0,
+        0.41323,
+        0.41323,
+        0.22957, 1800.0,
+        0.0,     1500.0
     };
 
     // -------------------------------------------------------------------------
@@ -491,7 +775,8 @@ inline bool lookup_fuel_model(const std::string& fuel_name, FuelModel& out_model
 // ============================================================================
 // This function updates the fuel-related parameters in RothermelParams
 // while preserving user-specified values for M_f (fuel moisture), slope, and
-// unit conversions.
+// unit conversions.  Per-class loads and SAVs are also copied so that the
+// multi-class Rothermel path can be used when the model provides them.
 // ============================================================================
 inline void apply_fuel_model(const FuelModel& model, RothermelParams& params) {
     params.w0     = model.w0;
@@ -502,8 +787,18 @@ inline void apply_fuel_model(const FuelModel& model, RothermelParams& params) {
     params.S_T    = model.S_T;
     params.S_e    = model.S_e;
     params.rho_p  = model.rho_p;
-    // Note: M_f (fuel moisture), slope, and unit conversions are NOT changed
-    // as they are typically environmental/simulation-specific parameters
+    // Per-class fuel loads and SAVs
+    params.w_d1     = model.w_d1;
+    params.sigma_d1 = model.sigma_d1;
+    params.w_d10    = model.w_d10;
+    params.w_d100   = model.w_d100;
+    params.w_lh     = model.w_lh;
+    params.sigma_lh = model.sigma_lh;
+    params.w_lw     = model.w_lw;
+    params.sigma_lw = model.sigma_lw;
+    // Note: M_f (fuel moisture), per-class moistures, slope, and unit
+    // conversions are NOT changed here as they are environmental/simulation-
+    // specific parameters set by the user.
 }
 
 // ============================================================================
@@ -556,6 +851,18 @@ inline void print_fuel_model_info(const FuelModel& model) {
     amrex::Print() << "║ Total mineral content (ST):    " << model.S_T << "\n";
     amrex::Print() << "║ Effective mineral content (Se): " << model.S_e << "\n";
     amrex::Print() << "║ Particle density (ρp):         " << model.rho_p << " lb/ft³\n";
+    // Print per-class data if available
+    const bool has_per_class = (model.w_d1 + model.w_d10 + model.w_d100
+                               + model.w_lh + model.w_lw) > 0.0;
+    if (has_per_class) {
+        amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
+        amrex::Print() << "║ Per-class fuel loads (multi-class Rothermel path active):          ║\n";
+        if (model.w_d1   > 0.0) amrex::Print() << "║   1-hr  dead: " << model.w_d1   << " lb/ft²  σ=" << model.sigma_d1 << " ft⁻¹\n";
+        if (model.w_d10  > 0.0) amrex::Print() << "║   10-hr dead: " << model.w_d10  << " lb/ft²  σ=109 ft⁻¹\n";
+        if (model.w_d100 > 0.0) amrex::Print() << "║   100-hr dead:" << model.w_d100 << " lb/ft²  σ=30 ft⁻¹\n";
+        if (model.w_lh   > 0.0) amrex::Print() << "║   Live herb:  " << model.w_lh   << " lb/ft²  σ=" << model.sigma_lh << " ft⁻¹\n";
+        if (model.w_lw   > 0.0) amrex::Print() << "║   Live woody: " << model.w_lw   << " lb/ft²  σ=" << model.sigma_lw << " ft⁻¹\n";
+    }
     amrex::Print() << "╚════════════════════════════════════════════════════════════════════╝\n";
     amrex::Print() << "\n";
 }

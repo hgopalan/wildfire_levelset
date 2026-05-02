@@ -95,6 +95,17 @@ void parse_inputs(InputParameters& p)
     p.rothermel.landscape_file = "";
     p.rothermel.wind_conv = 196.85;
     p.rothermel.ros_conv  = 0.00508;
+    // Per-class fuel loads initialised to 0 (triggers single-class fallback
+    // until a fuel model or explicit overrides provide non-zero values)
+    p.rothermel.w_d1    = 0.0;
+    p.rothermel.sigma_d1= 0.0;
+    p.rothermel.w_d10   = 0.0;
+    p.rothermel.w_d100  = 0.0;
+    p.rothermel.w_lh    = 0.0;
+    p.rothermel.sigma_lh= 0.0;
+    p.rothermel.w_lw    = 0.0;
+    p.rothermel.sigma_lw= 0.0;
+    // Per-class moistures are set after M_f has its final value (see below)
     
     // Apply fuel model from database if specified
     if (!fuel_model_name.empty()) {
@@ -139,6 +150,30 @@ void parse_inputs(InputParameters& p)
     }
     pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
+
+    // Per-class fuel load overrides (take precedence over fuel model database)
+    pp.query("rothermel.w_d1",    p.rothermel.w_d1);
+    pp.query("rothermel.sigma_d1", p.rothermel.sigma_d1);
+    pp.query("rothermel.w_d10",   p.rothermel.w_d10);
+    pp.query("rothermel.w_d100",  p.rothermel.w_d100);
+    pp.query("rothermel.w_lh",    p.rothermel.w_lh);
+    pp.query("rothermel.sigma_lh", p.rothermel.sigma_lh);
+    pp.query("rothermel.w_lw",    p.rothermel.w_lw);
+    pp.query("rothermel.sigma_lw",p.rothermel.sigma_lw);
+
+    // Per-class fuel moistures — defaults derived from M_f (which now has its
+    // final value) so that the multi-class path degrades gracefully to the
+    // single-class result when only rothermel.M_f is specified.
+    p.rothermel.M_d1   = p.rothermel.M_f;
+    p.rothermel.M_d10  = p.rothermel.M_f;
+    p.rothermel.M_d100 = p.rothermel.M_f;
+    p.rothermel.M_lh   = 0.90;   // live herbaceous moisture default
+    p.rothermel.M_lw   = 1.20;   // live woody moisture default
+    pp.query("rothermel.M_d1",   p.rothermel.M_d1);
+    pp.query("rothermel.M_d10",  p.rothermel.M_d10);
+    pp.query("rothermel.M_d100", p.rothermel.M_d100);
+    pp.query("rothermel.M_lh",   p.rothermel.M_lh);
+    pp.query("rothermel.M_lw",   p.rothermel.M_lw);
 
     // -------- FARSITE ellipse model parameters (Richards 1990) --------
     p.farsite.enable = 1;                        pp.query("farsite.enable", p.farsite.enable);

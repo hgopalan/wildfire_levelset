@@ -81,13 +81,74 @@ where:
 Moisture Damping
 ^^^^^^^^^^^^^^^^
 
-The moisture damping coefficient :math:`\eta_M` is:
+**Single-class path (aggregate)**
+
+When no per-class loads are specified (the default), the moisture damping
+coefficient :math:`\eta_M` is computed from a single composite moisture content
+:math:`M_f` and extinction moisture :math:`M_x`:
 
 .. math::
 
    \eta_M = \max\left(1 - 2.59r_m + 5.11r_m^2 - 3.52r_m^3, 0\right)
 
 where :math:`r_m = \min(M_f / M_x, 1)`, :math:`M_f` is the fuel moisture content, and :math:`M_x` is the moisture of extinction.
+
+**Multi-class path (per size class)**
+
+When per-class fuel loads are provided (via a fuel model database entry or
+explicit ``rothermel.w_d1``, etc. inputs), the full Rothermel (1972)
+multi-class formulation is used.  Each size class has its own oven-dry fuel
+load :math:`w_i`, surface-area-to-volume ratio :math:`\sigma_i`, and moisture
+content :math:`M_i`.
+
+The fixed SAV values for coarser dead-fuel classes are:
+:math:`\sigma_{d10} = 109\ \text{ft}^{-1}` and :math:`\sigma_{d100} = 30\ \text{ft}^{-1}`.
+
+The per-class weighting factor is:
+
+.. math::
+
+   A_i = w_i \, \sigma_i \, \exp\!\left(-\frac{138}{\sigma_i}\right)
+
+**Dead-fuel composite moisture ratio** (Rothermel 1972, Eq. 86):
+
+.. math::
+
+   r_{m,\text{dead}} = \frac{\sum_{i \in \text{dead}} A_i M_i}{M_x \sum_{i \in \text{dead}} A_i}
+
+**Live-fuel moisture of extinction** (Rothermel 1972, Eq. 88 approximation):
+
+.. math::
+
+   M_{x,\text{live}} = \max\!\left(
+       2.9 \,\frac{A_\text{dead}}{A_\text{live}}
+       \left(1 - \frac{\eta_{M,\text{dead}}}{0.3}\right) - 0.226,\; 0.30
+   \right)
+
+**Live-fuel composite moisture ratio**:
+
+.. math::
+
+   r_{m,\text{live}} = \frac{\sum_{i \in \text{live}} A_i M_i}{M_{x,\text{live}} \sum_{i \in \text{live}} A_i}
+
+Both dead and live moisture damping coefficients use the cubic polynomial (Eq. 29).
+
+**Reaction intensity** sums dead and live contributions:
+
+.. math::
+
+   I_R = \Gamma' \eta_s \left(
+       w_{n,\text{dead}} \, h \, \eta_{M,\text{dead}}
+     + w_{n,\text{live}} \, h \, \eta_{M,\text{live}}
+   \right)
+
+where :math:`w_{n,\text{dead}} = \sum_{i \in \text{dead}} w_i (1-S_T)` and
+:math:`w_{n,\text{live}} = \sum_{i \in \text{live}} w_i (1-S_T)`.
+
+The characteristic SAV :math:`\sigma_c` (load-weighted mean across all
+classes) is used in place of the single aggregate :math:`\sigma` for
+:math:`\Gamma'`, :math:`\xi`, :math:`\epsilon_h`, :math:`Q_{ig}`, and the
+wind-factor coefficients :math:`C`, :math:`B`, :math:`E`.
 
 Mineral Damping
 ^^^^^^^^^^^^^^^
