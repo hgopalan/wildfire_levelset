@@ -397,7 +397,10 @@ The code is designed to run on both CPU and GPU using AMReX's unified memory mod
 
 .. note::
    The Albini (1983) spotting model requires serial CPU execution and will abort
-   if built with OpenMP or GPU backends enabled.
+   if built with OpenMP or GPU backends enabled. Ensure the build is configured
+   without these backends::
+
+       cmake -S . -B build -DAMReX_OMP=OFF -DAMReX_GPU_BACKEND=NONE
 
 Build System
 ------------

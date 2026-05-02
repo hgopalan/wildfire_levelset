@@ -82,7 +82,7 @@ Computes FARSITE elliptical fire spread using Richards' (1990) model.
 
 * ``phi``: Level-set function (modified in-place)
 * ``vel``: Velocity field (wind)
-* ``farsite_spread``: Output array for spread displacements
+* ``farsite_spread``: Output array for per-cell elliptical spread displacements [x, y(, z) in physical units]
 * ``geom``: AMReX geometry object
 * ``dt``: Time step
 * ``rp``: Rothermel fuel parameters

@@ -197,13 +197,10 @@ Initial Conditions
 Sphere ignition
 ~~~~~~~~~~~~~~~
 
-**sphere_center_x**, **sphere_center_y**, **sphere_center_z**
+**center_x**, **center_y**, **center_z** (default: 0.5, 0.5, 0.5)
   Center coordinates of the initial spherical fire.
 
-  Example: ``sphere_center_x = 330050.0``, ``sphere_center_y = 3775050.0``
-
-  .. note::
-     Alternatively, ``center_x``, ``center_y``, ``center_z`` can be used as shorter aliases.
+  Example: ``center_x = 330050.0``, ``center_y = 3775050.0``
 
 **sphere_radius**
   Radius of the initial spherical fire [physical units].
@@ -757,9 +754,9 @@ Basic Level-Set Simulation
     reinit_int = 20
 
     source_type = sphere
-    sphere_center_x = 50.0
-    sphere_center_y = 50.0
-    sphere_center_z = 0.5
+    center_x = 50.0
+    center_y = 50.0
+    center_z = 0.5
     sphere_radius = 5.0
 
     rothermel.fuel_model = FM1
@@ -788,9 +785,9 @@ FARSITE Ellipse Simulation
     plot_int = 10
 
     source_type = sphere
-    sphere_center_x = 330100.0
-    sphere_center_y = 3775100.0
-    sphere_center_z = 0.5
+    center_x = 330100.0
+    center_y = 3775100.0
+    center_z = 0.5
     sphere_radius = 10.0
 
     farsite.enable = 1
@@ -822,9 +819,9 @@ Terrain and Crown Fire Simulation
     plot_int = 25
 
     source_type = sphere
-    sphere_center_x = 330500.0
-    sphere_center_y = 3775500.0
-    sphere_center_z = 0.5
+    center_x = 330500.0
+    center_y = 3775500.0
+    center_z = 0.5
     sphere_radius = 20.0
 
     farsite.enable = 1
