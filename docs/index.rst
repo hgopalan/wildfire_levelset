@@ -31,11 +31,17 @@ This repository contains a small AMReX-based C++ level-set solver for wildfire-f
 Key Features
 ------------
 
-* **Multiple Fire Spread Models**: Level-set advection and FARSITE elliptical expansion
-* **Terrain Effects**: Slope-based spread rate modifications using Rothermel corrections
-* **Crown Fire**: Van Wagner crown fire initiation criteria
-* **Spotting**: Firebrand spotting probability models
+* **Multiple Fire Spread Models**: Level-set advection (WENO5-Z + RK3) and FARSITE elliptical expansion
+* **Multi-Class Rothermel**: Full per-size-class fuel moisture and loading path (1-hr, 10-hr, 100-hr dead; live herbaceous; live woody)
+* **Fuel Database**: Anderson 13 (FBFM13) and Scott & Burgan 40 (FBFM40) standard fuel models
+* **Terrain Effects**: Slope-based spread rate modifications; terrain and FARSITE landscape file support
+* **Crown Fire**: Van Wagner (1977) crown fire initiation criteria
+* **Spotting — Stochastic**: Probability-based firebrand generation with lognormal/exponential distance distributions
+* **Spotting — Physics-Based**: Albini (1983) thermal-plume lofting with 2-D trajectory integration
 * **Bulk Fuel Consumption**: Post-frontal burnout simulation
+* **Fire Behavior Diagnostics**: Byram fireline intensity and flame length computed at every time step
+* **Time-Dependent Wind**: Sequential wind field snapshots with temporal interpolation (2D)
+* **Multiple Ignition Types**: Sphere, box, ellipse, embedded boundary implicit function, CSV fire points
 * **2D/3D Support**: Flexible spatial dimensions
 * **Embedded Boundaries**: Complex geometry support with AMReX EB
 
@@ -55,7 +61,7 @@ Build the project::
 Run a test case::
 
     cd regtest/basic_levelset
-    ../../build/levelset inputs
+    ../../build/levelset inputs.i
 
 Indices and tables
 ==================

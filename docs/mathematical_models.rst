@@ -377,6 +377,47 @@ The bulk fuel consumption fraction :math:`f_c` represents the fraction of availa
 
 where :math:`\tau_{res}` is the residence time. The consumption affects the fire intensity and heat release rate.
 
+The consumption fraction is bounded by configurable minimum and maximum values
+(``farsite.f_consumed_min`` and ``farsite.f_consumed_max``):
+
+.. math::
+
+   f_c = f_{c,\min} + (f_{c,\max} - f_{c,\min}) \left(1 - \exp\left(-\frac{t}{\tau_{res}}\right)\right)
+
+Byram Fire Behavior Diagnostics
+---------------------------------
+
+Fireline Intensity
+^^^^^^^^^^^^^^^^^^
+
+Byram's (1959) fire line intensity :math:`I_B` quantifies the rate of heat release per unit length of fire front:
+
+.. math::
+
+   I_B \;[\text{kW/m}] = H \;[\text{kJ/kg}] \times w_a \;[\text{kg/m}^2] \times R \;[\text{m/s}]
+
+where :math:`H` is the low heat of combustion, :math:`w_a` is the available (net) fuel load
+per unit area, and :math:`R` is the rate of spread. The available fuel load
+accounts for the mineral content correction:
+
+.. math::
+
+   w_a = w_0 (1 - S_T) \times 4.8824 \;[\text{kg/m}^2]
+
+(where :math:`w_0` is in lb/ft² and 4.8824 is the lb/ft² to kg/m² conversion).
+
+Flame Length
+^^^^^^^^^^^^^
+
+Byram's (1959) empirical relationship between fireline intensity and flame length:
+
+.. math::
+
+   L_f \;[\text{m}] = 0.0775 \times I_B^{0.46}
+
+These fields (``fireline_intensity`` and ``flame_length``) are computed at every time
+step and written to each plotfile.
+
 Level-Set Method
 ----------------
 
