@@ -3156,7 +3156,7 @@ def _build_parser():
         help=(
             "x-component of the reference 10-m wind speed (m/s) used as "
             "the initial condition for the mass-consistent solver.  When "
-            "this or --uy is non-zero and --wrf-file is not given the "
+            "this or --uy is non-zero and --wrf-file is not given, the "
             "mass-consistent solver runs automatically and writes the "
             "terrain-adjusted 2-D wind field to --wind."
         ),
