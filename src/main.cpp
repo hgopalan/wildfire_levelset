@@ -445,7 +445,7 @@ int main(int argc, char* argv[])
       }
 
       // --- Write checkpoint if requested
-      if (inputs.chk_int > 0 && (step % inputs.chk_int == 0)) {
+      if (inputs.chk_int > 0 && ((step - restart_step) % inputs.chk_int == 0)) {
         char chk_buf[64];
         std::snprintf(chk_buf, sizeof(chk_buf), "chk%04d", step);
         write_checkpoint(chk_buf, phi, geom, step, time);

@@ -651,7 +651,11 @@ static void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
 
         // Rename the file so it is not re-applied next step
         std::string done_name = filename + ".applied";
-        std::rename(filename.c_str(), done_name.c_str());
+        if (std::rename(filename.c_str(), done_name.c_str()) != 0) {
+            amrex::Print() << "WARNING apply_dynamic_fire_points: could not rename '"
+                           << filename << "' to '" << done_name
+                           << "' - the file may be re-applied on the next step\n";
+        }
     }
 
     {
@@ -737,10 +741,14 @@ static void write_checkpoint(const std::string& chk_name,
     if (amrex::ParallelDescriptor::IOProcessor()) {
         std::string header_name = chk_name + "/Header";
         std::ofstream hdr(header_name);
+        if (!hdr.is_open())
+            amrex::Abort("write_checkpoint: cannot open header file: " + header_name);
         hdr << "wildfire_levelset checkpoint v1\n";
         hdr << step << "\n";
         hdr << time << "\n";
         hdr.close();
+        if (hdr.fail())
+            amrex::Abort("write_checkpoint: failed to write header file: " + header_name);
         amrex::Print() << "Wrote checkpoint: " << chk_name << "\n";
     }
 }
