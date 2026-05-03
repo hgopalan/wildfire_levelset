@@ -323,23 +323,26 @@ static void update_time_dependent_velocity(MultiFab& vel, const Geometry& geom,
 // time stored in each file's Header.  Stops at the first missing index.
 #include <AMReX_PlotFileUtil.H>
 
+// Helper: format a 5-digit zero-padded plt file name (e.g. "plt00042")
+static std::string plt_wind_name(int idx)
+{
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "plt%05d", idx);
+    return std::string(buf);
+}
+
 static void scan_plt_wind_files(const std::string& plt_wind_dir,
                                  std::vector<Real>& timestamps)
 {
     timestamps.clear();
     for (int i = 0; ; ++i) {
-        char hdr_path[512];
-        std::snprintf(hdr_path, sizeof(hdr_path), "%s/plt%05d/Header",
-                      plt_wind_dir.c_str(), i);
+        std::string hdr_path = plt_wind_dir + "/" + plt_wind_name(i) + "/Header";
         std::ifstream hdr_test(hdr_path);
         if (!hdr_test.is_open()) break;
         hdr_test.close();
 
-        char plt_path[512];
-        std::snprintf(plt_path, sizeof(plt_path), "%s/plt%05d",
-                      plt_wind_dir.c_str(), i);
-        std::string plt_path_str(plt_path);
-        PlotFileData pf(plt_path_str);
+        std::string plt_path = plt_wind_dir + "/" + plt_wind_name(i);
+        PlotFileData pf(plt_path);
         timestamps.push_back(static_cast<Real>(pf.time()));
     }
 
@@ -350,9 +353,7 @@ static void scan_plt_wind_files(const std::string& plt_wind_dir,
     amrex::Print() << "PLT wind: found " << timestamps.size()
                    << " files in " << plt_wind_dir << "\n";
     for (int i = 0; i < static_cast<int>(timestamps.size()); ++i) {
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "plt%05d", i);
-        amrex::Print() << "  " << buf << "  t = " << timestamps[i] << " s\n";
+        amrex::Print() << "  " << plt_wind_name(i) << "  t = " << timestamps[i] << " s\n";
     }
 }
 
@@ -369,10 +370,7 @@ static void extract_wind_from_plt(const std::string& plt_wind_dir, int file_idx,
                                     std::vector<Real>& u_data,
                                     std::vector<Real>& v_data)
 {
-    char plt_path[512];
-    std::snprintf(plt_path, sizeof(plt_path), "%s/plt%05d",
-                  plt_wind_dir.c_str(), file_idx);
-    std::string plt_path_str(plt_path);
+    std::string plt_path_str = plt_wind_dir + "/" + plt_wind_name(file_idx);
 
     PlotFileData pf(plt_path_str);
 
@@ -571,10 +569,8 @@ static void update_plt_wind_velocity(MultiFab& vel, const Geometry& geom,
 
     // Reload wind data only when the bracketing pair changes
     if (idx1 != loaded_idx1 || idx2 != loaded_idx2) {
-        char b1[32], b2[32];
-        std::snprintf(b1, sizeof(b1), "plt%05d", idx1);
-        std::snprintf(b2, sizeof(b2), "plt%05d", idx2);
-        amrex::Print() << "PLT wind: loading " << b1 << " and " << b2
+        amrex::Print() << "PLT wind: loading " << plt_wind_name(idx1)
+                       << " and " << plt_wind_name(idx2)
                        << " at t=" << current_time << " s\n";
 
         extract_wind_from_plt(plt_wind_dir, idx1, u_var, v_var, fire_height,
