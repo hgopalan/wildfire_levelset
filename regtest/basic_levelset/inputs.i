@@ -36,3 +36,19 @@ reinit_dtau = 0.5
 # Level set control
 skip_levelset = 0
 farsite.enable = 0
+
+# ---- Dynamic fire points (optional) ----
+# When this file is present on disk at the start of any time step, the ignition
+# points listed in it (CSV format: X Y [Z]) are merged into phi and the file is
+# renamed to <name>.applied so it is not re-applied the next step.  Drop a new
+# file under the same name to trigger additional ignitions at any later time.
+#
+# dynamic_fire_points_file = new_ignitions.csv
+# fire_gaussian_sigma = -1.0   # <= 0 means auto (3 cells)
+
+# ---- Checkpoint / restart (optional) ----
+# Write a checkpoint directory every chk_int steps.
+# chk_int = 50
+#
+# Restart from a previously written checkpoint directory.
+# restart_chkfile = chk0050

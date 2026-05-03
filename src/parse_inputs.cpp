@@ -289,4 +289,11 @@ void parse_inputs(InputParameters& p)
     // -------- CSV fire points initialization --------
     p.fire_points_file  = "";                    pp.query("fire_points_file",     p.fire_points_file);
     p.fire_gaussian_sigma = -1.0;                pp.query("fire_gaussian_sigma",  p.fire_gaussian_sigma);
+
+    // -------- Dynamic fire points file (polled each time step) --------
+    p.dynamic_fire_points_file = "";             pp.query("dynamic_fire_points_file", p.dynamic_fire_points_file);
+
+    // -------- Checkpoint / restart options --------
+    p.chk_int        = -1;                       pp.query("chk_int",         p.chk_int);
+    p.restart_chkfile = "";                      pp.query("restart_chkfile", p.restart_chkfile);
 }
