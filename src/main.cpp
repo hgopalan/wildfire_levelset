@@ -7,6 +7,7 @@
 #include <AMReX_ParmParse.H>
 #include <AMReX_DistributionMapping.H>
 #include <AMReX_BoxArray.H>
+#include <AMReX_VisMF.H>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -132,10 +133,19 @@ int main(int argc, char* argv[])
     // When FARSITE is enabled and level set is skipped, use indicator initialization
     // (phi = 1 inside, phi = 0 outside) instead of signed distance
     bool use_indicator = (inputs.farsite.enable == 1 && inputs.skip_levelset == 1);
-        
-    if (!inputs.fire_points_file.empty()) {
+
+    // Restart state (overridden by checkpoint when restart_chkfile is non-empty)
+    Real time = 0.0;
+    int restart_step = 0;
+
+    if (!inputs.restart_chkfile.empty()) {
+      // Restart from checkpoint: skip normal initialization and load phi from file
+      read_checkpoint(inputs.restart_chkfile, phi, restart_step, time);
+      fill_boundary_extrap(phi, geom);
+    } else if (!inputs.fire_points_file.empty()) {
       // CSV fire-points takes precedence over all other source_type options
       init_phi_from_fire_points_csv(phi, geom, inputs.fire_points_file, inputs.fire_gaussian_sigma);
+      fill_boundary_extrap(phi, geom);
     }
     else if (inputs.source_type == "sphere") {
       if (use_indicator) {
@@ -143,6 +153,7 @@ int main(int argc, char* argv[])
       } else {
 	init_phi_sphere(phi, geom, inputs.cx, inputs.cy, inputs.cz, inputs.radius);
       }
+      fill_boundary_extrap(phi, geom);
     }
     else if(inputs.source_type == "box") {
       if (use_indicator) {
@@ -150,6 +161,7 @@ int main(int argc, char* argv[])
       } else {
 	init_phi_box(phi, geom, inputs.xmin, inputs.ymin, inputs.zmin, inputs.xmax, inputs.ymax, inputs.zmax);
       }
+      fill_boundary_extrap(phi, geom);
     }
     else if(inputs.source_type == "ellipse") {
       if (use_indicator) {
@@ -161,6 +173,7 @@ int main(int argc, char* argv[])
 	                inputs.ellipse_center_x, inputs.ellipse_center_y, inputs.ellipse_center_z,
 	                inputs.ellipse_radius_x, inputs.ellipse_radius_y, inputs.ellipse_radius_z);
       }
+      fill_boundary_extrap(phi, geom);
     }
     else if(inputs.source_type == "eb") {
       // EB implicit function: use indicator (-1/0) for FARSITE, SDF for level set
@@ -173,11 +186,11 @@ int main(int argc, char* argv[])
                                   inputs.eb_param1, inputs.eb_param2, inputs.eb_param3,
                                   inputs.eb_param4, inputs.eb_param5, inputs.eb_param6);
       }
+      fill_boundary_extrap(phi, geom);
     }
     else {
       amrex::Abort("Invalid source_type: " + inputs.source_type);
     }
-    fill_boundary_extrap(phi, geom);
         
     // Initialize velocity field
 #if (AMREX_SPACEDIM == 2)
@@ -301,7 +314,6 @@ int main(int argc, char* argv[])
       amrex::Print() << "Skipping level set advection; using dt = " << dt << " for FARSITE spread\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
-    Real time = 0.0;
 
 
     // ---------------- Write initial plotfile ---------------
@@ -336,19 +348,28 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
       MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
       MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
-      WriteSingleLevelPlotfile("plt0000", plotmf, names, geom, 0.0, 0);
+      {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
+        WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, restart_step);
+      }
       
       // Write negative phi x-y data files
-      write_negative_phi_xy(phi, geom, "phi_negative_0000.dat");
-      write_negative_phi_convex_hull(phi, geom, "phi_envelope_0000.dat");
+      {
+        char xy_buf[64];
+        std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", restart_step);
+        write_negative_phi_xy(phi, geom, xy_buf);
+        std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", restart_step);
+        write_negative_phi_convex_hull(phi, geom, xy_buf);
+      }
     }
 
     // ---------------- Time stepping ------------------------
     // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
     const bool use_final_time = (inputs.final_time > 0.0);
-    int step = 0;
+    int step = restart_step;
     while ((use_final_time && time < inputs.final_time) ||
-           (!use_final_time && step < inputs.nsteps)) {
+           (!use_final_time && step < restart_step + inputs.nsteps)) {
       ++step;
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
@@ -415,6 +436,20 @@ int main(int argc, char* argv[])
       }
 
       time += dt_step;
+
+      // --- Dynamic fire points: check if a new ignition file has appeared
+      if (!inputs.dynamic_fire_points_file.empty()) {
+        apply_dynamic_fire_points(phi, geom,
+                                  inputs.dynamic_fire_points_file,
+                                  inputs.fire_gaussian_sigma);
+      }
+
+      // --- Write checkpoint if requested
+      if (inputs.chk_int > 0 && (step % inputs.chk_int == 0)) {
+        char chk_buf[64];
+        std::snprintf(chk_buf, sizeof(chk_buf), "chk%04d", step);
+        write_checkpoint(chk_buf, phi, geom, step, time);
+      }
 
       // --- Step 7: Update states, record outputs, step time
       if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {

@@ -146,6 +146,15 @@ struct InputParameters {
     // CSV fire points initialization (takes precedence over source_type when non-empty)
     std::string fire_points_file;            // Path to CSV file with X Y [Z] ignition point coordinates
     amrex::Real fire_gaussian_sigma;         // Gaussian sigma for each ignition point (physical units); <=0 means auto (3 cells)
+
+    // Dynamic fire points file (checked at every time step)
+    std::string dynamic_fire_points_file;    // Path to a CSV file polled each step; when the file is present its
+                                             // ignition points are merged into phi and the file is deleted/ignored
+                                             // until it reappears (default: "" = disabled)
+
+    // Checkpoint / restart options
+    int chk_int;                             // Write a checkpoint file every chk_int steps; <=0 disables (default: -1)
+    std::string restart_chkfile;             // Path to a checkpoint directory to restart from (default: "" = cold start)
 };
 
 void parse_inputs(InputParameters& inputs);

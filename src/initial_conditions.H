@@ -605,3 +605,168 @@ static void init_phi_from_eb_implicit_indicator(MultiFab& phi, const Geometry& g
         }
     }
 }
+
+// ======================= Apply dynamic fire points from CSV at runtime ===========
+// Called at every time step.  If `filename` exists on disk, its ignition points
+// are merged into phi by taking element-wise min(phi, new_sdf) so that already-
+// burning cells are never extinguished and new ignitions are only added.
+// After the points are applied the file is renamed to "<filename>.applied" so that
+// the same events are not re-applied on the next step.  Dropping a new CSV under
+// the original name again will trigger a second application.
+//
+// sigma > 0  use provided value (physical units)
+// sigma <=0  auto-select as 3 * min(dx, dy [, dz])
+static void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
+                                       const std::string& filename,
+                                       amrex::Real sigma)
+{
+    // Only the I/O processor checks for the file; result is broadcast.
+    int file_exists = 0;
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream test(filename);
+        file_exists = test.is_open() ? 1 : 0;
+    }
+    amrex::ParallelDescriptor::Bcast(&file_exists, 1,
+                                     amrex::ParallelDescriptor::IOProcessorNumber());
+    if (!file_exists) return;
+
+    // Read and broadcast ignition points (same logic as init_phi_from_fire_points_csv)
+    std::vector<amrex::Real> pts_x, pts_y, pts_z;
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream fin(filename);
+        std::string line;
+        while (std::getline(fin, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            for (char& c : line) { if (c == ',') c = ' '; }
+            std::istringstream iss(line);
+            amrex::Real x = 0.0, y = 0.0, z = 0.0;
+            if (!(iss >> x >> y)) continue;
+            iss >> z;
+            pts_x.push_back(x);
+            pts_y.push_back(y);
+            pts_z.push_back(z);
+        }
+        amrex::Print() << "apply_dynamic_fire_points: read " << pts_x.size()
+                       << " ignition point(s) from '" << filename << "'\n";
+
+        // Rename the file so it is not re-applied next step
+        std::string done_name = filename + ".applied";
+        std::rename(filename.c_str(), done_name.c_str());
+    }
+
+    {
+        int n = static_cast<int>(pts_x.size());
+        amrex::ParallelDescriptor::Bcast(&n, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+        pts_x.resize(n); pts_y.resize(n); pts_z.resize(n);
+        amrex::ParallelDescriptor::Bcast(pts_x.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+        amrex::ParallelDescriptor::Bcast(pts_y.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+        amrex::ParallelDescriptor::Bcast(pts_z.data(), n, amrex::ParallelDescriptor::IOProcessorNumber());
+    }
+
+    if (pts_x.empty()) return;
+
+    const auto dx  = geom.CellSize();
+    const auto plo = geom.ProbLo();
+
+    if (sigma <= 0.0) {
+#if (AMREX_SPACEDIM == 3)
+        sigma = 3.0 * std::min({dx[0], dx[1], dx[2]});
+#else
+        sigma = 3.0 * std::min(dx[0], dx[1]);
+#endif
+    }
+
+    const int npts = static_cast<int>(pts_x.size());
+    amrex::Gpu::DeviceVector<amrex::Real> d_pts_x(npts), d_pts_y(npts), d_pts_z(npts);
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_x.begin(), pts_x.end(), d_pts_x.begin());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_y.begin(), pts_y.end(), d_pts_y.begin());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, pts_z.begin(), pts_z.end(), d_pts_z.begin());
+    const amrex::Real* px = d_pts_x.data();
+    const amrex::Real* py = d_pts_y.data();
+    const amrex::Real* pz = d_pts_z.data();
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const p = phi.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const amrex::Real x = plo[0] + (i + 0.5) * dx[0];
+            const amrex::Real y = plo[1] + (j + 0.5) * dx[1];
+#if (AMREX_SPACEDIM == 3)
+            const amrex::Real z = plo[2] + (k + 0.5) * dx[2];
+#else
+            (void)k;
+            (void)pz;
+#endif
+            amrex::Real min_dist = std::numeric_limits<amrex::Real>::max();
+            for (int n = 0; n < npts; ++n) {
+#if (AMREX_SPACEDIM == 3)
+                amrex::Real r2 = (x - px[n])*(x - px[n])
+                               + (y - py[n])*(y - py[n])
+                               + (z - pz[n])*(z - pz[n]);
+#else
+                amrex::Real r2 = (x - px[n])*(x - px[n])
+                               + (y - py[n])*(y - py[n]);
+#endif
+                amrex::Real dist = std::sqrt(r2);
+                if (dist < min_dist) min_dist = dist;
+            }
+            // New fire-disk SDF; merge with existing phi by taking the minimum
+            // (more negative = more inside fire)
+            amrex::Real new_phi = min_dist - sigma;
+            if (new_phi < p(i,j,k)) p(i,j,k) = new_phi;
+        });
+    }
+}
+
+// ======================= Checkpoint write =======================================
+// Writes phi and scalar metadata (step number, simulation time) to an AMReX
+// checkpoint directory named `chk_name`.
+static void write_checkpoint(const std::string& chk_name,
+                              const MultiFab& phi,
+                              const Geometry& /*geom*/,
+                              int step,
+                              amrex::Real time)
+{
+    // AMReX checkpoint convention: write MultiFab data under the directory, then
+    // write a "Header" ASCII file that records the time and step so a restart can
+    // recover them.
+    amrex::VisMF::Write(phi, amrex::MultiFabFileFullPrefix(0, chk_name, "Level_0", "phi"));
+
+    // Write the header on the I/O processor only.
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::string header_name = chk_name + "/Header";
+        std::ofstream hdr(header_name);
+        hdr << "wildfire_levelset checkpoint v1\n";
+        hdr << step << "\n";
+        hdr << time << "\n";
+        hdr.close();
+        amrex::Print() << "Wrote checkpoint: " << chk_name << "\n";
+    }
+}
+
+// ======================= Checkpoint read ========================================
+// Reads phi and scalar metadata from a previously written checkpoint directory.
+// On return `step` and `time` reflect the saved state.
+static void read_checkpoint(const std::string& chk_name,
+                             MultiFab& phi,
+                             int& step,
+                             amrex::Real& time)
+{
+    // Read header on the I/O processor and broadcast to all ranks.
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::string header_name = chk_name + "/Header";
+        std::ifstream hdr(header_name);
+        if (!hdr.is_open())
+            amrex::Abort("read_checkpoint: cannot open header file: " + header_name);
+        std::string version;
+        std::getline(hdr, version);  // discard version line
+        hdr >> step >> time;
+        amrex::Print() << "Restarting from checkpoint: " << chk_name
+                       << "  step=" << step << "  time=" << time << "\n";
+    }
+    amrex::ParallelDescriptor::Bcast(&step, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+    amrex::ParallelDescriptor::Bcast(&time, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+
+    amrex::VisMF::Read(phi, amrex::MultiFabFileFullPrefix(0, chk_name, "Level_0", "phi"));
+}
