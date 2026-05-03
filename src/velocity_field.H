@@ -124,7 +124,7 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
     amrex::Print() << "Velocity field interpolated from unstructured data\n";
 }
 
-// ======================= Load wind field data from file ==========================
+// ======================= Update time-dependent velocity field ====================
 static void load_wind_field_data(const std::string& filename,
                                   std::vector<Real>& x_data,
                                   std::vector<Real>& y_data,
@@ -317,3 +317,292 @@ static void update_time_dependent_velocity(MultiFab& vel, const Geometry& geom,
                                 time_fraction);
 }
 #endif  // AMREX_SPACEDIM == 2
+
+// ======================= PLT Wind: Scan directory for file timestamps =============
+// Probes for plt00000, plt00001, ... in plt_wind_dir and reads the simulation
+// time stored in each file's Header.  Stops at the first missing index.
+#include <AMReX_PlotFileUtil.H>
+
+static void scan_plt_wind_files(const std::string& plt_wind_dir,
+                                 std::vector<Real>& timestamps)
+{
+    timestamps.clear();
+    for (int i = 0; ; ++i) {
+        char hdr_path[512];
+        std::snprintf(hdr_path, sizeof(hdr_path), "%s/plt%05d/Header",
+                      plt_wind_dir.c_str(), i);
+        std::ifstream hdr_test(hdr_path);
+        if (!hdr_test.is_open()) break;
+        hdr_test.close();
+
+        char plt_path[512];
+        std::snprintf(plt_path, sizeof(plt_path), "%s/plt%05d",
+                      plt_wind_dir.c_str(), i);
+        std::string plt_path_str(plt_path);
+        PlotFileData pf(plt_path_str);
+        timestamps.push_back(static_cast<Real>(pf.time()));
+    }
+
+    if (timestamps.empty()) {
+        amrex::Abort("No plt wind files found in directory: " + plt_wind_dir);
+    }
+
+    amrex::Print() << "PLT wind: found " << timestamps.size()
+                   << " files in " << plt_wind_dir << "\n";
+    for (int i = 0; i < static_cast<int>(timestamps.size()); ++i) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "plt%05d", i);
+        amrex::Print() << "  " << buf << "  t = " << timestamps[i] << " s\n";
+    }
+}
+
+// ======================= PLT Wind: Extract 2D wind slice from a plt file ==========
+// For AMREX_SPACEDIM==3 builds the data are sliced at the k-index that
+// corresponds to fire_height in the plt file's coordinate system.
+// For AMREX_SPACEDIM==2 builds the plt files must already be 2-D and
+// fire_height is ignored.
+static void extract_wind_from_plt(const std::string& plt_wind_dir, int file_idx,
+                                    const std::string& u_var, const std::string& v_var,
+                                    Real fire_height,
+                                    std::vector<Real>& x_data,
+                                    std::vector<Real>& y_data,
+                                    std::vector<Real>& u_data,
+                                    std::vector<Real>& v_data)
+{
+    char plt_path[512];
+    std::snprintf(plt_path, sizeof(plt_path), "%s/plt%05d",
+                  plt_wind_dir.c_str(), file_idx);
+    std::string plt_path_str(plt_path);
+
+    PlotFileData pf(plt_path_str);
+
+    MultiFab mf_u = pf.get(0, u_var);
+    MultiFab mf_v = pf.get(0, v_var);
+
+    const auto problo = pf.probLo();
+    const auto dx     = pf.cellSize(0);
+
+    x_data.clear(); y_data.clear(); u_data.clear(); v_data.clear();
+
+#if (AMREX_SPACEDIM == 3)
+    // Find the k-index in the plt file that sits closest to fire_height
+    Box domain0 = pf.probDomain(0);
+    int target_k = static_cast<int>((fire_height - problo[2]) / dx[2]);
+    int k_lo = domain0.smallEnd(2);
+    int k_hi = domain0.bigEnd(2);
+    target_k = std::max(k_lo, std::min(k_hi, target_k));
+
+    amrex::Print() << "PLT wind: slicing " << plt_path_str
+                   << " at k=" << target_k
+                   << " (fire_height=" << fire_height << " m)\n";
+
+    for (MFIter mfi(mf_u); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        if (target_k < bx.smallEnd(2) || target_k > bx.bigEnd(2)) continue;
+
+        Array4<Real const> u_arr = mf_u.const_array(mfi);
+        Array4<Real const> v_arr = mf_v.const_array(mfi);
+
+        const int k = target_k;
+        for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+            for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+                x_data.push_back(x);
+                y_data.push_back(y);
+                u_data.push_back(u_arr(i, j, k, 0));
+                v_data.push_back(v_arr(i, j, k, 0));
+            }
+        }
+    }
+#else
+    // 2-D plt files: use all cells directly; fire_height is not used for slicing
+    (void)fire_height;
+    for (MFIter mfi(mf_u); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        Array4<Real const> u_arr = mf_u.const_array(mfi);
+        Array4<Real const> v_arr = mf_v.const_array(mfi);
+
+        for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+            for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+                x_data.push_back(x);
+                y_data.push_back(y);
+                u_data.push_back(u_arr(i, j, 0, 0));
+                v_data.push_back(v_arr(i, j, 0, 0));
+            }
+        }
+    }
+#endif
+
+    if (x_data.empty()) {
+        amrex::Abort("No wind data extracted from plt file: " + plt_path_str);
+    }
+
+    amrex::Print() << "PLT wind: extracted " << x_data.size()
+                   << " points from " << plt_path_str << "\n";
+}
+
+// ======================= PLT Wind: Interpolate scattered (x,y,u,v) to MultiFab ===
+// Applies Wendland C² RBF spatial interpolation with temporal blending between
+// two time snapshots.  Works for both 2-D and 3-D simulation domains: for 3-D
+// builds the same (u,v) derived from the fire_height slice are applied at
+// every k-level; the w-component is always set to zero.
+static void interpolate_plt_wind_to_vel(MultiFab& vel, const Geometry& geom,
+                                         const std::vector<Real>& x_data1,
+                                         const std::vector<Real>& y_data1,
+                                         const std::vector<Real>& u_data1,
+                                         const std::vector<Real>& v_data1,
+                                         const std::vector<Real>& x_data2,
+                                         const std::vector<Real>& y_data2,
+                                         const std::vector<Real>& u_data2,
+                                         const std::vector<Real>& v_data2,
+                                         Real time_fraction)
+{
+    int n_points = static_cast<int>(x_data1.size());
+
+    Real x_min_d = *std::min_element(x_data1.begin(), x_data1.end());
+    Real x_max_d = *std::max_element(x_data1.begin(), x_data1.end());
+    Real y_min_d = *std::min_element(y_data1.begin(), y_data1.end());
+    Real y_max_d = *std::max_element(y_data1.begin(), y_data1.end());
+    Real area    = (x_max_d - x_min_d) * (y_max_d - y_min_d);
+    Real h = (area > Real(0.0) && n_points > 1)
+                 ? std::sqrt(area / static_cast<Real>(n_points))
+                 : Real(1.0);
+
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_su1, d_sv1, d_su2, d_sv2;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(x_data1, y_data1, h,
+                                            d_sx, d_sy,
+                                            d_bstart, d_bcount, cl);
+
+    std::vector<Real> u1_sorted = reorder_values(u_data1, sidx);
+    std::vector<Real> v1_sorted = reorder_values(v_data1, sidx);
+    std::vector<Real> u2_sorted = reorder_values(u_data2, sidx);
+    std::vector<Real> v2_sorted = reorder_values(v_data2, sidx);
+
+    d_su1.resize(n_points); d_sv1.resize(n_points);
+    d_su2.resize(n_points); d_sv2.resize(n_points);
+    Gpu::copy(Gpu::hostToDevice, u1_sorted.begin(), u1_sorted.end(), d_su1.begin());
+    Gpu::copy(Gpu::hostToDevice, v1_sorted.begin(), v1_sorted.end(), d_sv1.begin());
+    Gpu::copy(Gpu::hostToDevice, u2_sorted.begin(), u2_sorted.end(), d_su2.begin());
+    Gpu::copy(Gpu::hostToDevice, v2_sorted.begin(), v2_sorted.end(), d_sv2.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* u1_ptr = d_su1.data();
+    Real const* v1_ptr = d_sv1.data();
+    Real const* u2_ptr = d_su2.data();
+    Real const* v2_ptr = d_sv2.data();
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const v  = vel.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = problo[0] + (i + Real(0.5)) * dx[0];
+            Real y = problo[1] + (j + Real(0.5)) * dx[1];
+
+            Real u1_val = cell_list_interp(cl, u1_ptr, x, y);
+            Real v1_val = cell_list_interp(cl, v1_ptr, x, y);
+            Real u2_val = cell_list_interp(cl, u2_ptr, x, y);
+            Real v2_val = cell_list_interp(cl, v2_ptr, x, y);
+
+            v(i,j,k,0) = u1_val + time_fraction * (u2_val - u1_val);
+            v(i,j,k,1) = v1_val + time_fraction * (v2_val - v1_val);
+            v(i,j,k,2) = Real(0.0);
+        });
+    }
+}
+
+// ======================= PLT Wind: Update velocity field each time step ===========
+// Manages the two-snapshot cache and drives temporal interpolation.  On the
+// first call timestamps is populated by scanning plt_wind_dir.
+static void update_plt_wind_velocity(MultiFab& vel, const Geometry& geom,
+                                      const std::string& plt_wind_dir,
+                                      const std::string& u_var,
+                                      const std::string& v_var,
+                                      Real fire_height,
+                                      Real current_time,
+                                      // state cached between calls:
+                                      std::vector<Real>& timestamps,
+                                      std::vector<Real>& x_data1,
+                                      std::vector<Real>& y_data1,
+                                      std::vector<Real>& u_data1,
+                                      std::vector<Real>& v_data1,
+                                      std::vector<Real>& x_data2,
+                                      std::vector<Real>& y_data2,
+                                      std::vector<Real>& u_data2,
+                                      std::vector<Real>& v_data2,
+                                      int& loaded_idx1,
+                                      int& loaded_idx2)
+{
+    // Populate timestamps on first call
+    if (timestamps.empty()) {
+        scan_plt_wind_files(plt_wind_dir, timestamps);
+    }
+
+    const int n_files = static_cast<int>(timestamps.size());
+
+    // Find the pair of file indices that bracket current_time
+    int idx1 = 0, idx2 = 0;
+    if (n_files == 1 || current_time <= timestamps[0]) {
+        idx1 = idx2 = 0;
+    } else if (current_time >= timestamps[n_files - 1]) {
+        idx1 = idx2 = n_files - 1;
+    } else {
+        for (int i = 0; i < n_files - 1; ++i) {
+            if (current_time >= timestamps[i] && current_time < timestamps[i + 1]) {
+                idx1 = i;
+                idx2 = i + 1;
+                break;
+            }
+        }
+    }
+
+    // Reload wind data only when the bracketing pair changes
+    if (idx1 != loaded_idx1 || idx2 != loaded_idx2) {
+        char b1[32], b2[32];
+        std::snprintf(b1, sizeof(b1), "plt%05d", idx1);
+        std::snprintf(b2, sizeof(b2), "plt%05d", idx2);
+        amrex::Print() << "PLT wind: loading " << b1 << " and " << b2
+                       << " at t=" << current_time << " s\n";
+
+        extract_wind_from_plt(plt_wind_dir, idx1, u_var, v_var, fire_height,
+                               x_data1, y_data1, u_data1, v_data1);
+        if (idx1 != idx2) {
+            extract_wind_from_plt(plt_wind_dir, idx2, u_var, v_var, fire_height,
+                                   x_data2, y_data2, u_data2, v_data2);
+        } else {
+            x_data2 = x_data1;
+            y_data2 = y_data1;
+            u_data2 = u_data1;
+            v_data2 = v_data1;
+        }
+
+        loaded_idx1 = idx1;
+        loaded_idx2 = idx2;
+    }
+
+    // Time fraction within the current interval
+    Real time_fraction = Real(0.0);
+    if (idx1 != idx2 && timestamps[idx2] > timestamps[idx1]) {
+        time_fraction = (current_time - timestamps[idx1])
+                      / (timestamps[idx2] - timestamps[idx1]);
+        time_fraction = std::max(Real(0.0), std::min(Real(1.0), time_fraction));
+    }
+
+    interpolate_plt_wind_to_vel(vel, geom,
+                                 x_data1, y_data1, u_data1, v_data1,
+                                 x_data2, y_data2, u_data2, v_data2,
+                                 time_fraction);
+}

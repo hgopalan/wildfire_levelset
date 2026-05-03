@@ -193,6 +193,13 @@ int main(int argc, char* argv[])
     }
         
     // Initialize velocity field
+    // PLT wind state (shared between init and time loop; works for any AMREX_SPACEDIM)
+    std::vector<Real> plt_wind_timestamps;
+    std::vector<Real> plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1;
+    std::vector<Real> plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2;
+    int plt_wind_loaded_idx1 = -1;
+    int plt_wind_loaded_idx2 = -1;
+
 #if (AMREX_SPACEDIM == 2)
     // Storage for time-dependent wind field data
     std::vector<Real> wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1;
@@ -200,7 +207,21 @@ int main(int argc, char* argv[])
     int current_wind_field_index = -1;
     int next_wind_field_index = -1;
     
-    if (!inputs.velocity_file.empty()) {
+    if (inputs.use_plt_wind == 1) {
+      // Option 3: plt wind files from external directory
+      amrex::Print() << "Using external plt wind files from: " << inputs.plt_wind_dir
+                     << "  u_var=" << inputs.plt_wind_u_var
+                     << "  v_var=" << inputs.plt_wind_v_var
+                     << "  fire_height=" << inputs.fire_height << " m\n";
+      update_plt_wind_velocity(vel, geom,
+                               inputs.plt_wind_dir,
+                               inputs.plt_wind_u_var, inputs.plt_wind_v_var,
+                               inputs.fire_height, 0.0,
+                               plt_wind_timestamps,
+                               plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
+                               plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
+                               plt_wind_loaded_idx1, plt_wind_loaded_idx2);
+    } else if (!inputs.velocity_file.empty()) {
       if (inputs.use_time_dependent_wind == 1) {
         // Time-dependent wind field: load initial two snapshots
         amrex::Print() << "Using time-dependent wind fields with spacing = " 
@@ -217,7 +238,23 @@ int main(int argc, char* argv[])
       init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
     }
 #else
-    init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+    if (inputs.use_plt_wind == 1) {
+      // Option 3: plt wind files from external directory (3-D build)
+      amrex::Print() << "Using external plt wind files from: " << inputs.plt_wind_dir
+                     << "  u_var=" << inputs.plt_wind_u_var
+                     << "  v_var=" << inputs.plt_wind_v_var
+                     << "  fire_height=" << inputs.fire_height << " m\n";
+      update_plt_wind_velocity(vel, geom,
+                               inputs.plt_wind_dir,
+                               inputs.plt_wind_u_var, inputs.plt_wind_v_var,
+                               inputs.fire_height, 0.0,
+                               plt_wind_timestamps,
+                               plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
+                               plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
+                               plt_wind_loaded_idx1, plt_wind_loaded_idx2);
+    } else {
+      init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+    }
 #endif
 
     // Initialize terrain slopes
@@ -376,6 +413,16 @@ int main(int argc, char* argv[])
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
       
       // Update time-dependent wind field if enabled
+      if (inputs.use_plt_wind == 1) {
+        update_plt_wind_velocity(vel, geom,
+                                 inputs.plt_wind_dir,
+                                 inputs.plt_wind_u_var, inputs.plt_wind_v_var,
+                                 inputs.fire_height, time,
+                                 plt_wind_timestamps,
+                                 plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
+                                 plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
+                                 plt_wind_loaded_idx1, plt_wind_loaded_idx2);
+      }
 #if (AMREX_SPACEDIM == 2)
       if (!inputs.velocity_file.empty() && inputs.use_time_dependent_wind == 1) {
         update_time_dependent_velocity(vel, geom, inputs.velocity_file, time, inputs.wind_time_spacing,
