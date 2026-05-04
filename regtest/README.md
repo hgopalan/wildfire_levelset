@@ -9,6 +9,7 @@ regtest/
 ├── basic_levelset/       # Basic level-set advection with constant velocity
 ├── farsite_ellipse/      # FARSITE elliptical fire expansion (Richards 1990)
 ├── rothermel_fuel/       # Rothermel model with different fuel types
+├── balbi_fuel/           # Balbi (2009) physical fire spread model
 ├── terrain_wind/         # External terrain (Gaussian hill) and wind field
 ├── anderson_lw/          # Anderson (1983) dynamic L/W ratio
 ├── reinitialization/     # Level-set reinitialization testing
@@ -106,7 +107,31 @@ done
 
 ---
 
-### 4. terrain_wind ⭐
+### 4. balbi_fuel
+**Purpose**: Tests the Balbi (2009) physical fire spread model with a standard Anderson fuel type.
+
+**Features**:
+- Balbi (2009) radiation-driven rate-of-spread model
+- FM4 (Southern California chaparral) fuel from the Anderson 13 database
+- LCP-derived fuel properties (σ, δ, w₀, ρ_p) reused by the Balbi model
+- User-specified thermal parameters via `balbi.*` parmparse keys
+- Auto-generated Balbi fuel parameter table printed at startup
+- Level-set advection driven by Balbi ROS field
+
+**Expected Runtime**: ~1 minute
+
+**Key Parameters**:
+- Fuel: FM4 (Chaparral, 2.5 ft deep)
+- Fuel moisture: 8%
+- Balbi thermal defaults: T_a=300 K, T_f=1000 K, T_i=600 K
+- Wind: 5 m/s from west
+
+**Reference**: Balbi, J.-H., et al. (2009). "A physical model for wildland fires."
+  *Combustion and Flame*, 156(12), 2217–2230. https://doi.org/10.1016/j.combustflame.2009.07.010
+
+---
+
+### 6. terrain_wind ⭐
 **Purpose**: Tests external terrain and spatially-varying wind field (Gaussian hill).
 
 **Features**:
@@ -132,7 +157,7 @@ done
 
 ---
 
-### 5. anderson_lw
+### 7. anderson_lw
 **Purpose**: Tests dynamic L/W ratio calculation based on wind speed (Anderson 1983).
 
 **Features**:
@@ -151,7 +176,7 @@ done
 
 ---
 
-### 6. reinitialization
+### 8. reinitialization
 **Purpose**: Tests level-set reinitialization to maintain signed distance property.
 
 **Features**:
@@ -169,7 +194,7 @@ done
 
 ---
 
-### 7. 3d_sphere
+### 9. 3d_sphere
 **Purpose**: Tests full 3D fire spread simulation.
 
 **Features**:
@@ -193,7 +218,7 @@ done
 
 ---
 
-### 8. ellipse_sdf
+### 10. ellipse_sdf
 **Purpose**: Tests elliptical initial condition with signed distance function.
 
 **Features**:
@@ -215,7 +240,7 @@ done
 
 ---
 
-### 9. eb_implicit
+### 11. eb_implicit
 **Purpose**: Tests embedded boundary capabilities using implicit function representations.
 
 **Features**:

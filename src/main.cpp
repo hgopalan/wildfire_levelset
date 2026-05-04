@@ -32,6 +32,8 @@ using namespace amrex;
 #include "firebrand_spotting.H"
 #include "albini_spotting.H"
 #include "compute_fire_behavior.H"
+#include "balbi_model.H"
+#include "compute_balbi_R.H"
 
 
 // ======================= Main ================================================
@@ -304,15 +306,50 @@ int main(int argc, char* argv[])
                        << ")\n";
     }
 
+    // ---------------- Balbi (2009) lookup table (if enabled) -------------
+    Gpu::DeviceVector<BalbiComputed> d_balbi_table;
+    const BalbiComputed* d_balbi_table_ptr = nullptr;
+    int balbi_table_size = 0;
+
+    if (inputs.balbi.enable == 1) {
+        // Print Balbi fuel parameter table
+        print_balbi_fuel_table(inputs.rothermel, inputs.balbi,
+                               inputs.rothermel.landscape_fuel_type);
+
+        if (!inputs.rothermel.landscape_file.empty()) {
+            std::vector<BalbiComputed> h_balbi_table =
+                build_fuel_balbi_table(inputs.rothermel, inputs.balbi,
+                                       inputs.rothermel.landscape_fuel_type);
+            balbi_table_size = static_cast<int>(h_balbi_table.size());
+            d_balbi_table.resize(balbi_table_size);
+            Gpu::copy(Gpu::hostToDevice,
+                      h_balbi_table.begin(), h_balbi_table.end(),
+                      d_balbi_table.begin());
+            d_balbi_table_ptr = d_balbi_table.data();
+            amrex::Print() << "Built per-cell Balbi lookup table: "
+                           << balbi_table_size << " entries ("
+                           << (inputs.rothermel.landscape_fuel_type == "40"
+                               ? "FBFM40" : "FBFM13")
+                           << ")\n";
+        }
+    }
+
     // ---------------- dt from CFL --------------------------
     Real dt=10;
     if (inputs.skip_levelset == 0)
       {
-        // Compute Rothermel wind speed R
-        compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+        if (inputs.balbi.enable == 1) {
+            compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                             d_fuel_table_ptr, fuel_table_size);
+                             d_balbi_table_ptr, balbi_table_size);
+        } else {
+            // Compute Rothermel wind speed R
+            compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+                                 terrain_slopes.get(),
+                                 !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                                 d_fuel_table_ptr, fuel_table_size);
+        }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
       } else {
@@ -390,16 +427,25 @@ int main(int argc, char* argv[])
       }
 #endif
       
-      // --- Step 2: Compute surface ROS via Rothermel/Level Set
-      // Update Rothermel wind speed R and dt
-  	compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
-                          terrain_slopes.get(),
-                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                          d_fuel_table_ptr, fuel_table_size);
+      // --- Step 2: Compute surface ROS via Rothermel or Balbi / Level Set
+      if (inputs.balbi.enable == 1) {
+          compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
+                           terrain_slopes.get(),
+                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                           d_balbi_table_ptr, balbi_table_size);
+      } else {
+          compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+                               terrain_slopes.get(),
+                               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                               d_fuel_table_ptr, fuel_table_size);
+      }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       if (inputs.skip_levelset == 0) {
 	// Traditional level set advection
-	advect_levelset_weno5z_rk3 (phi, vel, geom, dt_step, inputs.rothermel, terrain_slopes.get());
+	// When Balbi is active, pass pre-computed R_mf so advection uses Balbi ROS
+	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
+                                   terrain_slopes.get(),
+                                   inputs.balbi.enable == 1 ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else if (inputs.farsite.enable == 1) {
 	// --- Step 3: Generate elliptical wavelets per vertex

@@ -9,7 +9,8 @@ static void build_rhs_weno5z(const MultiFab& phi,
                              MultiFab& rhs,
                              const Geometry& geom,
                              const RothermelParams& rp,
-                             const MultiFab* slopes = nullptr)
+                             const MultiFab* slopes = nullptr,
+                             const MultiFab* R_precomputed = nullptr)
 {
     const auto dx = geom.CellSize();
 #if (AMREX_SPACEDIM == 3)
@@ -46,7 +47,8 @@ static void build_rhs_weno5z(const MultiFab& phi,
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
 
-    // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R from Rothermel (1972). 
+    // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R from Rothermel (1972)
+    // or from a pre-computed R MultiFab (e.g. Balbi model).
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx  = mfi.validbox();
         auto const p   = phi.const_array(mfi);
@@ -60,6 +62,13 @@ static void build_rhs_weno5z(const MultiFab& phi,
             s = slopes->const_array(mfi);
         }
 
+        // Pre-computed R field (e.g. from Balbi model)
+        const bool use_R_precomp = (R_precomputed != nullptr);
+        Array4<const Real> R_pre;
+        if (use_R_precomp) {
+            R_pre = R_precomputed->const_array(mfi);
+        }
+
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // |∇φ| using your existing Godunov/WENO5 routine (structure preserved)
             Real grad_norm = godunov_norm_grad_phi(p, i, j, k, gdx);
@@ -67,32 +76,39 @@ static void build_rhs_weno5z(const MultiFab& phi,
             // Laplacian Δφ
             Real lap = laplacian_phi(p, i, j, k);
 
-            // Horizontal wind components
-            Real ux = v(i,j,k,0);
-            Real uy = v(i,j,k,1);
-
-            // Wind speed in ft/min (Rothermel units)
-            Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
-
-            // Wind factor φ_w (Rothermel Eq. 47)
-            Real phi_w = (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : 0.0;
-
-            // Slope factor φ_s: use terrain-based if available, otherwise constant
-            Real phi_s;
-            if (use_terrain) {
-                // Compute phi_s from terrain slopes at this cell
-                // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
-                Real slope_x = s(i,j,k,0);
-                Real slope_y = s(i,j,k,1);
-                Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
+            // Rate of spread: use pre-computed field or compute Rothermel inline
+            Real R;
+            if (use_R_precomp) {
+                // Pre-computed ROS [m/s] (from Balbi or other external model)
+                R = amrex::max(R_pre(i, j, k), Real(0.0));
             } else {
-                // Use constant phi_s from RothermelComputed
-                phi_s = phi_s_const;
-            }
+                // Horizontal wind components
+                Real ux = v(i,j,k,0);
+                Real uy = v(i,j,k,1);
 
-            // Rate of spread [ft/min] → simulation units
-            Real R = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+                // Wind speed in ft/min (Rothermel units)
+                Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
+
+                // Wind factor φ_w (Rothermel Eq. 47)
+                Real phi_w = (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : 0.0;
+
+                // Slope factor φ_s: use terrain-based if available, otherwise constant
+                Real phi_s;
+                if (use_terrain) {
+                    // Compute phi_s from terrain slopes at this cell
+                    // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
+                    Real slope_x = s(i,j,k,0);
+                    Real slope_y = s(i,j,k,1);
+                    Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
+                    phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
+                } else {
+                    // Use constant phi_s from RothermelComputed
+                    phi_s = phi_s_const;
+                }
+
+                // Rate of spread [ft/min] → simulation units
+                R = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            }
 
             // Final RHS (keeps your WENO5 & RK3 integrators intact)
             fr(i,j,k) = -R * (grad_norm - eps_visc * lap);
@@ -107,7 +123,8 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
                                        const Geometry& geom,
                                        Real dt,
                                        const RothermelParams& rp,
-                                       const MultiFab* slopes = nullptr)
+                                       const MultiFab* slopes = nullptr,
+                                       const MultiFab* R_precomputed = nullptr)
 {
     const auto& ba = phi.boxArray();
     const auto& dm = phi.DistributionMap();
@@ -119,7 +136,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
 
 
     // ---------- Stage 1 ----------
-    build_rhs_weno5z(phi, vel, rhs, geom, rp, slopes);
+    build_rhs_weno5z(phi, vel, rhs, geom, rp, slopes, R_precomputed);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p  = phi.const_array(mfi);
@@ -132,7 +149,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
     fill_boundary_extrap(phi1, geom);
 
     // ---------- Stage 2 ----------
-    build_rhs_weno5z(phi1, vel, rhs, geom, rp, slopes);
+    build_rhs_weno5z(phi1, vel, rhs, geom, rp, slopes, R_precomputed);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p   = phi.const_array(mfi);
@@ -146,7 +163,7 @@ static void advect_levelset_weno5z_rk3(MultiFab& phi,
     fill_boundary_extrap(phi2, geom);
 
     // ---------- Stage 3 ----------
-    build_rhs_weno5z(phi2, vel, rhs, geom, rp, slopes);
+    build_rhs_weno5z(phi2, vel, rhs, geom, rp, slopes, R_precomputed);
     for (MFIter mfi(phi, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const Box& tbx = mfi.tilebox();
         auto const p   = phi.const_array(mfi);

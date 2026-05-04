@@ -257,6 +257,35 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Balbi (2009) physical fire spread model --------
+    p.balbi.enable   = 0;          pp.query("balbi.enable",   p.balbi.enable);
+    p.balbi.T_a      = 300.0;      pp.query("balbi.T_a",      p.balbi.T_a);
+    p.balbi.T_f      = 1000.0;     pp.query("balbi.T_f",      p.balbi.T_f);
+    p.balbi.T_i      = 600.0;      pp.query("balbi.T_i",      p.balbi.T_i);
+    p.balbi.delta_H  = 2.26e6;     pp.query("balbi.delta_H",  p.balbi.delta_H);
+    p.balbi.C_pf     = 1800.0;     pp.query("balbi.C_pf",     p.balbi.C_pf);
+    p.balbi.r_00     = 2.5e-4;     pp.query("balbi.r_00",     p.balbi.r_00);
+    p.balbi.tau_0    = 75591.0;    pp.query("balbi.tau_0",    p.balbi.tau_0);
+
+    if (p.balbi.enable == 1) {
+        if (p.balbi.T_a <= 0.0)
+            amrex::Abort("balbi.T_a must be > 0 K");
+        if (p.balbi.T_f <= p.balbi.T_a)
+            amrex::Abort("balbi.T_f must be > balbi.T_a");
+        if (p.balbi.T_i <= p.balbi.T_a)
+            amrex::Abort("balbi.T_i must be > balbi.T_a");
+        if (p.balbi.tau_0 <= 0.0)
+            amrex::Abort("balbi.tau_0 must be > 0");
+        if (p.balbi.r_00 <= 0.0)
+            amrex::Abort("balbi.r_00 must be > 0");
+        Print() << "Balbi (2009) fire spread model ENABLED\n";
+        Print() << "  T_a=" << p.balbi.T_a << " K  T_f=" << p.balbi.T_f
+                << " K  T_i=" << p.balbi.T_i << " K\n";
+        Print() << "  C_pf=" << p.balbi.C_pf << " J/(kg·K)"
+                << "  r_00=" << p.balbi.r_00 << " m"
+                << "  tau_0=" << p.balbi.tau_0 << " s/m\n";
+    }
+
     // -------- Albini (1983) firebrand spotting with 2-D trajectory --------
     p.albini_spotting.enable             = 0;        pp.query("albini_spotting.enable",             p.albini_spotting.enable);
     p.albini_spotting.terminal_velocity  = 1.0;      pp.query("albini_spotting.terminal_velocity",  p.albini_spotting.terminal_velocity);
