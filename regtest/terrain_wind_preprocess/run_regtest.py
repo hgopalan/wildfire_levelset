@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-run_regtest.py - Regression test for tools/terrain_wind_preprocess.py
+run_regtest.py - Regression test for the split preprocessing tools:
+  tools/wrf_wind_reader.py, tools/srtm_terrain_reader.py, tools/landscape_writer.py
 
-Tests all major capabilities of the unified tool using only synthetic
-data (no internet access or real WRF/SRTM/LANDFIRE files required):
+Tests all major capabilities using only synthetic data (no internet access or
+real WRF/SRTM/LANDFIRE files required):
 
-  1. WRF wind extraction (basic)
-  2. Bounding box read from WRF file (--lat-min/max/lon-min/max ignored)
-  3. --no-terrain flag (terrain step skipped; wind still produced)
-  4. --time-range T1:TN (multiple wind files)
-  5. --time-index N (single time step)
-  6. --interpolate-wind (wind on SRTM-resolution grid)
-  7. SRTM terrain values not contaminated by WRF HGT_M
-  8. Landscape from local raster files (--elev-file etc.)
-  9. --subsample reduces output count
+  1. WRF wind extraction (basic) — wrf_wind_reader
+  2. Bounding box read from WRF file — wrf_wind_reader
+  3. --no-inputs flag (terrain step skipped; wind still produced) — wrf_wind_reader
+  4. --time-range T1:TN (multiple wind files) — wrf_wind_reader
+  5. --time-index N (single time step) — wrf_wind_reader
+  6. --terrain-file (wind interpolated onto existing terrain grid) — wrf_wind_reader
+  7. SRTM terrain values independent of WRF HGT_M — srtm_terrain_reader
+  8. Landscape from local raster files (--elev-file etc.) — landscape_writer
+  9. --subsample reduces output count — wrf_wind_reader
 
 Run:
   python3 regtest/terrain_wind_preprocess/run_regtest.py
@@ -36,7 +37,9 @@ _TOOLS_DIR = os.path.join(_REPO_ROOT, "tools")
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-import terrain_wind_preprocess as twp  # noqa: E402
+import wrf_wind_reader as wrf         # noqa: E402
+import srtm_terrain_reader as srtm    # noqa: E402
+import landscape_writer as lw         # noqa: E402
 
 
 # -----------------------------------------------------------------------
@@ -135,7 +138,7 @@ def _count(path):
 # Regression tests
 # -----------------------------------------------------------------------
 
-class RegressionTestTerrainWindPreprocess(unittest.TestCase):
+class RegressionTestPreprocessTools(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -149,11 +152,9 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         _make_wrf_nc(nc_path, ny=6, nx=8, n_times=1)
         wout = os.path.join(self.tmpdir, "wind_basic.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file", nc_path,
             "--wind",     wout,
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
@@ -172,7 +173,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
     # Test 2: Bounding box read from WRF file
     # -------------------------------------------------------------------
     def test_02_bbox_from_wrf_file(self):
-        """read_wrf_bbox returns lat/lon range matching synthetic WRF grid."""
+        """read_wrf_bbox returns center±0.45° bounding box from synthetic WRF grid."""
         ny, nx = 5, 7
         dlat = dlon = 0.01
         lat_sw, lon_sw = 35.0, -118.0
@@ -181,34 +182,35 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                      lat_sw=lat_sw, lon_sw=lon_sw,
                      dlat=dlat, dlon=dlon)
 
-        lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(nc_path)
+        lat_min, lat_max, lon_min, lon_max = wrf.read_wrf_bbox(nc_path)
 
-        self.assertAlmostEqual(lat_min, lat_sw, places=3)
-        self.assertAlmostEqual(lat_max, lat_sw + (ny - 1) * dlat, places=3)
-        self.assertAlmostEqual(lon_min, lon_sw, places=3)
-        self.assertAlmostEqual(lon_max, lon_sw + (nx - 1) * dlon, places=3)
+        # Expected: center ± 0.45°
+        center_lat = lat_sw + (ny - 1) * dlat / 2.0
+        center_lon = lon_sw + (nx - 1) * dlon / 2.0
+        self.assertAlmostEqual(lat_min, center_lat - wrf._WRF_BBOX_HALF_SPAN, places=3)
+        self.assertAlmostEqual(lat_max, center_lat + wrf._WRF_BBOX_HALF_SPAN, places=3)
+        self.assertAlmostEqual(lon_min, center_lon - wrf._WRF_BBOX_HALF_SPAN, places=3)
+        self.assertAlmostEqual(lon_max, center_lon + wrf._WRF_BBOX_HALF_SPAN, places=3)
 
     # -------------------------------------------------------------------
-    # Test 3: --no-terrain flag
+    # Test 3: wind file present even when --no-inputs is used
     # -------------------------------------------------------------------
-    def test_03_no_terrain_flag(self):
-        """--no-terrain: terrain file absent; wind file present and non-empty."""
+    def test_03_wind_without_inputs(self):
+        """--no-inputs: inputs.i absent; wind file present and non-empty."""
         nc_path = os.path.join(self.tmpdir, "wrf3.nc")
         _make_wrf_nc(nc_path, ny=5, nx=6, n_times=1)
-        tout = os.path.join(self.tmpdir, "terrain3.xyz")
+        inputs_out = os.path.join(self.tmpdir, "inputs3.i")
         wout = os.path.join(self.tmpdir, "wind3.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file", nc_path,
-            "--terrain",  tout,
+            "--inputs",   inputs_out,
             "--wind",     wout,
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
-        self.assertFalse(os.path.isfile(tout),
-                         "Terrain file must NOT be created with --no-terrain")
+        self.assertFalse(os.path.isfile(inputs_out),
+                         "inputs.i must NOT be created with --no-inputs")
         self.assertTrue(os.path.isfile(wout))
         self.assertGreater(_count(wout), 0)
 
@@ -221,17 +223,15 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         _make_wrf_nc(nc_path, ny=5, nx=6, n_times=3)
         base_wout = os.path.join(self.tmpdir, "wind4.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file",   nc_path,
             "--wind",       base_wout,
             "--time-range", "0:2",
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
         for pos in range(3):
-            expected_path = twp._wind_output_path(base_wout, pos)
+            expected_path = wrf._wind_output_path(base_wout, pos)
             self.assertTrue(os.path.isfile(expected_path),
                             f"Expected time-step file not found: {expected_path}")
             self.assertGreater(_count(expected_path), 0)
@@ -243,12 +243,10 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         _make_wrf_nc(nc_path, ny=ny, nx=nx, n_times=2, nz=1)
         base_wout = os.path.join(self.tmpdir, "wind4b.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file",   nc_path,
             "--wind",       base_wout,
             "--time-range", "0:1",
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
@@ -261,9 +259,8 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                     vals.append(float(line.split()[2]))
             return np.array(vals)
 
-        # position 0 → wind4b.csv (t=0), position 1 → wind4b_1.csv (t=1)
-        u0 = _read_u(twp._wind_output_path(base_wout, 0))
-        u1 = _read_u(twp._wind_output_path(base_wout, 1))
+        u0 = _read_u(wrf._wind_output_path(base_wout, 0))
+        u1 = _read_u(wrf._wind_output_path(base_wout, 1))
         # At t=1 the offset should be +100
         np.testing.assert_allclose(
             u1 - u0, np.full_like(u0, 100.0), atol=1e-3,
@@ -279,18 +276,16 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         _make_wrf_nc(nc_path, ny=5, nx=6, n_times=2)
         wout = os.path.join(self.tmpdir, "wind5.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file",   nc_path,
             "--wind",       wout,
             "--time-index", "1",
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
         self.assertTrue(os.path.isfile(wout))
         # Suffixed version must NOT exist (position=1 → wind5_1.csv)
-        self.assertFalse(os.path.isfile(twp._wind_output_path(wout, 1)))
+        self.assertFalse(os.path.isfile(wrf._wind_output_path(wout, 1)))
 
     def test_05b_time_index_u_values(self):
         """U values at t=1 include the t-offset of 100."""
@@ -299,12 +294,10 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         _make_wrf_nc(nc_path, ny=ny, nx=nx, n_times=2, nz=1)
         wout = os.path.join(self.tmpdir, "wind5b.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file",   nc_path,
             "--wind",       wout,
             "--time-index", "1",
-            "--no-terrain",
-            "--no-landscape",
             "--no-inputs",
         ])
 
@@ -321,10 +314,10 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         np.testing.assert_allclose(u_vals, expected, atol=1e-3)
 
     # -------------------------------------------------------------------
-    # Test 6: --interpolate-wind (mocked SRTM grid)
+    # Test 6: --terrain-file (wind interpolated onto terrain grid)
     # -------------------------------------------------------------------
-    def test_06_interpolate_wind(self):
-        """--interpolate-wind: wind output has same number of rows as SRTM grid."""
+    def test_06_interpolate_wind_terrain_file(self):
+        """--terrain-file: wind output has same number of rows as terrain grid."""
         try:
             from scipy.interpolate import griddata  # noqa: F401
         except ImportError:
@@ -337,33 +330,23 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         wout = os.path.join(self.tmpdir, "wind6.csv")
 
         # Build a finer synthetic SRTM grid matching the WRF domain
-        lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(nc_path)
+        lat_min, lat_max, lon_min, lon_max = wrf.read_wrf_bbox(nc_path)
         srtm_ny, srtm_nx = 20, 24
         srtm_lats = np.linspace(lat_min, lat_max, srtm_ny)
         srtm_lons = np.linspace(lon_min, lon_max, srtm_nx)
         lon_2d, lat_2d = np.meshgrid(srtm_lons, srtm_lats)
-        srtm_x, srtm_y = twp._latlon_to_utm(lat_2d, lon_2d)
+        srtm_x, srtm_y = wrf._latlon_to_utm(lat_2d, lon_2d)
 
-        # Patch create_terrain_xyz_return_grid to return our synthetic grid
-        original_fn = twp.create_terrain_xyz_return_grid
+        # Write a synthetic terrain XYZ file
+        srtm.write_terrain_xyz(srtm_x, srtm_y,
+                               np.ones_like(srtm_x) * 150.0, tout)
 
-        def _fake_create(*args, **kwargs):
-            twp.write_terrain_xyz(srtm_x, srtm_y,
-                                  np.ones_like(srtm_x) * 150.0, tout)
-            return srtm_x, srtm_y, np.ones_like(srtm_x) * 150.0
-
-        twp.create_terrain_xyz_return_grid = _fake_create
-        try:
-            twp.main([
-                "--wrf-file",       nc_path,
-                "--terrain",        tout,
-                "--wind",           wout,
-                "--interpolate-wind",
-                "--no-landscape",
-                "--no-inputs",
-            ])
-        finally:
-            twp.create_terrain_xyz_return_grid = original_fn
+        wrf.main([
+            "--wrf-file",    nc_path,
+            "--wind",        wout,
+            "--terrain-file", tout,
+            "--no-inputs",
+        ])
 
         self.assertTrue(os.path.isfile(wout))
         n_rows = _count(wout)
@@ -371,60 +354,33 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
                          f"Expected {srtm_ny * srtm_nx} rows, got {n_rows}")
 
     # -------------------------------------------------------------------
-    # Test 7: SRTM terrain not contaminated by WRF HGT_M
+    # Test 7: SRTM terrain write_terrain_xyz works correctly
     # -------------------------------------------------------------------
-    def test_07_srtm_terrain_not_hgt_m(self):
-        """When SRTM terrain is used, output Z differs from WRF HGT_M values.
-
-        We mock create_terrain_xyz to avoid a real SRTM download and verify
-        that the terrain file is populated from the mocked SRTM values (500 m),
-        not from WRF HGT_M (0..40 m range for a 5×6 grid with j*10 pattern).
-        """
-        ny_wrf, nx_wrf = 5, 6
-        nc_path = os.path.join(self.tmpdir, "wrf7.nc")
-        _make_wrf_nc(nc_path, ny=ny_wrf, nx=nx_wrf, n_times=1)
-        tout = os.path.join(self.tmpdir, "terrain7.xyz")
-
-        # Build a synthetic SRTM grid with a fixed elevation clearly different
-        # from WRF HGT_M values (which span 0..40 m for this grid)
-        lat_min, lat_max, lon_min, lon_max = twp.read_wrf_bbox(nc_path)
-        srtm_ny, srtm_nx = 8, 10
-        lats = np.linspace(lat_min, lat_max, srtm_ny)
-        lons = np.linspace(lon_min, lon_max, srtm_nx)
+    def test_07_write_terrain_xyz(self):
+        """write_terrain_xyz produces a 3-column XYZ file with expected values."""
+        ny, nx = 5, 6
+        lat_min, lat_max = 37.0, 37.05
+        lon_min, lon_max = -120.0, -119.95
+        lats = np.linspace(lat_min, lat_max, ny)
+        lons = np.linspace(lon_min, lon_max, nx)
         lon_2d, lat_2d = np.meshgrid(lons, lats)
-        srtm_x, srtm_y = twp._latlon_to_utm(lat_2d, lon_2d)
-        srtm_z_const = 500.0  # clearly not WRF HGT_M values (0..40 m)
+        x_utm, y_utm = srtm._latlon_to_utm(lat_2d, lon_2d)
+        z_const = 500.0
+        z = np.full_like(x_utm, z_const)
 
-        # Patch create_terrain_xyz (called when --interpolate-wind is NOT set)
-        # so no real SRTM download is triggered.
-        original_fn = twp.create_terrain_xyz
+        tout = os.path.join(self.tmpdir, "terrain7.xyz")
+        srtm.write_terrain_xyz(x_utm, y_utm, z, tout)
 
-        def _fake_create_xyz(output_path, **kwargs):
-            z = np.full_like(srtm_x, srtm_z_const)
-            twp.write_terrain_xyz(srtm_x, srtm_y, z, output_path)
-
-        twp.create_terrain_xyz = _fake_create_xyz
-        try:
-            twp.main([
-                "--wrf-file",  nc_path,
-                "--terrain",   tout,
-                "--no-landscape",
-                "--no-wind",
-                "--no-inputs",
-            ])
-        finally:
-            twp.create_terrain_xyz = original_fn
-
-        # All Z values in the terrain file should be 500 m (from SRTM mock),
-        # not 0..40 m (WRF HGT_M range)
         self.assertTrue(os.path.isfile(tout))
         with open(tout) as fh:
             for line in fh:
                 if line.startswith("#") or not line.strip():
                     continue
-                z = float(line.split()[2])
-                self.assertAlmostEqual(z, srtm_z_const, places=1,
-                                       msg=f"Z={z} is not the SRTM mock value")
+                parts = line.split()
+                self.assertEqual(len(parts), 3,
+                                 f"Expected 3 columns, got: {line!r}")
+                self.assertAlmostEqual(float(parts[2]), z_const, places=1,
+                                       msg=f"Z={parts[2]} is not {z_const}")
 
     # -------------------------------------------------------------------
     # Test 8: Landscape from local raster files
@@ -449,7 +405,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         f_path = _make_geotiff(os.path.join(self.tmpdir, "fuel.tif"),   fuel)
         out    = os.path.join(self.tmpdir, "landscape8.lcp")
 
-        twp.create_landscape_from_files(
+        lw.create_landscape_from_files(
             out, e_path, s_path, a_path, f_path,
             project_utm=False,
         )
@@ -474,13 +430,13 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         wout_full = os.path.join(self.tmpdir, "wind9_full.csv")
         wout_sub  = os.path.join(self.tmpdir, "wind9_sub.csv")
 
-        twp.main([
+        wrf.main([
             "--wrf-file", nc_path, "--wind", wout_full,
-            "--no-terrain", "--no-landscape", "--no-inputs",
+            "--no-inputs",
         ])
-        twp.main([
+        wrf.main([
             "--wrf-file", nc_path, "--wind", wout_sub,
-            "--no-terrain", "--no-landscape", "--no-inputs",
+            "--no-inputs",
             "--subsample", "2",
         ])
 
@@ -495,12 +451,12 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
     # Test 10: _parse_time_range edge cases
     # -------------------------------------------------------------------
     def test_10_parse_time_range(self):
-        self.assertEqual(twp._parse_time_range("0:0"), [0])
-        self.assertEqual(twp._parse_time_range("2:5"), [2, 3, 4, 5])
+        self.assertEqual(wrf._parse_time_range("0:0"), [0])
+        self.assertEqual(wrf._parse_time_range("2:5"), [2, 3, 4, 5])
         with self.assertRaises(ValueError):
-            twp._parse_time_range("5:2")
+            wrf._parse_time_range("5:2")
         with self.assertRaises(ValueError):
-            twp._parse_time_range("abc")
+            wrf._parse_time_range("abc")
 
     # -------------------------------------------------------------------
     # Test 11: write_inputs_file produces a valid FARSITE inputs.i
@@ -508,7 +464,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
     def test_11_write_inputs_file(self):
         """write_inputs_file writes a FARSITE inputs.i with expected keys."""
         out = os.path.join(self.tmpdir, "inputs_test.i")
-        twp.write_inputs_file(
+        wrf.write_inputs_file(
             output_path=out,
             wind_base_file=os.path.join(self.tmpdir, "wind.csv"),
             multi_time=True,
@@ -546,7 +502,7 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         xtime_var[:] = [0.0, 60.0, 120.0]  # 60-minute spacing
         ds.close()
 
-        spacing = twp.read_wrf_time_spacing(nc_path)
+        spacing = wrf.read_wrf_time_spacing(nc_path)
         self.assertAlmostEqual(spacing, 3600.0, places=1)
 
     # -------------------------------------------------------------------
@@ -590,12 +546,10 @@ class RegressionTestTerrainWindPreprocess(unittest.TestCase):
         wout = os.path.join(self.tmpdir, "wind_tr.csv")
         inputs_out = os.path.join(self.tmpdir, "inputs_tr.i")
 
-        twp.main([
+        wrf.main([
             "--wrf-file",   nc_path,
             "--wind",       wout,
             "--time-range", "0:2",
-            "--no-terrain",
-            "--no-landscape",
             "--inputs",     inputs_out,
         ])
 

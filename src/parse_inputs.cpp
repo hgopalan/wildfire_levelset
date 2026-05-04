@@ -297,14 +297,4 @@ void parse_inputs(InputParameters& p)
     p.chk_int        = -1;                       pp.query("chk_int",         p.chk_int);
     p.restart_chkfile = "";                      pp.query("restart_chkfile", p.restart_chkfile);
 
-    // -------- PLT wind files (option 3) --------
-    p.use_plt_wind   = 0;              pp.query("use_plt_wind",   p.use_plt_wind);
-    p.plt_wind_dir   = "";             pp.query("plt_wind_dir",   p.plt_wind_dir);
-    p.plt_wind_u_var = "x_velocity";   pp.query("plt_wind_u_var", p.plt_wind_u_var);
-    p.plt_wind_v_var = "y_velocity";   pp.query("plt_wind_v_var", p.plt_wind_v_var);
-    p.fire_height    = 0.0;            pp.query("fire_height",    p.fire_height);
-
-    if (p.use_plt_wind == 1 && p.plt_wind_dir.empty()) {
-        amrex::Abort("use_plt_wind = 1 requires plt_wind_dir to be set");
-    }
 }
