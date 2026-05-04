@@ -22,6 +22,7 @@ The documentation includes:
 
 - **Level-set advection** for fire front tracking
 - **Rothermel fire spread model** with Anderson 13 (FM1-FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4) fuel databases
+- **Andrews (2018) wind adjustments** for the Rothermel model: Wind Adjustment Factor (WAF) converting 20-ft open wind to midflame height (`rothermel.use_waf = 1`); maximum effective wind speed (MEWS) limit (`rothermel.use_wind_limit = 1`); both are per-cell when a landscape file is used
 - **Balbi (2009) physical fire spread model** – radiation-driven, physics-based ROS; fully replaces Rothermel when `balbi.enable = 1`; auto-generates a Balbi fuel parameter table at startup; accepts all LCP inputs and adds thermal parameters via parmparse (`balbi.*`)
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
@@ -176,6 +177,7 @@ Override parameters from command line:
 - **FARSITE parameters**: `farsite.length_to_width_ratio=3.0`, `farsite.use_anderson_LW=0`
 - **Bulk fuel consumption**: `farsite.use_bulk_fuel_consumption=0`, `farsite.tau_residence=60.0`
 - **Fuel model**: `rothermel.fuel_model=FM4` — Anderson 13 (FM1–FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4)
+- **Andrews (2018) wind adjustments**: `rothermel.use_waf=0` (WAF on/off), `rothermel.use_wind_limit=0` (MEWS cap on/off)
 - **Balbi parameters**: `balbi.T_a=300.0`, `balbi.T_f=1000.0`, `balbi.T_i=600.0` (active when `fire_spread_model=balbi`)
 - **Stochastic spotting**: `spotting.enable=0`, `spotting.P_base=0.02`, `spotting.d_mean=0.1`, `spotting.distance_model=lognormal`
 - **Albini spotting**: `albini_spotting.enable=0`, `albini_spotting.terminal_velocity=1.0`, `albini_spotting.P_base=0.01`, `albini_spotting.I_B_min=10.0`
@@ -274,11 +276,61 @@ Balbi, J.-H., Rossi, J.-L., Marcelli, T., and Santoni, P.-A. (2009).
 *Combustion and Flame*, 156(12), 2217–2230.
 <https://doi.org/10.1016/j.combustflame.2009.07.010>
 
+## Andrews (2018) Wind Adjustments for Rothermel
+
+Andrews (2018) provides a comprehensive explanation of the Rothermel surface fire spread model and documents two critical wind adjustments that improve physical accuracy. Both are implemented as optional flags that can be enabled independently.
+
+### 1. Wind Adjustment Factor (WAF)
+
+The Rothermel model requires wind speed at *midflame height*, but field measurements and WRF/NWP output are typically at 20 ft (6.1 m) above open terrain. The WAF converts 20-ft open wind to midflame height:
+
+```
+WAF = 1.83 / ln((20 + 0.36 · h) / (0.13 · h))
+```
+
+where h = fuel bed depth [ft]. Typical values: 0.42 for FM4 (h = 2 ft), 0.35 for FM9 (h = 3 ft).
+
+Enable via `rothermel.use_waf = 1`. When a landscape file is active, WAF is computed per cell using each fuel model's depth.
+
+### 2. Maximum Effective Wind Speed (MEWS)
+
+Rothermel's empirical wind factor φ_w grows without bound, producing unrealistically large ROS at very high wind speeds outside the model's calibration range. The MEWS cap limits φ_w to 90% of the reaction intensity:
+
+```
+φ_w_max = 0.9 · I_R   [BTU/ft²/min]
+U_max   = (φ_w_max / (C · beta_ratio^{-E}))^{1/B}   [ft/min]
+```
+
+Wind speed used in the ROS formula is capped at U_max before evaluating the wind factor.
+
+Enable via `rothermel.use_wind_limit = 1`.
+
+### Example
+
+```ini
+fire_spread_model = rothermel
+propagation_method = farsite
+
+rothermel.fuel_model    = FM4
+rothermel.M_f           = 0.08
+rothermel.use_waf       = 1    # apply WAF: 20-ft wind → midflame
+rothermel.use_wind_limit = 1   # apply MEWS cap
+
+# wind file already contains 20-ft (or NWP 10-m) winds
+velocity_file = wind.csv
+```
+
+### Reference
+
+Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service.
+<https://doi.org/10.2737/RMRS-GTR-371>
+
 ## Future Fire Spread Models (TODO)
 
 The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
 
-- [ ] **Andrews (2018) surface fire spread** – Updated empirical ROS model that refines Rothermel's reaction-intensity and wind/slope factors using expanded experimental data. Reference: Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service.
+> **Implemented**: Andrews (2018) wind adjustments (WAF and MEWS) are now part of the Rothermel model. See the [Andrews (2018) Wind Adjustments](#andrews-2018-wind-adjustments-for-rothermel) section above.
+
 - [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
 - [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
 - [ ] **Cheney & Gould (1995) grassland fire** – Empirical ROS model specifically calibrated for grassland fuels and shown to outperform Rothermel in open grass. Reference: Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). *Prediction of fire spread in grasslands.* Int. J. Wildland Fire 8, 1–13.
@@ -567,11 +619,14 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 6. **Validation**
    - Limited validation against real wildfire events; parameters are calibrated to standard fuel models.
 
-## Comparison with FARSITE and WRF-SFIRE
+## Comparison with FARSITE and WRF-Fire (WRF-SFIRE)
+
+> **Note on naming**: WRF-Fire and WRF-SFIRE refer to the same coupled fire–atmosphere system built on the WRF mesoscale model. The official package name is WRF-SFIRE; "WRF-Fire" is a common shorthand used in the community.
 
 | Capability | wildfire_levelset | FARSITE | WRF-SFIRE |
 |---|---|---|---|
-| **Fire spread model** | Rothermel ROS + elliptical directional spread (Richards 1990); Eulerian level-set implementation of the Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
+| **Fire spread model** | Rothermel (1972) ROS with Andrews (2018) wind adjustments (WAF, MEWS); elliptical directional spread (Richards 1990); Eulerian level-set implementation of Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
+| **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap via `rothermel.use_waf` / `rothermel.use_wind_limit` | WAF applied internally | WAF not explicitly applied; wind from atmospheric model |
 | **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
 | **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `wrf_wind_reader.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
 | **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
@@ -592,6 +647,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 ### Key differences from FARSITE
 
 - **Eulerian level-set vs. explicit Huygens wavelets**: This solver implements the same elliptical directional spread (Richards 1990) as FARSITE, but embeds it in an Eulerian level-set framework.  The fire perimeter is tracked as the zero contour of a smooth signed-distance function rather than a chain of individually advected vertex wavelets.  The Eulerian approach handles complex topology changes (merging fronts, islands) automatically without explicit connectivity management.
+- **Andrews (2018) wind adjustments are optional**: FARSITE applies the Wind Adjustment Factor (WAF) and maximum effective wind speed (MEWS) cap internally. This solver exposes both via `rothermel.use_waf` and `rothermel.use_wind_limit` so users can enable them when wind input is at 20-ft (NWP or WRF) height rather than midflame height.
 - **Full 2-D landscape terrain**: Both solvers support per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` landscape files (LANDFIRE data). Canopy fuel layers can be added to this solver in future without architectural changes.
 - **Per size-class fuel moisture**: Dead fuel moisture is specified independently for 1-hr, 10-hr, and 100-hr size classes; live herbaceous and live woody moisture are specified separately.  This mirrors FARSITE's moisture inputs and drives the multi-class Rothermel (1972) reaction intensity calculation.
 - **Embedded Boundary**: AMReX EB allows irregular obstacles (buildings, fuel breaks) on the Cartesian grid without remeshing.
@@ -599,17 +655,17 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles directly to GeoTIFF rasters and GeoJSON fire-perimeter contours; FARSITE produces GIS shapefiles/rasters natively.
 - **No interactive GUI**: This solver is driven by an input text file and command-line arguments; FARSITE ships with a Windows GUI.
 
-### Key differences from WRF-SFIRE
+### Key differences from WRF-Fire (WRF-SFIRE)
 
 - **No atmospheric coupling**: This solver uses prescribed wind fields (constant, CSV, or WRF output); WRF-SFIRE fully couples the fire with the WRF atmospheric model, including fire-induced wind, heat flux, and smoke transport.
+- **Wind adjustment control**: When using WRF output wind via `wrf_wind_reader.py`, enable `rothermel.use_waf = 1` to convert the NWP wind to midflame height. WRF-SFIRE handles this internally as part of the coupled framework.
 - **Albini spotting vs. none**: WRF-SFIRE does not include firebrand spotting by default.
 - **Simpler setup**: Running this solver requires only CMake and an AMReX build; WRF-SFIRE requires a full WRF stack (NetCDF, MPI, WPS, WRF pre-processing).
 - **GPU-native kernels**: WRF-SFIRE is primarily CPU-MPI; this solver's hotspot loops use AMReX GPU kernels.
 
-
-
 ## References
 
+- **Andrews, P.L. (2018)**. *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service. <https://doi.org/10.2737/RMRS-GTR-371>
 - **Byram, G.M. (1959)**. "Combustion of forest fuels." In: Davis, K.P. (ed.) *Forest Fire: Control and Use*. McGraw-Hill, New York. pp. 61–89.
 - **Richards, G.D. (1990)**. "An elliptical growth model of forest fire fronts and its numerical solution." International Journal of Numerical Methods in Engineering.
 - **Anderson, H.E. (1983)**. "Predicting wind-driven wild land fire size and shape." Research Paper INT-305, USDA Forest Service.

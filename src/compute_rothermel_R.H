@@ -44,6 +44,11 @@ static void compute_rothermel_R(MultiFab& R_mf,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+    // Andrews (2018) wind adjustment defaults (global fuel)
+    const Real waf_default      = rc.waf;
+    const Real U_max_default    = rc.U_max_ftmin;
+    const int  use_waf_flag     = rp.use_waf;
+    const int  use_wind_limit_flag = rp.use_wind_limit;
 
     const bool use_fuel_table = (fuel_model_mf != nullptr &&
                                   fuel_table != nullptr &&
@@ -97,6 +102,8 @@ static void compute_rothermel_R(MultiFab& R_mf,
             Real cell_B  = B;
             Real cell_beta_ratio_E = beta_ratio_E;
             Real cell_beta = beta;
+            Real cell_waf      = waf_default;
+            Real cell_U_max    = U_max_default;
 
             if (use_fuel_table) {
                 int code = static_cast<int>(fm(i, j, k));
@@ -107,11 +114,24 @@ static void compute_rothermel_R(MultiFab& R_mf,
                     cell_B           = frc.B;
                     cell_beta_ratio_E = frc.beta_ratio_E;
                     cell_beta        = frc.beta;
+                    cell_waf         = frc.waf;
+                    cell_U_max       = frc.U_max_ftmin;
                 }
             }
 
             // Wind speed in ft/min (Rothermel units)
             Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
+
+            // Apply Wind Adjustment Factor if enabled (Andrews 2018):
+            // converts 20-ft open wind to midflame height wind
+            if (use_waf_flag == 1) {
+                U_ftmin *= cell_waf;
+            }
+
+            // Apply maximum effective wind speed limit if enabled (Andrews 2018)
+            if (use_wind_limit_flag == 1 && cell_U_max > Real(0.0)) {
+                U_ftmin = std::min(U_ftmin, cell_U_max);
+            }
 
             // Wind factor φ_w (Rothermel Eq. 47)
             Real phi_w = (U_ftmin > 0.0) ? cell_C * std::pow(U_ftmin, cell_B) * cell_beta_ratio_E : 0.0;
