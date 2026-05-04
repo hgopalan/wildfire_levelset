@@ -128,6 +128,18 @@ struct InputParameters {
         int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
     } crown;
     
+    // Balbi (2009) physical fire spread model parameters
+    struct BalbiParams {
+        int enable;              // 1 to enable Balbi model, 0 to disable (default: 0)
+        amrex::Real T_a;         // Ambient temperature [K] (default: 300.0)
+        amrex::Real T_f;         // Mean flame temperature [K] (default: 1000.0)
+        amrex::Real T_i;         // Ignition temperature [K] (default: 600.0)
+        amrex::Real delta_H;     // Latent heat of vaporization of water [J/kg] (default: 2.26e6)
+        amrex::Real C_pf;        // Specific heat of dry fuel [J/(kg·K)] (default: 1800.0)
+        amrex::Real r_00;        // Radiation factor [m] (default: 2.5e-4)
+        amrex::Real tau_0;       // Residence-time coefficient [s/m] (default: 75591.0)
+    } balbi;
+
     // Albini (1983) firebrand spotting model with 2-D trajectory integration
     struct AlbiniSpottingParams {
         int enable;                          // 1 to enable Albini spotting, 0 to disable (default: 0)

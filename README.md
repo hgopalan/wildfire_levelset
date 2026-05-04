@@ -22,6 +22,7 @@ The documentation includes:
 
 - **Level-set advection** for fire front tracking
 - **Rothermel fire spread model** with Anderson 13 (FM1-FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4) fuel databases
+- **Balbi (2009) physical fire spread model** – radiation-driven, physics-based ROS; fully replaces Rothermel when `balbi.enable = 1`; auto-generates a Balbi fuel parameter table at startup; accepts all LCP inputs and adds thermal parameters via parmparse (`balbi.*`)
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
 - **FARSITE landscape files** (`.lcp`) with per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
@@ -166,12 +167,103 @@ Override parameters from command line:
 - **FARSITE**: `farsite.enable=0`, `farsite.length_to_width_ratio=3.0`, `farsite.use_anderson_LW=0`
 - **Bulk fuel consumption**: `farsite.use_bulk_fuel_consumption=0`, `farsite.tau_residence=60.0`
 - **Fuel model**: `rothermel.fuel_model=FM4` — Anderson 13 (FM1–FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4)
+- **Balbi model**: `balbi.enable=0` — activate the Balbi (2009) physical fire spread model (see [Balbi model](#balbi-2009-physical-fire-spread-model))
 - **Stochastic spotting**: `spotting.enable=0`, `spotting.P_base=0.02`, `spotting.d_mean=0.1`, `spotting.distance_model=lognormal`
 - **Albini spotting**: `albini_spotting.enable=0`, `albini_spotting.terminal_velocity=1.0`, `albini_spotting.P_base=0.01`, `albini_spotting.I_B_min=10.0`
 - **Crown fire**: `crown.enable=0`, `crown.CBH=4.0`, `crown.CBD=0.15`, `crown.FMC=100.0`
 - **Multi-point ignition**: `fire_points_file=""` (CSV with `X Y [Z]` columns), `fire_gaussian_sigma=0.0` (≤0 = auto: 3 cells)
 
 See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) for complete parameter reference.
+
+## Balbi (2009) Physical Fire Spread Model
+
+The Balbi model provides an alternative rate-of-spread calculation that is rooted in radiation physics rather than empirical curve fits. It is enabled by setting `balbi.enable = 1` and automatically replaces the Rothermel model in both the level-set advection path and the pre-computed R field used by FARSITE.
+
+### Physical basis
+
+The rate of spread R [m/s] is derived from the balance between radiant heat flux from a tilted flame and the energy required to ignite the unburned fuel ahead:
+
+```
+R = A_coeff · (1 + sin α − cos α)
+```
+
+where:
+- `A_coeff = χ · σ_m · δ_m / (2 · τ₀ · B*)` [m/s] — fuel radiative amplitude
+- `χ = r₀₀ · σ_m / (1 + r₀₀ · σ_m)` — forward radiation fraction
+- `B* = (C_pf · (T_i − T_a) + M_f · Λ) / h` — dimensionless ignition energy
+- `tan α = U / v_b + tan θ` — flame tilt from wind and slope
+- `v_b = sqrt(g · δ_m · (T_f − T_a) / T_a)` — buoyancy velocity scale [m/s]
+
+### Inputs from the LCP / fuel database (shared with Rothermel)
+
+| Parameter | Source | Description |
+|-----------|--------|-------------|
+| σ [ft⁻¹→m⁻¹] | Fuel database / LCP | Surface-area-to-volume ratio |
+| δ [ft→m] | Fuel database / LCP | Fuel bed depth |
+| w₀ [lb/ft²→kg/m²] | Fuel database / LCP | Oven-dry fuel load |
+| ρ_p [lb/ft³→kg/m³] | Fuel database / LCP | Particle density |
+| h [BTU/lb→J/kg] | Fuel database / LCP | Heat of combustion |
+| M_f [−] | `rothermel.M_f` | Fuel moisture fraction |
+| slope, aspect | LCP / terrain file | Terrain slope components |
+| Wind U [m/s] | `u_x`, `u_y`, wind file | Wind speed |
+
+### Extra inputs via parmparse (`balbi.*`)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `balbi.enable` | `0` | Set to `1` to activate Balbi model |
+| `balbi.T_a` | `300.0` K | Ambient temperature |
+| `balbi.T_f` | `1000.0` K | Mean flame temperature |
+| `balbi.T_i` | `600.0` K | Ignition temperature |
+| `balbi.delta_H` | `2.26e6` J/kg | Latent heat of water vaporisation |
+| `balbi.C_pf` | `1800.0` J/(kg·K) | Specific heat of dry fuel |
+| `balbi.r_00` | `2.5e-4` m | Radiation length scale |
+| `balbi.tau_0` | `75591.0` s/m | Residence-time coefficient |
+
+### Auto-generated Balbi fuel parameter table
+
+When `balbi.enable = 1`, the solver automatically prints a table showing pre-computed Balbi parameters for every fuel model in the active database (FBFM13 or FBFM40) at startup:
+
+```
+==========================================================================
+ Balbi (2009) Fuel Parameter Table (FBFM13)
+==========================================================================
+ Balbi thermal parameters:
+   T_a=300 K  T_f=1000 K  T_i=600 K
+   C_pf=1800 J/(kg·K)  r_00=0.00025 m  tau_0=75591 s/m  delta_H=2.26e+06 J/kg
+--------------------------------------------------------------------------
+Code  Name    sig[m⁻¹] del[m]  chi[-] B*[-]   v_b[m/s] A[m/s]     R@5m/s[m/s]
+...
+```
+
+Columns: fuel code, short name, σ_m, δ_m, χ, B*, v_b, A_coeff, and predicted ROS at 5 m/s wind on flat ground.
+
+### Example inputs file snippet
+
+```ini
+# Fuel from database (shared by Rothermel and Balbi)
+rothermel.fuel_model = FM4
+rothermel.M_f = 0.08
+
+# Balbi (2009) thermal parameters
+balbi.enable  = 1
+balbi.T_a     = 300.0
+balbi.T_f     = 1000.0
+balbi.T_i     = 600.0
+balbi.delta_H = 2.26e6
+balbi.C_pf    = 1800.0
+balbi.r_00    = 2.5e-4
+balbi.tau_0   = 75591.0
+```
+
+See `regtest/balbi_fuel/inputs.i` for a complete working example.
+
+### Reference
+
+Balbi, J.-H., Rossi, J.-L., Marcelli, T., and Santoni, P.-A. (2009).
+"A physical model for wildland fires."
+*Combustion and Flame*, 156(12), 2217–2230.
+<https://doi.org/10.1016/j.combustflame.2009.07.010>
 
 ## Tools
 
