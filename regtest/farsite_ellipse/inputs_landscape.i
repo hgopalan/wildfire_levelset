@@ -37,7 +37,6 @@ box_zmax = 1.0
 reinit_int = -1
 
 # FARSITE ellipse model (Richards 1990)
-farsite.enable = 1
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
@@ -48,4 +47,4 @@ rothermel.M_f = 0.08
 rothermel.landscape_file = socal_chaparral_landscape.lcp
 
 # Level set control
-skip_levelset = 1
+propagation_method = farsite

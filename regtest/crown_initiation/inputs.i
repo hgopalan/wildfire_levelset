@@ -36,11 +36,8 @@ reinit_int = 20
 rothermel.fuel_model = FM10
 rothermel.M_f = 0.08
 
-# FARSITE configuration
-farsite.enable = 1
-
-# Level set control (use FARSITE mode)
-skip_levelset = 1
+# Propagation method
+propagation_method = farsite
 
 # Van Wagner Crown Fire Initiation Model
 crown.enable = 1

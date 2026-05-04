@@ -34,8 +34,8 @@ A minimal input file looks like::
     sphere_radius = 5.0
 
     # Fire model
-    farsite.enable = 1
-    skip_levelset = 1
+    fire_spread_model = rothermel
+    propagation_method = farsite
 
     # Rothermel fuel properties
     rothermel.fuel_model = FM4
@@ -276,16 +276,23 @@ CSV Fire Points ignition
 Fire Model Selection
 ^^^^^^^^^^^^^^^^^^^^
 
-**farsite.enable** (default: 1)
-  Enable FARSITE elliptical expansion model (1) or level-set advection (0).
+**fire_spread_model** (default: ``rothermel``)
+  Select the rate-of-spread model. Currently supported values:
 
-  Example: ``farsite.enable = 1``
+  - ``rothermel`` – Rothermel (1972) empirical fire spread model (default)
+  - ``balbi`` – Balbi (2009) radiation-driven physics-based model
 
-**skip_levelset** (default: 0)
-  When 1, skip traditional level-set advection and use FARSITE ellipse spread
-  only. When 0, use level-set advection.
+  Example: ``fire_spread_model = balbi``
 
-  Example: ``skip_levelset = 1``
+**propagation_method** (default: ``levelset``)
+  Select how the fire perimeter is propagated. Currently supported values:
+
+  - ``levelset`` – WENO5-Z level-set advection (default); Rothermel/Balbi ROS drives
+    the signed-distance evolution equation.
+  - ``farsite`` – FARSITE elliptical Huygens-wavelet expansion (Richards 1990);
+    uses the FARSITE spread parameters (``farsite.*``) and pre-computed ROS.
+
+  Example: ``propagation_method = farsite``
 
 Rothermel Fuel Properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -512,11 +519,6 @@ from any terrain file are ignored.
 
 FARSITE Parameters
 ^^^^^^^^^^^^^^^^^^
-
-**farsite.enable** (default: 1)
-  Enable FARSITE elliptical model (1) or level-set advection (0).
-
-  Example: ``farsite.enable = 1``
 
 **farsite.use_anderson_LW** (default: 0)
   Use Anderson (1983) length-to-width ratio derived from wind speed (1=yes, 0=no).
@@ -763,8 +765,7 @@ Basic Level-Set Simulation
     rothermel.M_f = 0.05
     u_x = 0.25
 
-    farsite.enable = 0
-    skip_levelset = 0
+    propagation_method = levelset
 
 FARSITE Ellipse Simulation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -790,10 +791,10 @@ FARSITE Ellipse Simulation
     center_z = 0.5
     sphere_radius = 10.0
 
-    farsite.enable = 1
+    fire_spread_model = rothermel
+    propagation_method = farsite
     farsite.use_anderson_LW = 1
     farsite.phi_threshold = 0.1
-    skip_levelset = 1
 
     rothermel.fuel_model = FM4
     rothermel.M_f = 0.08
@@ -824,9 +825,9 @@ Terrain and Crown Fire Simulation
     center_z = 0.5
     sphere_radius = 20.0
 
-    farsite.enable = 1
+    fire_spread_model = rothermel
+    propagation_method = farsite
     farsite.use_anderson_LW = 1
-    skip_levelset = 1
 
     rothermel.fuel_model = FM10
     rothermel.M_f = 0.06
@@ -875,10 +876,10 @@ FARSITE with Landscape File
     u_y = 0.0
 
     # FARSITE model with Anderson L/W ratio
-    farsite.enable = 1
+    fire_spread_model = rothermel
+    propagation_method = farsite
     farsite.use_anderson_LW = 1
     farsite.phi_threshold = 0.1
-    skip_levelset = 1
 
     # Use landscape file for terrain (slope, aspect, elevation) and fuel model
     rothermel.fuel_model = FM4
@@ -922,10 +923,10 @@ Albini Spotting Simulation
     rothermel.fuel_model = FM4
     rothermel.M_f = 0.08
 
-    farsite.enable = 1
+    fire_spread_model = rothermel
+    propagation_method = farsite
     farsite.use_anderson_LW = 1
     farsite.phi_threshold = 0.1
-    skip_levelset = 1
 
     albini_spotting.enable = 1
     albini_spotting.terminal_velocity = 5.0

@@ -135,24 +135,32 @@ Override parameters from command line:
 
 ### Example Configurations
 
-**Basic model (no terrain effects):**
+**Basic level-set (no fire spread model, constant velocity):**
 ```bash
 ./build/levelset u_x=0.5 u_y=0.0
 ```
 
-**Rothermel with terrain:**
+**Rothermel + level-set with terrain file:**
 ```bash
-./build/levelset u_x=0.5 u_y=0.0 use_terrain_effects=true terrain_slope=15.0 terrain_aspect=90.0
+./build/levelset fire_spread_model=rothermel propagation_method=levelset \
+    rothermel.terrain_file=terrain.xyz u_x=0.5 u_y=0.0
 ```
 
-**FARSITE with Anderson L/W ratio:**
+**Rothermel + FARSITE ellipse propagation with Anderson L/W ratio:**
 ```bash
-./build/levelset u_x=0.5 u_y=0.0 use_terrain_effects=true use_farsite_model=true terrain_slope=15.0 terrain_aspect=90.0
+./build/levelset fire_spread_model=rothermel propagation_method=farsite \
+    farsite.use_anderson_LW=1 u_x=0.5 u_y=0.0
 ```
 
-**With firebrand spotting:**
+**Balbi + FARSITE propagation:**
 ```bash
-./build/levelset skip_levelset=1 farsite.enable=1 spotting.enable=1 spotting.P_base=0.03 spotting.d_mean=0.15 u_x=0.4
+./build/levelset fire_spread_model=balbi propagation_method=farsite \
+    farsite.use_anderson_LW=1 u_x=0.5 u_y=0.0
+```
+
+**With firebrand spotting (FARSITE propagation):**
+```bash
+./build/levelset propagation_method=farsite spotting.enable=1 spotting.P_base=0.03 spotting.d_mean=0.15 u_x=0.4
 ```
 
 ## Key Runtime Parameters
@@ -162,12 +170,13 @@ Override parameters from command line:
 - **Reinitialization**: `reinit_int=20`, `reinit_iters=20`
 - **Velocity**: `u_x=0.25`, `u_y=0.0`, `u_z=0.0`, `velocity_file="wind.csv"`
 - **Time-dependent wind**: `use_time_dependent_wind=0`, `wind_time_spacing=60.0`
-- **Terrain**: `use_terrain_effects=false`, `terrain_slope=0.0`, `terrain_aspect=0.0`
+- **Fire spread model**: `fire_spread_model=rothermel` — choose `rothermel` (default) or `balbi`
+- **Propagation method**: `propagation_method=levelset` — choose `levelset` (default) or `farsite`
 - **Terrain/Landscape files**: `rothermel.terrain_file=""`, `rothermel.landscape_file=""` (landscape file takes precedence over terrain file and constant slope/aspect)
-- **FARSITE**: `farsite.enable=0`, `farsite.length_to_width_ratio=3.0`, `farsite.use_anderson_LW=0`
+- **FARSITE parameters**: `farsite.length_to_width_ratio=3.0`, `farsite.use_anderson_LW=0`
 - **Bulk fuel consumption**: `farsite.use_bulk_fuel_consumption=0`, `farsite.tau_residence=60.0`
 - **Fuel model**: `rothermel.fuel_model=FM4` — Anderson 13 (FM1–FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4)
-- **Balbi model**: `balbi.enable=0` — activate the Balbi (2009) physical fire spread model (see [Balbi model](#balbi-2009-physical-fire-spread-model))
+- **Balbi parameters**: `balbi.T_a=300.0`, `balbi.T_f=1000.0`, `balbi.T_i=600.0` (active when `fire_spread_model=balbi`)
 - **Stochastic spotting**: `spotting.enable=0`, `spotting.P_base=0.02`, `spotting.d_mean=0.1`, `spotting.distance_model=lognormal`
 - **Albini spotting**: `albini_spotting.enable=0`, `albini_spotting.terminal_velocity=1.0`, `albini_spotting.P_base=0.01`, `albini_spotting.I_B_min=10.0`
 - **Crown fire**: `crown.enable=0`, `crown.CBH=4.0`, `crown.CBD=0.15`, `crown.FMC=100.0`
@@ -177,7 +186,7 @@ See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) fo
 
 ## Balbi (2009) Physical Fire Spread Model
 
-The Balbi model provides an alternative rate-of-spread calculation that is rooted in radiation physics rather than empirical curve fits. It is enabled by setting `balbi.enable = 1` and automatically replaces the Rothermel model in both the level-set advection path and the pre-computed R field used by FARSITE.
+The Balbi model provides an alternative rate-of-spread calculation rooted in radiation physics rather than empirical curve fits. It is selected by setting `fire_spread_model = balbi` and automatically replaces the Rothermel model in both the level-set advection path and the pre-computed R field used by FARSITE.
 
 ### Physical basis
 
@@ -211,7 +220,6 @@ where:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `balbi.enable` | `0` | Set to `1` to activate Balbi model |
 | `balbi.T_a` | `300.0` K | Ambient temperature |
 | `balbi.T_f` | `1000.0` K | Mean flame temperature |
 | `balbi.T_i` | `600.0` K | Ignition temperature |
@@ -222,7 +230,7 @@ where:
 
 ### Auto-generated Balbi fuel parameter table
 
-When `balbi.enable = 1`, the solver automatically prints a table showing pre-computed Balbi parameters for every fuel model in the active database (FBFM13 or FBFM40) at startup:
+When `fire_spread_model = balbi`, the solver automatically prints a table showing pre-computed Balbi parameters for every fuel model in the active database (FBFM13 or FBFM40) at startup:
 
 ```
 ==========================================================================
@@ -241,12 +249,15 @@ Columns: fuel code, short name, σ_m, δ_m, χ, B*, v_b, A_coeff, and predicted 
 ### Example inputs file snippet
 
 ```ini
+# Select Balbi fire spread model with FARSITE propagation
+fire_spread_model = balbi
+propagation_method = farsite
+
 # Fuel from database (shared by Rothermel and Balbi)
 rothermel.fuel_model = FM4
 rothermel.M_f = 0.08
 
 # Balbi (2009) thermal parameters
-balbi.enable  = 1
 balbi.T_a     = 300.0
 balbi.T_f     = 1000.0
 balbi.T_i     = 600.0
@@ -256,14 +267,26 @@ balbi.r_00    = 2.5e-4
 balbi.tau_0   = 75591.0
 ```
 
-See `regtest/balbi_fuel/inputs.i` for a complete working example.
-
 ### Reference
 
 Balbi, J.-H., Rossi, J.-L., Marcelli, T., and Santoni, P.-A. (2009).
 "A physical model for wildland fires."
 *Combustion and Flame*, 156(12), 2217–2230.
 <https://doi.org/10.1016/j.combustflame.2009.07.010>
+
+## Future Fire Spread Models (TODO)
+
+The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
+
+- [ ] **Andrews (2018) surface fire spread** – Updated empirical ROS model that refines Rothermel's reaction-intensity and wind/slope factors using expanded experimental data. Reference: Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service.
+- [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
+- [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
+- [ ] **Cheney & Gould (1995) grassland fire** – Empirical ROS model specifically calibrated for grassland fuels and shown to outperform Rothermel in open grass. Reference: Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). *Prediction of fire spread in grasslands.* Int. J. Wildland Fire 8, 1–13.
+- [ ] **Weise & Biging (1996) fire whirl** – Extension to capture the enhanced spread caused by fire-induced vortices; relevant for slope/canyon fires with strong updrafts.
+- [ ] **Data-driven / ML surrogate** – Neural-network or Gaussian-process ROS emulator trained on historical fire perimeters (e.g., MTBS/GeoMAC/NIFC) or high-fidelity simulation data from FIRETEC/FDS-Fire. Could be loaded as a saved model artifact at runtime.
+- [ ] **Viegas (2004) eruptive fire** – Analytical model for eruptive/blow-up fire behavior on steep slopes where the positive feedback between ROS and slope steepening produces runaway spread. Reference: Viegas, D.X. (2004). *Slope and wind effects on fire propagation.* Int. J. Wildland Fire 13, 143–156.
+
+To add a new spread model, implement a `compute_<name>_R` function (analogous to `compute_rothermel_R` in `src/compute_rothermel_R.H`) and register it with a new branch in `main.cpp` guarded by `if (inputs.fire_spread_model == "<name>")`.
 
 ## Tools
 

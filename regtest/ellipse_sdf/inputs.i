@@ -36,5 +36,4 @@ reinit_iters = 20
 reinit_dtau = 0.5
 
 # Level set control
-skip_levelset = 0
-farsite.enable = 0
+propagation_method = levelset

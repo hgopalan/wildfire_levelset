@@ -34,8 +34,9 @@ reinit_iters = 20
 reinit_dtau = 0.5
 
 # Level set control
-skip_levelset = 0
-farsite.enable = 0
+# Level set control
+propagation_method = levelset
+
 
 # ---- Dynamic fire points (optional) ----
 # When this file is present on disk at the start of any time step, the ignition

@@ -49,12 +49,11 @@ rothermel.fuel_model = FM4
 rothermel.M_f = 0.08
 
 # FARSITE ellipse model (Richards 1990) with Anderson L/W
-farsite.enable = 1
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
-# Skip level set; use FARSITE ellipse only
-skip_levelset = 1
+# Propagation method
+propagation_method = farsite
 
 # Albini (1983) spotting model with 2-D trajectory
 albini_spotting.enable = 1

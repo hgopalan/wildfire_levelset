@@ -37,7 +37,6 @@ rothermel.fuel_model = FM4
 rothermel.M_f = 0.07
 
 # FARSITE configuration
-farsite.enable = 1
 farsite.use_anderson_LW = 1
 
 # Enable bulk fuel consumption model
@@ -46,5 +45,5 @@ farsite.tau_residence = 60.0        # Residence time [seconds]
 farsite.f_consumed_min = 0.5        # Minimum consumption fraction (fast fires)
 farsite.f_consumed_max = 0.9        # Maximum consumption fraction (intense fires)
 
-# Level set control (use FARSITE mode)
-skip_levelset = 1
+# Level set control
+propagation_method = farsite

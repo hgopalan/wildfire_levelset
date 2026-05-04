@@ -33,8 +33,6 @@ sphere_radius = 10.0
 reinit_int = -1
 
 # FARSITE ellipse model (Richards 1990)
-# Must be enabled for spotting to work
-farsite.enable = 1
 farsite.use_anderson_LW = 0
 farsite.length_to_width_ratio = 3.0
 farsite.phi_threshold = 0.1
@@ -59,5 +57,5 @@ spotting.check_interval = 3
 # Rothermel model (use chaparral fuel type)
 rothermel.fuel_model = FM4
 
-# Level set control - skip to use FARSITE only
-skip_levelset = 1
+# Level set control
+propagation_method = farsite

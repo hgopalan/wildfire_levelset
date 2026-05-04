@@ -35,8 +35,7 @@ reinit_int = 20
 reinit_iters = 20
 reinit_dtau = 0.5
 
-# FARSITE model
-farsite.enable = 1
+# FARSITE ellipse parameters (used when propagation_method = farsite)
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
@@ -47,4 +46,4 @@ rothermel.slope_x = 0.1
 rothermel.slope_y = 0.0
 
 # Level set control
-skip_levelset = 0
+propagation_method = levelset

@@ -77,19 +77,7 @@ int main(int argc, char* argv[])
 #endif
     Geometry geom(domain, &rb, 0, is_periodic.data());
 
-        // ---------------- Inputs: terrain ----------------------
-        bool use_terrain_effects = false;
-        bool use_farsite_model = false;
-        Real terrain_slope = 0.0;      // slope in degrees
-        Real terrain_aspect = 0.0;     // aspect in degrees (0=East, 90=North, 180=West, 270=South)
-        amrex::ParmParse pp;
-        
-        pp.query("use_terrain_effects", use_terrain_effects);
-        pp.query("use_farsite_model", use_farsite_model);
-        pp.query("terrain_slope", terrain_slope);
-        pp.query("terrain_aspect", terrain_aspect);
-
-    // ---------------- Grids & distribution -----------------
+        // ---------------- Grids & distribution -----------------
     BoxArray ba(domain);
     ba.maxSize(inputs.max_grid);
     DistributionMapping dm(ba);
@@ -132,9 +120,8 @@ int main(int argc, char* argv[])
 
 
     // ---------------- Initialize ---------------------------
-    // When FARSITE is enabled and level set is skipped, use indicator initialization
-    // (phi = 1 inside, phi = 0 outside) instead of signed distance
-    bool use_indicator = (inputs.farsite.enable == 1 && inputs.skip_levelset == 1);
+    // When FARSITE propagation is used, initialize phi as indicator (1 inside, 0 outside)
+    bool use_indicator = (inputs.propagation_method == "farsite");
 
     // Restart state (overridden by checkpoint when restart_chkfile is non-empty)
     Real time = 0.0;
@@ -311,7 +298,7 @@ int main(int argc, char* argv[])
     const BalbiComputed* d_balbi_table_ptr = nullptr;
     int balbi_table_size = 0;
 
-    if (inputs.balbi.enable == 1) {
+    if (inputs.fire_spread_model == "balbi") {
         // Print Balbi fuel parameter table
         print_balbi_fuel_table(inputs.rothermel, inputs.balbi,
                                inputs.rothermel.landscape_fuel_type);
@@ -336,9 +323,10 @@ int main(int argc, char* argv[])
 
     // ---------------- dt from CFL --------------------------
     Real dt=10;
-    if (inputs.skip_levelset == 0)
+    const bool use_levelset = (inputs.propagation_method == "levelset");
+    if (use_levelset)
       {
-        if (inputs.balbi.enable == 1) {
+        if (inputs.fire_spread_model == "balbi") {
             compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -353,7 +341,7 @@ int main(int argc, char* argv[])
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
       } else {
-      amrex::Print() << "Skipping level set advection; using dt = " << dt << " for FARSITE spread\n";
+      amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
 
@@ -427,8 +415,8 @@ int main(int argc, char* argv[])
       }
 #endif
       
-      // --- Step 2: Compute surface ROS via Rothermel or Balbi / Level Set
-      if (inputs.balbi.enable == 1) {
+      // --- Step 2: Compute surface ROS via selected fire spread model
+      if (inputs.fire_spread_model == "balbi") {
           compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
                            terrain_slopes.get(),
                            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -440,21 +428,19 @@ int main(int argc, char* argv[])
                                d_fuel_table_ptr, fuel_table_size);
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
-      if (inputs.skip_levelset == 0) {
+      if (use_levelset) {
 	// Traditional level set advection
 	// When Balbi is active, pass pre-computed R_mf so advection uses Balbi ROS
 	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
                                    terrain_slopes.get(),
-                                   inputs.balbi.enable == 1 ? &R_mf : nullptr);
+                                   inputs.fire_spread_model == "balbi" ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
-      } else if (inputs.farsite.enable == 1) {
-	// --- Step 3: Generate elliptical wavelets per vertex
+      } else {
+	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
 	// --- Step 4: Merge to new perimeter
-	// FARSITE ellipse spread (only when skip_levelset == 1 and farsite.enable == 1)
 	compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
 	
 	// --- Step 5: Apply crown/spotting sub-models
-	// Add firebrand spotting model
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
 	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
 	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step);
@@ -468,7 +454,7 @@ int main(int argc, char* argv[])
 	// --- Step 6: Simulate post-frontal burnout
 	// (Bulk fuel consumption is computed within compute_farsite_spread)
       }
-      if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0) && inputs.skip_levelset == 0) {
+      if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0) && use_levelset) {
 	amrex::Print() << "Reinitializing at step " << step << "\n";
 
 	// --- Coarse level: dtau and iters from coarse dx ---

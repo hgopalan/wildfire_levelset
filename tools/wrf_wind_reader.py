@@ -642,8 +642,7 @@ def write_inputs_file(output_path,
         fh.write("\n")
 
         fh.write("# FARSITE ellipse model (Richards 1990)\n")
-        fh.write("skip_levelset = 1\n")
-        fh.write("farsite.enable = 1\n")
+        fh.write("propagation_method = farsite\n")
         fh.write("farsite.use_anderson_LW = 1\n")
         fh.write("farsite.phi_threshold = 0.1\n\n")
 
