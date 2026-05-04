@@ -59,7 +59,7 @@ struct CheneyGouldComputed {
     amrex::Real b_lo;     // slope    for low-wind regime  (-)
     amrex::Real a_hi;     // intercept for high-wind regime (km/h)
     amrex::Real b_hi;     // slope    for high-wind regime  (-)
-    amrex::Real scale;    // combined f_mc * curing * (1/3.6)  [s/m → m/s output]
+    amrex::Real scale;    // combined f_mc * curing / 3.6  [converts km/h to m/s after moisture/curing correction]
 };
 
 // ============================================================================
@@ -85,7 +85,7 @@ inline CheneyGouldComputed compute_cheney_gould_params(
     const amrex::Real cf = std::max(amrex::Real(0.0),
                                     std::min(amrex::Real(1.0), cgp.curing));
 
-    // Combined scaling: f_mc * CF * (km/h → m/s) = f_mc * CF / 3.6
+    // Combined scaling: f_mc * CF * (km/h → m/s conversion, dividing by 3.6)
     cgc.scale = f_mc * cf / amrex::Real(3.6);
 
     return cgc;
