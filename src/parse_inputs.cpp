@@ -271,8 +271,9 @@ void parse_inputs(InputParameters& p)
             Print() << "NOTE: balbi.enable is deprecated; use fire_spread_model = balbi\n";
         }
     }
-    if (p.fire_spread_model != "rothermel" && p.fire_spread_model != "balbi") {
-        amrex::Abort("fire_spread_model must be 'rothermel' or 'balbi'");
+    if (p.fire_spread_model != "rothermel" && p.fire_spread_model != "balbi"
+        && p.fire_spread_model != "cheney_gould") {
+        amrex::Abort("fire_spread_model must be 'rothermel', 'balbi', or 'cheney_gould'");
     }
 
     // -------- Propagation method selection --------
@@ -298,6 +299,10 @@ void parse_inputs(InputParameters& p)
         amrex::Abort("propagation_method must be 'levelset' or 'farsite'");
     }
     Print() << "Propagation method: " << p.propagation_method << "\n";
+
+    // -------- Cheney & Gould (1995) grassland fire spread model --------
+    p.cheney_gould.moisture = 10.0;  pp.query("cheney_gould.moisture", p.cheney_gould.moisture);
+    p.cheney_gould.curing   = 1.0;   pp.query("cheney_gould.curing",   p.cheney_gould.curing);
 
     // -------- Balbi (2009) physical fire spread model --------
     p.balbi.T_a      = 300.0;      pp.query("balbi.T_a",      p.balbi.T_a);
@@ -325,6 +330,10 @@ void parse_inputs(InputParameters& p)
         Print() << "  C_pf=" << p.balbi.C_pf << " J/(kg·K)"
                 << "  r_00=" << p.balbi.r_00 << " m"
                 << "  tau_0=" << p.balbi.tau_0 << " s/m\n";
+    } else if (p.fire_spread_model == "cheney_gould") {
+        Print() << "Fire spread model: Cheney & Gould (1995) grassland\n";
+        Print() << "  moisture=" << p.cheney_gould.moisture
+                << " %  curing=" << p.cheney_gould.curing << "\n";
     } else {
         Print() << "Fire spread model: Rothermel (1972)\n";
     }

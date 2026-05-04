@@ -35,6 +35,8 @@ using namespace amrex;
 #include "balbi_model.H"
 #include "compute_balbi_R.H"
 #include "andrews_model.H"
+#include "cheney_gould_model.H"
+#include "compute_cheney_gould_R.H"
 
 
 // ======================= Main ================================================
@@ -332,6 +334,8 @@ int main(int argc, char* argv[])
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                              d_balbi_table_ptr, balbi_table_size);
+        } else if (inputs.fire_spread_model == "cheney_gould") {
+            compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
         } else {
             // Compute Rothermel wind speed R
             compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
@@ -422,6 +426,8 @@ int main(int argc, char* argv[])
                            terrain_slopes.get(),
                            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                            d_balbi_table_ptr, balbi_table_size);
+      } else if (inputs.fire_spread_model == "cheney_gould") {
+          compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
       } else {
           compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
                                terrain_slopes.get(),
@@ -434,7 +440,8 @@ int main(int argc, char* argv[])
 	// When Balbi is active, pass pre-computed R_mf so advection uses Balbi ROS
 	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
                                    terrain_slopes.get(),
-                                   inputs.fire_spread_model == "balbi" ? &R_mf : nullptr);
+                                   (inputs.fire_spread_model == "balbi" ||
+                                    inputs.fire_spread_model == "cheney_gould") ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)

@@ -331,7 +331,6 @@ The following spread models are candidates for future integration into the `fire
 
 - [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
 - [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
-- [ ] **Cheney & Gould (1995) grassland fire** – Empirical ROS model specifically calibrated for grassland fuels and shown to outperform Rothermel in open grass. Reference: Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). *Prediction of fire spread in grasslands.* Int. J. Wildland Fire 8, 1–13.
 - [ ] **Weise & Biging (1996) fire whirl** – Extension to capture the enhanced spread caused by fire-induced vortices; relevant for slope/canyon fires with strong updrafts.
 - [ ] **Data-driven / ML surrogate** – Neural-network or Gaussian-process ROS emulator trained on historical fire perimeters (e.g., MTBS/GeoMAC/NIFC) or high-fidelity simulation data from FIRETEC/FDS-Fire. Could be loaded as a saved model artifact at runtime.
 - [ ] **Viegas (2004) eruptive fire** – Analytical model for eruptive/blow-up fire behavior on steep slopes where the positive feedback between ROS and slope steepening produces runaway spread. Reference: Viegas, D.X. (2004). *Slope and wind effects on fire propagation.* Int. J. Wildland Fire 13, 143–156.
@@ -623,7 +622,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 
 | Capability | wildfire_levelset | FARSITE | WRF-SFIRE |
 |---|---|---|---|
-| **Fire spread model** | Rothermel (1972) ROS with Andrews (2018) wind adjustments (WAF, MEWS); elliptical directional spread (Richards 1990); Eulerian level-set implementation of Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
+| **Fire spread model** | Rothermel (1972) ROS with Andrews (2018) wind adjustments (WAF, MEWS); Balbi (2009) physical model; Cheney & Gould (1995) grassland empirical model; elliptical directional spread (Richards 1990); Eulerian level-set implementation of Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
 | **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap via `rothermel.use_waf` / `rothermel.use_wind_limit` | WAF applied internally | WAF not explicitly applied; wind from atmospheric model |
 | **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
 | **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `wrf_wind_reader.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
