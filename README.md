@@ -23,7 +23,7 @@ The documentation includes:
 - **Level-set advection** for fire front tracking
 - **Rothermel fire spread model** with Anderson 13 (FM1-FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4) fuel databases
 - **Andrews (2018) wind adjustments** for the Rothermel model: Wind Adjustment Factor (WAF) converting 20-ft open wind to midflame height (`rothermel.use_waf = 1`); maximum effective wind speed (MEWS) limit (`rothermel.use_wind_limit = 1`); both are per-cell when a landscape file is used
-- **Balbi (2009) physical fire spread model** – radiation-driven, physics-based ROS; fully replaces Rothermel when `balbi.enable = 1`; auto-generates a Balbi fuel parameter table at startup; accepts all LCP inputs and adds thermal parameters via parmparse (`balbi.*`)
+- **Balbi (2009) physical fire spread model** – radiation-driven, physics-based ROS; fully replaces Rothermel; auto-generates a Balbi fuel parameter table at startup; accepts all LCP inputs and adds thermal parameters via parmparse (`balbi.*`)
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
 - **FARSITE landscape files** (`.lcp`) with per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
@@ -328,8 +328,6 @@ Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated De
 ## Future Fire Spread Models (TODO)
 
 The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
-
-> **Implemented**: Andrews (2018) wind adjustments (WAF and MEWS) are now part of the Rothermel model. See the [Andrews (2018) Wind Adjustments](#andrews-2018-wind-adjustments-for-rothermel) section above.
 
 - [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
 - [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
