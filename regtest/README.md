@@ -131,7 +131,7 @@ done
 
 ---
 
-### 6. terrain_wind ⭐
+### 5. terrain_wind ⭐
 **Purpose**: Tests external terrain and spatially-varying wind field (Gaussian hill).
 
 **Features**:
@@ -157,7 +157,7 @@ done
 
 ---
 
-### 7. anderson_lw
+### 6. anderson_lw
 **Purpose**: Tests dynamic L/W ratio calculation based on wind speed (Anderson 1983).
 
 **Features**:
@@ -176,7 +176,7 @@ done
 
 ---
 
-### 8. reinitialization
+### 7. reinitialization
 **Purpose**: Tests level-set reinitialization to maintain signed distance property.
 
 **Features**:
@@ -194,7 +194,7 @@ done
 
 ---
 
-### 9. 3d_sphere
+### 8. 3d_sphere
 **Purpose**: Tests full 3D fire spread simulation.
 
 **Features**:
@@ -218,7 +218,7 @@ done
 
 ---
 
-### 10. ellipse_sdf
+### 9. ellipse_sdf
 **Purpose**: Tests elliptical initial condition with signed distance function.
 
 **Features**:
@@ -240,7 +240,7 @@ done
 
 ---
 
-### 11. eb_implicit
+### 10. eb_implicit
 **Purpose**: Tests embedded boundary capabilities using implicit function representations.
 
 **Features**:
@@ -265,7 +265,7 @@ done
 
 ---
 
-### 10. landfire_farsite ⭐
+### 11. landfire_farsite ⭐
 **Purpose**: Tests FARSITE fire spread with a real (or synthetic fallback) LANDFIRE landscape.
 
 **Features**:

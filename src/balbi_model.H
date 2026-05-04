@@ -63,13 +63,23 @@ struct BalbiComputed {
 // Unit-conversion constants (US/Rothermel → SI)
 // ============================================================================
 namespace BalbiUnits {
-    constexpr amrex::Real FT_TO_M        = 0.3048;      // ft → m
-    constexpr amrex::Real FT_INV_TO_M_INV = 3.28084;    // ft⁻¹ → m⁻¹
-    constexpr amrex::Real LB_FT2_TO_KG_M2 = 4.8824;     // lb/ft² → kg/m²
-    constexpr amrex::Real LB_FT3_TO_KG_M3 = 16.0185;    // lb/ft³ → kg/m³
-    constexpr amrex::Real BTU_LB_TO_J_KG  = 2326.0;     // BTU/lb → J/kg
-    constexpr amrex::Real G               = 9.81;        // m/s²
+    constexpr amrex::Real FT_TO_M          = 0.3048;    // ft → m
+    constexpr amrex::Real FT_INV_TO_M_INV  = 3.28084;   // ft⁻¹ → m⁻¹
+    constexpr amrex::Real LB_FT2_TO_KG_M2  = 4.8824;    // lb/ft² → kg/m²
+    constexpr amrex::Real LB_FT3_TO_KG_M3  = 16.0185;   // lb/ft³ → kg/m³
+    constexpr amrex::Real BTU_LB_TO_J_KG   = 2326.0;    // BTU/lb → J/kg
+    constexpr amrex::Real G                = 9.81;       // m/s²
 }
+
+// Minimum safe buoyancy velocity [m/s] used as a numerical floor.
+// Prevents division-by-zero in the GPU tilt-angle kernel while remaining
+// orders of magnitude below physically meaningful v_b values (≥ 1 m/s).
+constexpr amrex::Real BALBI_V_B_MIN = 1.0e-3;
+
+// Minimum dimensionless ignition-energy ratio B* before the cell is treated
+// as non-burnable (A_coeff = 0).  Numerically, 1e-6 is well below any
+// physically plausible value for B* (typically 0.01–0.10).
+constexpr amrex::Real BALBI_B_STAR_MIN = 1.0e-6;
 
 // ============================================================================
 // Compute Balbi (2009) model coefficients from fuel + thermal parameters
@@ -126,20 +136,20 @@ inline BalbiComputed compute_balbi_params(const RothermelParams& rp,
     const Real dT_f = bp.T_f - bp.T_a;
     const Real v_b  = (dT_f > 0.0)
                       ? std::sqrt(G * delta_m * dT_f / bp.T_a)
-                      : 1.0;  // fallback: avoid division by zero
+                      : BALBI_V_B_MIN;  // non-positive temperature delta: use floor
 
     // -----------------------------------------------------------------------
     // ROS amplitude coefficient
     //   A_coeff = χ · σ_m · δ_m / (2 · τ₀ · B*)   [m/s]
     //   (σ_m·δ_m dimensionless; τ₀ in [s/m] gives [m/s] after division)
     // -----------------------------------------------------------------------
-    const Real A_coeff = (B_star > 1.0e-6)
+    const Real A_coeff = (B_star > BALBI_B_STAR_MIN)
                          ? chi * sigma_m * delta_m / (2.0 * bp.tau_0 * B_star)
                          : 0.0;
 
     BalbiComputed bc;
     bc.A_coeff = std::max(A_coeff, 0.0);
-    bc.v_b     = std::max(v_b,     1.0e-3);  // floor to prevent divide-by-zero
+    bc.v_b     = std::max(v_b, BALBI_V_B_MIN);  // floor to prevent divide-by-zero
     return bc;
 }
 
@@ -239,7 +249,7 @@ inline void print_balbi_fuel_table(const RothermelParams& base_params,
         const Real v_b    = (dT_f > 0.0 && delta_m > 0.0)
                             ? std::sqrt(G * delta_m * dT_f / bp.T_a)
                             : 0.0;
-        const Real A_coeff = (B_star > 1e-6 && sigma_m > 0.0 && delta_m > 0.0)
+        const Real A_coeff = (B_star > BALBI_B_STAR_MIN && sigma_m > 0.0 && delta_m > 0.0)
                              ? chi * sigma_m * delta_m / (2.0 * bp.tau_0 * B_star)
                              : 0.0;
 

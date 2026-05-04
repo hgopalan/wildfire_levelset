@@ -85,10 +85,10 @@ static void compute_balbi_R(MultiFab& R_mf,
             }
 
             // Wind speed magnitude [m/s]
-            const Real U = std::sqrt(ux*ux + uy*uy);
+            const Real wind_speed = std::sqrt(ux*ux + uy*uy);
 
-            // Flame tilt angle from wind: tan(α_wind) = U / v_b
-            Real tan_alpha = U / cell_vb;
+            // Flame tilt angle from wind: tan(α_wind) = wind_speed / v_b
+            Real tan_alpha = wind_speed / cell_vb;
 
             // Add slope contribution: tan(α_slope) = sqrt(sx² + sy²)
             if (use_terrain) {
