@@ -28,6 +28,7 @@
 
 #include "parse_inputs.H"
 #include "fuel_database.H"
+#include "andrews_model.H"
 #include <AMReX.H>
 
 // Structure to hold computed Rothermel parameters for GPU kernel
@@ -41,6 +42,8 @@ struct RothermelComputed {
     amrex::Real beta;            // Packing ratio (for terrain-based phi_s calculation)
     amrex::Real wind_conv;       // Unit conversion for wind
     amrex::Real ros_conv;        // Unit conversion for ROS
+    amrex::Real waf;             // Wind Adjustment Factor (Andrews 2018): 20-ft→midflame
+    amrex::Real U_max_ftmin;     // Maximum effective wind speed [ft/min] (Andrews 2018)
 };
 
 // ============================================================================
@@ -230,6 +233,14 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     // Unit-conversion scalars for the GPU kernel
     rc.wind_conv = rp.wind_conv;
     rc.ros_conv  = rp.ros_conv;
+
+    // -----------------------------------------------------------------------
+    // Andrews (2018) wind adjustments
+    // -----------------------------------------------------------------------
+    // Wind Adjustment Factor: converts 20-ft open wind to midflame wind
+    rc.waf = compute_waf_unsheltered(rp.delta);
+    // Maximum effective wind speed: prevents unrealistically large phi_w
+    rc.U_max_ftmin = compute_max_ews_ftmin(I_R, rc.C, rc.B, rc.beta_ratio_E);
 
     return rc;
 }

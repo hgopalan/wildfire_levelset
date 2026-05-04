@@ -34,6 +34,7 @@ using namespace amrex;
 #include "compute_fire_behavior.H"
 #include "balbi_model.H"
 #include "compute_balbi_R.H"
+#include "andrews_model.H"
 
 
 // ======================= Main ================================================

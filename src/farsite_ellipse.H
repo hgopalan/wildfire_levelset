@@ -99,6 +99,11 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       rc.beta; // Packing ratio for terrain-based phi_s calculation
   const Real wind_conv = rc.wind_conv;
   const Real ros_conv = rc.ros_conv;
+  // Andrews (2018) wind adjustments
+  const Real waf_default         = rc.waf;
+  const Real U_max_default       = rc.U_max_ftmin;
+  const int  use_waf_flag        = rp.use_waf;
+  const int  use_wind_limit_flag = rp.use_wind_limit;
   
   // Bulk fuel consumption model parameters
   const int use_fuel_consumption = fp.use_bulk_fuel_consumption;
@@ -208,6 +213,17 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 
       // Convert wind speed to Rothermel units (ft/min)
       Real U_ftmin = wind_mag * wind_conv;
+
+      // Apply Wind Adjustment Factor if enabled (Andrews 2018):
+      // converts 20-ft open wind to midflame height wind
+      if (use_waf_flag == 1) {
+          U_ftmin *= waf_default;
+      }
+
+      // Apply maximum effective wind speed limit if enabled (Andrews 2018)
+      if (use_wind_limit_flag == 1 && U_max_default > Real(0.0)) {
+          U_ftmin = std::min(U_ftmin, U_max_default);
+      }
 
       // Wind factor φ_w (Rothermel Eq. 47)
       Real phi_w =

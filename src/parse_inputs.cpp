@@ -150,6 +150,8 @@ void parse_inputs(InputParameters& p)
     }
     pp.query("rothermel.wind_conv", p.rothermel.wind_conv);
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
+    p.rothermel.use_waf         = 0;    pp.query("rothermel.use_waf",         p.rothermel.use_waf);
+    p.rothermel.use_wind_limit  = 0;    pp.query("rothermel.use_wind_limit",  p.rothermel.use_wind_limit);
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
@@ -325,6 +327,16 @@ void parse_inputs(InputParameters& p)
                 << "  tau_0=" << p.balbi.tau_0 << " s/m\n";
     } else {
         Print() << "Fire spread model: Rothermel (1972)\n";
+    }
+
+    // Print Andrews (2018) wind adjustment settings
+    if (p.rothermel.use_waf == 1 || p.rothermel.use_wind_limit == 1) {
+        Print() << "Andrews (2018) wind adjustments enabled:";
+        if (p.rothermel.use_waf == 1)
+            Print() << " WAF (20-ft→midflame)";
+        if (p.rothermel.use_wind_limit == 1)
+            Print() << " MEWS-limit";
+        Print() << "\n";
     }
 
     // -------- Albini (1983) firebrand spotting with 2-D trajectory --------
