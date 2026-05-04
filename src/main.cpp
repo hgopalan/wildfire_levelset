@@ -195,6 +195,7 @@ int main(int argc, char* argv[])
     // Initialize velocity field
     // PLT wind state (shared between init and time loop; works for any AMREX_SPACEDIM)
     std::vector<Real> plt_wind_timestamps;
+    std::vector<std::string> plt_wind_names;
     std::vector<Real> plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1;
     std::vector<Real> plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2;
     int plt_wind_loaded_idx1 = -1;
@@ -218,6 +219,7 @@ int main(int argc, char* argv[])
                                inputs.plt_wind_u_var, inputs.plt_wind_v_var,
                                inputs.fire_height, 0.0,
                                plt_wind_timestamps,
+                               plt_wind_names,
                                plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
                                plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
                                plt_wind_loaded_idx1, plt_wind_loaded_idx2);
@@ -249,6 +251,7 @@ int main(int argc, char* argv[])
                                inputs.plt_wind_u_var, inputs.plt_wind_v_var,
                                inputs.fire_height, 0.0,
                                plt_wind_timestamps,
+                               plt_wind_names,
                                plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
                                plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
                                plt_wind_loaded_idx1, plt_wind_loaded_idx2);
@@ -419,6 +422,7 @@ int main(int argc, char* argv[])
                                  inputs.plt_wind_u_var, inputs.plt_wind_v_var,
                                  inputs.fire_height, time,
                                  plt_wind_timestamps,
+                                 plt_wind_names,
                                  plt_x_data1, plt_y_data1, plt_u_data1, plt_v_data1,
                                  plt_x_data2, plt_y_data2, plt_u_data2, plt_v_data2,
                                  plt_wind_loaded_idx1, plt_wind_loaded_idx2);

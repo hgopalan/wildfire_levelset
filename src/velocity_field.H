@@ -1,5 +1,6 @@
 // velocity_field.H - Velocity field initialization functions
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -319,41 +320,56 @@ static void update_time_dependent_velocity(MultiFab& vel, const Geometry& geom,
 #endif  // AMREX_SPACEDIM == 2
 
 // ======================= PLT Wind: Scan directory for file timestamps =============
-// Probes for plt00000, plt00001, ... in plt_wind_dir and reads the simulation
-// time stored in each file's Header.  Stops at the first missing index.
+// Scans plt_wind_dir for any subdirectory whose name starts with "plt" and
+// contains a Header file.  The found names are sorted lexicographically so that
+// the first entry corresponds to time=0 and the last to the final simulation
+// time.  The simulation time stored in each file's Header is read and stored in
+// timestamps; the sorted directory names are stored in plt_names.
 #include <AMReX_PlotFileUtil.H>
 
-// Helper: format a 5-digit zero-padded plt file name (e.g. "plt00042")
-static std::string plt_wind_name(int idx)
-{
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "plt%05d", idx);
-    return std::string(buf);
-}
-
 static void scan_plt_wind_files(const std::string& plt_wind_dir,
-                                 std::vector<Real>& timestamps)
+                                 std::vector<Real>& timestamps,
+                                 std::vector<std::string>& plt_names)
 {
     timestamps.clear();
-    for (int i = 0; ; ++i) {
-        std::string hdr_path = plt_wind_dir + "/" + plt_wind_name(i) + "/Header";
-        std::ifstream hdr_test(hdr_path);
-        if (!hdr_test.is_open()) break;
-        hdr_test.close();
+    plt_names.clear();
 
-        std::string plt_path = plt_wind_dir + "/" + plt_wind_name(i);
-        PlotFileData pf(plt_path);
-        timestamps.push_back(static_cast<Real>(pf.time()));
+    // Collect all subdirectory names that start with "plt" and contain a Header
+    std::vector<std::string> found_names;
+    namespace fs = std::filesystem;
+    if (!fs::is_directory(plt_wind_dir)) {
+        amrex::Abort("plt_wind_dir is not a valid directory: " + plt_wind_dir);
+    }
+    for (const auto& entry : fs::directory_iterator(plt_wind_dir)) {
+        if (!entry.is_directory()) continue;
+        std::string dname = entry.path().filename().string();
+        if (dname.rfind("plt", 0) != 0) continue;
+        std::string hdr_path = plt_wind_dir + "/" + dname + "/Header";
+        std::ifstream hdr_test(hdr_path);
+        if (!hdr_test.is_open()) continue;
+        hdr_test.close();
+        found_names.push_back(dname);
     }
 
-    if (timestamps.empty()) {
+    if (found_names.empty()) {
         amrex::Abort("No plt wind files found in directory: " + plt_wind_dir);
     }
 
-    amrex::Print() << "PLT wind: found " << timestamps.size()
+    // Sort lexicographically so first entry is earliest, last is latest
+    std::sort(found_names.begin(), found_names.end());
+
+    // Read timestamps from each sorted plt file
+    for (const auto& name : found_names) {
+        std::string plt_path = plt_wind_dir + "/" + name;
+        PlotFileData pf(plt_path);
+        timestamps.push_back(static_cast<Real>(pf.time()));
+        plt_names.push_back(name);
+    }
+
+    amrex::Print() << "PLT wind: found " << plt_names.size()
                    << " files in " << plt_wind_dir << "\n";
-    for (int i = 0; i < static_cast<int>(timestamps.size()); ++i) {
-        amrex::Print() << "  " << plt_wind_name(i) << "  t = " << timestamps[i] << " s\n";
+    for (int i = 0; i < static_cast<int>(plt_names.size()); ++i) {
+        amrex::Print() << "  " << plt_names[i] << "  t = " << timestamps[i] << " s\n";
     }
 }
 
@@ -362,7 +378,8 @@ static void scan_plt_wind_files(const std::string& plt_wind_dir,
 // corresponds to fire_height in the plt file's coordinate system.
 // For AMREX_SPACEDIM==2 builds the plt files must already be 2-D and
 // fire_height is ignored.
-static void extract_wind_from_plt(const std::string& plt_wind_dir, int file_idx,
+static void extract_wind_from_plt(const std::string& plt_wind_dir,
+                                    const std::string& plt_name,
                                     const std::string& u_var, const std::string& v_var,
                                     Real fire_height,
                                     std::vector<Real>& x_data,
@@ -370,7 +387,7 @@ static void extract_wind_from_plt(const std::string& plt_wind_dir, int file_idx,
                                     std::vector<Real>& u_data,
                                     std::vector<Real>& v_data)
 {
-    std::string plt_path_str = plt_wind_dir + "/" + plt_wind_name(file_idx);
+    std::string plt_path_str = plt_wind_dir + "/" + plt_name;
 
     PlotFileData pf(plt_path_str);
 
@@ -533,6 +550,7 @@ static void update_plt_wind_velocity(MultiFab& vel, const Geometry& geom,
                                       Real current_time,
                                       // state cached between calls:
                                       std::vector<Real>& timestamps,
+                                      std::vector<std::string>& plt_names,
                                       std::vector<Real>& x_data1,
                                       std::vector<Real>& y_data1,
                                       std::vector<Real>& u_data1,
@@ -544,9 +562,9 @@ static void update_plt_wind_velocity(MultiFab& vel, const Geometry& geom,
                                       int& loaded_idx1,
                                       int& loaded_idx2)
 {
-    // Populate timestamps on first call
+    // Populate timestamps and names on first call
     if (timestamps.empty()) {
-        scan_plt_wind_files(plt_wind_dir, timestamps);
+        scan_plt_wind_files(plt_wind_dir, timestamps, plt_names);
     }
 
     const int n_files = static_cast<int>(timestamps.size());
@@ -569,14 +587,14 @@ static void update_plt_wind_velocity(MultiFab& vel, const Geometry& geom,
 
     // Reload wind data only when the bracketing pair changes
     if (idx1 != loaded_idx1 || idx2 != loaded_idx2) {
-        amrex::Print() << "PLT wind: loading " << plt_wind_name(idx1)
-                       << " and " << plt_wind_name(idx2)
+        amrex::Print() << "PLT wind: loading " << plt_names[idx1]
+                       << " and " << plt_names[idx2]
                        << " at t=" << current_time << " s\n";
 
-        extract_wind_from_plt(plt_wind_dir, idx1, u_var, v_var, fire_height,
+        extract_wind_from_plt(plt_wind_dir, plt_names[idx1], u_var, v_var, fire_height,
                                x_data1, y_data1, u_data1, v_data1);
         if (idx1 != idx2) {
-            extract_wind_from_plt(plt_wind_dir, idx2, u_var, v_var, fire_height,
+            extract_wind_from_plt(plt_wind_dir, plt_names[idx2], u_var, v_var, fire_height,
                                    x_data2, y_data2, u_data2, v_data2);
         } else {
             x_data2 = x_data1;
