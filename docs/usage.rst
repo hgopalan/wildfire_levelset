@@ -419,7 +419,7 @@ grasslands.
   Example: ``cheney_gould.moisture = 8.0``
 
 **cheney_gould.curing** (default: 1.0)
-  Degree of curing of the grass [0–1; 1 = fully cured dry standing grass,
+  Degree of curing of the grass [0-1; 1 = fully cured dry standing grass,
   0 = completely green]. Values outside [0, 1] are clamped at runtime.
 
   Example: ``cheney_gould.curing = 0.90``

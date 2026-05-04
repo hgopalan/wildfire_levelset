@@ -437,8 +437,10 @@ the 10-m open wind speed :math:`U_{10}` (km/h), a moisture correction factor
        (-0.020 + 0.640\,U_{10}) \times f_{MC} \times CF & U_{10} > 5\ \text{km/h}
    \end{cases}
 
-where the result is clamped to :math:`R \ge 0` (negative base ROS is physically
-meaningless) and then converted to m/s for the simulation:
+The result is clamped to :math:`R \ge 0` — in the high-wind regime the
+intercept :math:`-0.020` makes the base ROS slightly negative for extremely
+low wind speeds just above 5 km/h, which is physically meaningless — and
+then converted to m/s for the simulation:
 
 .. math::
 
