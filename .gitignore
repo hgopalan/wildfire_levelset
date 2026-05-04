@@ -1,5 +1,6 @@
 build/
 build_*/
+build2d/
 plt*/
 build_rel/
 Backtrace.*
