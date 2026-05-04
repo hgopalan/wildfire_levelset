@@ -418,6 +418,62 @@ Byram's (1959) empirical relationship between fireline intensity and flame lengt
 These fields (``fireline_intensity`` and ``flame_length``) are computed at every time
 step and written to each plotfile.
 
+Cheney & Gould (1995 / 1998) Grassland Fire Spread Model
+----------------------------------------------------------
+
+The Cheney–Gould model is a purely empirical rate-of-spread (ROS) formula calibrated against a large number of experimental grassland fires conducted in Australia. It is activated by setting ``fire_spread_model = cheney_gould`` and generally outperforms the Rothermel model in open grassland fuels.
+
+Head-Fire Rate of Spread
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The head-fire rate of spread :math:`R` (km/h) is a piecewise-linear function of
+the 10-m open wind speed :math:`U_{10}` (km/h), a moisture correction factor
+:math:`f_{MC}`, and a curing factor :math:`CF`:
+
+.. math::
+
+   R = \begin{cases}
+       (0.165 + 0.534\,U_{10}) \times f_{MC} \times CF & U_{10} \le 5\ \text{km/h} \\
+       (-0.020 + 0.640\,U_{10}) \times f_{MC} \times CF & U_{10} > 5\ \text{km/h}
+   \end{cases}
+
+where the result is clamped to :math:`R \ge 0` (negative base ROS is physically
+meaningless) and then converted to m/s for the simulation:
+
+.. math::
+
+   R\ [\text{m/s}] = \frac{R\ [\text{km/h}]}{3.6}
+
+The 10-m wind speed :math:`U_{10}` is obtained by converting the simulation wind
+field (m/s) via :math:`U_{10} = |\mathbf{u}| \times 3.6`.
+
+Moisture Correction Factor
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. math::
+
+   f_{MC} = \exp(-0.108 \times MC)
+
+where :math:`MC` is the dead fine fuel moisture content [%]. At :math:`MC = 0`
+(bone-dry fuel) :math:`f_{MC} = 1`; at :math:`MC \approx 22\%` the ROS is
+halved relative to dry conditions.
+
+Curing Factor
+^^^^^^^^^^^^^
+
+:math:`CF \in [0,\,1]` represents the degree of curing of the grass:
+:math:`CF = 1` is fully cured (dry standing grass), while :math:`CF = 0` is
+completely green (no spread). The factor is clamped to the :math:`[0,1]`
+interval at runtime.
+
+Note on Terrain Slope
+^^^^^^^^^^^^^^^^^^^^^
+
+Terrain slope is **not** accounted for in the original Cheney–Gould empirical
+formulation. The model was calibrated on flat or gently sloping Australian
+grasslands and the slope correction is intentionally omitted in this
+implementation. For slope effects, use the Rothermel or Balbi models instead.
+
 Level-Set Method
 ----------------
 
