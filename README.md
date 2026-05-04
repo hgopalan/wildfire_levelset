@@ -31,6 +31,7 @@ The documentation includes:
 - **Per size-class fuel moisture**: 1-hr, 10-hr, 100-hr dead fuel; live herbaceous and live woody moisture inputs for the multi-class Rothermel (1972) reaction intensity
 - **Fire behavior diagnostics**: Byram (1959) fireline intensity [kW/m] and flame length [m] written to every plotfile
 - **Weise & Biging (1996) fire whirl model** – optional diagnostic sub-model computing flame tilt, whirl height/radius, angular velocity, and tangential velocity from fireline intensity and wind; enabled via `weise_biging.enable = 1`
+- **Viegas (2004) eruptive fire diagnostics** – optional parallel diagnostic that computes the Viegas exponential slope enhancement factor, eruptive-regime flag (critical slope), Viegas ROS, ROS excess vs Rothermel, and flame-tilt angle for hazard assessment; enabled via `viegas.enable = 1`; shares all inputs with Rothermel but does **not** modify fire propagation
 - **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter contours
 - **Stochastic firebrand spotting** with probability-based model
 - **Physics-based firebrand spotting** using Albini (1983) lofting height and 2-D trajectory integration
@@ -186,6 +187,7 @@ Override parameters from command line:
 - **Albini spotting**: `albini_spotting.enable=0`, `albini_spotting.terminal_velocity=1.0`, `albini_spotting.P_base=0.01`, `albini_spotting.I_B_min=10.0`
 - **Crown fire**: `crown.enable=0`, `crown.CBH=4.0`, `crown.CBD=0.15`, `crown.FMC=100.0`
 - **Weise & Biging fire whirl**: `weise_biging.enable=0`, `weise_biging.c_r=0.1`, `weise_biging.I_B_min=1.0`
+- **Viegas eruptive fire diagnostics**: `viegas.enable=0`, `viegas.a_V=1.83`, `viegas.tan_phi_c=0.4`, `viegas.T_a=300.0`, `viegas.T_f=1000.0`
 - **Multi-point ignition**: `fire_points_file=""` (CSV with `X Y [Z]` columns), `fire_gaussian_sigma=0.0` (≤0 = auto: 3 cells)
 
 See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) for complete parameter reference.
@@ -468,6 +470,112 @@ rothermel.terrain_file = terrain.xyz  # slope β comes from here if present
 Weise, D.R. and Biging, G.S. (1996). "Effects of wind velocity and slope on flame properties."
 *Canadian Journal of Forest Research*, 26(10), 1849–1858. https://doi.org/10.1139/x26-210
 
+## Viegas (2004) Eruptive Fire Diagnostics
+
+The Viegas (2004) model is an **optional diagnostic sub-model** that characterises eruptive (blow-up) fire behavior on steep terrain. Like the Weise & Biging whirl model, it runs **in parallel** with — and **does not modify** — the primary fire spread model. It is enabled via `viegas.enable = 1`.
+
+### Physical basis and merging strategy
+
+Viegas (2004) introduces an exponential slope enhancement factor that grows much faster than Rothermel's quadratic φ_s on steep slopes, capturing the runaway acceleration observed in laboratory and field eruptive fires.
+
+**Merging rules** (strictly enforced):
+
+| Coupling | Status | Rationale |
+|----------|--------|-----------|
+| Rothermel R₀ used as Viegas baseline | ✅ Compatible | Shared no-wind, no-slope ROS |
+| Same slope/wind/fuel inputs | ✅ Compatible | Consistent environmental state |
+| Viegas flame-tilt for hazard assessment | ✅ Compatible | Read-only diagnostic output |
+| Viegas induced wind → Rothermel | ❌ Excluded | Would invalidate Rothermel calibration |
+| Viegas eruptive acceleration → Rothermel ROS | ❌ Excluded | Models have incompatible ROS formulations |
+| Viegas critical slope replacing Rothermel φ_s | ❌ Excluded | Different slope factor definitions |
+| Viegas dynamic ROS inside Rothermel's static formula | ❌ Excluded | Conceptually incompatible |
+
+### Key equations
+
+**Viegas slope enhancement factor** (exponential, captures eruptive regime):
+```
+Φ_s_V = exp(a_V × tan φ)
+```
+
+**Viegas ROS** (uses Rothermel R₀ and φ_w as baseline, replaces only the slope factor):
+```
+R_V = R₀ × (1 + φ_w) × Φ_s_V
+```
+
+**Eruptive regime flag** (critical slope criterion, Viegas 2004 Section 3):
+```
+eruptive_flag = 1  when  tan(φ) > tan_phi_c  (default tan_phi_c = 0.4, ≈ 22°)
+               0  otherwise
+```
+
+**Flame-tilt angle** (hazard assessment only, not used for ROS):
+```
+tan α = U / v_b + tan φ
+v_b   = sqrt(g × δ_m × (T_f − T_a) / T_a)   [buoyancy velocity, m/s]
+```
+
+where:
+- `R₀` — Rothermel no-wind, no-slope ROS [ft/min] converted to [m/s]
+- `φ_w` — Rothermel wind factor (same computation as `compute_rothermel_R`)
+- `a_V` — Viegas slope coefficient (default 1.83, calibrated to laboratory fuels)
+- `φ` — terrain slope angle from gradient; `tan φ = |∇z|`
+- `U` — wind speed [m/s]
+- `v_b` — buoyancy velocity scale derived from fuel depth and temperatures
+- `δ_m` — fuel bed depth [m] (converted from Rothermel's ft value)
+
+### Configuration via parmparse (`viegas.*`)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `viegas.enable` | `0` | Enable (1) or disable (0) the Viegas diagnostics |
+| `viegas.a_V` | `1.83` | Exponential slope coefficient (dimensionless) |
+| `viegas.tan_phi_c` | `0.4` | Critical slope tan(φ_c) for eruptive-regime flag (≈ 22°) |
+| `viegas.T_a` | `300.0` K | Ambient temperature for buoyancy velocity calculation |
+| `viegas.T_f` | `1000.0` K | Mean flame temperature for buoyancy velocity calculation |
+
+### Outputs
+
+Five diagnostic fields are written to every plotfile when enabled:
+
+| Field | Units | Description |
+|-------|-------|-------------|
+| `viegas_ROS` | m/s | Viegas ROS: R₀ × (1 + φ_w) × exp(a_V × tan φ) |
+| `viegas_eruptive_flag` | − | 1.0 where tan(φ) > tan_phi_c (eruptive conditions) |
+| `viegas_ROS_excess` | − | (R_V − R_Rothermel) / R_Rothermel; positive = Rothermel under-predicts |
+| `viegas_flame_tilt` | rad | Flame tilt angle from vertical (hazard assessment only) |
+| `viegas_slope_factor` | − | Viegas slope enhancement factor Φ_s_V = exp(a_V × tan φ) |
+
+The `viegas_ROS_excess` field is particularly useful for identifying cells where Rothermel's quadratic slope factor significantly under-predicts the spread rate compared to Viegas' exponential form.
+
+### Example inputs file snippet
+
+```ini
+# Rothermel primary fire spread (unchanged)
+fire_spread_model  = rothermel
+propagation_method = farsite
+
+rothermel.fuel_model = FM4
+rothermel.M_f        = 0.08
+
+# Enable Viegas (2004) eruptive fire diagnostics (parallel, read-only)
+viegas.enable    = 1
+viegas.a_V       = 1.83   # slope coefficient (Viegas 2004 laboratory calibration)
+viegas.tan_phi_c = 0.4    # critical slope ~22° for eruptive-regime flag
+viegas.T_a       = 300.0  # ambient temperature [K]
+viegas.T_f       = 1000.0 # flame temperature [K]
+
+# Terrain with steep slopes (required for meaningful Viegas output)
+rothermel.terrain_file = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+```
+
+### Reference
+
+Viegas, D.X. (2004). "Slope and wind effects on fire propagation."
+*International Journal of Wildland Fire*, 13(2), 143–156.
+<https://doi.org/10.1071/WF03046>
+
 ## Future Fire Spread Models (TODO)
 
 The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
@@ -475,7 +583,6 @@ The following spread models are candidates for future integration into the `fire
 - [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
 - [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
 - [ ] **Data-driven / ML surrogate** – Neural-network or Gaussian-process ROS emulator trained on historical fire perimeters (e.g., MTBS/GeoMAC/NIFC) or high-fidelity simulation data from FIRETEC/FDS-Fire. Could be loaded as a saved model artifact at runtime.
-- [ ] **Viegas (2004) eruptive fire** – Analytical model for eruptive/blow-up fire behavior on steep slopes where the positive feedback between ROS and slope steepening produces runaway spread. Reference: Viegas, D.X. (2004). *Slope and wind effects on fire propagation.* Int. J. Wildland Fire 13, 143–156.
 
 To add a new spread model, implement a `compute_<name>_R` function (analogous to `compute_rothermel_R` in `src/compute_rothermel_R.H`) and register it with a new branch in `main.cpp` guarded by `if (inputs.fire_spread_model == "<name>")`.
 
