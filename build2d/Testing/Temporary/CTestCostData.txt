@@ -1,0 +1,10 @@
+basic_levelset 1 0.0224731
+farsite_ellipse 1 0.0183728
+rothermel_fuel 1 0.0154403
+anderson_lw 1 0.0176311
+cheney_gould_grassfire 1 0.159021
+terrain_wind 1 2.29858
+time_dependent_wind 1 0.381232
+landfire_farsite_setup 1 0.11134
+landfire_farsite 1 0.0160669
+---

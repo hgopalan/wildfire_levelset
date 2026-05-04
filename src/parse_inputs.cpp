@@ -374,6 +374,21 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Weise & Biging (1996) fire whirl model --------
+    p.weise_biging.enable  = 0;     pp.query("weise_biging.enable",  p.weise_biging.enable);
+    p.weise_biging.c_r     = 0.1;   pp.query("weise_biging.c_r",     p.weise_biging.c_r);
+    p.weise_biging.I_B_min = 1.0;   pp.query("weise_biging.I_B_min", p.weise_biging.I_B_min);
+
+    if (p.weise_biging.enable == 1) {
+        if (p.weise_biging.c_r <= 0.0)
+            amrex::Abort("weise_biging.c_r must be > 0");
+        if (p.weise_biging.I_B_min < 0.0)
+            amrex::Abort("weise_biging.I_B_min must be >= 0");
+        Print() << "Weise & Biging (1996) fire whirl model enabled:\n";
+        Print() << "  c_r=" << p.weise_biging.c_r
+                << "  I_B_min=" << p.weise_biging.I_B_min << " kW/m\n";
+    }
+
     // -------- CSV fire points initialization --------
     p.fire_points_file  = "";                    pp.query("fire_points_file",     p.fire_points_file);
     p.fire_gaussian_sigma = -1.0;                pp.query("fire_gaussian_sigma",  p.fire_gaussian_sigma);
