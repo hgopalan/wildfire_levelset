@@ -24,6 +24,7 @@ The documentation includes:
 - **Rothermel fire spread model** with Anderson 13 (FM1-FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4) fuel databases
 - **Andrews (2018) wind adjustments** for the Rothermel model: Wind Adjustment Factor (WAF) converting 20-ft open wind to midflame height (`rothermel.use_waf = 1`); maximum effective wind speed (MEWS) limit (`rothermel.use_wind_limit = 1`); both are per-cell when a landscape file is used
 - **Balbi (2009) physical fire spread model** – radiation-driven, physics-based ROS; fully replaces Rothermel; auto-generates a Balbi fuel parameter table at startup; accepts all LCP inputs and adds thermal parameters via parmparse (`balbi.*`)
+- **Cheney & Gould (1995 / 1998) grassland fire spread model** – empirical model calibrated for open Australian grasslands; piecewise wind-speed formula with moisture and curing corrections; activated by `fire_spread_model = cheney_gould`; configured via `cheney_gould.*`
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
 - **FARSITE landscape files** (`.lcp`) with per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
@@ -171,7 +172,7 @@ Override parameters from command line:
 - **Reinitialization**: `reinit_int=20`, `reinit_iters=20`
 - **Velocity**: `u_x=0.25`, `u_y=0.0`, `u_z=0.0`, `velocity_file="wind.csv"`
 - **Time-dependent wind**: `use_time_dependent_wind=0`, `wind_time_spacing=60.0`
-- **Fire spread model**: `fire_spread_model=rothermel` — choose `rothermel` (default) or `balbi`
+- **Fire spread model**: `fire_spread_model=rothermel` — choose `rothermel` (default), `balbi`, or `cheney_gould`
 - **Propagation method**: `propagation_method=levelset` — choose `levelset` (default) or `farsite`
 - **Terrain/Landscape files**: `rothermel.terrain_file=""`, `rothermel.landscape_file=""` (landscape file takes precedence over terrain file and constant slope/aspect)
 - **FARSITE parameters**: `farsite.length_to_width_ratio=3.0`, `farsite.use_anderson_LW=0`
@@ -179,6 +180,7 @@ Override parameters from command line:
 - **Fuel model**: `rothermel.fuel_model=FM4` — Anderson 13 (FM1–FM13) and Scott & Burgan 40 (GR1–GR9, GS1–GS4, SH1–SH9, TU1–TU5, TL1–TL9, SB1–SB4)
 - **Andrews (2018) wind adjustments**: `rothermel.use_waf=0` (WAF on/off), `rothermel.use_wind_limit=0` (MEWS cap on/off)
 - **Balbi parameters**: `balbi.T_a=300.0`, `balbi.T_f=1000.0`, `balbi.T_i=600.0` (active when `fire_spread_model=balbi`)
+- **Cheney–Gould parameters**: `cheney_gould.moisture=10.0` [%], `cheney_gould.curing=1.0` (active when `fire_spread_model=cheney_gould`)
 - **Stochastic spotting**: `spotting.enable=0`, `spotting.P_base=0.02`, `spotting.d_mean=0.1`, `spotting.distance_model=lognormal`
 - **Albini spotting**: `albini_spotting.enable=0`, `albini_spotting.terminal_velocity=1.0`, `albini_spotting.P_base=0.01`, `albini_spotting.I_B_min=10.0`
 - **Crown fire**: `crown.enable=0`, `crown.CBH=4.0`, `crown.CBD=0.15`, `crown.FMC=100.0`
@@ -324,6 +326,59 @@ velocity_file = wind.csv
 
 Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service.
 <https://doi.org/10.2737/RMRS-GTR-371>
+
+## Cheney & Gould (1995 / 1998) Grassland Fire Spread Model
+
+The Cheney–Gould model is a purely empirical rate-of-spread model calibrated against a large number of experimental grassland fires conducted in Australia. It is selected with `fire_spread_model = cheney_gould` and generally outperforms Rothermel in open grassland fuels.
+
+### Physical basis
+
+Head-fire rate of spread R [km/h] is a piecewise-linear function of the 10-m open wind speed U₁₀ [km/h], multiplied by a moisture correction factor and a curing factor:
+
+```
+For U₁₀ ≤ 5 km/h:  R = (0.165 + 0.534 × U₁₀) × f_MC × CF
+For U₁₀ > 5 km/h:  R = (−0.020 + 0.640 × U₁₀) × f_MC × CF
+
+Moisture correction:   f_MC = exp(−0.108 × MC)
+```
+
+where:
+- `U₁₀` – 10-m open wind speed [km/h] (converted automatically from the simulation's m/s wind field)
+- `MC` – dead fine fuel moisture content [%]
+- `CF` – degree of curing [0–1; 1 = fully cured dry grass]
+
+The result is converted to simulation length/time units (m/s) internally. Negative raw ROS values are clamped to zero. **Terrain slope is not accounted for** in the original empirical formulation and is intentionally omitted.
+
+### Inputs via parmparse (`cheney_gould.*`)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cheney_gould.moisture` | `10.0` % | Dead fine fuel moisture content [%] |
+| `cheney_gould.curing` | `1.0` | Degree of curing [0–1; 1 = fully cured] |
+
+### Example inputs file snippet
+
+```ini
+# Select Cheney-Gould fire spread model
+fire_spread_model = cheney_gould
+propagation_method = levelset
+
+# Grassland fuel state
+cheney_gould.moisture = 8.0   # 8% dead fine fuel moisture
+cheney_gould.curing   = 0.95  # 95% cured grassland
+
+# Wind field (m/s)
+u_x = 5.0
+u_y = 0.0
+```
+
+### Reference
+
+Cheney, N.P. & Gould, J.S. (1995). "Fire growth in grassland fuels."
+*International Journal of Wildland Fire*, 5(4), 237–247.
+
+Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). "Prediction of fire spread in grasslands."
+*International Journal of Wildland Fire*, 8(1), 1–13.
 
 ## Future Fire Spread Models (TODO)
 
@@ -552,6 +607,7 @@ Available regression tests:
 - `farsite_ellipse` - FARSITE elliptical expansion
 - `rothermel_fuel` - Rothermel with fuel models
 - `anderson_lw` - Anderson dynamic L/W ratio
+- `cheney_gould_grassfire` - Cheney & Gould (1995/1998) grassland fire spread
 - `reinitialization` - Level-set reinitialization
 - `ellipse_sdf` - Elliptical SDF initial conditions
 - `eb_implicit` - Embedded boundary capabilities

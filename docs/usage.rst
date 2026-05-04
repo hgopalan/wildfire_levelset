@@ -281,8 +281,9 @@ Fire Model Selection
 
   - ``rothermel`` – Rothermel (1972) empirical fire spread model (default)
   - ``balbi`` – Balbi (2009) radiation-driven physics-based model
+  - ``cheney_gould`` – Cheney & Gould (1995/1998) empirical grassland fire spread model
 
-  Example: ``fire_spread_model = balbi``
+  Example: ``fire_spread_model = cheney_gould``
 
 **propagation_method** (default: ``levelset``)
   Select how the fire perimeter is propagated. Currently supported values:
@@ -403,6 +404,25 @@ select a standard model instead.
 When all per-class loads are zero the solver falls back to the single-class
 aggregate path (``rothermel.w0`` / ``rothermel.sigma`` / ``rothermel.M_f``)
 preserving backward compatibility.
+
+Cheney & Gould (1995 / 1998) Grassland Spread Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters are used when ``fire_spread_model = cheney_gould``. The model
+is an empirical piecewise-linear formula calibrated for open Australian
+grasslands.
+
+**cheney_gould.moisture** (default: 10.0)
+  Dead fine fuel moisture content [%]. Used in the exponential moisture
+  correction factor :math:`f_{MC} = \exp(-0.108 \times MC)`.
+
+  Example: ``cheney_gould.moisture = 8.0``
+
+**cheney_gould.curing** (default: 1.0)
+  Degree of curing of the grass [0-1; 1 = fully cured dry standing grass,
+  0 = completely green]. Values outside [0, 1] are clamped at runtime.
+
+  Example: ``cheney_gould.curing = 0.90``
 
 Wind Parameters
 ^^^^^^^^^^^^^^^

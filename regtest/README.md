@@ -10,6 +10,7 @@ regtest/
 ├── farsite_ellipse/      # FARSITE elliptical fire expansion (Richards 1990)
 ├── rothermel_fuel/       # Rothermel model with different fuel types
 ├── balbi_fuel/           # Balbi (2009) physical fire spread model
+├── cheney_gould_grassfire/ # Cheney & Gould (1995/1998) grassland fire spread model
 ├── terrain_wind/         # External terrain (Gaussian hill) and wind field
 ├── anderson_lw/          # Anderson (1983) dynamic L/W ratio
 ├── reinitialization/     # Level-set reinitialization testing
@@ -131,7 +132,32 @@ done
 
 ---
 
-### 5. terrain_wind ⭐
+### 5. cheney_gould_grassfire
+**Purpose**: Tests fire spread using the Cheney & Gould empirical grassland fire spread model.
+
+**Features**:
+- Cheney & Gould (1995 / 1998) piecewise-linear wind-speed formula
+- Moisture correction factor: `f_MC = exp(−0.108 × MC)`
+- Curing factor (0–1) for partially green / fully cured grass
+- Spherical initial ignition on a flat 1 km × 1 km domain
+- Level-set propagation driven by the Cheney–Gould ROS field
+
+**Expected Runtime**: ~1 minute
+
+**Key Parameters**:
+- Domain: 1000 m × 1000 m flat grassland
+- Wind: 10 m/s from west (= 36 km/h 10-m open wind)
+- Fuel moisture: 8%
+- Curing: 1.0 (fully cured)
+- Expected head-fire ROS ≈ 2.69 m/s
+
+**Reference**:
+- Cheney, N.P. & Gould, J.S. (1995). "Fire growth in grassland fuels." *Int. J. Wildland Fire* 5(4), 237–247.
+- Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). "Prediction of fire spread in grasslands." *Int. J. Wildland Fire* 8(1), 1–13.
+
+---
+
+### 6. terrain_wind ⭐
 **Purpose**: Tests external terrain and spatially-varying wind field (Gaussian hill).
 
 **Features**:
@@ -157,7 +183,7 @@ done
 
 ---
 
-### 6. anderson_lw
+### 7. anderson_lw
 **Purpose**: Tests dynamic L/W ratio calculation based on wind speed (Anderson 1983).
 
 **Features**:
@@ -176,7 +202,7 @@ done
 
 ---
 
-### 7. reinitialization
+### 8. reinitialization
 **Purpose**: Tests level-set reinitialization to maintain signed distance property.
 
 **Features**:
@@ -194,7 +220,7 @@ done
 
 ---
 
-### 8. 3d_sphere
+### 9. 3d_sphere
 **Purpose**: Tests full 3D fire spread simulation.
 
 **Features**:
@@ -218,7 +244,7 @@ done
 
 ---
 
-### 9. ellipse_sdf
+### 10. ellipse_sdf
 **Purpose**: Tests elliptical initial condition with signed distance function.
 
 **Features**:
@@ -240,7 +266,7 @@ done
 
 ---
 
-### 10. eb_implicit
+### 11. eb_implicit
 **Purpose**: Tests embedded boundary capabilities using implicit function representations.
 
 **Features**:
@@ -265,7 +291,7 @@ done
 
 ---
 
-### 11. landfire_farsite ⭐
+### 12. landfire_farsite ⭐
 **Purpose**: Tests FARSITE fire spread with a real (or synthetic fallback) LANDFIRE landscape.
 
 **Features**:
@@ -297,6 +323,7 @@ Use this checklist to verify all capabilities:
 - [ ] **Basic Advection**: `basic_levelset` runs successfully
 - [ ] **FARSITE**: `farsite_ellipse` produces elliptical spread
 - [ ] **Fuel Models**: `rothermel_fuel` correctly applies fuel properties
+- [ ] **Cheney–Gould**: `cheney_gould_grassfire` produces asymmetric grassland spread
 - [ ] **Terrain**: `terrain_wind` handles external elevation data
 - [ ] **Wind Fields**: `terrain_wind` interpolates spatially-varying wind
 - [ ] **Anderson L/W**: `anderson_lw` computes dynamic coefficients
@@ -314,7 +341,7 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-**Compatible tests**: `basic_levelset`, `farsite_ellipse`, `rothermel_fuel`, `anderson_lw`, `reinitialization`, `ellipse_sdf`, `eb_implicit`, `3d_sphere`
+**Compatible tests**: `basic_levelset`, `farsite_ellipse`, `rothermel_fuel`, `anderson_lw`, `cheney_gould_grassfire`, `reinitialization`, `ellipse_sdf`, `eb_implicit`, `3d_sphere`
 
 ### 2D Build
 ```bash

@@ -95,6 +95,7 @@ add_regression_test(basic_levelset basic_levelset)
 add_regression_test(farsite_ellipse farsite_ellipse)
 add_regression_test(rothermel_fuel rothermel_fuel)
 add_regression_test(anderson_lw anderson_lw)
+add_regression_test(cheney_gould_grassfire cheney_gould_grassfire)
 
 # Advanced feature tests (can be enabled as needed)
 # Uncomment to run additional tests:
@@ -132,6 +133,7 @@ message(STATUS "  - basic_levelset: Basic level-set advection with constant velo
 message(STATUS "  - farsite_ellipse: FARSITE elliptical fire expansion")
 message(STATUS "  - rothermel_fuel: Rothermel model with fuel types")
 message(STATUS "  - anderson_lw: Anderson dynamic L/W ratio")
+message(STATUS "  - cheney_gould_grassfire: Cheney & Gould (1995/1998) grassland fire spread")
 if(NOT LEVELSET_DIM_2D)
     message(STATUS "  - 3d_sphere: Full 3D fire spread simulation")
 endif()
