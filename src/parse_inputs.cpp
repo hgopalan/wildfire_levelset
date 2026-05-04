@@ -389,6 +389,29 @@ void parse_inputs(InputParameters& p)
                 << "  I_B_min=" << p.weise_biging.I_B_min << " kW/m\n";
     }
 
+    // -------- Viegas (2004) eruptive fire model --------
+    p.viegas.enable     = 0;      pp.query("viegas.enable",     p.viegas.enable);
+    p.viegas.a_V        = 1.83;   pp.query("viegas.a_V",        p.viegas.a_V);
+    p.viegas.tan_phi_c  = 0.4;    pp.query("viegas.tan_phi_c",  p.viegas.tan_phi_c);
+    p.viegas.T_a        = 300.0;  pp.query("viegas.T_a",        p.viegas.T_a);
+    p.viegas.T_f        = 1000.0; pp.query("viegas.T_f",        p.viegas.T_f);
+
+    if (p.viegas.enable == 1) {
+        if (p.viegas.a_V <= 0.0)
+            amrex::Abort("viegas.a_V must be > 0");
+        if (p.viegas.tan_phi_c < 0.0)
+            amrex::Abort("viegas.tan_phi_c must be >= 0");
+        if (p.viegas.T_a <= 0.0)
+            amrex::Abort("viegas.T_a must be > 0 K");
+        if (p.viegas.T_f <= p.viegas.T_a)
+            amrex::Abort("viegas.T_f must be > viegas.T_a");
+        Print() << "Viegas (2004) eruptive fire diagnostics enabled:\n";
+        Print() << "  a_V=" << p.viegas.a_V
+                << "  tan_phi_c=" << p.viegas.tan_phi_c
+                << "  T_a=" << p.viegas.T_a << " K"
+                << "  T_f=" << p.viegas.T_f << " K\n";
+    }
+
     // -------- CSV fire points initialization --------
     p.fire_points_file  = "";                    pp.query("fire_points_file",     p.fire_points_file);
     p.fire_gaussian_sigma = -1.0;                pp.query("fire_gaussian_sigma",  p.fire_gaussian_sigma);
