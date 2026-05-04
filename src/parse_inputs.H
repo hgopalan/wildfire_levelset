@@ -167,6 +167,15 @@ struct InputParameters {
         amrex::Real I_B_min;                 // minimum Byram fireline intensity to compute whirl [kW/m] (default: 1.0)
     } weise_biging;
 
+    // Viegas (2004) eruptive fire model parameters
+    struct ViegasParams {
+        int enable;                          // 1 to enable Viegas diagnostics, 0 to disable (default: 0)
+        amrex::Real a_V;                     // Viegas slope coefficient (default: 1.83)
+        amrex::Real tan_phi_c;               // Critical slope for eruptive fire tan(phi_c) (default: 0.4, ~22°)
+        amrex::Real T_a;                     // Ambient temperature [K] for flame-tilt calculation (default: 300.0)
+        amrex::Real T_f;                     // Flame temperature [K] for flame-tilt calculation (default: 1000.0)
+    } viegas;
+
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
     // When set to 1, overrides propagation_method to "farsite".

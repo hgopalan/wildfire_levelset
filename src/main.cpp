@@ -38,6 +38,7 @@ using namespace amrex;
 #include "cheney_gould_model.H"
 #include "compute_cheney_gould_R.H"
 #include "weise_biging_whirl.H"
+#include "viegas_model.H"
 
 
 // ======================= Main ================================================
@@ -131,6 +132,15 @@ int main(int argc, char* argv[])
     //   5 – weise_max_tang_vel     [m/s]
     MultiFab weise_data(ba, dm, WEISE_NCOMP, 0);
     weise_data.setVal(0.0);
+
+    // Viegas (2004) eruptive fire diagnostics and fire-terrain feedback
+    //   0 – viegas_ROS          [m/s]
+    //   1 – viegas_eruptive_flag [-]   (1 when eruptive conditions met)
+    //   2 – viegas_ROS_excess   [-]   (R_V - R_Rothermel)/R_Rothermel
+    //   3 – viegas_flame_tilt   [rad]  (Viegas flame-tilt angle from vertical)
+    //   4 – viegas_slope_factor [-]   (Viegas slope enhancement factor Phi_s_V)
+    MultiFab viegas_data(ba, dm, VIEGAS_NCOMP, 0);
+    viegas_data.setVal(0.0);
 
 
     // ---------------- Initialize ---------------------------
@@ -364,6 +374,12 @@ int main(int argc, char* argv[])
         compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
                                    vel, terrain_slopes.get(), inputs.weise_biging);
     }
+    if (inputs.viegas.enable == 1) {
+        compute_viegas_diagnostics(viegas_data, R_mf, vel, inputs.rothermel, inputs.viegas,
+                                   terrain_slopes.get(),
+                                   !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                                   d_fuel_table_ptr, fuel_table_size);
+    }
 
 
     // ---------------- Write initial plotfile ---------------
@@ -377,7 +393,9 @@ int main(int argc, char* argv[])
 				   "fireline_intensity", "flame_length",
 				   "weise_flame_height", "weise_flame_tilt",
 				   "weise_whirl_height", "weise_whirl_radius",
-				   "weise_angular_velocity", "weise_max_tang_vel"
+				   "weise_angular_velocity", "weise_max_tang_vel",
+				   "viegas_ROS", "viegas_eruptive_flag",
+				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -386,10 +404,12 @@ int main(int argc, char* argv[])
 				   "fireline_intensity", "flame_length",
 				   "weise_flame_height", "weise_flame_tilt",
 				   "weise_whirl_height", "weise_whirl_radius",
-				   "weise_angular_velocity", "weise_max_tang_vel"
+				   "weise_angular_velocity", "weise_max_tang_vel",
+				   "viegas_ROS", "viegas_eruptive_flag",
+				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -405,6 +425,7 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
       MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
       MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
+      MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -460,6 +481,12 @@ int main(int argc, char* argv[])
       if (inputs.weise_biging.enable == 1) {
           compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
                                      vel, terrain_slopes.get(), inputs.weise_biging);
+      }
+      if (inputs.viegas.enable == 1) {
+          compute_viegas_diagnostics(viegas_data, R_mf, vel, inputs.rothermel, inputs.viegas,
+                                     terrain_slopes.get(),
+                                     !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                                     d_fuel_table_ptr, fuel_table_size);
       }
       if (use_levelset) {
 	// Traditional level set advection
@@ -535,7 +562,9 @@ int main(int argc, char* argv[])
 				     "fireline_intensity", "flame_length",
 				     "weise_flame_height", "weise_flame_tilt",
 				     "weise_whirl_height", "weise_whirl_radius",
-				     "weise_angular_velocity", "weise_max_tang_vel"
+				     "weise_angular_velocity", "weise_max_tang_vel",
+				     "viegas_ROS", "viegas_eruptive_flag",
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -544,10 +573,12 @@ int main(int argc, char* argv[])
 				     "fireline_intensity", "flame_length",
 				     "weise_flame_height", "weise_flame_tilt",
 				     "weise_whirl_height", "weise_whirl_radius",
-				     "weise_angular_velocity", "weise_max_tang_vel"
+				     "weise_angular_velocity", "weise_max_tang_vel",
+				     "viegas_ROS", "viegas_eruptive_flag",
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -563,6 +594,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
+	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	
@@ -595,7 +627,9 @@ int main(int argc, char* argv[])
 				     "fireline_intensity", "flame_length",
 				     "weise_flame_height", "weise_flame_tilt",
 				     "weise_whirl_height", "weise_whirl_radius",
-				     "weise_angular_velocity", "weise_max_tang_vel"
+				     "weise_angular_velocity", "weise_max_tang_vel",
+				     "viegas_ROS", "viegas_eruptive_flag",
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -604,10 +638,12 @@ int main(int argc, char* argv[])
 				     "fireline_intensity", "flame_length",
 				     "weise_flame_height", "weise_flame_tilt",
 				     "weise_whirl_height", "weise_whirl_radius",
-				     "weise_angular_velocity", "weise_max_tang_vel"
+				     "weise_angular_velocity", "weise_max_tang_vel",
+				     "viegas_ROS", "viegas_eruptive_flag",
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -623,6 +659,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
+	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	
