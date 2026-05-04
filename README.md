@@ -329,6 +329,8 @@ Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated De
 
 The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
 
+> **Implemented**: Andrews (2018) wind adjustments (WAF and MEWS) are now part of the Rothermel model. See the [Andrews (2018) Wind Adjustments](#andrews-2018-wind-adjustments-for-rothermel) section above.
+
 - [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
 - [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
 - [ ] **Cheney & Gould (1995) grassland fire** – Empirical ROS model specifically calibrated for grassland fuels and shown to outperform Rothermel in open grass. Reference: Cheney, N.P., Gould, J.S. & Catchpole, W.R. (1998). *Prediction of fire spread in grasslands.* Int. J. Wildland Fire 8, 1–13.
@@ -659,7 +661,9 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **Wind adjustment control**: When using WRF output wind via `wrf_wind_reader.py`, enable `rothermel.use_waf = 1` to convert the NWP wind to midflame height. WRF-SFIRE handles this internally as part of the coupled framework.
 - **Albini spotting vs. none**: WRF-SFIRE does not include firebrand spotting by default.
 - **Simpler setup**: Running this solver requires only CMake and an AMReX build; WRF-SFIRE requires a full WRF stack (NetCDF, MPI, WPS, WRF pre-processing).
-- **GPU-native kernels**: WRF-SFIRE is primarily CPU-MPI; this solver's hotspot loops use AMReX GPU kernels.## References
+- **GPU-native kernels**: WRF-SFIRE is primarily CPU-MPI; this solver's hotspot loops use AMReX GPU kernels.
+
+## References
 
 - **Andrews, P.L. (2018)**. *The Rothermel Surface Fire Spread Model and Associated Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371. USDA Forest Service. <https://doi.org/10.2737/RMRS-GTR-371>
 - **Byram, G.M. (1959)**. "Combustion of forest fuels." In: Davis, K.P. (ed.) *Forest Fire: Control and Use*. McGraw-Hill, New York. pp. 61–89.
