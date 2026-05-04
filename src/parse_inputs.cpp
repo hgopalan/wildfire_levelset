@@ -176,7 +176,6 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.M_lw",   p.rothermel.M_lw);
 
     // -------- FARSITE ellipse model parameters (Richards 1990) --------
-    p.farsite.enable = 1;                        pp.query("farsite.enable", p.farsite.enable);
     p.farsite.use_anderson_LW = 0;               pp.query("farsite.use_anderson_LW", p.farsite.use_anderson_LW);
     p.farsite.length_to_width_ratio = 3.0;       pp.query("farsite.length_to_width_ratio", p.farsite.length_to_width_ratio);
     p.farsite.phi_threshold = 0.1;               pp.query("farsite.phi_threshold", p.farsite.phi_threshold);
@@ -257,8 +256,48 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Fire spread model selection --------
+    // Reads "fire_spread_model" key ("rothermel" or "balbi").
+    // Legacy key "balbi.enable = 1" is also accepted for backward compatibility.
+    p.fire_spread_model = "rothermel";
+    pp.query("fire_spread_model", p.fire_spread_model);
+    {
+        int balbi_enable_legacy = 0;
+        pp.query("balbi.enable", balbi_enable_legacy);
+        if (balbi_enable_legacy == 1) {
+            p.fire_spread_model = "balbi";
+            Print() << "NOTE: balbi.enable is deprecated; use fire_spread_model = balbi\n";
+        }
+    }
+    if (p.fire_spread_model != "rothermel" && p.fire_spread_model != "balbi") {
+        amrex::Abort("fire_spread_model must be 'rothermel' or 'balbi'");
+    }
+
+    // -------- Propagation method selection --------
+    // Reads "propagation_method" key ("levelset" or "farsite").
+    // Legacy keys "skip_levelset" and "farsite.enable" are also accepted.
+    p.propagation_method = "levelset";
+    pp.query("propagation_method", p.propagation_method);
+    {
+        int skip_ls_legacy = 0;
+        int farsite_en_legacy = -1;
+        pp.query("skip_levelset", skip_ls_legacy);
+        pp.query("farsite.enable", farsite_en_legacy);
+        if (skip_ls_legacy == 1) {
+            p.propagation_method = "farsite";
+            Print() << "NOTE: skip_levelset is deprecated; use propagation_method = farsite\n";
+        } else if (skip_ls_legacy == 0 && farsite_en_legacy == 0) {
+            // Explicitly disabled FARSITE → levelset
+            p.propagation_method = "levelset";
+        }
+        p.skip_levelset = (p.propagation_method == "farsite") ? 1 : 0; // keep field in sync
+    }
+    if (p.propagation_method != "levelset" && p.propagation_method != "farsite") {
+        amrex::Abort("propagation_method must be 'levelset' or 'farsite'");
+    }
+    Print() << "Propagation method: " << p.propagation_method << "\n";
+
     // -------- Balbi (2009) physical fire spread model --------
-    p.balbi.enable   = 0;          pp.query("balbi.enable",   p.balbi.enable);
     p.balbi.T_a      = 300.0;      pp.query("balbi.T_a",      p.balbi.T_a);
     p.balbi.T_f      = 1000.0;     pp.query("balbi.T_f",      p.balbi.T_f);
     p.balbi.T_i      = 600.0;      pp.query("balbi.T_i",      p.balbi.T_i);
@@ -267,7 +306,7 @@ void parse_inputs(InputParameters& p)
     p.balbi.r_00     = 2.5e-4;     pp.query("balbi.r_00",     p.balbi.r_00);
     p.balbi.tau_0    = 75591.0;    pp.query("balbi.tau_0",    p.balbi.tau_0);
 
-    if (p.balbi.enable == 1) {
+    if (p.fire_spread_model == "balbi") {
         if (p.balbi.T_a <= 0.0)
             amrex::Abort("balbi.T_a must be > 0 K");
         if (p.balbi.T_f <= p.balbi.T_a)
@@ -278,12 +317,14 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("balbi.tau_0 must be > 0");
         if (p.balbi.r_00 <= 0.0)
             amrex::Abort("balbi.r_00 must be > 0");
-        Print() << "Balbi (2009) fire spread model ENABLED\n";
+        Print() << "Fire spread model: Balbi (2009)\n";
         Print() << "  T_a=" << p.balbi.T_a << " K  T_f=" << p.balbi.T_f
                 << " K  T_i=" << p.balbi.T_i << " K\n";
         Print() << "  C_pf=" << p.balbi.C_pf << " J/(kg·K)"
                 << "  r_00=" << p.balbi.r_00 << " m"
                 << "  tau_0=" << p.balbi.tau_0 << " s/m\n";
+    } else {
+        Print() << "Fire spread model: Rothermel (1972)\n";
     }
 
     // -------- Albini (1983) firebrand spotting with 2-D trajectory --------
@@ -311,9 +352,6 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("albini_spotting.n_traj_steps must be at least 1");
         }
     }
-
-    // -------- Skip level set option --------
-    p.skip_levelset = 0;                         pp.query("skip_levelset", p.skip_levelset);
 
     // -------- CSV fire points initialization --------
     p.fire_points_file  = "";                    pp.query("fire_points_file",     p.fire_points_file);

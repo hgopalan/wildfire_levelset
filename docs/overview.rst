@@ -59,7 +59,7 @@ Slope correction factor based on Rothermel (1972) accounts for uphill/downhill f
 
    \phi_s = 5.275 \beta^{-0.3} \tan^2(\theta)
 
-where :math:`\beta` is the packing ratio and :math:`\theta` is the slope angle. This is used when terrain slopes are active (terrain or landscape file specified) and ``farsite.enable=0``.
+where :math:`\beta` is the packing ratio and :math:`\theta` is the slope angle. This is used when terrain slopes are active (terrain or landscape file specified) and ``propagation_method=levelset``.
 
 FARSITE Combined Wind and Terrain Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

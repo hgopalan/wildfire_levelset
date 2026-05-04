@@ -35,8 +35,7 @@ box_zmax = 0.55
 # Reinitialization
 reinit_int = -1
 
-# FARSITE with Anderson L/W
-farsite.enable = 1
+# FARSITE with Anderson L/W ratio
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
@@ -45,4 +44,4 @@ rothermel.fuel_model = FM4
 rothermel.M_f = 0.08
 
 # Level set control
-skip_levelset = 0
+propagation_method = farsite

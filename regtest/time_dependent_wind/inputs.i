@@ -35,10 +35,9 @@ reinit_int = 10
 rothermel.fuel_model = FM4
 rothermel.M_f = 0.08
 
-# FARSITE elliptical spread with Anderson L/W ratio
-farsite.enable = 1
+# FARSITE ellipse parameters (used when propagation_method = farsite)
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
 # Level set control
-skip_levelset = 0
+propagation_method = levelset

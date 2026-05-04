@@ -35,7 +35,6 @@ box_zmax = 0.6
 reinit_int = -1
 
 # FARSITE ellipse model (Richards 1990)
-farsite.enable = 1
 farsite.use_anderson_LW = 0
 farsite.length_to_width_ratio = 3.0
 farsite.phi_threshold = 0.1
@@ -47,4 +46,4 @@ farsite.coeff_c = 0.2
 rothermel.fuel_model = FM4
 
 # Level set control
-skip_levelset = 0
+propagation_method = farsite

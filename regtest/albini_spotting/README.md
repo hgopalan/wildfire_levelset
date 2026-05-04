@@ -18,7 +18,7 @@ Tests the Albini (1983) firebrand spotting model with 2-D trajectory integration
 ## Domain
 
 1 km × 1 km with 100×100 cells (dx = 10 m).  Wind is 2 m/s in x + 0.5 m/s in y.
-FARSITE ellipse spread is used (`skip_levelset = 1`).
+FARSITE ellipse spread is used (`propagation_method = farsite`).
 
 ## Expected result
 

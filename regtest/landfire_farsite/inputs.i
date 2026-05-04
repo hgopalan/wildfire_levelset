@@ -40,7 +40,6 @@ box_zmax = 1.0
 reinit_int = -1
 
 # FARSITE ellipse model (Richards 1990) with Anderson L/W ratio
-farsite.enable = 1
 farsite.use_anderson_LW = 1
 farsite.phi_threshold = 0.1
 
@@ -50,7 +49,7 @@ rothermel.M_f = 0.08
 rothermel.landscape_file = landscape.lcp
 
 # Level set control
-skip_levelset = 0
+propagation_method = farsite
 
 # Lat/lon bounding box for LANDFIRE download (WGS-84 decimal degrees)
 # These corners correspond to the UTM domain (prob_lo/prob_hi) above

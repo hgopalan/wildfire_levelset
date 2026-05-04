@@ -36,8 +36,5 @@ reinit_int = 20
 rothermel.fuel_model = FM1
 rothermel.M_f = 0.06
 
-# FARSITE disabled for this test
-farsite.enable = 0
-
 # Level set control
-skip_levelset = 0
+propagation_method = levelset

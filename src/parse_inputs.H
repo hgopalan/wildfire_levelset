@@ -89,7 +89,6 @@ struct InputParameters {
     struct FARSITEParams {
         amrex::Real length_to_width_ratio;  // L/W ratio of ellipse (default: 3.0)
         amrex::Real phi_threshold;           // threshold for identifying fire front (default: 0.1)
-        int enable;                          // 1 to enable FARSITE, 0 to disable
         int use_anderson_LW;                 // 1 to use Anderson (1983) L/W ratio based on wind speed, 0 to use fixed coefficients
         // Richards' (1990) elliptical expansion coefficients
         amrex::Real coeff_a;                 // head fire coefficient (default: 1.0)
@@ -130,7 +129,6 @@ struct InputParameters {
     
     // Balbi (2009) physical fire spread model parameters
     struct BalbiParams {
-        int enable;              // 1 to enable Balbi model, 0 to disable (default: 0)
         amrex::Real T_a;         // Ambient temperature [K] (default: 300.0)
         amrex::Real T_f;         // Mean flame temperature [K] (default: 1000.0)
         amrex::Real T_i;         // Ignition temperature [K] (default: 600.0)
@@ -153,7 +151,15 @@ struct InputParameters {
     } albini_spotting;
 
     // Skip level set evolution option
-    int skip_levelset;                       // 1 to skip level set advection and use initial phi, 0 for normal operation (default: 0)
+    // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
+    // When set to 1, overrides propagation_method to "farsite".
+    int skip_levelset;                       // deprecated: use propagation_method = farsite
+
+    // Fire spread model selection: "rothermel" (default) or "balbi"
+    std::string fire_spread_model;
+
+    // Propagation method: "levelset" (default) or "farsite"
+    std::string propagation_method;
 
     // CSV fire points initialization (takes precedence over source_type when non-empty)
     std::string fire_points_file;            // Path to CSV file with X Y [Z] ignition point coordinates

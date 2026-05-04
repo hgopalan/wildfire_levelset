@@ -57,9 +57,7 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    const MultiFab *slopes = nullptr,
                                    MultiFab *fuel_consumption = nullptr,
                                    MultiFab *crown_fire_fraction = nullptr) {
-  if (fp.enable == 0) {
-    return; // FARSITE disabled
-  }
+  // (FARSITE is always active when propagation_method = farsite; guard removed)
 
   const auto dx = geom.CellSize();
 #if (AMREX_SPACEDIM == 3)
