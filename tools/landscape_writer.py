@@ -1145,8 +1145,16 @@ def create_landscape_srtm_with_fuel(output_path, lat_min, lat_max,
     Downloads SRTM elevation data for the given bounding box, derives slope
     and aspect via finite differences, then interpolates the SRTM data onto
     the fuel raster's grid.  This is the backend for ``--srtm-slope-aspect``.
+
+    Requires ``srtm_terrain_reader.py`` to be importable (both files live in
+    ``tools/`` so running from the repository root with ``python3 tools/landscape_writer.py``
+    works when ``tools/`` is on ``sys.path``).
     """
-    from srtm_terrain_reader import (
+    _tools_dir = os.path.dirname(os.path.abspath(__file__))
+    if _tools_dir not in sys.path:
+        sys.path.insert(0, _tools_dir)
+
+    from srtm_terrain_reader import (  # noqa: PLC0415
         download_srtm, _compute_slope_aspect_from_srtm_tif,
     )
 

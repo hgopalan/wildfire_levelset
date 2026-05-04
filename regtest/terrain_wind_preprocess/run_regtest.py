@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-run_regtest.py - Regression test for the split preprocessing tools:
+run_regtest.py - Regression test for the split preprocessing tools
+  (supersede the deprecated tools/deprecated/terrain_wind_preprocess.py):
   tools/wrf_wind_reader.py, tools/srtm_terrain_reader.py, tools/landscape_writer.py
 
 Tests all major capabilities using only synthetic data (no internet access or
