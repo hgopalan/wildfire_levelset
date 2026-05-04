@@ -97,20 +97,14 @@
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-using namespace amrex;
-
 // Number of output components in the viegas_data MultiFab.
 static constexpr int VIEGAS_NCOMP = 5;
 
 // Tiny positive value used as denominator floor when computing ROS excess.
-static constexpr amrex::Real VIEGAS_EPS = Real(1.0e-10);
+static constexpr amrex::Real VIEGAS_EPS = amrex::Real(1.0e-10);
 
 // Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
-static constexpr amrex::Real VIEGAS_VB_MIN = Real(1.0e-3);
+static constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
 
 // ============================================================================
 // compute_viegas_diagnostics
@@ -217,15 +211,6 @@ static void compute_viegas_diagnostics(
 
         auto vd = viegas_data.array(mfi);
 
-        // Capture scalars for lambda
-        const Real R0_def    = R0_global;
-        const Real C_def     = C_global;
-        const Real B_def     = B_global;
-        const Real bRE_def   = bRE_global;
-        const Real waf_def   = waf_global;
-        const Real Umax_def  = U_max_global;
-        const Real v_b_def   = v_b_global;
-
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
 
             // ----------------------------------------------------------------
@@ -252,12 +237,12 @@ static void compute_viegas_diagnostics(
             // ----------------------------------------------------------------
             // Per-cell or global Rothermel parameters
             // ----------------------------------------------------------------
-            Real cell_R0   = R0_def;
-            Real cell_C    = C_def;
-            Real cell_B    = B_def;
-            Real cell_bRE  = bRE_def;
-            Real cell_waf  = waf_def;
-            Real cell_Umax = Umax_def;
+            Real cell_R0   = R0_global;
+            Real cell_C    = C_global;
+            Real cell_B    = B_global;
+            Real cell_bRE  = bRE_global;
+            Real cell_waf  = waf_global;
+            Real cell_Umax = U_max_global;
 
             if (use_fuel_table) {
                 int code = static_cast<int>(fm(i, j, k));
@@ -329,7 +314,7 @@ static void compute_viegas_diagnostics(
             //   tan(alpha) = U / v_b + tan(phi)
             //   alpha      = atan(tan(alpha))
             // ----------------------------------------------------------------
-            const Real v_b = std::max(v_b_def, VIEGAS_VB_MIN);
+            const Real v_b = std::max(v_b_global, VIEGAS_VB_MIN);
             const Real tan_alpha = U / v_b + tan_phi;
             const Real flame_tilt = std::atan(tan_alpha);
 

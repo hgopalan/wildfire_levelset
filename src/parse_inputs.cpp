@@ -406,8 +406,9 @@ void parse_inputs(InputParameters& p)
         if (p.viegas.T_f <= p.viegas.T_a)
             amrex::Abort("viegas.T_f must be > viegas.T_a");
         Print() << "Viegas (2004) eruptive fire diagnostics enabled:\n";
-        Print() << "  a_V=" << p.viegas.a_V
-                << "  tan_phi_c=" << p.viegas.tan_phi_c
+        Print() << "  a_V=" << p.viegas.a_V << " (dimensionless)"
+                << "  tan_phi_c=" << p.viegas.tan_phi_c << " (dimensionless, ~"
+                << static_cast<int>(std::atan(p.viegas.tan_phi_c) * 180.0 / 3.14159265) << " deg)"
                 << "  T_a=" << p.viegas.T_a << " K"
                 << "  T_f=" << p.viegas.T_f << " K\n";
     }
