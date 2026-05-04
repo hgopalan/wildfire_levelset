@@ -160,6 +160,13 @@ struct InputParameters {
         int n_traj_steps;                    // Number of forward-Euler steps for 2-D trajectory (default: 100)
     } albini_spotting;
 
+    // Weise & Biging (1996) fire whirl model parameters
+    struct WeiseBigingParams {
+        int enable;                          // 1 to enable, 0 to disable (default: 0)
+        amrex::Real c_r;                     // whirl core radius-to-height ratio (default: 0.1)
+        amrex::Real I_B_min;                 // minimum Byram fireline intensity to compute whirl [kW/m] (default: 1.0)
+    } weise_biging;
+
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
     // When set to 1, overrides propagation_method to "farsite".

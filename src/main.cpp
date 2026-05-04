@@ -37,6 +37,7 @@ using namespace amrex;
 #include "andrews_model.H"
 #include "cheney_gould_model.H"
 #include "compute_cheney_gould_R.H"
+#include "weise_biging_whirl.H"
 
 
 // ======================= Main ================================================
@@ -120,6 +121,16 @@ int main(int argc, char* argv[])
     MultiFab flame_length_mf(ba, dm, 1, 0);         // Byram flame length [m]
     fireline_intensity_mf.setVal(0.0);
     flame_length_mf.setVal(0.0);
+
+    // Weise & Biging (1996) fire whirl diagnostic fields (WEISE_NCOMP components)
+    //   0 – weise_flame_height     [m]
+    //   1 – weise_flame_tilt       [rad]
+    //   2 – weise_whirl_height     [m]
+    //   3 – weise_whirl_radius     [m]
+    //   4 – weise_angular_velocity [rad/s]
+    //   5 – weise_max_tang_vel     [m/s]
+    MultiFab weise_data(ba, dm, WEISE_NCOMP, 0);
+    weise_data.setVal(0.0);
 
 
     // ---------------- Initialize ---------------------------
@@ -349,6 +360,10 @@ int main(int argc, char* argv[])
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+    if (inputs.weise_biging.enable == 1) {
+        compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
+                                   vel, terrain_slopes.get(), inputs.weise_biging);
+    }
 
 
     // ---------------- Write initial plotfile ---------------
@@ -359,16 +374,22 @@ int main(int argc, char* argv[])
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				   "elevation", "slope", "aspect", "fuel_model",
-				   "fireline_intensity", "flame_length"
+				   "fireline_intensity", "flame_length",
+				   "weise_flame_height", "weise_flame_tilt",
+				   "weise_whirl_height", "weise_whirl_radius",
+				   "weise_angular_velocity", "weise_max_tang_vel"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				   "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				   "elevation", "slope", "aspect", "fuel_model",
-				   "fireline_intensity", "flame_length"
+				   "fireline_intensity", "flame_length",
+				   "weise_flame_height", "weise_flame_tilt",
+				   "weise_whirl_height", "weise_whirl_radius",
+				   "weise_angular_velocity", "weise_max_tang_vel"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -383,6 +404,7 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
       MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
       MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
+      MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -435,6 +457,10 @@ int main(int argc, char* argv[])
                                d_fuel_table_ptr, fuel_table_size);
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+      if (inputs.weise_biging.enable == 1) {
+          compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
+                                     vel, terrain_slopes.get(), inputs.weise_biging);
+      }
       if (use_levelset) {
 	// Traditional level set advection
 	// When Balbi is active, pass pre-computed R_mf so advection uses Balbi ROS
@@ -506,16 +532,22 @@ int main(int argc, char* argv[])
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				     "elevation", "slope", "aspect", "fuel_model",
-				     "fireline_intensity", "flame_length"
+				     "fireline_intensity", "flame_length",
+				     "weise_flame_height", "weise_flame_tilt",
+				     "weise_whirl_height", "weise_whirl_radius",
+				     "weise_angular_velocity", "weise_max_tang_vel"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				     "elevation", "slope", "aspect", "fuel_model",
-				     "fireline_intensity", "flame_length"
+				     "fireline_intensity", "flame_length",
+				     "weise_flame_height", "weise_flame_tilt",
+				     "weise_whirl_height", "weise_whirl_radius",
+				     "weise_angular_velocity", "weise_max_tang_vel"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -530,6 +562,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
 	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
+	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	
@@ -559,16 +592,22 @@ int main(int argc, char* argv[])
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				     "elevation", "slope", "aspect", "fuel_model",
-				     "fireline_intensity", "flame_length"
+				     "fireline_intensity", "flame_length",
+				     "weise_flame_height", "weise_flame_tilt",
+				     "weise_whirl_height", "weise_whirl_radius",
+				     "weise_angular_velocity", "weise_max_tang_vel"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
 				     "albini_Hz", "albini_count", "albini_dist", "albini_active",
 				     "elevation", "slope", "aspect", "fuel_model",
-				     "fireline_intensity", "flame_length"
+				     "fireline_intensity", "flame_length",
+				     "weise_flame_height", "weise_flame_tilt",
+				     "weise_whirl_height", "weise_whirl_radius",
+				     "weise_angular_velocity", "weise_max_tang_vel"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -583,6 +622,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, fuel_model_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 3, 1, 0);
 	MultiFab::Copy(plotmf, fireline_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 4, 1, 0);
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
+	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	
