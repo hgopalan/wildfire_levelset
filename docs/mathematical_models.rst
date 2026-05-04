@@ -476,6 +476,202 @@ formulation. The model was calibrated on flat or gently sloping Australian
 grasslands and the slope correction is intentionally omitted in this
 implementation. For slope effects, use the Rothermel or Balbi models instead.
 
+Viegas (2004) Eruptive Fire Diagnostics
+-----------------------------------------
+
+The Viegas (2004) model is an **optional parallel diagnostic** that characterises
+eruptive (blow-up) fire behaviour on steep terrain.  Unlike the primary spread
+models it does **not** alter the fire front propagation; instead it writes five
+diagnostic fields to every plotfile so that potential under-prediction by
+Rothermel's quadratic slope factor can be identified.  Enable with
+``viegas.enable = 1``.
+
+Physical Basis
+^^^^^^^^^^^^^^
+
+On steep slopes the Rothermel quadratic slope factor :math:`\phi_s` significantly
+under-predicts the rate of spread compared to field and laboratory observations of
+eruptive fires (Viegas 2004).  Viegas introduces an *exponential* slope enhancement
+factor that captures the runaway acceleration observed at critical slope angles.
+
+Exponential Slope Enhancement Factor
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. math::
+
+   \Phi_{s,V} = \exp\!\bigl(a_V \,\tan\varphi\bigr)
+
+where:
+
+* :math:`a_V` is the Viegas slope coefficient (default 1.83, calibrated to
+  laboratory fuels; dimensionless)
+* :math:`\varphi` is the terrain slope angle; :math:`\tan\varphi =
+  \sqrt{(\partial z/\partial x)^2 + (\partial z/\partial y)^2}`
+
+Viegas Rate of Spread
+^^^^^^^^^^^^^^^^^^^^^
+
+The Viegas ROS uses the Rothermel no-wind, no-slope rate :math:`R_0` and the
+Rothermel wind factor :math:`\phi_w` as a baseline and replaces only the slope
+factor:
+
+.. math::
+
+   R_V = R_0 \,(1 + \phi_w) \,\Phi_{s,V}
+       = R_0 \,(1 + \phi_w) \,\exp\!\bigl(a_V \,\tan\varphi\bigr)
+
+Eruptive Regime Flag
+^^^^^^^^^^^^^^^^^^^^
+
+A cell is flagged as being in the eruptive regime when the terrain slope exceeds
+a critical value :math:`\tan\varphi_c` (Viegas 2004, Section 3):
+
+.. math::
+
+   \text{flag} =
+   \begin{cases}
+     1 & \tan\varphi > \tan\varphi_c \\
+     0 & \text{otherwise}
+   \end{cases}
+
+The default critical slope is :math:`\tan\varphi_c = 0.4` (approximately
+22°).  Flagged cells indicate locations where the Rothermel model is expected
+to under-predict the rate of spread.
+
+ROS Excess Ratio
+^^^^^^^^^^^^^^^^
+
+The signed excess ratio quantifies the relative difference between the two models:
+
+.. math::
+
+   \varepsilon = \frac{R_V - R_{\text{Rothermel}}}{R_{\text{Rothermel}}}
+
+Positive values indicate that Viegas predicts a higher spread rate than
+Rothermel; the larger :math:`\varepsilon`, the greater the potential
+under-prediction by Rothermel on steep terrain.
+
+Flame-Tilt Angle (Hazard Assessment)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The combined wind–slope flame-tilt angle :math:`\alpha` is computed for hazard
+assessment purposes only; it is **not** fed back into the rate-of-spread
+calculation:
+
+.. math::
+
+   \tan\alpha = \frac{U}{v_b} + \tan\varphi
+
+where the buoyancy velocity scale :math:`v_b` (m/s) is:
+
+.. math::
+
+   v_b = \sqrt{\frac{g \,\delta_m \,(T_f - T_a)}{T_a}}
+
+and:
+
+* :math:`U` – wind speed magnitude (m/s)
+* :math:`g = 9.81` m/s² – gravitational acceleration
+* :math:`\delta_m` – fuel bed depth (m), converted from the Rothermel database value in ft
+* :math:`T_f` – mean flame temperature (K); default 1000 K
+* :math:`T_a` – ambient temperature (K); default 300 K
+
+Merging Strategy
+^^^^^^^^^^^^^^^^
+
+The following table summarises which couplings between the Viegas and Rothermel
+models are permitted in this implementation:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 55 10 35
+
+   * - Coupling
+     - Status
+     - Rationale
+   * - Rothermel :math:`R_0` used as Viegas baseline
+     - ✅ compatible
+     - Shared no-wind, no-slope ROS
+   * - Same slope/wind/fuel inputs as Rothermel
+     - ✅ compatible
+     - Consistent environmental state per cell
+   * - Viegas flame-tilt for hazard assessment only
+     - ✅ compatible
+     - Read-only diagnostic output
+   * - Viegas induced wind fed into Rothermel
+     - ❌ excluded
+     - Would invalidate Rothermel calibration
+   * - Viegas eruptive acceleration fed into Rothermel ROS
+     - ❌ excluded
+     - Incompatible ROS formulations
+   * - Viegas critical slope replacing Rothermel :math:`\phi_s`
+     - ❌ excluded
+     - Different slope-factor definitions
+   * - Viegas dynamic ROS inside Rothermel's static formula
+     - ❌ excluded
+     - Conceptually incompatible
+
+Diagnostic Output Fields
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Five fields are written to every plotfile when ``viegas.enable = 1``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Field
+     - Units
+     - Description
+   * - ``viegas_ROS``
+     - m/s
+     - :math:`R_0 (1+\phi_w)\exp(a_V \tan\varphi)`
+   * - ``viegas_eruptive_flag``
+     - –
+     - 1 where :math:`\tan\varphi > \tan\varphi_c`
+   * - ``viegas_ROS_excess``
+     - –
+     - :math:`(R_V - R_{\text{Rothermel}})/R_{\text{Rothermel}}`
+   * - ``viegas_flame_tilt``
+     - rad
+     - :math:`\arctan(U/v_b + \tan\varphi)` (hazard only)
+   * - ``viegas_slope_factor``
+     - –
+     - :math:`\exp(a_V \tan\varphi)`
+
+Input Parameters
+^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``viegas.enable``
+     - 0
+     - Enable (1) or disable (0) the Viegas diagnostics
+   * - ``viegas.a_V``
+     - 1.83
+     - Exponential slope coefficient (dimensionless)
+   * - ``viegas.tan_phi_c``
+     - 0.4
+     - Critical slope :math:`\tan\varphi_c` for eruptive-regime flag (≈ 22°)
+   * - ``viegas.T_a``
+     - 300.0 K
+     - Ambient temperature for buoyancy velocity
+   * - ``viegas.T_f``
+     - 1000.0 K
+     - Mean flame temperature for buoyancy velocity
+
+Reference
+^^^^^^^^^
+
+Viegas, D.X. (2004). "Slope and wind effects on fire propagation."
+*International Journal of Wildland Fire*, 13(2), 143–156.
+https://doi.org/10.1071/WF03046
+
 Level-Set Method
 ----------------
 
