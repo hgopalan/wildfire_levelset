@@ -1,3 +1,8 @@
+> ⚠️ **AI-Generated Code Disclaimer**
+> A major portion of this codebase was written with the assistance of AI tools (GitHub Copilot / large language models).
+> It has not been exhaustively validated against operational wildfire prediction systems.
+> **Use with caution** — review all outputs carefully before applying to real-world fire management decisions.
+
 # wildfire_levelset
 
 An AMReX-based C++ level-set solver for wildfire front propagation modeling with FARSITE elliptical expansion, Rothermel fire spread equations, and terrain effects.
@@ -255,6 +260,12 @@ velocity_file             = wind.csv
 Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter
 contours for import into QGIS, ArcGIS, or any GIS tool.
 
+**Multi-level AMR plotfiles** (e.g. from external AMReX-based codes with
+`finest_level > 0`) are now supported.  All available levels are read and
+composited onto the Level_0 base grid — finer-level data replaces coarser
+values where AMR patches exist — so the output GeoTIFF always covers the
+full domain.
+
 ```bash
 # Export all fire-behaviour variables from one plotfile (simulation units)
 python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out
@@ -272,6 +283,9 @@ python3 tools/plotfile_to_geotiff.py plt0100 \
 
 # Convert every plt#### directory in the current directory
 python3 tools/plotfile_to_geotiff.py --all --outdir gis_out
+
+# Convert a multi-level AMR plotfile from an external AMReX-based code
+python3 tools/plotfile_to_geotiff.py plt_amr0050 --outdir gis_out
 ```
 
 Key options:
@@ -287,6 +301,12 @@ Requires: `pip install rasterio numpy` (plus `matplotlib` for GeoJSON perimeters
 The tool writes, for each plotfile and variable:
 - `plt####_<variable>.tif` – single-band GeoTIFF (float32, deflate-compressed)
 - `plt####_fire_perimeter.geojson` – phi = 0 contour as GeoJSON LineString (requires matplotlib)
+
+**Multi-level compositing**: when `finest_level > 0` is present in the AMReX
+Header, each level's FAB data is read from `Level_0/Cell_H`, `Level_1/Cell_H`,
+etc.  Finer-level cells are block-averaged to the Level_0 resolution and
+overlaid where valid, giving the best available data at each location while
+preserving full-domain coverage.
 
 ## Testing
 
