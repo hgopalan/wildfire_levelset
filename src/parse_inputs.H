@@ -130,6 +130,13 @@ struct InputParameters {
         int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
     } crown;
     
+    // Cheney & Gould (1995) / Cheney, Gould & Catchpole (1998) grassland fire
+    // spread model parameters
+    struct CheneyGouldParams {
+        amrex::Real moisture;  // dead fine fuel moisture content [%]  default: 10.0
+        amrex::Real curing;    // degree of curing [0–1; 1=fully cured] default: 1.0
+    } cheney_gould;
+
     // Balbi (2009) physical fire spread model parameters
     struct BalbiParams {
         amrex::Real T_a;         // Ambient temperature [K] (default: 300.0)
@@ -158,7 +165,7 @@ struct InputParameters {
     // When set to 1, overrides propagation_method to "farsite".
     int skip_levelset;                       // deprecated: use propagation_method = farsite
 
-    // Fire spread model selection: "rothermel" (default) or "balbi"
+    // Fire spread model selection: "rothermel" (default), "balbi", or "cheney_gould"
     std::string fire_spread_model;
 
     // Propagation method: "levelset" (default) or "farsite"
