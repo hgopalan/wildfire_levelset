@@ -7,6 +7,12 @@ one GeoTIFF per variable (or a user-specified subset).  An optional UTM origin
 can be supplied so that the output is correctly georeferenced; without it the
 coordinates are written in the native simulation units (metres by default).
 
+**Multi-level (AMR) plotfiles** from external AMReX-based codes are supported.
+When ``finest_level > 0`` is detected in the plotfile Header, all available
+levels are read.  Finer-level data are composited (block-averaged) onto the
+Level_0 base grid, so the output GeoTIFF has full-domain coverage at the
+coarsest resolution with finer-level detail where AMR patches exist.
+
 Requirements
 ------------
   pip install rasterio numpy
@@ -27,6 +33,9 @@ Usage
 
   # Convert every plt#### directory in the current working directory
   python3 tools/plotfile_to_geotiff.py --all --outdir gis_out
+
+  # Convert a multi-level AMR plotfile from an external AMReX-based code
+  python3 tools/plotfile_to_geotiff.py plt_amr0050 --outdir gis_out
 
 Fire-behaviour variables of interest
 -------------------------------------
@@ -60,11 +69,24 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# AMReX plotfile parser (2-D, single level, no AMR)
+# AMReX plotfile parser (2-D, single-level and multi-level AMR)
 # ---------------------------------------------------------------------------
 
+# Fallback domain size used when the Header cannot be parsed completely.
+_DEFAULT_DOMAIN_SIZE = (64, 64)
+
+# Default refinement ratio assumed when the Header omits a level's ref_ratio.
+_DEFAULT_REF_RATIO = 2
+
 def _parse_header(plotfile_dir: Path):
-    """Return (varnames, problo, probhi, nx, ny) from the plotfile Header."""
+    """Return (varnames, problo, probhi, nx, ny, finest_level, ref_ratios, level_domains)
+    from the plotfile Header.
+
+    Supports both single-level (finest_level=0) and multi-level AMR plotfiles.
+    *level_domains* is a list of (nx, ny) tuples, one per level (index 0 = coarsest).
+    *ref_ratios* is a list of integer refinement ratios between successive levels.
+    *nx*, *ny* are the coarsest (Level_0) domain dimensions.
+    """
     header_path = plotfile_dir / "Header"
     if not header_path.exists():
         raise FileNotFoundError(f"No Header file in {plotfile_dir}")
@@ -94,30 +116,48 @@ def _parse_header(plotfile_dir: Path):
     # time
     _time = float(lines[idx]); idx += 1
 
-    # finest_level
+    # finest_level (0 = single level; >0 = AMR with that many refinement levels)
     finest_level = int(lines[idx]); idx += 1
-    if finest_level != 0:
-        raise ValueError(
-            "plotfile_to_geotiff does not support AMR plotfiles (finest_level > 0)."
-        )
 
     # problo / probhi
     problo = list(map(float, lines[idx].split())); idx += 1
     probhi = list(map(float, lines[idx].split())); idx += 1
 
-    # refinement ratios (one per level gap; skip for single level)
-    idx += 1  # skip refinement ratio line
+    # refinement ratios: one integer per level gap (empty for single-level)
+    ref_ratio_tokens = lines[idx].split(); idx += 1
+    ref_ratios = []
+    for t in ref_ratio_tokens:
+        try:
+            ref_ratios.append(int(float(t)))
+        except (ValueError, OverflowError):
+            pass
 
-    # domain boxes per level: format is ((lo),(hi))
-    # for level 0 only
-    idx += 1  # skip the enclosing box-array size line
-    domain_box_line = lines[idx]; idx += 1
-    # parse "(( x0,y0) (x1,y1) (...))" – extract integers
-    nums = [int(t) for t in domain_box_line.replace("(","").replace(")","").replace(","," ").split() if t.lstrip("-").isdigit()]
-    nx = nums[2] - nums[0] + 1
-    ny = nums[3] - nums[1] + 1
+    # domain boxes per level: AMReX writes one BoxArray per level.
+    # Each BoxArray in the Header has the format:
+    #   <count>                         <- number of boxes (always 1 for the domain)
+    #   ((ixlo,iylo) (ixhi,iyhi) (...)) <- the domain box
+    level_domains = []
+    for _lev in range(finest_level + 1):
+        idx += 1  # skip the box-array size line (always "1" for domain boxes)
+        if idx >= len(lines):
+            break
+        domain_box_line = lines[idx]; idx += 1
+        nums = [int(t) for t in domain_box_line.replace("(","").replace(")","").replace(","," ").split()
+                if t.lstrip("-").isdigit()]
+        if len(nums) >= 4:
+            nx_lev = nums[2] - nums[0] + 1
+            ny_lev = nums[3] - nums[1] + 1
+        else:
+            # Fallback: use previous level dimensions (should not happen in valid files)
+            nx_lev, ny_lev = level_domains[-1] if level_domains else _DEFAULT_DOMAIN_SIZE
+        level_domains.append((nx_lev, ny_lev))
 
-    return varnames, problo, probhi, nx, ny
+    # Ensure we always have at least Level_0 dimensions
+    if not level_domains:
+        level_domains = [_DEFAULT_DOMAIN_SIZE]
+
+    nx, ny = level_domains[0]
+    return varnames, problo, probhi, nx, ny, finest_level, ref_ratios, level_domains
 
 
 def _read_fab_data(fab_header_path: Path, ncomp: int, nx: int, ny: int):
@@ -242,6 +282,64 @@ def _read_fab_data(fab_header_path: Path, ncomp: int, nx: int, ny: int):
                      ixlo : ixhi + 1] = arr[ic]
 
     return data
+
+
+# ---------------------------------------------------------------------------
+# Multi-level AMR compositing helpers
+# ---------------------------------------------------------------------------
+
+def _cumulative_ref_ratio(ref_ratios, level):
+    """Total refinement factor at *level* relative to Level_0."""
+    ratio = 1
+    for i in range(level):
+        ratio *= ref_ratios[i] if i < len(ref_ratios) else _DEFAULT_REF_RATIO
+    return ratio
+
+
+def _composite_fine_level(coarse_data, fine_data, ref_ratio):
+    """Overlay fine-level data onto *coarse_data* in place.
+
+    For each coarse cell covered by valid (non-NaN) fine cells, replace the
+    coarse value with the block-average of the fine cells.  Coarse cells that
+    are not covered by any fine patch remain unchanged.
+
+    Parameters
+    ----------
+    coarse_data : ndarray, shape (ncomp, ny_c, nx_c)
+        Level_0 (or any coarser level) data array – modified in place.
+    fine_data   : ndarray, shape (ncomp, ny_f, nx_f)
+        Finer-level data array.  NaN cells are treated as "not covered".
+    ref_ratio   : int
+        Spatial refinement ratio between the two levels.
+    """
+    r = ref_ratio
+    ncomp, ny_c, nx_c = coarse_data.shape
+
+    # Trim fine_data to an exact multiple of r that fits within the coarse grid
+    ny_f_use = min(fine_data.shape[1], ny_c * r)
+    nx_f_use = min(fine_data.shape[2], nx_c * r)
+    ny_f_use = (ny_f_use // r) * r
+    nx_f_use = (nx_f_use // r) * r
+    if ny_f_use == 0 or nx_f_use == 0:
+        return
+
+    ny_eff = ny_f_use // r
+    nx_eff = nx_f_use // r
+
+    # Group fine cells by their coarse parent: (ncomp, ny_eff, r, nx_eff, r)
+    fine_grouped = fine_data[:, :ny_f_use, :nx_f_use].reshape(
+        ncomp, ny_eff, r, nx_eff, r
+    )
+    # Block-average over the r×r fine sub-cells, ignoring NaN
+    with np.errstate(all="ignore"):
+        fine_mean = np.nanmean(fine_grouped, axis=(2, 4))  # (ncomp, ny_eff, nx_eff)
+
+    # Determine which coarse cells have at least one valid fine cell
+    valid = np.any(~np.isnan(fine_mean), axis=0)  # (ny_eff, nx_eff)
+
+    # Overwrite coarse values where valid fine data is available
+    for ic in range(ncomp):
+        coarse_data[ic, :ny_eff, :nx_eff][valid] = fine_mean[ic, :ny_eff, :nx_eff][valid]
 
 
 # ---------------------------------------------------------------------------
@@ -382,20 +480,44 @@ def convert_plotfile(
     epsg: int = None,
     fire_vars_only: bool = False,
 ):
-    """Convert one plotfile directory to GeoTIFFs."""
+    """Convert one plotfile directory to GeoTIFFs.
+
+    Multi-level AMR plotfiles are supported: data from finer levels is
+    composited onto the Level_0 base grid so that the output GeoTIFF has
+    full-domain coverage at the coarsest resolution with finer-level detail
+    where available.
+    """
     print(f"\nProcessing {plotfile_dir} …")
 
-    varnames, problo, probhi, nx, ny = _parse_header(plotfile_dir)
+    varnames, problo, probhi, nx, ny, finest_level, ref_ratios, level_domains = \
+        _parse_header(plotfile_dir)
     print(f"  Domain: ({problo[0]:.2f}, {problo[1]:.2f}) – ({probhi[0]:.2f}, {probhi[1]:.2f})  "
-          f"grid {nx}×{ny}  vars: {len(varnames)}")
+          f"grid {nx}×{ny}  vars: {len(varnames)}"
+          + (f"  levels: {finest_level + 1}" if finest_level > 0 else ""))
 
-    # Read binary FAB data
+    if finest_level > 0:
+        print(f"  Multi-level AMR plotfile (finest_level={finest_level}): "
+              f"compositing {finest_level + 1} level(s) onto Level_0 base grid.")
+
+    # Read binary FAB data from Level_0 (coarsest, always covers the full domain)
     cell_h = plotfile_dir / "Level_0" / "Cell_H"
     if not cell_h.exists():
         print(f"  WARNING: {cell_h} not found – skipping.")
         return
 
     fab_data = _read_fab_data(cell_h, len(varnames), nx, ny)
+
+    # Overlay finer levels where available (AMR compositing)
+    for lev in range(1, finest_level + 1):
+        cell_h_lev = plotfile_dir / f"Level_{lev}" / "Cell_H"
+        if not cell_h_lev.exists():
+            print(f"  WARNING: Level_{lev}/Cell_H not found – skipping level {lev}.")
+            continue
+        nx_lev, ny_lev = level_domains[lev] if lev < len(level_domains) else (nx, ny)
+        total_ref = _cumulative_ref_ratio(ref_ratios, lev)
+        fab_data_lev = _read_fab_data(cell_h_lev, len(varnames), nx_lev, ny_lev)
+        _composite_fine_level(fab_data, fab_data_lev, total_ref)
+        print(f"  Composited Level_{lev} ({nx_lev}×{ny_lev}, ref={total_ref}×) onto base grid.")
 
     # Determine which variables to export
     if varnames_filter:
