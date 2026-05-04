@@ -156,17 +156,6 @@ struct InputParameters {
     int chk_int;                             // Write a checkpoint file every chk_int steps; <=0 disables (default: -1)
     std::string restart_chkfile;             // Path to a checkpoint directory to restart from (default: "" = cold start)
 
-    // PLT wind files (option 3 - external wind simulation output)
-    // All subdirectories matching "plt*" in plt_wind_dir are discovered,
-    // sorted lexicographically (so the first corresponds to time=0 and the
-    // last to the final simulation time), and used as the wind snapshots.
-    // For AMREX_SPACEDIM==3 builds the 3-D plt data are sliced at fire_height;
-    // for AMREX_SPACEDIM==2 builds the plt files must already be 2-D.
-    int use_plt_wind;                        // 1 to use external plt wind files (default: 0)
-    std::string plt_wind_dir;               // Directory containing plt wind files (any plt* subdirectories, sorted)
-    std::string plt_wind_u_var;             // Variable name for u-component in plt files (default: "x_velocity")
-    std::string plt_wind_v_var;             // Variable name for v-component in plt files (default: "y_velocity")
-    amrex::Real fire_height;                // Height [m] at which to slice 3-D plt wind data (default: 0.0)
 };
 
 void parse_inputs(InputParameters& inputs);

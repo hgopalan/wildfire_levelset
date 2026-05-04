@@ -177,70 +177,132 @@ See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) fo
 
 Python utilities live in the `tools/` directory.
 
-### `terrain_wind_preprocess.py` – Unified terrain, landscape, and wind preprocessing
+### `wrf_wind_reader.py` – WRF wind extraction
 
-The primary preprocessing tool. Downloads SRTM elevation data and LANDFIRE
-fuel/slope/aspect rasters for a lat/lon bounding box, extracts wind from a
-WRF-style netCDF file, and automatically writes a ready-to-run `inputs.i` file
-for a FARSITE simulation (no firebrand spotting, no crown fire).
+Reads U and V wind components from a WRF-style netCDF file and writes one or
+more CSV wind files suitable for use as `velocity_file` in the solver.
 
 ```bash
-# SRTM terrain + LANDFIRE landscape from a lat/lon bounding box
-python3 tools/terrain_wind_preprocess.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5
+# Extract wind at t=0 (bounding box derived automatically from WRF file)
+python3 tools/wrf_wind_reader.py --wrf-file wrfout_d01 --wind wind.csv
 
-# Add WRF wind (bbox is read automatically from the WRF file)
-python3 tools/terrain_wind_preprocess.py \
-    --wrf-file wrfout_d01 \
-    --wind wind.csv
+# Extract a range of WRF time steps
+python3 tools/wrf_wind_reader.py \
+    --wrf-file wrfout_d01 --wind wind.csv --time-range 0:5
 
-# Extract a range of WRF time steps and compute final_time automatically
-python3 tools/terrain_wind_preprocess.py \
-    --wrf-file wrfout_d01 \
-    --wind wind.csv \
-    --time-range 0:5
+# Clip to an explicit lat/lon bounding box
+python3 tools/wrf_wind_reader.py \
+    --wrf-file wrfout_d01 --wind wind.csv \
+    --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5
 
-# Skip SRTM download; extract wind only
-python3 tools/terrain_wind_preprocess.py \
-    --wrf-file wrfout_d01 \
-    --wind wind.csv \
-    --no-terrain --no-landscape
+# Interpolate wind onto an existing terrain XYZ grid
+python3 tools/wrf_wind_reader.py \
+    --wrf-file wrfout_d01 --wind wind.csv \
+    --terrain-file terrain.xyz
 
-# Use local rasters for landscape (no LANDFIRE API call)
-python3 tools/terrain_wind_preprocess.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --elev-file elev.tif \
-    --slope-file slope.tif \
-    --aspect-file aspect.tif \
-    --fuel-file fbfm13.tif
+# Interpolate wind onto a regular grid at 30 m resolution
+python3 tools/wrf_wind_reader.py \
+    --wrf-file wrfout_d01 --wind wind.csv \
+    --grid-resolution 30
 ```
 
 Key options:
-- `--wrf-file FILE` – WRF netCDF; bounding box is read from file automatically
-- `--time-range T1:TN` – extract WRF time steps T1…TN (inclusive); the tool
-  sets `final_time = (TN − T1) × wind_time_spacing` in the generated `inputs.i`
+- `--wrf-file FILE` – WRF netCDF file (required)
+- `--time-range T1:TN` – extract WRF time steps T1…TN (inclusive)
 - `--time-index N` – single WRF time step (default: 0)
-- `--interpolate-wind` – interpolate WRF wind to the SRTM terrain grid
-- `--subsample N` – keep every N-th point (default: 1)
+- `--lat-min/max`, `--lon-min/max` – optional bounding box override
+- `--terrain-file PATH` – existing terrain XYZ file; wind is interpolated
+  onto its (x,y) grid
+- `--grid-resolution M` – target grid spacing in metres for regular-grid
+  interpolation
+- `--subsample N` – keep every N-th grid point (default: 1)
 - `--inputs FILE` – output `inputs.i` filename (default: `inputs.i`)
 - `--no-inputs` – skip `inputs.i` generation
-- `--no-terrain` / `--no-landscape` / `--no-wind` – skip individual steps
+
+Requires: `pip install netCDF4 numpy pyproj`
+Optional: `pip install scipy` (for `--terrain-file` or `--grid-resolution`)
+
+---
+
+### `srtm_terrain_reader.py` – SRTM terrain download
+
+Downloads SRTM1 elevation data for a lat/lon bounding box and writes a UTM
+terrain XYZ file suitable for `rothermel.terrain_file`.
+
+```bash
+# Download SRTM and write terrain.xyz
+python3 tools/srtm_terrain_reader.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5
+
+# Save intermediate GeoTIFF and subsample
+python3 tools/srtm_terrain_reader.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
+    --tif srtm_raw.tif --subsample 2
+```
+
+Key options:
+- `--lat-min/max`, `--lon-min/max` – latitude/longitude bounds (required)
+- `--terrain FILE` – output terrain XYZ file (default: `terrain.xyz`)
+- `--tif FILE` – keep intermediate SRTM GeoTIFF at this path
+- `--subsample N` – keep every N-th point (default: 1)
+
+Requires: `pip install elevation rasterio numpy pyproj scipy`
+
+---
+
+### `landscape_writer.py` – LANDFIRE landscape file writer
+
+Downloads LANDFIRE elevation, slope, aspect, and fuel model rasters for a
+lat/lon bounding box and writes a FARSITE landscape file (`.lcp`) for
+`rothermel.landscape_file`.  Three remote sources are supported
+(`cog` → AWS S3 COGs, `mspc` → Microsoft Planetary Computer, `lfps` → USGS
+REST API).  Local GeoTIFFs can also be used to skip any download.
+
+```bash
+# Download LANDFIRE via API
+python3 tools/landscape_writer.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5
+
+# Use local rasters (no internet download)
+python3 tools/landscape_writer.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
+    --elev-file elev.tif --slope-file slope.tif \
+    --aspect-file aspect.tif --fuel-file fbfm13.tif
+
+# Local fuel raster + SRTM-derived terrain
+python3 tools/landscape_writer.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
+    --fuel-file fuel.tif --srtm-slope-aspect
+
+# Scott & Burgan 40 fuel model system
+python3 tools/landscape_writer.py \
+    --lat-min 40 --lat-max 40.5 \
+    --lon-min -105 --lon-max -104.5 \
+    --fuel-model-type 40
+```
+
+Key options:
+- `--lat-min/max`, `--lon-min/max` – latitude/longitude bounds (required)
+- `--landscape FILE` – output `.lcp` file (default: `landscape.lcp`)
+- `--subsample N` – keep every N-th point (default: 1)
 - `--vintage YEAR` – LANDFIRE vintage year (default: 2020)
+- `--fuel-model-type {13,40}` – Anderson 13 or Scott & Burgan 40
 - `--keep-nonburnable` – retain non-burnable LANDFIRE pixels
 - `--cache-dir DIR`, `--timeout N` – LANDFIRE download options
+- `--sources LIST` – comma-separated source priority (`cog,mspc,lfps`)
+- `--use-lfps` – force the legacy LFPS REST API
+- `--no-vintage-fallback` – disable automatic vintage fallback
 - `--elev-file`, `--slope-file`, `--aspect-file`, `--fuel-file` – local rasters
+- `--srtm-slope-aspect` – derive terrain from SRTM when only `--fuel-file` is given
 
-Requires: `pip install elevation rasterio numpy pyproj requests netCDF4`
+Requires: `pip install rasterio numpy pyproj requests`
 
-The tool writes:
-1. `terrain.xyz` – UTM terrain (`X Y Z`) for `rothermel.terrain_file`
-2. `landscape.lcp` – FARSITE landscape (`X Y ELEVATION SLOPE ASPECT FUEL_MODEL`)
-   for `rothermel.landscape_file`
-3. `wind.csv` (or `wind.csv`, `wind_1.csv`, … for multiple time steps) – wind
-   field for `velocity_file`
-4. `inputs.i` – ready-to-run FARSITE inputs file (no spotting, no crown)
+---
 
 Use the generated files in a simulation:
 ```
@@ -250,10 +312,10 @@ velocity_file             = wind.csv
 ```
 
 > **Deprecated tools**: The following scripts have been moved to
-> `tools/deprecated/` and are superseded by `terrain_wind_preprocess.py`:
-> `dem_to_xyz.py`, `landfire_to_lcp.py`, `srtm_to_xyz_stl.py`,
-> `srtm_landfire_to_terrain.py`, `wrf_to_terrain_wind.py`, and
-> `utm_convert.py`.
+> `tools/deprecated/` and are superseded by the new split tools above:
+> `terrain_wind_preprocess.py`, `dem_to_xyz.py`, `landfire_to_lcp.py`,
+> `srtm_to_xyz_stl.py`, `srtm_landfire_to_terrain.py`,
+> `wrf_to_terrain_wind.py`, and `utm_convert.py`.
 
 ### `plotfile_to_geotiff.py` – GIS export of fire behavior fields
 
@@ -336,8 +398,8 @@ Available regression tests:
 - `3d_sphere` - Full 3D simulation (3D builds only)
 - `terrain_wind` - External terrain and wind (2D builds only)
 - `time_dependent_wind` - Time-varying wind fields
-- `terrain_wind_preprocess` - Preprocessing tool integration
-- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3 + `terrain_wind_preprocess.py`)
+- `terrain_wind_preprocess` - Preprocessing tool integration (uses `wrf_wind_reader.py`)
+- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3 + `landscape_writer.py`)
 
 ## Output
 
@@ -366,7 +428,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 1. **Simplified fuel modeling**
    - Anderson 13 (FM1–FM13) and Scott & Burgan 40 fuel models are supported; custom or dynamic fuel models are not.
    - Fuel moisture is specified per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live woody) using user-supplied constants; no dynamic moisture transport in time.
-   - Spatially-varying fuel is supported through FARSITE landscape files (LANDFIRE data via `terrain_wind_preprocess.py`).
+   - Spatially-varying fuel is supported through FARSITE landscape files (LANDFIRE data via `landscape_writer.py`).
 
 2. **Wind field**
    - Spatially-varying wind supported via CSV files; fully 3-D spatially-varying wind fields are not.
@@ -396,7 +458,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 |---|---|---|---|
 | **Fire spread model** | Rothermel ROS + elliptical directional spread (Richards 1990); Eulerian level-set implementation of the Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
 | **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
-| **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `terrain_wind_preprocess.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
+| **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `wrf_wind_reader.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
 | **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
 | **Spatial resolution** | User-defined (AMReX grid) | Landscape raster resolution | WRF grid resolution |
 | **Fuel models** | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 |
