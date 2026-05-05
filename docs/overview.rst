@@ -36,36 +36,6 @@ The wildfire simulation follows these key steps for each timestep:
 
    Save plotfiles with fire state (including fireline intensity and flame length diagnostics), advance simulation time, update data structures.
 
-Fire Spread Models
-------------------
-
-Anderson L/W Ratio (FARSITE Model)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The Length-to-Width ratio calculation is based on Anderson (1983):
-
-.. math::
-
-   L/W = 0.936 \exp(0.2566 U) + 0.461 \exp(-0.1548 U) - 0.397
-
-where :math:`U` is the wind speed. This accounts for elliptical fire shape under wind influence and is used when ``farsite.use_anderson_LW=1``.
-
-Rothermel Terrain Effects
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Slope correction factor based on Rothermel (1972) accounts for uphill/downhill fire spread acceleration/deceleration:
-
-.. math::
-
-   \phi_s = 5.275 \beta^{-0.3} \tan^2(\theta)
-
-where :math:`\beta` is the packing ratio and :math:`\theta` is the slope angle. This is used when terrain slopes are active (terrain or landscape file specified) and ``propagation_method=levelset``.
-
-FARSITE Combined Wind and Terrain Model
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Vectorial combination of wind and slope effects accounts for alignment between wind direction and slope aspect with enhanced rate of spread calculations. Used when a terrain or landscape file is specified together with the FARSITE ellipse model.
-
 Prerequisites
 -------------
 
