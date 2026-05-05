@@ -234,133 +234,35 @@ See the [full documentation](https://hgopalan.github.io/wildfire_levelset/mathem
 ## Tools
 
 Python utilities live in the `tools/` directory.
+See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) for
+complete option references and worked examples.
 
-### `wrf_wind_reader.py` – WRF wind extraction
+| Script | Purpose |
+|--------|---------|
+| `wrf_wind_reader.py` | Extract U/V wind from a WRF netCDF file → solver wind CSV |
+| `srtm_terrain_reader.py` | Download SRTM1 elevation data → UTM terrain XYZ file |
+| `landscape_writer.py` | Download LANDFIRE rasters → FARSITE landscape file (`.lcp`) |
+| `farsite_weather_reader.py` | Parse FARSITE `.wtr` RAWS weather files → time-stamped wind CSVs |
+| `fuel_moisture_from_weather.py` | Estimate equilibrium dead-fuel moisture from temperature and RH |
+| `plotfile_to_geotiff.py` | Convert AMReX plotfiles → GeoTIFF rasters and GeoJSON fire-perimeter contours |
 
-Reads U and V wind components from a WRF-style netCDF file and writes one or
-more CSV wind files suitable for use as `velocity_file` in the solver.
+**Quick examples:**
 
 ```bash
-# Extract wind at t=0 (bounding box derived automatically from WRF file)
-python3 tools/wrf_wind_reader.py --wrf-file wrfout_d01 --wind wind.csv
-
-# Extract a range of WRF time steps
-python3 tools/wrf_wind_reader.py \
-    --wrf-file wrfout_d01 --wind wind.csv --time-range 0:5
-
-# Clip to an explicit lat/lon bounding box
-python3 tools/wrf_wind_reader.py \
-    --wrf-file wrfout_d01 --wind wind.csv \
+# Download terrain and landscape data
+python3 tools/srtm_terrain_reader.py \
     --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5
 
-# Interpolate wind onto an existing terrain XYZ grid
-python3 tools/wrf_wind_reader.py \
-    --wrf-file wrfout_d01 --wind wind.csv \
-    --terrain-file terrain.xyz
+python3 tools/landscape_writer.py \
+    --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5
 
-# Interpolate wind onto a regular grid at 30 m resolution
-python3 tools/wrf_wind_reader.py \
-    --wrf-file wrfout_d01 --wind wind.csv \
-    --grid-resolution 30
+# Extract wind from a WRF forecast
+python3 tools/wrf_wind_reader.py --wrf-file wrfout_d01 --wind wind.csv
+
+# Export simulation results for GIS
+python3 tools/plotfile_to_geotiff.py --all --outdir gis_out \
+    --utm-origin 450000 4200000 --epsg 32613
 ```
-
-Key options:
-- `--wrf-file FILE` – WRF netCDF file (required)
-- `--time-range T1:TN` – extract WRF time steps T1…TN (inclusive)
-- `--time-index N` – single WRF time step (default: 0)
-- `--lat-min/max`, `--lon-min/max` – optional bounding box override
-- `--terrain-file PATH` – existing terrain XYZ file; wind is interpolated
-  onto its (x,y) grid
-- `--grid-resolution M` – target grid spacing in metres for regular-grid
-  interpolation
-- `--subsample N` – keep every N-th grid point (default: 1)
-- `--inputs FILE` – output `inputs.i` filename (default: `inputs.i`)
-- `--no-inputs` – skip `inputs.i` generation
-
-Requires: `pip install netCDF4 numpy pyproj`
-Optional: `pip install scipy` (for `--terrain-file` or `--grid-resolution`)
-
----
-
-### `srtm_terrain_reader.py` – SRTM terrain download
-
-Downloads SRTM1 elevation data for a lat/lon bounding box and writes a UTM
-terrain XYZ file suitable for `rothermel.terrain_file`.
-
-```bash
-# Download SRTM and write terrain.xyz
-python3 tools/srtm_terrain_reader.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5
-
-# Save intermediate GeoTIFF and subsample
-python3 tools/srtm_terrain_reader.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --tif srtm_raw.tif --subsample 2
-```
-
-Key options:
-- `--lat-min/max`, `--lon-min/max` – latitude/longitude bounds (required)
-- `--terrain FILE` – output terrain XYZ file (default: `terrain.xyz`)
-- `--tif FILE` – keep intermediate SRTM GeoTIFF at this path
-- `--subsample N` – keep every N-th point (default: 1)
-
-Requires: `pip install elevation rasterio numpy pyproj scipy`
-
----
-
-### `landscape_writer.py` – LANDFIRE landscape file writer
-
-Downloads LANDFIRE elevation, slope, aspect, and fuel model rasters for a
-lat/lon bounding box and writes a FARSITE landscape file (`.lcp`) for
-`rothermel.landscape_file`.  Three remote sources are supported
-(`cog` → AWS S3 COGs, `mspc` → Microsoft Planetary Computer, `lfps` → USGS
-REST API).  Local GeoTIFFs can also be used to skip any download.
-
-```bash
-# Download LANDFIRE via API
-python3 tools/landscape_writer.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5
-
-# Use local rasters (no internet download)
-python3 tools/landscape_writer.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --elev-file elev.tif --slope-file slope.tif \
-    --aspect-file aspect.tif --fuel-file fbfm13.tif
-
-# Local fuel raster + SRTM-derived terrain
-python3 tools/landscape_writer.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --fuel-file fuel.tif --srtm-slope-aspect
-
-# Scott & Burgan 40 fuel model system
-python3 tools/landscape_writer.py \
-    --lat-min 40 --lat-max 40.5 \
-    --lon-min -105 --lon-max -104.5 \
-    --fuel-model-type 40
-```
-
-Key options:
-- `--lat-min/max`, `--lon-min/max` – latitude/longitude bounds (required)
-- `--landscape FILE` – output `.lcp` file (default: `landscape.lcp`)
-- `--subsample N` – keep every N-th point (default: 1)
-- `--vintage YEAR` – LANDFIRE vintage year (default: 2020)
-- `--fuel-model-type {13,40}` – Anderson 13 or Scott & Burgan 40
-- `--keep-nonburnable` – retain non-burnable LANDFIRE pixels
-- `--cache-dir DIR`, `--timeout N` – LANDFIRE download options
-- `--sources LIST` – comma-separated source priority (`cog,mspc,lfps`)
-- `--use-lfps` – force the legacy LFPS REST API
-- `--no-vintage-fallback` – disable automatic vintage fallback
-- `--elev-file`, `--slope-file`, `--aspect-file`, `--fuel-file` – local rasters
-- `--srtm-slope-aspect` – derive terrain from SRTM when only `--fuel-file` is given
-
-Requires: `pip install rasterio numpy pyproj requests`
-
----
 
 Use the generated files in a simulation:
 ```
@@ -369,116 +271,8 @@ rothermel.landscape_file  = landscape.lcp
 velocity_file             = wind.csv
 ```
 
-> **Deprecated tools**: The following scripts have been moved to
-> `tools/deprecated/` and are superseded by the new split tools above:
-> `terrain_wind_preprocess.py`, `dem_to_xyz.py`, `landfire_to_lcp.py`,
-> `srtm_to_xyz_stl.py`, `srtm_landfire_to_terrain.py`,
-> `wrf_to_terrain_wind.py`, and `utm_convert.py`.
-
-### `farsite_weather_reader.py` – FARSITE weather file parser
-
-Parses FARSITE `.wtr` RAWS weather-station files and writes time-stamped wind
-CSV files for the solver.  Full documentation is in the tool's module docstring.
-
-```bash
-# Write a single wind file from the first record
-python3 tools/farsite_weather_reader.py --wtr fire.wtr --wind wind.csv
-
-# Write time-dependent wind snapshots for a 2 km × 2 km domain at 100 m resolution
-python3 tools/farsite_weather_reader.py \
-    --wtr fire.wtr --wind wind.csv \
-    --time-dependent --domain 2000 2000 --resolution 100
-
-# Write solver input stub and estimated fuel moisture
-python3 tools/farsite_weather_reader.py \
-    --wtr fire.wtr --wind wind.csv \
-    --inputs-stub inputs.i --write-moisture
-```
-
-Requires: no external packages (pure Python).
-
----
-
-### `fuel_moisture_from_weather.py` – Equilibrium fuel moisture calculator
-
-Estimates 1-hr, 10-hr, and 100-hr dead fuel moisture content from temperature
-and relative humidity using the Nelson (2000) / Simard (1968) EMC model, as
-implemented in FARSITE, BehavePlus, and FLAMMAP.  Full documentation including
-the formulas is in the tool's module docstring.
-
-```bash
-# Single observation: 30°C, 20% RH
-python3 tools/fuel_moisture_from_weather.py --temp 30 --rh 20
-
-# Output in solver input format
-python3 tools/fuel_moisture_from_weather.py --temp 28 --rh 25 --solver-format
-
-# Batch mode from a weather CSV
-python3 tools/fuel_moisture_from_weather.py --csv weather.csv --solver-format
-
-# From dew point (30°C ambient, 15°C dew point)
-python3 tools/fuel_moisture_from_weather.py --temp 30 --use-dew-point 15
-
-# With precipitation wetting
-python3 tools/fuel_moisture_from_weather.py --temp 25 --rh 35 --precip 2.5
-```
-
-Requires: no external packages (pure Python).
-
----
-
-### `plotfile_to_geotiff.py` – GIS export of fire behavior fields
-
-Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter
-contours for import into QGIS, ArcGIS, or any GIS tool.
-
-**Multi-level AMR plotfiles** (e.g. from external AMReX-based codes with
-`finest_level > 0`) are now supported.  All available levels are read and
-composited onto the Level_0 base grid — finer-level data replaces coarser
-values where AMR patches exist — so the output GeoTIFF always covers the
-full domain.
-
-```bash
-# Export all fire-behaviour variables from one plotfile (simulation units)
-python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out
-
-# Export specific variables
-python3 tools/plotfile_to_geotiff.py plt0100 \
-    -v phi R fireline_intensity flame_length elevation \
-    --outdir gis_out
-
-# Georeference with a UTM origin (easting, northing) and EPSG code
-python3 tools/plotfile_to_geotiff.py plt0100 \
-    --utm-origin 450000 4200000 \
-    --epsg 32613 \
-    --outdir gis_out
-
-# Convert every plt#### directory in the current directory
-python3 tools/plotfile_to_geotiff.py --all --outdir gis_out
-
-# Convert a multi-level AMR plotfile from an external AMReX-based code
-python3 tools/plotfile_to_geotiff.py plt_amr0050 --outdir gis_out
-```
-
-Key options:
-- `-v VAR [VAR …]` – export only specified variables (default: fire-behaviour subset)
-- `--all-vars` – export every variable in the plotfile
-- `--all` – process all `plt####` directories in the current working directory
-- `--outdir DIR` – output directory (default: `gis_out`)
-- `--utm-origin EASTING NORTHING` – UTM origin to add to simulation coordinates
-- `--epsg CODE` – EPSG CRS code (e.g. `32613` for UTM zone 13N)
-
-Requires: `pip install rasterio numpy` (plus `matplotlib` for GeoJSON perimeters)
-
-The tool writes, for each plotfile and variable:
-- `plt####_<variable>.tif` – single-band GeoTIFF (float32, deflate-compressed)
-- `plt####_fire_perimeter.geojson` – phi = 0 contour as GeoJSON LineString (requires matplotlib)
-
-**Multi-level compositing**: when `finest_level > 0` is present in the AMReX
-Header, each level's FAB data is read from `Level_0/Cell_H`, `Level_1/Cell_H`,
-etc.  Finer-level cells are block-averaged to the Level_0 resolution and
-overlaid where valid, giving the best available data at each location while
-preserving full-domain coverage.
+> **Deprecated tools**: `tools/deprecated/` contains `terrain_wind_preprocess.py` and related
+> legacy scripts superseded by the split tools above.
 
 ## Testing
 

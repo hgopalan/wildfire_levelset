@@ -3,6 +3,61 @@ Mathematical Models
 
 This section describes the mathematical models implemented in the wildfire level-set solver.
 
+Fire Spread Models
+------------------
+
+Three primary fire spread model families are implemented, each with optional add-on modules.
+Select the active model with ``fire_spread_model`` and the propagation method with
+``propagation_method``.
+
+**Rothermel (1972) Surface Fire Spread Model** (``fire_spread_model = rothermel``)
+
+  An empirical model based on fuel properties, reaction intensity, and propagating flux ratio.
+  Full details: `Rothermel (1972) Fire Spread Model`_.
+
+  Optional add-ons:
+
+  * *Andrews (2018) wind adjustments* — Wind Adjustment Factor (WAF) and Maximum Effective
+    Wind Speed (MEWS) cap. See `Andrews (2018) Wind Adjustments for Rothermel`_.
+  * *Viegas (2004) eruptive fire diagnostics* — exponential slope enhancement factor and
+    eruptive-regime flag for steep terrain. See `Viegas (2004) Eruptive Fire Diagnostics`_.
+  * *Wind-terrain feedback models* — seven options coupling terrain or fire-induced winds into
+    the effective wind seen by the spread model (canyon wind, buoyancy upslope, Pimont
+    exponential correction, WindNinja ridge/canyon speed-up).
+    See `Wind-Terrain Feedback Models (Options 1–6)`_ and
+    `WindNinja Ridge/Canyon Terrain Speed-up (Option 7)`_.
+  * *Heat-flux-driven wind corrections* — fire-plume buoyancy and horizontal inflow based on a
+    spatially-varying or uniform heat-release field. See `Heat Flux MultiFab and Fire-Induced Wind`_.
+
+**Cheney & Gould (1995/1998) Grassland Fire Spread Model** (``fire_spread_model = cheney_gould``)
+
+  An empirical ROS formula calibrated on Australian grassland fires; activates with
+  ``fire_spread_model = cheney_gould``.  No add-ons; terrain slope is intentionally omitted.
+  Full details: `Cheney & Gould (1995 / 1998) Grassland Fire Spread Model`_.
+
+**Balbi (2009) Physical Fire Spread Model** (``fire_spread_model = balbi``)
+
+  A radiation-driven model that derives ROS from an energy balance between the tilted flame and
+  the unburned fuel ahead; fully replaces Rothermel.
+  Full details: `Balbi (2009) Physical Fire Spread Model`_.
+
+  Optional add-ons:
+
+  * *Viegas (2004) eruptive fire diagnostics* — uses the Balbi amplitude coefficient as the
+    ROS baseline instead of Rothermel :math:`R_0`.  See `Viegas (2004) Eruptive Fire Diagnostics`_.
+  * *All six wind-terrain feedback options* — fully compatible; wind and buoyancy velocity
+    augmented by heat flux when ``heat_flux.*`` is active.
+    See `Wind-Terrain Feedback Models (Options 1–6)`_ and `Heat Flux MultiFab and Fire-Induced Wind`_.
+
+**Fire propagation methods** (``propagation_method``)
+
+  * *Level-set method* (``propagation_method = levelset``) — fire perimeter tracked as the zero
+    contour of a signed-distance function :math:`\phi`, advanced with WENO5-Z spatial
+    discretization and RK3 time integration.  See `Level-Set Method`_.
+  * *FARSITE elliptical expansion* (``propagation_method = farsite``) — Richards (1990) elliptical
+    model embedded in the Eulerian level-set framework; implements the Huygens wavelet principle.
+    See `FARSITE Elliptical Expansion Model (Richards 1990)`_.
+
 Rothermel (1972) Fire Spread Model
 -----------------------------------
 
@@ -1286,3 +1341,139 @@ The gradient :math:`|\nabla\phi|` is computed using:
 .. math::
 
    |\nabla\phi| = \sqrt{\left(\frac{\partial\phi}{\partial x}\right)^2 + \left(\frac{\partial\phi}{\partial y}\right)^2}
+
+Post-Processing Diagnostics
+-----------------------------
+
+In addition to fireline intensity and flame length, the solver always writes four fire-ecology
+fields and three emissions fields to every plotfile.  The equations below describe how each
+field is computed.
+
+Scorch Height (Van Wagner 1973)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Van Wagner's (1973) empirical relationship between fireline intensity and the height to which
+foliage is killed by convective heat:
+
+.. math::
+
+   H_s \;[\text{m}] = 0.1483 \; I_B^{2/3}
+
+where :math:`I_B` [kW/m] is the Byram fireline intensity.  Cells where :math:`I_B = 0` receive
+:math:`H_s = 0`.  Output field: ``scorch_height``.
+
+Probability of Ignition (Anderson 1970)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The probability that a firebrand landing on fine fuel will produce sustained ignition (Anderson
+1970, Rothermel 1983):
+
+.. math::
+
+   P_i = \min\!\left(1,\; \max\!\left(0,\; 4.8 \times 10^{-5} \, T_{\text{fuel,F}}^{1.4}
+         \exp\!\left(-0.07 \, M_{\%}\right)\right)\right)
+
+where:
+
+* :math:`T_{\text{fuel,F}} = T_{a,\text{F}} + \Delta T_{\text{solar}}` — fine-fuel temperature
+  in °F (ambient temperature converted from °C plus a solar-heating increment; default :math:`+25` °F)
+* :math:`M_{\%}` — 1-hr dead fuel moisture content [%]
+
+Output field: ``prob_ignition``.
+
+Tree Mortality (Ryan & Reinhardt 1988)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A logistic mortality model based on the fraction of the live crown that is scorched.
+
+**Crown Scorch Ratio (CSR)**:
+
+.. math::
+
+   \text{CSR} = \text{clip}\!\left(\frac{H_s - H_{\text{CBH}}}{H_{\text{tree}} - H_{\text{CBH}}},\;0,\;1\right)
+
+where :math:`H_{\text{CBH}}` is the canopy base height [m] (``crown.CBH``) and
+:math:`H_{\text{tree}}` is the tree height [m] (``fire_ecology.tree_height``).
+
+**Mortality probability** (only when :math:`H_s > H_{\text{CBH}}`):
+
+.. math::
+
+   P_{\text{kill}} = \frac{1}{1 + \exp\!\bigl(-4 \,(\text{CSR} - 0.6)\bigr)}
+
+The logistic curve gives ≈50 % mortality when 60 % of the live crown is scorched.
+Output field: ``tree_mortality``.
+
+Crown Activity Class (Van Wagner 1977)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The crown activity class categorises each cell as surface, passive crown, or active crown fire:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 65
+
+   * - Class
+     - Label
+     - Criterion
+   * - 0
+     - Surface fire
+     - :math:`I_B < I_o`
+   * - 1
+     - Passive crown
+     - :math:`I_B \ge I_o` **and** :math:`R < R'_{SA}`
+   * - 2
+     - Active crown
+     - :math:`I_B \ge I_o` **and** :math:`R \ge R'_{SA}`
+
+**Crown initiation intensity** (Van Wagner 1977):
+
+.. math::
+
+   I_o \;[\text{kW/m}] = 0.010 \; H_{\text{CBH}} \,(460 + 25.9 \, F_{\text{MC}})
+
+**Critical active-crown ROS** (Van Wagner 1977):
+
+.. math::
+
+   R'_{SA} \;[\text{m/s}] = \frac{3.0}{C_{\text{BD}} \times 60}
+
+where :math:`C_{\text{BD}}` [kg/m³] is the canopy bulk density (``crown.CBD``) and
+:math:`F_{\text{MC}}` [%] is the foliar moisture content (``crown.FMC``).
+Output field: ``crown_activity``.
+
+Fire Emissions (Seiler & Crutzen 1980)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Per-cell cumulative emissions for three species, following the WRF-Fire convention:
+
+.. math::
+
+   E_{\text{species}} \;[\text{kg/m}^2] = W_{\text{fuel}} \;[\text{kg/m}^2]
+   \times f_c \;[-] \times \text{EF}_{\text{species}} \;[\text{kg/kg}]
+
+where:
+
+* :math:`W_{\text{fuel}}` — oven-dry fuel load [kg/m²] (converted from lb/ft²)
+* :math:`f_c` — fuel consumption fraction from the bulk model, or ``emissions.default_consumed_frac``
+  (default 0.9) for burned cells without the bulk model active
+* :math:`\text{EF}` — emission factors [kg species per kg dry fuel consumed]:
+
+  - CO₂: 1.570 kg/kg (Seiler & Crutzen 1980)
+  - CO:  0.102 kg/kg
+  - PM₂.₅: 0.0162 kg/kg (Andreae & Merlet 2001)
+
+Output fields: ``co2_emissions``, ``co_emissions``, ``pm25_emissions``.
+
+References
+^^^^^^^^^^^
+
+* Van Wagner, C.E. (1973). "Height of crown scorch in forest fires." *Canadian Journal of
+  Forest Research*, 3(3), 373–378.
+* Anderson, H.E. (1970). "Forest fuel ignitibility." *Fire Technology*, 6(4), 312–319.
+* Ryan, K.C. & Reinhardt, E.D. (1988). "Predicting postfire mortality of seven western
+  conifers." *Canadian Journal of Forest Research*, 18(10), 1291–1297.
+* Seiler, W. & Crutzen, P.J. (1980). "Estimates of gross and net fluxes of carbon between the
+  biosphere and the atmosphere from biomass burning." *Climatic Change*, 2(3), 207–247.
+* Andreae, M.O. & Merlet, P. (2001). "Emission of trace gases and aerosols from biomass
+  burning." *Global Biogeochemical Cycles*, 15(4), 955–966.
