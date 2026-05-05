@@ -231,16 +231,6 @@ Seven selectable options (`wind_terrain.model`) control how terrain-induced or f
 
 See the [full documentation](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html#wind-terrain-feedback-models-options-1-6) for equations, all options, parameters, and examples.
 
-## Future Fire Spread Models (TODO)
-
-The following spread models are candidates for future integration into the `fire_spread_model` interface. Each would be added as a new option (e.g., `fire_spread_model = <name>`) and plugged into the same ROS compute step, making it interchangeable with Rothermel and Balbi.
-
-- [ ] **Cruz & Alexander (2010) crown fire ROS** – Physics-informed empirical model for active crown fire spread combining Rothermel surface ROS with a crown fire transition criterion. Reference: Cruz, M.G. & Alexander, M.E. (2010). *Assessing crown fire potential in coniferous forests of western North America.* Int. J. Wildland Fire 19, 8–21.
-- [ ] **Linn (FIRETEC) simplified surrogate** – FIRETEC is a coupled fire–atmosphere CFD model; a reduced-order surrogate or table-lookup could expose its ROS as a `fire_spread_model = firetec` option. Reference: Linn, R.R. et al. (2002). *Studying wildfire behavior using FIRETEC.* Int. J. Wildland Fire 11, 233–246.
-- [ ] **Data-driven / ML surrogate** – Neural-network or Gaussian-process ROS emulator trained on historical fire perimeters (e.g., MTBS/GeoMAC/NIFC) or high-fidelity simulation data from FIRETEC/FDS-Fire. Could be loaded as a saved model artifact at runtime.
-
-To add a new spread model, implement a `compute_<name>_R` function (analogous to `compute_rothermel_R` in `src/compute_rothermel_R.H`) and register it with a new branch in `main.cpp` guarded by `if (inputs.fire_spread_model == "<name>")`.
-
 ## Tools
 
 Python utilities live in the `tools/` directory.
@@ -385,6 +375,58 @@ velocity_file             = wind.csv
 > `srtm_to_xyz_stl.py`, `srtm_landfire_to_terrain.py`,
 > `wrf_to_terrain_wind.py`, and `utm_convert.py`.
 
+### `farsite_weather_reader.py` – FARSITE weather file parser
+
+Parses FARSITE `.wtr` RAWS weather-station files and writes time-stamped wind
+CSV files for the solver.  Full documentation is in the tool's module docstring.
+
+```bash
+# Write a single wind file from the first record
+python3 tools/farsite_weather_reader.py --wtr fire.wtr --wind wind.csv
+
+# Write time-dependent wind snapshots for a 2 km × 2 km domain at 100 m resolution
+python3 tools/farsite_weather_reader.py \
+    --wtr fire.wtr --wind wind.csv \
+    --time-dependent --domain 2000 2000 --resolution 100
+
+# Write solver input stub and estimated fuel moisture
+python3 tools/farsite_weather_reader.py \
+    --wtr fire.wtr --wind wind.csv \
+    --inputs-stub inputs.i --write-moisture
+```
+
+Requires: no external packages (pure Python).
+
+---
+
+### `fuel_moisture_from_weather.py` – Equilibrium fuel moisture calculator
+
+Estimates 1-hr, 10-hr, and 100-hr dead fuel moisture content from temperature
+and relative humidity using the Nelson (2000) / Simard (1968) EMC model, as
+implemented in FARSITE, BehavePlus, and FLAMMAP.  Full documentation including
+the formulas is in the tool's module docstring.
+
+```bash
+# Single observation: 30°C, 20% RH
+python3 tools/fuel_moisture_from_weather.py --temp 30 --rh 20
+
+# Output in solver input format
+python3 tools/fuel_moisture_from_weather.py --temp 28 --rh 25 --solver-format
+
+# Batch mode from a weather CSV
+python3 tools/fuel_moisture_from_weather.py --csv weather.csv --solver-format
+
+# From dew point (30°C ambient, 15°C dew point)
+python3 tools/fuel_moisture_from_weather.py --temp 30 --use-dew-point 15
+
+# With precipitation wetting
+python3 tools/fuel_moisture_from_weather.py --temp 25 --rh 35 --precip 2.5
+```
+
+Requires: no external packages (pure Python).
+
+---
+
 ### `plotfile_to_geotiff.py` – GIS export of fire behavior fields
 
 Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter
@@ -493,6 +535,13 @@ Plotfiles are written as `plt####` directories containing:
 - `slope` - Terrain slope [degrees]
 - `aspect` - Terrain aspect [degrees]
 - `fuel_model` - Per-cell fuel model code
+- `scorch_height` - Van Wagner (1973) scorch height [m] (always present)
+- `prob_ignition` - Anderson (1970) probability of sustained ignition [-] (always present)
+- `tree_mortality` - Ryan-Reinhardt (1988) style tree mortality fraction [-] (always present)
+- `crown_activity` - Crown activity class: 0=surface, 1=passive, 2=active (always present)
+- `co2_emissions` / `co_emissions` / `pm25_emissions` - Fuel emissions [kg/m²] (always present)
+
+Burned area [ha] and perimeter [km] statistics are printed to stdout at each plot interval.
 
 View with ParaView or other AMReX-compatible visualization tools.  For GIS
 import, use `tools/plotfile_to_geotiff.py` to convert plotfiles to GeoTIFF
@@ -545,7 +594,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 | **Firebrand spotting** | Stochastic + Albini (1983) 2-D trajectory | Albini empirical spotting | Not included by default |
 | **Bulk fuel burnout** | Residence-time model | Full burnout tracking per cell | Post-frontal fuel consumption |
 | **Multi-ignition** | CSV ignition file | Interactive ignition map | WPS/WRF fire restart |
-| **Fire behavior output** | `R` [m/s], fireline intensity [kW/m], flame length [m] in plotfiles | Spread rate, intensity in output files | Spread rate in WRF output |
+| **Fire behavior output** | `R` [m/s], fireline intensity [kW/m], flame length [m], scorch height [m], probability of ignition [-], tree mortality [-], crown activity class (surface/passive/active), CO₂/CO/PM₂.₅ emissions [kg/m²], burned area [ha] and perimeter [km] per plot interval — all in plotfiles | Spread rate, intensity in output files | Spread rate in WRF output |
 | **GPU acceleration** | Yes (AMReX CUDA/HIP/SYCL kernels) | No | No |
 | **MPI parallelism** | Yes (AMReX domain decomposition) | No | Yes (WRF MPI) |
 | **Embedded boundaries** | Yes (AMReX EB) | No | No |
@@ -586,6 +635,13 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **Viegas, D.X. & Neto, L.P.S. (1994)**. "Wind tunnel study of the convective air flow of slope fires." Annual Report, Project COMOESTAS.
 - **Viegas, D.X. (2004)**. "Slope and wind effects on fire propagation." *International Journal of Wildland Fire*, 13(2), 143–156. <https://doi.org/10.1071/WF03046>
 - **Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009)**. "Validation of FIRETEC wind-flows over a canopy and fuel-break." *International Journal of Wildland Fire*, 18(7), 775–790. <https://doi.org/10.1071/WF07130>
+- **Van Wagner, C.E. (1973)**. "Height of crown scorch in forest fires." *Canadian Journal of Forest Research*, 3(3), 373–378.
+- **Anderson, H.E. (1970)**. "Forest fuel ignitibility." *Fire Technology*, 6(4), 312–319.
+- **Ryan, K.C. & Reinhardt, E.D. (1988)**. "Predicting postfire mortality of seven western conifers." *Canadian Journal of Forest Research*, 18(10), 1291–1297.
+- **Scott, J.H. & Reinhardt, E.D. (2001)**. *Assessing Crown Fire Potential by Linking Models of Surface and Crown Fire Behavior.* Research Paper RMRS-RP-29, USDA Forest Service.
+- **Nelson, R.M. Jr. (2000)**. "Prediction of diurnal change in 10-h fuel stick moisture content." *Canadian Journal of Forest Research*, 30(7), 1071–1087.
+- **Seiler, W. & Crutzen, P.J. (1980)**. "Estimates of gross and net fluxes of carbon between the biosphere and the atmosphere from biomass burning." *Climatic Change*, 2(3), 207–247.
+- **Finney, M.A. (2004)**. *FARSITE: Fire Area Simulator – Model Development and Evaluation.* Research Paper RMRS-RP-4, USDA Forest Service.
 
 ## License
 

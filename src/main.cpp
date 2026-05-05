@@ -43,6 +43,8 @@ using namespace amrex;
 #include "heat_flux_model.H"
 #include "cruz_crown_model.H"
 #include "compute_cruz_crown_R.H"
+#include "fire_ecology_model.H"
+#include "fire_emissions_model.H"
 
 
 // ======================= Main ================================================
@@ -130,6 +132,21 @@ int main(int argc, char* argv[])
     MultiFab flame_length_mf(ba, dm, 1, 0);         // Byram flame length [m]
     fireline_intensity_mf.setVal(0.0);
     flame_length_mf.setVal(0.0);
+
+    // Fire ecology diagnostics (ECOLOGY_NCOMP = 4 components):
+    //   0 – scorch_height   [m]  (Van Wagner 1973)
+    //   1 – prob_ignition   [-]  (Anderson 1970 / Rothermel 1983)
+    //   2 – tree_mortality  [-]  (Ryan-Reinhardt 1988 style logistic)
+    //   3 – crown_activity  [-]  (0=surface, 1=passive, 2=active crown fire)
+    MultiFab ecology_mf(ba, dm, ECOLOGY_NCOMP, 0);
+    ecology_mf.setVal(0.0);
+
+    // Fire emissions (EMISSIONS_NCOMP = 3 components):
+    //   0 – co2_emissions   [kg CO₂/m²]
+    //   1 – co_emissions    [kg CO/m²]
+    //   2 – pm25_emissions  [kg PM₂.₅/m²]
+    MultiFab emissions_mf(ba, dm, EMISSIONS_NCOMP, 0);
+    emissions_mf.setVal(0.0);
 
     // Weise & Biging (1996) fire whirl diagnostic fields (WEISE_NCOMP components)
     //   0 – weise_flame_height     [m]
@@ -490,6 +507,13 @@ int main(int argc, char* argv[])
             if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
         }
     }
+    // Fire ecology diagnostics (scorch height, prob. ignition, tree mortality,
+    // crown activity) – always computed, always written to plotfile
+    compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
+                         inputs.rothermel, inputs.fire_ecology, inputs.crown);
+    // Fire emissions (CO₂, CO, PM₂.₅) from fuel load × consumption fraction
+    compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
+                           inputs.rothermel, inputs.emissions);
 
 
     // ---------------- Write initial plotfile ---------------
@@ -505,7 +529,9 @@ int main(int argc, char* argv[])
 				   "weise_whirl_height", "weise_whirl_radius",
 				   "weise_angular_velocity", "weise_max_tang_vel",
 				   "viegas_ROS", "viegas_eruptive_flag",
-				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				   "co2_emissions", "co_emissions", "pm25_emissions"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -516,10 +542,12 @@ int main(int argc, char* argv[])
 				   "weise_whirl_height", "weise_whirl_radius",
 				   "weise_angular_velocity", "weise_max_tang_vel",
 				   "viegas_ROS", "viegas_eruptive_flag",
-				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				   "co2_emissions", "co_emissions", "pm25_emissions"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -536,12 +564,43 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
       MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
       MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
+      MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
+      MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
         WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, restart_step);
       }
-      
+      // Print burned area and perimeter statistics
+      {
+        long n_burned = 0, n_perim = 0;
+        const auto dxx = geom.CellSize();
+        for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+          const Box& bx = mfi.validbox();
+          auto const p = phi.const_array(mfi);
+          // Bounds-guarded neighbor access (valid box only; ghost cells
+          // at MPI subdomain edges are filled but domain-edge ghosts may
+          // not be meaningful for the perimeter check, so we stay in-box).
+          const IntVect bxlo = bx.smallEnd();
+          const IntVect bxhi = bx.bigEnd();
+          amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+            if (p(i,j,k,0) < Real(0.0)) {
+              ++n_burned;
+              bool on_perim = false;
+              if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+              if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+              if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+              if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+              if (on_perim) ++n_perim;
+            }
+          });
+        }
+        ParallelDescriptor::ReduceLongSum(n_burned);
+        ParallelDescriptor::ReduceLongSum(n_perim);
+        Real cell_area = dxx[0] * dxx[1];
+        amrex::Print() << "  Burned area: " << Real(n_burned)*cell_area/1.0e4 << " ha"
+                       << "  Perimeter: "   << Real(n_perim)*std::sqrt(cell_area)/1000.0 << " km\n";
+      }
       // Write negative phi x-y data files
       {
         char xy_buf[64];
@@ -627,6 +686,12 @@ int main(int argc, char* argv[])
               apply_viegas_ros_override(R_mf, viegas_data);
           }
       }
+      // Fire ecology diagnostics (always computed)
+      compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
+                           inputs.rothermel, inputs.fire_ecology, inputs.crown);
+      // Fire emissions (CO₂, CO, PM₂.₅)
+      compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
+                             inputs.rothermel, inputs.emissions);
       if (use_levelset) {
 	// Traditional level set advection.
 	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
@@ -705,7 +770,9 @@ int main(int argc, char* argv[])
 				     "weise_whirl_height", "weise_whirl_radius",
 				     "weise_angular_velocity", "weise_max_tang_vel",
 				     "viegas_ROS", "viegas_eruptive_flag",
-				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				     "co2_emissions", "co_emissions", "pm25_emissions"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -716,10 +783,12 @@ int main(int argc, char* argv[])
 				     "weise_whirl_height", "weise_whirl_radius",
 				     "weise_angular_velocity", "weise_max_tang_vel",
 				     "viegas_ROS", "viegas_eruptive_flag",
-				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				     "co2_emissions", "co_emissions", "pm25_emissions"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -736,9 +805,36 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
 	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
+	MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
+	MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
-	
+	{
+	  long n_burned = 0, n_perim = 0;
+	  const auto dxx = geom.CellSize();
+	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+	    const Box& bx = mfi.validbox();
+	    auto const p = phi.const_array(mfi);
+	    const IntVect bxlo = bx.smallEnd();
+	    const IntVect bxhi = bx.bigEnd();
+	    amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+	      if (p(i,j,k,0) < Real(0.0)) {
+	        ++n_burned;
+	        bool on_perim = false;
+	        if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+	        if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+	        if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+	        if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+	        if (on_perim) ++n_perim;
+	      }
+	    });
+	  }
+	  ParallelDescriptor::ReduceLongSum(n_burned);
+	  ParallelDescriptor::ReduceLongSum(n_perim);
+	  Real cell_area = dxx[0] * dxx[1];
+	  amrex::Print() << "  Burned area: " << Real(n_burned)*cell_area/1.0e4 << " ha"
+	                 << "  Perimeter: " << Real(n_perim)*std::sqrt(cell_area)/1000.0 << " km\n";
+	}
 	// Write negative phi x-y data files
 	char xy_buf[64];
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", step);
@@ -770,7 +866,9 @@ int main(int argc, char* argv[])
 				     "weise_whirl_height", "weise_whirl_radius",
 				     "weise_angular_velocity", "weise_max_tang_vel",
 				     "viegas_ROS", "viegas_eruptive_flag",
-				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				     "co2_emissions", "co_emissions", "pm25_emissions"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -781,10 +879,12 @@ int main(int argc, char* argv[])
 				     "weise_whirl_height", "weise_whirl_radius",
 				     "weise_angular_velocity", "weise_max_tang_vel",
 				     "viegas_ROS", "viegas_eruptive_flag",
-				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor"
+				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
+				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+				     "co2_emissions", "co_emissions", "pm25_emissions"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -801,9 +901,36 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, flame_length_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 5, 1, 0);
 	MultiFab::Copy(plotmf, weise_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5, WEISE_NCOMP, 0);
 	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
+	MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
+	MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
-	
+	{
+	  long n_burned = 0, n_perim = 0;
+	  const auto dxx = geom.CellSize();
+	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+	    const Box& bx = mfi.validbox();
+	    auto const p = phi.const_array(mfi);
+	    const IntVect bxlo = bx.smallEnd();
+	    const IntVect bxhi = bx.bigEnd();
+	    amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+	      if (p(i,j,k,0) < Real(0.0)) {
+	        ++n_burned;
+	        bool on_perim = false;
+	        if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+	        if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+	        if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+	        if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+	        if (on_perim) ++n_perim;
+	      }
+	    });
+	  }
+	  ParallelDescriptor::ReduceLongSum(n_burned);
+	  ParallelDescriptor::ReduceLongSum(n_perim);
+	  Real cell_area = dxx[0] * dxx[1];
+	  amrex::Print() << "  Burned area: " << Real(n_burned)*cell_area/1.0e4 << " ha"
+	                 << "  Perimeter: " << Real(n_perim)*std::sqrt(cell_area)/1000.0 << " km\n";
+	}
 	// Write negative phi x-y data files for final step
 	char xy_buf[64];
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_negative_%04d.dat", final_step);
