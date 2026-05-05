@@ -39,6 +39,8 @@ using namespace amrex;
 #include "compute_cheney_gould_R.H"
 #include "weise_biging_whirl.H"
 #include "viegas_model.H"
+#include "cruz_crown_model.H"
+#include "compute_cruz_crown_R.H"
 
 
 // ======================= Main ================================================
@@ -357,6 +359,8 @@ int main(int argc, char* argv[])
                              d_balbi_table_ptr, balbi_table_size);
         } else if (inputs.fire_spread_model == "cheney_gould") {
             compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
+        } else if (inputs.fire_spread_model == "cruz_crown") {
+            compute_cruz_crown_R(R_mf, vel, inputs.cruz_crown);
         } else {
             // Compute Rothermel wind speed R
             compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
@@ -471,6 +475,8 @@ int main(int argc, char* argv[])
                            d_balbi_table_ptr, balbi_table_size);
       } else if (inputs.fire_spread_model == "cheney_gould") {
           compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
+      } else if (inputs.fire_spread_model == "cruz_crown") {
+          compute_cruz_crown_R(R_mf, vel, inputs.cruz_crown);
       } else {
           compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
                                terrain_slopes.get(),
@@ -494,7 +500,8 @@ int main(int argc, char* argv[])
 	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
                                    terrain_slopes.get(),
                                    (inputs.fire_spread_model == "balbi" ||
-                                    inputs.fire_spread_model == "cheney_gould") ? &R_mf : nullptr);
+                                    inputs.fire_spread_model == "cheney_gould" ||
+                                    inputs.fire_spread_model == "cruz_crown") ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
