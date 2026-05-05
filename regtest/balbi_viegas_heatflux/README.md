@@ -20,7 +20,7 @@ Tests the following new capabilities:
 3. **Heat flux MultiFab with Balbi v_b augmentation**: When `heat_flux.enable_upward = 1`,
    the Balbi buoyancy velocity is augmented by the fire-induced buoyancy:
    ```
-   v_b_Q  = k_upward * sqrt(g * Q * ref_height / (rho_air * Cp_air * T_a))
+   v_b_Q  = k_upward * sqrt(g * Q * H_ref / (rho_air * Cp_air * T_a))
    v_b_eff = sqrt(v_b_fuel^2 + v_b_Q^2)
    ```
    A larger `v_b` makes the flame more vertical (less forward tilt), reducing

@@ -283,14 +283,11 @@ static void apply_heatflux_wind(MultiFab&              vel_eff,
                 if (phi_arr(i, j, k) >= Real(0.0)) {
                     const Real U_ind = k_induced * w_up;
                     // grad(phi) points outward; inflow = anti-parallel to grad(phi)
-                    // Use phi values at this cell and neighbors (no ghost cells needed
-                    // for unit vector; just ensure i,j±1 are within bx)
-                    const Real phi_c = phi_arr(i, j, k);
-                    // Simple first-order estimate of gradient direction using
-                    // clamped neighbor access (same-cell fallback at boundaries)
-                    const Real gpx = phi_arr(i, j, k) - phi_arr(amrex::max(i-1, bx.smallEnd(0)), j, k);
-                    const Real gpy = phi_arr(i, j, k) - phi_arr(i, amrex::max(j-1, bx.smallEnd(1)), k);
-                    (void)phi_c;
+                    // Use centered differences where possible, fallback to one-sided at boundaries
+                    const Real gpx = phi_arr(amrex::min(i+1, bx.bigEnd(0)), j, k)
+                                   - phi_arr(amrex::max(i-1, bx.smallEnd(0)), j, k);
+                    const Real gpy = phi_arr(i, amrex::min(j+1, bx.bigEnd(1)), k)
+                                   - phi_arr(i, amrex::max(j-1, bx.smallEnd(1)), k);
                     const Real gp_mag = std::sqrt(gpx * gpx + gpy * gpy);
                     if (gp_mag > Real(1.0e-8)) {
                         // inflow directed anti-parallel to grad(phi)

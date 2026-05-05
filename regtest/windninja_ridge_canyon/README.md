@@ -59,8 +59,11 @@ compared to the plain Rothermel model (Option 1) or Pimont exponential correctio
 
 | Option | Model | Effect on Gaussian Hill |
 |--------|-------|------------------------|
-| 1 | `none` | Symmetric, base ROS only |
+| 1 | `none` | No wind modification; symmetric, base ROS only |
+| 2 | `viegas_ros` | Override ROS with max(R_primary, R_Viegas) in eruptive cells |
+| 3 | `viegas_wind` | Add buoyancy upslope wind in eruptive cells only |
 | 4 | `canyon_wind` | Isotropic amplification ∝ tan(phi), no wind direction dependence |
+| 5 | `viegas_neto` | Buoyancy upslope wind at all cells (no eruptive threshold) |
 | 6 | `pimont` | Exponential amplification, no wind direction dependence |
 | 7 | `windninja_ridge_canyon` | Directional: ridge on windward face, canyon on lee |
 
