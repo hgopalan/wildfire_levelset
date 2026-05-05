@@ -39,6 +39,7 @@ using namespace amrex;
 #include "compute_cheney_gould_R.H"
 #include "weise_biging_whirl.H"
 #include "viegas_model.H"
+#include "wind_terrain_models.H"
 #include "cruz_crown_model.H"
 #include "compute_cruz_crown_R.H"
 
@@ -93,6 +94,10 @@ int main(int argc, char* argv[])
     const int ng_phi = 3; // 3 ghost cells for stencil operations (WENO5-Z flux divergence uses up to ±3 cells)
     MultiFab phi(ba, dm, 1, ng_phi);
     MultiFab vel(ba, dm, 3, 1);
+
+    // Effective wind field for wind-terrain feedback models (Options 3–6).
+    // For "none" and "viegas_ros" this is unused; Rothermel sees vel directly.
+    MultiFab vel_effective(ba, dm, 3, 1);
         
     // FARSITE spread field: stores x,y,z displacement (3 components in 3D, 2 in 2D)
     MultiFab farsite_spread(ba, dm, AMREX_SPACEDIM, 0);
@@ -347,23 +352,50 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ---------------- Wind-terrain model setup ------------------
+    // wind_terrain_modifies_vel: true for Options 3-6 which produce vel_effective.
+    // For "none" (Option 1) and "viegas_ros" (Option 2) the original vel is used.
+    const bool wind_terrain_modifies_vel =
+        (inputs.wind_terrain.model == "viegas_wind" ||
+         inputs.wind_terrain.model == "canyon_wind"  ||
+         inputs.wind_terrain.model == "viegas_neto"  ||
+         inputs.wind_terrain.model == "pimont");
+
+    // use_precomp_R_for_advection: when a wind-terrain model or a non-Rothermel
+    // spread model is active, pass R_mf as the pre-computed ROS to advection so
+    // that the advection kernel does not internally recompute Rothermel with the
+    // unmodified vel.  This ensures the advected ROS matches what was computed
+    // above (including any terrain-corrected velocity or Viegas ROS override).
+    const bool use_precomp_R_for_advection =
+        (wind_terrain_modifies_vel ||
+         inputs.wind_terrain.model == "viegas_ros"  ||
+         inputs.fire_spread_model  == "balbi"        ||
+         inputs.fire_spread_model  == "cheney_gould" ||
+         inputs.fire_spread_model  == "cruz_crown");
+
     // ---------------- dt from CFL --------------------------
     Real dt=10;
     const bool use_levelset = (inputs.propagation_method == "levelset");
     if (use_levelset)
       {
+        // Apply wind-terrain velocity modification (Options 3-6) before ROS computation
+        if (wind_terrain_modifies_vel) {
+            apply_wind_terrain_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+        }
+        const MultiFab& vel_for_rothermel = wind_terrain_modifies_vel ? vel_effective : vel;
+
         if (inputs.fire_spread_model == "balbi") {
-            compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
+            compute_balbi_R(R_mf, vel_for_rothermel, geom, inputs.rothermel, inputs.balbi,
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                              d_balbi_table_ptr, balbi_table_size);
         } else if (inputs.fire_spread_model == "cheney_gould") {
-            compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
+            compute_cheney_gould_R(R_mf, vel_for_rothermel, inputs.cheney_gould);
         } else if (inputs.fire_spread_model == "cruz_crown") {
-            compute_cruz_crown_R(R_mf, vel, inputs.cruz_crown);
+            compute_cruz_crown_R(R_mf, vel_for_rothermel, inputs.cruz_crown);
         } else {
             // Compute Rothermel wind speed R
-            compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+            compute_rothermel_R(R_mf, vel_for_rothermel, geom, inputs.rothermel,
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size);
@@ -383,6 +415,11 @@ int main(int argc, char* argv[])
                                    terrain_slopes.get(),
                                    !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                    d_fuel_table_ptr, fuel_table_size);
+        // Option 2: override R_mf with max(R_rothermel, R_viegas) in eruptive cells
+        if (inputs.wind_terrain.model == "viegas_ros") {
+            apply_viegas_ros_override(R_mf, viegas_data);
+            if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
+        }
     }
 
 
@@ -468,17 +505,23 @@ int main(int argc, char* argv[])
 #endif
       
       // --- Step 2: Compute surface ROS via selected fire spread model
+      // Apply wind-terrain velocity modification (Options 3-6) before ROS computation
+      if (wind_terrain_modifies_vel) {
+          apply_wind_terrain_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      }
+      const MultiFab& vel_for_rothermel = wind_terrain_modifies_vel ? vel_effective : vel;
+
       if (inputs.fire_spread_model == "balbi") {
-          compute_balbi_R(R_mf, vel, geom, inputs.rothermel, inputs.balbi,
+          compute_balbi_R(R_mf, vel_for_rothermel, geom, inputs.rothermel, inputs.balbi,
                            terrain_slopes.get(),
                            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                            d_balbi_table_ptr, balbi_table_size);
       } else if (inputs.fire_spread_model == "cheney_gould") {
-          compute_cheney_gould_R(R_mf, vel, inputs.cheney_gould);
+          compute_cheney_gould_R(R_mf, vel_for_rothermel, inputs.cheney_gould);
       } else if (inputs.fire_spread_model == "cruz_crown") {
-          compute_cruz_crown_R(R_mf, vel, inputs.cruz_crown);
+          compute_cruz_crown_R(R_mf, vel_for_rothermel, inputs.cruz_crown);
       } else {
-          compute_rothermel_R(R_mf, vel, geom, inputs.rothermel,
+          compute_rothermel_R(R_mf, vel_for_rothermel, geom, inputs.rothermel,
                                terrain_slopes.get(),
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                d_fuel_table_ptr, fuel_table_size);
@@ -493,20 +536,25 @@ int main(int argc, char* argv[])
                                      terrain_slopes.get(),
                                      !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                      d_fuel_table_ptr, fuel_table_size);
+          // Option 2: override R_mf with max(R_rothermel, R_viegas) in eruptive cells
+          if (inputs.wind_terrain.model == "viegas_ros") {
+              apply_viegas_ros_override(R_mf, viegas_data);
+          }
       }
       if (use_levelset) {
-	// Traditional level set advection
-	// When Balbi is active, pass pre-computed R_mf so advection uses Balbi ROS
+	// Traditional level set advection.
+	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
+	// model is active (see use_precomp_R_for_advection defined above).
 	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
                                    terrain_slopes.get(),
-                                   (inputs.fire_spread_model == "balbi" ||
-                                    inputs.fire_spread_model == "cheney_gould" ||
-                                    inputs.fire_spread_model == "cruz_crown") ? &R_mf : nullptr);
+                                   use_precomp_R_for_advection ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
 	// --- Step 4: Merge to new perimeter
-	compute_farsite_spread(phi, vel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
+	// For wind-terrain models, pass vel_for_rothermel so FARSITE ellipse
+	// orientation and ROS also reflect the terrain-corrected wind.
+	compute_farsite_spread(phi, vel_for_rothermel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {

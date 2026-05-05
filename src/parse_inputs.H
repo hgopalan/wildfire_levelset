@@ -184,6 +184,32 @@ struct InputParameters {
         amrex::Real T_f;                     // Flame temperature [K] for flame-tilt calculation (default: 1000.0)
     } viegas;
 
+    // Wind–terrain feedback model for Rothermel ROS enhancement.
+    // Selects how terrain-induced or fire-feedback winds modify the Rothermel
+    // wind field before (or after) the ROS computation.
+    //
+    //  "none"        (Option 1) – default Rothermel, no modification
+    //  "viegas_ros"  (Option 2) – replace R_mf with max(R_rothermel, R_viegas)
+    //                             in eruptive cells (requires terrain slopes)
+    //  "viegas_wind" (Option 3) – add Viegas buoyancy-induced upslope wind only
+    //                             in eruptive cells (tan_phi > tan_phi_c)
+    //  "canyon_wind" (Option 4) – Rothermel (1983) canyon wind: scale ambient
+    //                             wind by (1 + k_canyon * tan_phi)
+    //  "viegas_neto" (Option 5) – Viegas & Neto (1994): add buoyancy-induced
+    //                             upslope wind at every cell (no eruptive threshold)
+    //  "pimont"      (Option 6) – Pimont et al. (2009): scale ambient wind by
+    //                             exp(k_pimont * tan_phi) (CFD-calibrated)
+    //
+    // For "viegas_ros", "viegas_wind", and "viegas_neto" the Viegas diagnostic
+    // model is automatically enabled (viegas.enable is set to 1).
+    // Buoyancy velocity parameters (T_a, T_f, delta) are shared with the
+    // ViegasParams and RothermelParams structs respectively.
+    struct WindTerrainParams {
+        std::string model;     // wind-terrain model name (default: "none")
+        amrex::Real k_canyon;  // Option 4: terrain channeling coefficient (default: 1.0)
+        amrex::Real k_pimont;  // Option 6: exponential slope correction coefficient (default: 0.5)
+    } wind_terrain;
+
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
     // When set to 1, overrides propagation_method to "farsite".
