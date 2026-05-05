@@ -550,4 +550,27 @@ void parse_inputs(InputParameters& p)
     p.chk_int        = -1;                       pp.query("chk_int",         p.chk_int);
     p.restart_chkfile = "";                      pp.query("restart_chkfile", p.restart_chkfile);
 
+    // -------- Fire ecology diagnostics --------
+    // Scorch height (Van Wagner 1973), probability of ignition (Anderson 1970),
+    // tree mortality (Ryan-Reinhardt 1988), and crown activity classification
+    // (Van Wagner 1977 / Scott-Reinhardt 2001).  Always computed; uses crown.*
+    // for CBH/CBD/FMC regardless of whether crown.enable is set.
+    p.fire_ecology.T_a_C           = 25.0;   pp.query("fire_ecology.T_a_C",           p.fire_ecology.T_a_C);
+    p.fire_ecology.solar_heating_F = 25.0;   pp.query("fire_ecology.solar_heating_F", p.fire_ecology.solar_heating_F);
+    p.fire_ecology.tree_height     = 10.0;   pp.query("fire_ecology.tree_height",     p.fire_ecology.tree_height);
+    if (p.fire_ecology.tree_height <= 0.0)
+        amrex::Abort("fire_ecology.tree_height must be > 0 m");
+
+    // -------- Fire emissions (CO2, CO, PM2.5) --------
+    // Emission factors from Seiler & Crutzen (1980) / WRF-Fire defaults.
+    p.emissions.EF_CO2              = 1.570;  pp.query("emissions.EF_CO2",              p.emissions.EF_CO2);
+    p.emissions.EF_CO               = 0.102;  pp.query("emissions.EF_CO",               p.emissions.EF_CO);
+    p.emissions.EF_PM25             = 0.0162; pp.query("emissions.EF_PM25",             p.emissions.EF_PM25);
+    p.emissions.default_consumed_frac = 0.7;  pp.query("emissions.default_consumed_frac", p.emissions.default_consumed_frac);
+    if (p.emissions.EF_CO2  < 0.0) amrex::Abort("emissions.EF_CO2 must be >= 0");
+    if (p.emissions.EF_CO   < 0.0) amrex::Abort("emissions.EF_CO must be >= 0");
+    if (p.emissions.EF_PM25 < 0.0) amrex::Abort("emissions.EF_PM25 must be >= 0");
+    if (p.emissions.default_consumed_frac < 0.0 || p.emissions.default_consumed_frac > 1.0)
+        amrex::Abort("emissions.default_consumed_frac must be in [0,1]");
+
 }

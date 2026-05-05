@@ -243,6 +243,25 @@ struct InputParameters {
         int enable_induced;           // 1 to enable induced horizontal inflow (default: 0)
     } heat_flux;
 
+    // Fire ecology diagnostics (always computed, written to every plotfile)
+    // Parameters for scorch height, probability of ignition, tree mortality,
+    // and passive/active crown fire classification.
+    struct FireEcologyParams {
+        amrex::Real T_a_C;           // ambient temperature [°C] for scorch height / P_i (default: 25.0)
+        amrex::Real solar_heating_F; // solar temperature increment [°F] added to fuel temp for P_i (default: 25.0)
+        amrex::Real tree_height;     // mean stand height [m] for tree mortality (default: 10.0)
+    } fire_ecology;
+
+    // Fire emissions (CO₂, CO, PM₂.₅) computed from fuel consumption
+    // Follows WRF-Fire / QUIC-Fire emission factor convention.
+    struct EmissionsParams {
+        amrex::Real EF_CO2;              // CO₂ emission factor [kg CO₂/kg fuel] (default: 1.57)
+        amrex::Real EF_CO;               // CO  emission factor [kg CO /kg fuel] (default: 0.102)
+        amrex::Real EF_PM25;             // PM₂.₅ emission factor [kg PM₂.₅/kg fuel] (default: 0.0162)
+        amrex::Real default_consumed_frac; // default consumption fraction for burned cells without
+                                           // bulk fuel model (default: 0.7)
+    } emissions;
+
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
     // When set to 1, overrides propagation_method to "farsite".
