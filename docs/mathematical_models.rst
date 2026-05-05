@@ -1461,7 +1461,7 @@ where:
 
   - CO₂: 1.570 kg/kg (Seiler & Crutzen 1980)
   - CO:  0.102 kg/kg
-  - PM₂.₅: 0.0162 kg/kg (Andreae & Merlet 2001)
+  - PM\ :sub:`2.5`\: 0.0162 kg/kg (Andreae & Merlet 2001)
 
 Output fields: ``co2_emissions``, ``co_emissions``, ``pm25_emissions``.
 
