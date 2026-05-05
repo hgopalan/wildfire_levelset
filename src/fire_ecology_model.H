@@ -4,16 +4,16 @@
 // Computes four per-cell fire ecology and behavior fields written to every
 // plotfile as additional diagnostic outputs:
 //
-//   Component 0 – scorch_height   [m]   Van Wagner (1973)
-//   Component 1 – prob_ignition   [-]   Anderson (1970) / Rothermel (1983)
-//   Component 2 – tree_mortality  [-]   Ryan-Reinhardt (1988) style logistic
-//   Component 3 – crown_activity  [-]   0=surface, 1=passive, 2=active
+//   Component 0 - scorch_height   [m]   Van Wagner (1973)
+//   Component 1 - prob_ignition   [-]   Anderson (1970) / Rothermel (1983)
+//   Component 2 - tree_mortality  [-]   Ryan-Reinhardt (1988) style logistic
+//   Component 3 - crown_activity  [-]   0=surface, 1=passive, 2=active
 //                                       Van Wagner (1977) / Scott & Reinhardt (2001)
 //
 // ----------------------------------------------------------------------------
 // Scorch height (Van Wagner 1973)
 // ----------------------------------------------------------------------------
-//   H_s [m] = 0.1483 × I_B [kW/m]^(2/3)
+//   H_s [m] = 0.1483 * I_B [kW/m]^(2/3)
 //
 // Empirical formula for flame-induced scorch height under standard ambient
 // conditions (Scott & Reinhardt 2001).  I_B is the Byram (1959) fireline
@@ -22,7 +22,7 @@
 // ----------------------------------------------------------------------------
 // Probability of ignition (Anderson 1970 / Rothermel 1983)
 // ----------------------------------------------------------------------------
-//   P_i = min(1, max(0, 0.000048 × T_fuel_F^1.4 × exp(-0.07 × MC%)))
+//   P_i = min(1, max(0, 0.000048 * T_fuel_F^1.4 * exp(-0.07 * MC%)))
 //
 // Probability that a firebrand landing on fine fuel will cause sustained
 // ignition.  T_fuel_F is fine fuel temperature in °F (ambient + solar
@@ -32,7 +32,7 @@
 // Tree mortality fraction (Ryan & Reinhardt 1988)
 // ----------------------------------------------------------------------------
 //   CRS = (H_s - CBH) / (H_tree - CBH)   clipped to [0, 1]
-//   P_kill = 1 / (1 + exp(-4 × (CRS - 0.6)))   when H_s > CBH
+//   P_kill = 1 / (1 + exp(-4 * (CRS - 0.6)))   when H_s > CBH
 //          = 0                                   when H_s <= CBH
 //
 // Crown Scorch Ratio (CRS) drives a logistic mortality curve calibrated to
@@ -42,12 +42,12 @@
 // ----------------------------------------------------------------------------
 // Crown activity class (Van Wagner 1977 / Scott & Reinhardt 2001)
 // ----------------------------------------------------------------------------
-//   0 – surface fire     : I_B < I_o
-//   1 – passive crown    : I_B >= I_o  AND  R < R'_SA
-//   2 – active crown     : I_B >= I_o  AND  R >= R'_SA
+//   0 - surface fire     : I_B < I_o
+//   1 - passive crown    : I_B >= I_o  AND  R < R'_SA
+//   2 - active crown     : I_B >= I_o  AND  R >= R'_SA
 //
 // Crown initiation intensity (Van Wagner 1977, as in crown_initiation.H):
-//   I_o [kW/m] = 0.010 × CBH × (460 + 25.9 × FMC)
+//   I_o [kW/m] = 0.010 * CBH * (460 + 25.9 * FMC)
 //
 // Critical active-crown ROS (Van Wagner 1977):
 //   R'_SA [m/s] = 3.0 / CBD / 60
@@ -56,13 +56,13 @@
 // References
 // ----------------------------------------------------------------------------
 //   Van Wagner, C.E. (1973). "Height of crown scorch in forest fires."
-//     Canadian Journal of Forest Research, 3(3), 373–378.
+//     Canadian Journal of Forest Research, 3(3), 373-378.
 //   Anderson, H.E. (1970). "Forest fuel ignitibility."  Fire Technology, 6(4).
 //   Rothermel, R.C. (1983).  USDA Forest Service GTR INT-143.
 //   Ryan, K.C. & Reinhardt, E.D. (1988). "Predicting postfire mortality of
-//     seven western conifers." Canadian Journal of Forest Research, 18, 1291–1297.
+//     seven western conifers." Canadian Journal of Forest Research, 18, 1291-1297.
 //   Van Wagner, C.E. (1977). "Conditions for the start and spread of crown fire."
-//     Canadian Journal of Forest Research, 7(1), 23–34.
+//     Canadian Journal of Forest Research, 7(1), 23-34.
 //   Scott, J.H. & Reinhardt, E.D. (2001). "Assessing crown fire potential by
 //     linking models of surface and crown fire behavior." USDA Forest Service
 //     Research Paper RMRS-RP-29.
@@ -86,12 +86,12 @@ constexpr int ECOLOGY_NCOMP = 4;
 // compute_fire_ecology
 //
 // Parameters:
-//   ecology_mf             – output: ECOLOGY_NCOMP-component MultiFab
-//   fireline_intensity_mf  – input:  Byram fireline intensity [kW/m]
-//   R_mf                   – input:  rate of spread [m/s]
-//   rp                     – Rothermel parameters (provides M_f for P_i)
-//   fep                    – fire ecology parameters
-//   cp                     – crown initiation parameters (CBH, CBD, FMC,
+//   ecology_mf             - output: ECOLOGY_NCOMP-component MultiFab
+//   fireline_intensity_mf  - input:  Byram fireline intensity [kW/m]
+//   R_mf                   - input:  rate of spread [m/s]
+//   rp                     - Rothermel parameters (provides M_f for P_i)
+//   fep                    - fire ecology parameters
+//   cp                     - crown initiation parameters (CBH, CBD, FMC,
 //                            tree_height for mortality; crown.enable not
 //                            checked here — ecology is always computed)
 // ============================================================================
@@ -109,7 +109,7 @@ static void compute_fire_ecology(
     // T_fuel = ambient [°C] → °F + solar heating increment [°F]
     const Real T_a_F     = Real(fep.T_a_C) * Real(1.8) + Real(32.0);
     const Real T_fuel_F  = T_a_F + Real(fep.solar_heating_F);
-    // Anderson (1970) formula uses T_fuel^1.4 – precompute for GPU
+    // Anderson (1970) formula uses T_fuel^1.4 - precompute for GPU
     const Real T_fuel_14 = (T_fuel_F > Real(0.0))
                            ? std::pow(T_fuel_F, Real(1.4))
                            : Real(0.0);
@@ -158,8 +158,8 @@ static void compute_fire_ecology(
             const Real Ri = R(i, j, k);
 
             // ----------------------------------------------------------------
-            // (0) Scorch height [m]  –  Van Wagner (1973)
-            //     H_s = 0.1483 × I_B^(2/3)   for I_B in kW/m
+            // (0) Scorch height [m]  -  Van Wagner (1973)
+            //     H_s = 0.1483 * I_B^(2/3)   for I_B in kW/m
             // ----------------------------------------------------------------
             const Real H_s = (IB > Real(0.0))
                              ? Real(0.1483) * std::pow(IB, Real(2.0 / 3.0))
@@ -167,8 +167,8 @@ static void compute_fire_ecology(
             eco(i, j, k, 0) = H_s;
 
             // ----------------------------------------------------------------
-            // (1) Probability of ignition [-]  –  Anderson (1970)
-            //     P_i = 0.000048 × T_fuel_F^1.4 × exp(-0.07 × MC%)
+            // (1) Probability of ignition [-]  -  Anderson (1970)
+            //     P_i = 0.000048 * T_fuel_F^1.4 * exp(-0.07 * MC%)
             // ----------------------------------------------------------------
             const Real P_i = amrex::min(Real(1.0),
                              amrex::max(Real(0.0),
@@ -177,9 +177,9 @@ static void compute_fire_ecology(
             eco(i, j, k, 1) = P_i;
 
             // ----------------------------------------------------------------
-            // (2) Tree mortality fraction [-]  –  Ryan-Reinhardt (1988) style
+            // (2) Tree mortality fraction [-]  -  Ryan-Reinhardt (1988) style
             //     CRS = (H_s - CBH) / (H_tree - CBH)  clipped [0,1]
-            //     P_kill = 1 / (1 + exp(-4 × (CRS - 0.6)))
+            //     P_kill = 1 / (1 + exp(-4 * (CRS - 0.6)))
             // ----------------------------------------------------------------
             Real P_kill = Real(0.0);
             if (H_s > Cbh) {

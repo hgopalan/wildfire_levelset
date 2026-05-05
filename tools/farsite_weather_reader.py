@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-farsite_weather_reader.py  –  Parse FARSITE .wtr weather-station files and
+farsite_weather_reader.py  -  Parse FARSITE .wtr weather-station files and
 write time-stamped wind CSV files for wildfire_levelset.
 
 A FARSITE weather (.wtr) file contains one record per observation:
@@ -10,13 +10,13 @@ A FARSITE weather (.wtr) file contains one record per observation:
 Fields
 ------
 YEAR        : 4-digit year
-MONTH       : 1–12
-DAY         : 1–31
-TIME        : HHMM (0000–2350; 2400 = midnight of next day)
-TEMP        : temperature [°F]  – or °C when --metric is given
+MONTH       : 1-12
+DAY         : 1-31
+TIME        : HHMM (0000-2350; 2400 = midnight of next day)
+TEMP        : temperature [°F]  - or °C when --metric is given
 RH          : relative humidity [%]
 PRECIP      : precipitation amount [in or mm]
-WIND_SPEED  : 20-ft wind speed [miles/hr]  – or [m/s] with --metric
+WIND_SPEED  : 20-ft wind speed [miles/hr]  - or [m/s] with --metric
 WIND_DIR    : wind direction [degrees from north, meteorological convention]
 CLOUD       : cloud cover [%]  (optional column; ignored if absent)
 
@@ -56,7 +56,7 @@ Usage examples
   # Write one wind CSV for the first record
   python3 farsite_weather_reader.py --wtr fire.wtr --wind wind.csv
 
-  # Write time-dependent wind files for a 2000 × 2000 m domain at 100 m resolution
+  # Write time-dependent wind files for a 2000 * 2000 m domain at 100 m resolution
   python3 farsite_weather_reader.py \\
       --wtr fire.wtr \\
       --wind wind.csv \\
@@ -101,10 +101,10 @@ Options
 
 References
 ----------
-  Finney, M.A. (2004). FARSITE: Fire Area Simulator – Model Development and
+  Finney, M.A. (2004). FARSITE: Fire Area Simulator - Model Development and
     Evaluation. USDA Forest Service Research Paper RMRS-RP-4.
   Nelson, R.M. Jr. (2000). Prediction of diurnal change in 10-h fuel stick
-    moisture content. Canadian Journal of Forest Research, 30(7), 1071–1087.
+    moisture content. Canadian Journal of Forest Research, 30(7), 1071-1087.
 """
 
 from __future__ import annotations

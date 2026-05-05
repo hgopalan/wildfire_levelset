@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fuel_moisture_from_weather.py  –  Estimate dead and live fuel moisture content
+fuel_moisture_from_weather.py  -  Estimate dead and live fuel moisture content
 from weather station observations (temperature, relative humidity, and optional
 precipitation).
 
@@ -28,15 +28,15 @@ relative humidity RH [%] to equilibrium moisture content EMC [%] of fine dead
 fuels:
 
   Region 1 (RH < 10%):
-    EMC = 0.03229 + 0.281073 * (RH/100) – 0.000578 * T * (RH/100)
+    EMC = 0.03229 + 0.281073 * (RH/100) - 0.000578 * T * (RH/100)
 
   Region 2 (10% ≤ RH < 50%):
-    EMC = 2.22749 + 0.160107 * (RH/100) – 0.014784 * T
+    EMC = 2.22749 + 0.160107 * (RH/100) - 0.014784 * T
 
   Region 3 (RH ≥ 50%):
-    EMC = 21.0606 + 0.005565 * (RH/100)² – 0.00035 * T * (RH/100) – 0.483199 * (RH/100)
+    EMC = 21.0606 + 0.005565 * (RH/100)² - 0.00035 * T * (RH/100) - 0.483199 * (RH/100)
 
-The result is in percent [%].  For conversion to the fraction [0–1] used by
+The result is in percent [%].  For conversion to the fraction [0-1] used by
 the solver, divide by 100.
 
 Timelag adjustments
@@ -45,8 +45,8 @@ Coarser fuel sizes respond more slowly to weather changes than the 1-hr size
 class.  Nelson (2000) recommends:
 
   M_1hr   = EMC(T, RH)
-  M_10hr  ≈ EMC(T, RH) × 1.10  (or use a running 12-h weighted mean)
-  M_100hr ≈ EMC(T, RH) × 1.30  (or use a running 7-day weighted mean)
+  M_10hr  ≈ EMC(T, RH) * 1.10  (or use a running 12-h weighted mean)
+  M_100hr ≈ EMC(T, RH) * 1.30  (or use a running 7-day weighted mean)
 
 These multipliers are empirical approximations commonly used in operational
 fire weather computations when only a single weather snapshot is available.
@@ -63,7 +63,7 @@ the EMC equations.
 References
 ----------
   Nelson, R.M. Jr. (2000). "Prediction of diurnal change in 10-h fuel stick
-    moisture content." Canadian Journal of Forest Research, 30(7), 1071–1087.
+    moisture content." Canadian Journal of Forest Research, 30(7), 1071-1087.
   Simard, A.J. (1968). The moisture content of forest fuels. Forest Fire
     Research Institute, Ottawa, Information Report FF-X-14.
   Rothermel, R.C. (1983). How to Predict the Spread and Intensity of Forest
@@ -174,9 +174,9 @@ def emc_by_size_class(temp_c: float, rh_pct: float,
     # Precipitation wetting increment [%]
     # Based on NFDRS (Deeming et al. 1977) boundary:
     #   < 0.5 mm:  no correction
-    #   0.5–1.0 mm: +5% to 1-hr
-    #   1.0–2.5 mm: +10% to 1-hr
-    #   2.5–5.0 mm: +15% to 1-hr
+    #   0.5-1.0 mm: +5% to 1-hr
+    #   1.0-2.5 mm: +10% to 1-hr
+    #   2.5-5.0 mm: +15% to 1-hr
     #   > 5 mm:    +25% to 1-hr
     wet_1hr = 0.0
     if precip_mm >= 0.5:
@@ -282,8 +282,8 @@ def _fmt_human(temp_c: float, rh_pct: float,
         f"  1-hr  dead EMC:  {m1 * 100:.1f}%  ({m1:.4f} fraction)\n"
         f"  10-hr dead EMC:  {m10 * 100:.1f}%  ({m10:.4f} fraction)\n"
         f"  100-hr dead EMC: {m100 * 100:.1f}%  ({m100:.4f} fraction)\n"
-        "  Live herb. (guidance): 30–100%  (0.30–1.00)\n"
-        "  Live woody (guidance): 80–200%  (0.80–2.00)\n"
+        "  Live herb. (guidance): 30-100%  (0.30-1.00)\n"
+        "  Live woody (guidance): 80-200%  (0.80-2.00)\n"
     )
 
 

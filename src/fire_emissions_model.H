@@ -3,19 +3,19 @@
 // ============================================================================
 // Computes per-cell cumulative fire emissions [kg/m²] for three species:
 //
-//   Component 0 – co2_emissions   [kg CO₂ / m²]
-//   Component 1 – co_emissions    [kg CO  / m²]
-//   Component 2 – pm25_emissions  [kg PM₂.₅ / m²]
+//   Component 0 - co2_emissions   [kg CO₂ / m²]
+//   Component 1 - co_emissions    [kg CO  / m²]
+//   Component 2 - pm25_emissions  [kg PM₂.₅ / m²]
 //
 // Formula (Seiler & Crutzen 1980; WRF-Fire / QUIC-Fire convention):
-//   E_species [kg/m²] = W_fuel [kg/m²] × f_c [-] × EF_species [kg/kg]
+//   E_species [kg/m²] = W_fuel [kg/m²] * f_c [-] * EF_species [kg/kg]
 //
 // where
 //   W_fuel  = oven-dry fuel load [kg/m²] (from Rothermel parameters)
 //   f_c     = fuel consumption fraction [-]:
-//               – from fuel_consumption_mf when bulk model is active (> 0)
-//               – default_consumed_frac for burned cells (phi < 0) otherwise
-//               – 0 for unburned cells
+//               - from fuel_consumption_mf when bulk model is active (> 0)
+//               - default_consumed_frac for burned cells (phi < 0) otherwise
+//               - 0 for unburned cells
 //   EF_*    = emission factors [kg species / kg dry fuel consumed]:
 //               CO₂:   1.570  (Seiler & Crutzen 1980 / WRF-Fire default)
 //               CO:    0.102  (WRF-Fire default)
@@ -29,9 +29,9 @@
 // Default emission factors are from:
 //   Seiler, W. & Crutzen, P.J. (1980). "Estimates of gross and net fluxes of
 //     carbon between the biosphere and the atmosphere from biomass burning."
-//     Climatic Change, 2(3), 207–247.
+//     Climatic Change, 2(3), 207-247.
 //   Andreae, M.O. & Merlet, P. (2001). "Emission of trace gases and aerosols
-//     from biomass burning." Global Biogeochemical Cycles, 15(4), 955–966.
+//     from biomass burning." Global Biogeochemical Cycles, 15(4), 955-966.
 //
 // These are the same defaults used in:
 //   WRF-SFIRE (Mandel et al. 2011, Geosci. Model Dev.)
@@ -55,12 +55,12 @@ constexpr int EMISSIONS_NCOMP = 3;
 // compute_fire_emissions
 //
 // Parameters:
-//   emissions_mf          – output: EMISSIONS_NCOMP-component MultiFab
-//   phi                   – input:  level-set field (phi < 0 = burned)
-//   fuel_consumption_mf   – input:  fuel consumption fraction [0,1]
+//   emissions_mf          - output: EMISSIONS_NCOMP-component MultiFab
+//   phi                   - input:  level-set field (phi < 0 = burned)
+//   fuel_consumption_mf   - input:  fuel consumption fraction [0,1]
 //                           (non-zero only when bulk consumption model active)
-//   rp                    – Rothermel parameters (provides fuel load)
-//   ep                    – emissions parameters (EF values, default fraction)
+//   rp                    - Rothermel parameters (provides fuel load)
+//   ep                    - emissions parameters (EF values, default fraction)
 // ============================================================================
 static void compute_fire_emissions(
     MultiFab&                                 emissions_mf,
