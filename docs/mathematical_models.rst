@@ -704,6 +704,401 @@ laboratory and field eruptive fire experiments.  The ROS excess ratio becomes
 
    \varepsilon = \frac{R_V^{\text{Balbi}} - R_{\text{Balbi}}}{R_{\text{Balbi}}}
 
+Balbi (2009) Physical Fire Spread Model
+----------------------------------------
+
+The Balbi model provides an alternative rate-of-spread calculation rooted in
+radiation physics rather than empirical curve fits.  It is activated by setting
+``fire_spread_model = balbi`` and automatically replaces the Rothermel model in
+both the level-set advection path and the pre-computed :math:`R` field used by
+FARSITE.  The model is fully compatible with all six Viegas wind-terrain options
+and FARSITE landscape file inputs.
+
+Physical Basis
+^^^^^^^^^^^^^^^
+
+The rate of spread :math:`R` [m/s] is derived from the balance between radiant
+heat flux from a tilted flame and the energy required to ignite the unburned fuel
+ahead:
+
+.. math::
+
+   R = A_{\text{coeff}} \,(1 + \sin\alpha - \cos\alpha)
+
+where:
+
+* :math:`A_{\text{coeff}} = \chi\,\sigma_m\,\delta_m / (2\,\tau_0\,B^*)` [m/s] — fuel radiative amplitude
+* :math:`\chi = r_{00}\,\sigma_m / (1 + r_{00}\,\sigma_m)` — forward radiation fraction
+* :math:`B^* = (C_{pf}\,(T_i - T_a) + M_f\,\Lambda) / h` — dimensionless ignition energy
+* :math:`\tan\alpha = U / v_b + \tan\theta` — flame tilt from wind and slope
+* :math:`v_b = \sqrt{g\,\delta_m\,(T_f - T_a) / T_a}` — buoyancy velocity scale [m/s]
+
+Inputs from the LCP / Fuel Database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Balbi model shares fuel parameters with the Rothermel model:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Parameter
+     - Source
+     - Description
+   * - :math:`\sigma` [ft⁻¹→m⁻¹]
+     - Fuel database / LCP
+     - Surface-area-to-volume ratio
+   * - :math:`\delta` [ft→m]
+     - Fuel database / LCP
+     - Fuel bed depth
+   * - :math:`w_0` [lb/ft²→kg/m²]
+     - Fuel database / LCP
+     - Oven-dry fuel load
+   * - :math:`\rho_p` [lb/ft³→kg/m³]
+     - Fuel database / LCP
+     - Particle density
+   * - :math:`h` [BTU/lb→J/kg]
+     - Fuel database / LCP
+     - Heat of combustion
+   * - :math:`M_f` [−]
+     - ``rothermel.M_f``
+     - Fuel moisture fraction
+   * - slope, aspect
+     - LCP / terrain file
+     - Terrain slope components
+   * - Wind :math:`U` [m/s]
+     - ``u_x``, ``u_y``, wind file
+     - Wind speed
+
+Extra Inputs via Parmparse (``balbi.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``balbi.T_a``
+     - 300.0 K
+     - Ambient temperature
+   * - ``balbi.T_f``
+     - 1000.0 K
+     - Mean flame temperature
+   * - ``balbi.T_i``
+     - 600.0 K
+     - Ignition temperature
+   * - ``balbi.delta_H``
+     - 2.26e6 J/kg
+     - Latent heat of water vaporisation
+   * - ``balbi.C_pf``
+     - 1800.0 J/(kg·K)
+     - Specific heat of dry fuel
+   * - ``balbi.r_00``
+     - 2.5e-4 m
+     - Radiation length scale
+   * - ``balbi.tau_0``
+     - 75591.0 s/m
+     - Residence-time coefficient
+
+Auto-Generated Balbi Fuel Parameter Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``fire_spread_model = balbi``, the solver automatically prints a table of
+pre-computed Balbi parameters for every fuel model in the active database
+(FBFM13 or FBFM40) at startup.  Columns are: fuel code, short name,
+:math:`\sigma_m`, :math:`\delta_m`, :math:`\chi`, :math:`B^*`, :math:`v_b`,
+:math:`A_{\text{coeff}}`, and the predicted ROS at 5 m/s wind on flat ground.
+
+Reference
+^^^^^^^^^^
+
+Balbi, J.-H., Rossi, J.-L., Marcelli, T., and Santoni, P.-A. (2009).
+"A physical model for wildland fires."
+*Combustion and Flame*, 156(12), 2217–2230.
+https://doi.org/10.1016/j.combustflame.2009.07.010
+
+Andrews (2018) Wind Adjustments for Rothermel
+----------------------------------------------
+
+Andrews (2018) documents two critical wind adjustments that improve the physical
+accuracy of the Rothermel surface fire spread model when wind input is from NWP
+or WRF (20-ft / 10-m height).  Both are optional flags that can be enabled
+independently.
+
+Wind Adjustment Factor (WAF)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Rothermel model requires wind speed at *midflame height*, but field
+measurements and WRF/NWP output are typically at 20 ft (6.1 m) above open
+terrain.  The WAF converts 20-ft open wind to midflame height:
+
+.. math::
+
+   \text{WAF} = \frac{1.83}{\ln\!\left(\dfrac{20 + 0.36\,h}{0.13\,h}\right)}
+
+where :math:`h` is the fuel bed depth [ft].  Typical values: 0.42 for FM4
+(:math:`h = 2` ft), 0.35 for FM9 (:math:`h = 3` ft).
+
+Enable via ``rothermel.use_waf = 1``.  When a landscape file is active, WAF is
+computed per cell using each fuel model's depth.
+
+Maximum Effective Wind Speed (MEWS)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Rothermel's empirical wind factor :math:`\phi_w` grows without bound, producing
+unrealistically large ROS at high wind speeds outside the model's calibration
+range.  The MEWS cap limits :math:`\phi_w` to 90% of the reaction intensity:
+
+.. math::
+
+   \phi_{w,\max} &= 0.9\,I_R \quad [\text{BTU/ft}^2\text{/min}] \\
+   U_{\max}      &= \left(\frac{\phi_{w,\max}}{C\,\beta_{\text{ratio}}^{-E}}\right)^{1/B}
+                    \quad [\text{ft/min}]
+
+Wind speed used in the ROS formula is capped at :math:`U_{\max}` before
+evaluating the wind factor.  Enable via ``rothermel.use_wind_limit = 1``.
+
+Reference
+^^^^^^^^^^
+
+Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated
+Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371.
+USDA Forest Service.
+https://doi.org/10.2737/RMRS-GTR-371
+
+Weise & Biging (1996) Fire Whirl Model
+----------------------------------------
+
+The Weise & Biging (1996) fire whirl model is an **optional diagnostic sub-model**
+that computes fire whirl characteristics from existing fire behavior outputs.  It
+does **not** modify the primary fire spread model; instead it runs alongside any
+spread model to predict whirl formation when enabled via ``weise_biging.enable = 1``.
+
+Physical Basis
+^^^^^^^^^^^^^^^
+
+Fire whirls are columnar vortices generated by fire-induced updrafts interacting
+with ambient wind and terrain.  The model characterises whirl geometry and
+kinematics from Byram fireline intensity and flame length.
+
+Flame Tilt Angle
+^^^^^^^^^^^^^^^^^
+
+The Weise & Biging (1996) empirical flame tilt angle :math:`\theta`:
+
+.. math::
+
+   \tan\theta = 0.382\,Fr^{0.432} + \tan\beta
+
+where :math:`Fr = U^2 / (g\,L_f)` is the modified Froude number, :math:`U` is
+wind speed [m/s], :math:`g = 9.81` m/s², :math:`L_f` is Byram flame length [m],
+and :math:`\beta` is the terrain slope angle.
+
+Vertical Flame Height
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. math::
+
+   H_f = L_f \cos\theta
+
+Fire Whirl Geometry (Rankine-Vortex Scaling)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. math::
+
+   H_w &= H_f \\
+   r_w &= \max(c_r\,H_w,\; 0.01\ \text{m}) \\
+   \Gamma &= U\,H_w \\
+   \Omega &= \frac{\Gamma}{2\pi\,r_w^2} \\
+   v_\theta &= \Omega\,r_w
+
+Configuration via Parmparse (``weise_biging.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``weise_biging.enable``
+     - 0
+     - Enable (1) or disable (0) the fire whirl model
+   * - ``weise_biging.c_r``
+     - 0.1
+     - Whirl core radius-to-height ratio (dimensionless)
+   * - ``weise_biging.I_B_min``
+     - 1.0 kW/m
+     - Minimum Byram fireline intensity threshold
+
+Diagnostic Output Fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Six fields are written to every plotfile when enabled:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Field
+     - Units
+     - Description
+   * - ``weise_flame_height``
+     - m
+     - Vertical component of tilted flame
+   * - ``weise_flame_tilt``
+     - rad
+     - Flame tilt angle from vertical
+   * - ``weise_whirl_height``
+     - m
+     - Fire whirl column height
+   * - ``weise_whirl_radius``
+     - m
+     - Fire whirl core radius
+   * - ``weise_angular_velocity``
+     - rad/s
+     - Whirl angular velocity
+   * - ``weise_max_tang_vel``
+     - m/s
+     - Maximum tangential velocity at core edge
+
+Reference
+^^^^^^^^^^
+
+Weise, D.R. and Biging, G.S. (1996). "Effects of wind velocity and slope on
+flame properties." *Canadian Journal of Forest Research*, 26(10), 1849–1858.
+https://doi.org/10.1139/x26-210
+
+Wind-Terrain Feedback Models (Options 1–6)
+-------------------------------------------
+
+The ``wind_terrain.model`` ParmParse key selects how terrain-induced or
+fire-feedback winds modify the effective wind seen by the fire spread model.
+**Option 1 (``none``) is the default and preserves all existing behaviour.**
+Options 2–6 progressively couple Viegas or terrain-channel wind physics into
+the actual fire propagation.  Option 7 (``windninja_ridge_canyon``) is described
+in the following section.
+
+Options Summary
+^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 65
+
+   * - Option
+     - ``wind_terrain.model``
+     - Effect on fire spread model
+   * - 1
+     - ``none``
+     - No modification — default behaviour
+   * - 2
+     - ``viegas_ros``
+     - :math:`R_{\text{final}} = \max(R_\text{Rothermel}, R_\text{Viegas})` in eruptive cells (:math:`\tan\varphi > \tan\varphi_c`)
+   * - 3
+     - ``viegas_wind``
+     - Add buoyancy-induced upslope wind :math:`U_\text{ind} = v_b\tan\varphi` in eruptive cells only
+   * - 4
+     - ``canyon_wind``
+     - Scale ambient wind by :math:`(1 + k_\text{canyon}\tan\varphi)` everywhere (Rothermel 1983)
+   * - 5
+     - ``viegas_neto``
+     - Add upslope buoyancy wind :math:`U_\text{ind} = v_b\tan\varphi` at every cell (no threshold)
+   * - 6
+     - ``pimont``
+     - Scale ambient wind by :math:`\exp(k_\text{pimont}\tan\varphi)` everywhere (Pimont et al. 2009)
+
+Selecting ``viegas_ros``, ``viegas_wind``, or ``viegas_neto`` automatically enables
+the Viegas (2004) diagnostic model (``viegas.enable = 1``).  Terrain slopes must be
+provided (via ``rothermel.terrain_file`` or ``rothermel.landscape_file``) for any
+slope-dependent option to have an effect.
+
+Physical Equations
+^^^^^^^^^^^^^^^^^^^
+
+**Option 2 — Viegas ROS override** (requires terrain slopes):
+
+.. math::
+
+   R_{\text{final}}(i,j) =
+   \begin{cases}
+     \max\!\bigl(R_\text{Rothermel}(i,j),\; R_\text{Viegas}(i,j)\bigr)
+       & \tan\varphi(i,j) > \tan\varphi_c \\
+     R_\text{Rothermel}(i,j)
+       & \text{otherwise}
+   \end{cases}
+
+**Options 3 and 5 — Buoyancy-induced upslope wind**:
+
+.. math::
+
+   v_b                  &= \sqrt{g\,\delta_m\,(T_f - T_a) / T_a} \\
+   U_\text{ind}         &= v_b\,\tan\varphi \\
+   \Delta\mathbf{U}     &= U_\text{ind}\,\hat{\mathbf{n}}_s \\
+   \mathbf{U}_\text{eff}&= \mathbf{U}_\text{ambient} + \Delta\mathbf{U}
+
+where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
+vector, :math:`\delta_m` is fuel bed depth [m], and :math:`T_a`, :math:`T_f`
+are taken from ``viegas.T_a`` / ``viegas.T_f``.  Option 3 applies
+:math:`\Delta\mathbf{U}` only where :math:`\tan\varphi > \tan\varphi_c`;
+Option 5 applies it everywhere.
+
+**Option 4 — Canyon wind** (Rothermel 1983):
+
+.. math::
+
+   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
+   \,\max\!\bigl(1,\; 1 + k_\text{canyon}\tan\varphi\bigr)
+
+**Option 6 — Pimont exponential correction** (Pimont et al. 2009):
+
+.. math::
+
+   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
+   \,\exp\!\bigl(k_\text{pimont}\tan\varphi\bigr)
+
+Configuration via Parmparse (``wind_terrain.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``wind_terrain.model``
+     - ``none``
+     - Model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, or ``windninja_ridge_canyon``
+   * - ``wind_terrain.k_canyon``
+     - 1.0
+     - Terrain channeling coefficient for ``canyon_wind`` (Option 4)
+   * - ``wind_terrain.k_pimont``
+     - 0.5
+     - Exponential slope coefficient for ``pimont`` (Option 6)
+
+Viegas parameters (``viegas.a_V``, ``viegas.tan_phi_c``, ``viegas.T_a``,
+``viegas.T_f``) are shared between the Viegas diagnostic model and the
+buoyancy-wind options (2, 3, 5); see
+`Viegas (2004) Eruptive Fire Diagnostics`_ above.
+
+References
+^^^^^^^^^^^
+
+Rothermel, R.C. (1983). *How to Predict the Spread and Intensity of Forest and
+Range Fires.* USDA Forest Service General Technical Report INT-143.
+
+Viegas, D.X. & Neto, L.P.S. (1994). "Wind tunnel study of the convective air
+flow of slope fires." Annual Report, Project COMOESTAS.
+
+Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009). "Validation of
+FIRETEC wind-flows over a canopy and fuel-break." *International Journal of
+Wildland Fire*, 18(7), 775–790.
+https://doi.org/10.1071/WF07130
+
 WindNinja Ridge/Canyon Terrain Speed-up (Option 7)
 ---------------------------------------------------
 
