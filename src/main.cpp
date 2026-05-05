@@ -578,12 +578,20 @@ int main(int argc, char* argv[])
         for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
           const Box& bx = mfi.validbox();
           auto const p = phi.const_array(mfi);
+          // Bounds-guarded neighbor access (valid box only; ghost cells
+          // at MPI subdomain edges are filled but domain-edge ghosts may
+          // not be meaningful for the perimeter check, so we stay in-box).
+          const IntVect bxlo = bx.smallEnd();
+          const IntVect bxhi = bx.bigEnd();
           amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
             if (p(i,j,k,0) < Real(0.0)) {
               ++n_burned;
-              if (p(i+1,j,k,0) >= Real(0.0) || p(i-1,j,k,0) >= Real(0.0) ||
-                  p(i,j+1,k,0) >= Real(0.0) || p(i,j-1,k,0) >= Real(0.0))
-                ++n_perim;
+              bool on_perim = false;
+              if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+              if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+              if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+              if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+              if (on_perim) ++n_perim;
             }
           });
         }
@@ -807,12 +815,17 @@ int main(int argc, char* argv[])
 	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
 	    const Box& bx = mfi.validbox();
 	    auto const p = phi.const_array(mfi);
+	    const IntVect bxlo = bx.smallEnd();
+	    const IntVect bxhi = bx.bigEnd();
 	    amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
 	      if (p(i,j,k,0) < Real(0.0)) {
 	        ++n_burned;
-	        if (p(i+1,j,k,0) >= Real(0.0) || p(i-1,j,k,0) >= Real(0.0) ||
-	            p(i,j+1,k,0) >= Real(0.0) || p(i,j-1,k,0) >= Real(0.0))
-	          ++n_perim;
+	        bool on_perim = false;
+	        if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+	        if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+	        if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+	        if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+	        if (on_perim) ++n_perim;
 	      }
 	    });
 	  }
@@ -898,12 +911,17 @@ int main(int argc, char* argv[])
 	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
 	    const Box& bx = mfi.validbox();
 	    auto const p = phi.const_array(mfi);
+	    const IntVect bxlo = bx.smallEnd();
+	    const IntVect bxhi = bx.bigEnd();
 	    amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
 	      if (p(i,j,k,0) < Real(0.0)) {
 	        ++n_burned;
-	        if (p(i+1,j,k,0) >= Real(0.0) || p(i-1,j,k,0) >= Real(0.0) ||
-	            p(i,j+1,k,0) >= Real(0.0) || p(i,j-1,k,0) >= Real(0.0))
-	          ++n_perim;
+	        bool on_perim = false;
+	        if (i > bxlo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+	        if (i < bxhi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+	        if (j > bxlo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+	        if (j < bxhi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+	        if (on_perim) ++n_perim;
 	      }
 	    });
 	  }
