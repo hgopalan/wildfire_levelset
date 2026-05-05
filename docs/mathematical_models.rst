@@ -849,11 +849,14 @@ Maximum Effective Wind Speed (MEWS)
 
 Rothermel's empirical wind factor :math:`\phi_w` grows without bound, producing
 unrealistically large ROS at high wind speeds outside the model's calibration
-range.  The MEWS cap limits :math:`\phi_w` to 90% of the reaction intensity:
+range.  The MEWS cap limits the effective wind factor by inverting Rothermel's
+wind-factor formula at a maximum wind factor value equal to 90% of the reaction
+intensity (matching units: :math:`I_R` in BTU/ft²/min, :math:`\phi_w`
+dimensionless via the original Rothermel calibration):
 
 .. math::
 
-   \phi_{w,\max} &= 0.9\,I_R \quad [\text{BTU/ft}^2\text{/min}] \\
+   \phi_{w,\max} &= 0.9\,I_R \quad [I_R \text{ in BTU/ft}^2\text{/min}] \\
    U_{\max}      &= \left(\frac{\phi_{w,\max}}{C\,\beta_{\text{ratio}}^{-E}}\right)^{1/B}
                     \quad [\text{ft/min}]
 

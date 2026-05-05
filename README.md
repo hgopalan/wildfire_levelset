@@ -197,7 +197,7 @@ See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) fo
 
 ## Balbi (2009) Physical Fire Spread Model
 
-A radiation-driven, physics-based ROS model that replaces Rothermel when `fire_spread_model = balbi`. The flame tilt angle is derived from wind speed and a buoyancy velocity, and the rate of spread follows from a radiation balance between the tilted flame and unburned fuel ahead. Thermal parameters are set via `balbi.*` parmparse keys; fuel geometry is shared with Rothermel. The solver auto-generates a per-fuel Balbi parameter table at startup.
+A radiation-driven, physics-based ROS model that replaces Rothermel when `fire_spread_model = balbi`. The flame tilt angle is derived from wind speed and a buoyancy velocity, and the rate of spread follows from a radiation balance between the tilted flame and unburned fuel ahead. Thermal parameters are set via `balbi.*` ParmParse keys; fuel geometry is shared with Rothermel. The solver auto-generates a per-fuel Balbi parameter table at startup.
 
 See the [full documentation](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html#balbi-2009-physical-fire-spread-model) for equations, parameter tables, and examples.
 
