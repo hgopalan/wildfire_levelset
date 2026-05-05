@@ -137,6 +137,14 @@ struct InputParameters {
         amrex::Real curing;    // degree of curing [0–1; 1=fully cured] default: 1.0
     } cheney_gould;
 
+    // Cruz, Alexander & Wakimoto (2005) crown fire spread model parameters
+    // Calibrated for western North American conifer forests (continental US).
+    // Simple algebraic formula: R = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(-0.17 × MC₁₀)
+    struct CruzCrownParams {
+        amrex::Real CBD;   // canopy bulk density [kg/m³]              default: 0.10
+        amrex::Real MC10;  // 10-h timelag fine fuel moisture content [%] default: 10.0
+    } cruz_crown;
+
     // Balbi (2009) physical fire spread model parameters
     struct BalbiParams {
         amrex::Real T_a;         // Ambient temperature [K] (default: 300.0)
@@ -181,7 +189,8 @@ struct InputParameters {
     // When set to 1, overrides propagation_method to "farsite".
     int skip_levelset;                       // deprecated: use propagation_method = farsite
 
-    // Fire spread model selection: "rothermel" (default), "balbi", or "cheney_gould"
+    // Fire spread model selection: "rothermel" (default), "balbi", "cheney_gould",
+    // or "cruz_crown"
     std::string fire_spread_model;
 
     // Propagation method: "levelset" (default) or "farsite"

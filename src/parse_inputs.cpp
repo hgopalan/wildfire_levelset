@@ -272,8 +272,9 @@ void parse_inputs(InputParameters& p)
         }
     }
     if (p.fire_spread_model != "rothermel" && p.fire_spread_model != "balbi"
-        && p.fire_spread_model != "cheney_gould") {
-        amrex::Abort("fire_spread_model must be 'rothermel', 'balbi', or 'cheney_gould'");
+        && p.fire_spread_model != "cheney_gould"
+        && p.fire_spread_model != "cruz_crown") {
+        amrex::Abort("fire_spread_model must be 'rothermel', 'balbi', 'cheney_gould', or 'cruz_crown'");
     }
 
     // -------- Propagation method selection --------
@@ -303,6 +304,20 @@ void parse_inputs(InputParameters& p)
     // -------- Cheney & Gould (1995) grassland fire spread model --------
     p.cheney_gould.moisture = 10.0;  pp.query("cheney_gould.moisture", p.cheney_gould.moisture);
     p.cheney_gould.curing   = 1.0;   pp.query("cheney_gould.curing",   p.cheney_gould.curing);
+
+    // -------- Cruz, Alexander & Wakimoto (2005) crown fire spread model --------
+    p.cruz_crown.CBD  = 0.10;   pp.query("cruz_crown.CBD",  p.cruz_crown.CBD);
+    p.cruz_crown.MC10 = 10.0;   pp.query("cruz_crown.MC10", p.cruz_crown.MC10);
+
+    if (p.fire_spread_model == "cruz_crown") {
+        if (p.cruz_crown.CBD <= 0.0)
+            amrex::Abort("cruz_crown.CBD (canopy bulk density) must be > 0 kg/m3");
+        if (p.cruz_crown.MC10 < 0.0)
+            amrex::Abort("cruz_crown.MC10 (10-h fuel moisture) must be >= 0%");
+        Print() << "Fire spread model: Cruz, Alexander & Wakimoto (2005) crown fire\n";
+        Print() << "  CBD=" << p.cruz_crown.CBD << " kg/m3"
+                << "  MC10=" << p.cruz_crown.MC10 << " %\n";
+    }
 
     // -------- Balbi (2009) physical fire spread model --------
     p.balbi.T_a      = 300.0;      pp.query("balbi.T_a",      p.balbi.T_a);
