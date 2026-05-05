@@ -172,7 +172,7 @@ static void init_heat_flux_from_file(MultiFab& Q_mf,
             Real cx = plo[0] + (i + Real(0.5)) * dx[0];
             Real cy = plo[1] + (j + Real(0.5)) * dx[1];
 
-            Real val = cell_list_interp(cx, cy, q_ptr, cl);
+            Real val = cell_list_interp(cl, q_ptr, cx, cy);
             Q(i, j, k) = amrex::max(val, Real(0.0));
         });
     }

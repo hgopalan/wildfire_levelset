@@ -753,6 +753,123 @@ Output Parameters
 
   Example: ``plot_int = 10``
 
+Wind-Terrain Feedback Model Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**wind_terrain.model** (default: ``"none"``)
+  Selects the wind-terrain feedback model. Seven options are available:
+
+  - ``none`` – Option 1: default behaviour; no wind modification
+  - ``viegas_ros`` – Option 2: override spread rate with
+    :math:`\max(R_{\text{primary}}, R_V)` in eruptive cells; works with
+    both Rothermel and Balbi (uses Balbi amplitude baseline when
+    ``fire_spread_model = balbi``); auto-enables ``viegas.enable = 1``
+  - ``viegas_wind`` – Option 3: add Viegas buoyancy-induced upslope wind
+    only in eruptive cells (:math:`\tan\varphi > \tan\varphi_c`)
+  - ``canyon_wind`` – Option 4: Rothermel (1983) canyon wind amplification
+    :math:`U_{\text{eff}} = U (1 + k_{\text{canyon}} \tan\varphi)`
+  - ``viegas_neto`` – Option 5: Viegas & Neto (1994) buoyancy-driven
+    upslope wind at all cells
+  - ``pimont`` – Option 6: Pimont et al. (2009) exponential slope correction
+    :math:`U_{\text{eff}} = U \exp(k_{\text{pimont}} \tan\varphi)`
+  - ``windninja_ridge_canyon`` – Option 7: WindNinja empirical ridge/canyon
+    speed-up based on wind-slope alignment (see below)
+
+  Example: ``wind_terrain.model = windninja_ridge_canyon``
+
+**wind_terrain.k_canyon** (default: 1.0)
+  Terrain channeling coefficient for Option 4 (``canyon_wind``). Must be > 0.
+
+  Example: ``wind_terrain.k_canyon = 1.5``
+
+**wind_terrain.k_pimont** (default: 0.5)
+  Exponential slope correction coefficient for Option 6 (``pimont``). Must be > 0.
+
+  Example: ``wind_terrain.k_pimont = 0.5``
+
+**wind_terrain.k_ridge** (default: 1.0)
+  Ridge speed-up coefficient for Option 7 (``windninja_ridge_canyon``).
+  Scales the speed-up when wind climbs a slope:
+  :math:`f = 1 + k_{\text{ridge}} \tan\varphi \cdot \text{alignment}`. Must be > 0.
+
+  Example: ``wind_terrain.k_ridge = 1.5``
+
+**wind_terrain.k_canyon_wn** (default: 0.5)
+  Canyon channeling coefficient for Option 7 (``windninja_ridge_canyon``).
+  Scales the amplification when wind flows downslope:
+  :math:`f = 1 + k_{\text{canyon\_wn}} \tan\varphi \cdot |\text{alignment}|`. Must be > 0.
+
+  Example: ``wind_terrain.k_canyon_wn = 0.8``
+
+Heat Flux Parameters
+^^^^^^^^^^^^^^^^^^^^^
+
+The heat flux MultiFab provides a spatially-varying (or uniform) fire heat
+release rate :math:`Q` [W/m²] that drives WindNinja-style fire-induced wind
+corrections and augments the Balbi buoyancy velocity.
+
+**heat_flux.value** (default: 0.0)
+  Uniform heat flux [W/m²] applied to the entire domain. Set to a positive
+  value to activate. Requires at least one of ``enable_upward`` or
+  ``enable_induced`` to also be set to 1.
+
+  Example: ``heat_flux.value = 5000.0``
+
+**heat_flux.file** (default: "")
+  Path to an ASCII file with columns ``X Y Q`` for spatially-varying heat flux.
+  Uses the same Wendland C² IDW interpolation as terrain and wind files.
+  Overrides ``heat_flux.value`` when non-empty. Only available in 2D builds.
+
+  Example: ``heat_flux.file = fire_heat_flux.csv``
+
+**heat_flux.rho_air** (default: 1.2)
+  Air density [kg/m³].
+
+  Example: ``heat_flux.rho_air = 1.1``
+
+**heat_flux.Cp_air** (default: 1005.0)
+  Specific heat of air [J/(kg·K)].
+
+  Example: ``heat_flux.Cp_air = 1005.0``
+
+**heat_flux.T_a** (default: 300.0)
+  Ambient temperature [K] for the buoyancy velocity calculation.
+
+  Example: ``heat_flux.T_a = 310.0``
+
+**heat_flux.ref_height** (default: 10.0)
+  Reference height [m] for the buoyancy velocity calculation.
+  Physically represents the plume height over which thermal energy is
+  distributed.
+
+  Example: ``heat_flux.ref_height = 20.0``
+
+**heat_flux.k_upward** (default: 1.0)
+  Upward velocity coefficient. Scales the magnitude of the fire-plume
+  vertical velocity:
+  :math:`w_{\uparrow} = k_{\uparrow} \sqrt{g Q H_{\text{ref}} / (\rho C_p T_a)}`.
+
+  Example: ``heat_flux.k_upward = 0.8``
+
+**heat_flux.k_induced** (default: 0.5)
+  Induced horizontal inflow coefficient. The inflow toward the fire
+  perimeter is :math:`U_{\text{ind}} = k_{\text{ind}} \, w_{\uparrow}`.
+
+  Example: ``heat_flux.k_induced = 0.3``
+
+**heat_flux.enable_upward** (default: 0)
+  Set to 1 to enable the upward convective velocity term (adds to the
+  wind field; for 3D adds to z-component, for 2D projects as inflow
+  opposite to ambient wind direction).
+
+  Example: ``heat_flux.enable_upward = 1``
+
+**heat_flux.enable_induced** (default: 0)
+  Set to 1 to enable the induced horizontal inflow term directed toward
+  the fire perimeter (requires phi MultiFab to be available).
+
+  Example: ``heat_flux.enable_induced = 1``
+
 Example Input Files
 -------------------
 
@@ -956,6 +1073,94 @@ Albini Spotting Simulation
     albini_spotting.random_seed = 42
     albini_spotting.check_interval = 5
     albini_spotting.n_traj_steps = 200
+
+Balbi + Viegas + Heat Flux Simulation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    # Balbi physical fire spread with Viegas slope diagnostics and heat flux
+    # wind corrections on a Gaussian hill terrain.
+    n_cell_x = 100
+    n_cell_y = 100
+    prob_lo_x = 330000.0
+    prob_lo_y = 3775000.0
+    prob_hi_x = 331000.0
+    prob_hi_y = 3776000.0
+
+    final_time = 600.0
+    cfl = 0.5
+    plot_int = 20
+    reinit_int = 20
+
+    source_type = box
+    box_xmin = 330100.0
+    box_xmax = 330120.0
+    box_ymin = 3775200.0
+    box_ymax = 3775800.0
+
+    velocity_file = gaussian_hill_wind.csv
+
+    # Balbi (2009) physical fire spread model
+    fire_spread_model = balbi
+    propagation_method = levelset
+
+    rothermel.fuel_model = FM4
+    rothermel.M_f = 0.08
+    rothermel.terrain_file = gaussian_hill_terrain.csv
+
+    balbi.T_a   = 300.0
+    balbi.T_f   = 1000.0
+    balbi.T_i   = 600.0
+
+    # Viegas Option 2: Viegas-Balbi ROS overrides Balbi in eruptive cells
+    # viegas.enable is auto-set to 1 by wind_terrain.model = viegas_ros
+    wind_terrain.model = viegas_ros
+    viegas.a_V       = 1.83
+    viegas.tan_phi_c = 0.4
+
+    # Heat flux wind corrections
+    heat_flux.value         = 5000.0    # W/m^2
+    heat_flux.ref_height    = 10.0      # m
+    heat_flux.k_upward      = 1.0
+    heat_flux.enable_upward = 1         # adds upward velocity to wind field
+
+WindNinja Ridge/Canyon Simulation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    # Rothermel with WindNinja empirical ridge/canyon wind speed-up
+    n_cell_x = 100
+    n_cell_y = 100
+    prob_lo_x = 330000.0
+    prob_lo_y = 3775000.0
+    prob_hi_x = 331000.0
+    prob_hi_y = 3776000.0
+
+    final_time = 600.0
+    cfl = 0.5
+    plot_int = 20
+
+    velocity_file = gaussian_hill_wind.csv
+    rothermel.terrain_file = gaussian_hill_terrain.csv
+
+    source_type = box
+    box_xmin = 330100.0
+    box_xmax = 330120.0
+    box_ymin = 3775200.0
+    box_ymax = 3775800.0
+
+    rothermel.fuel_model = FM4
+    rothermel.M_f = 0.08
+
+    fire_spread_model = rothermel
+    propagation_method = levelset
+
+    # Option 7: ridge speed-up on windward face, canyon channeling on lee face
+    wind_terrain.model       = windninja_ridge_canyon
+    wind_terrain.k_ridge     = 1.5    # ridge amplification
+    wind_terrain.k_canyon_wn = 0.8   # canyon channeling
 
 Visualization
 -------------

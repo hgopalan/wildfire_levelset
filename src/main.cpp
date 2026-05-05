@@ -638,9 +638,9 @@ int main(int argc, char* argv[])
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
 	// --- Step 4: Merge to new perimeter
-	// For wind-terrain models, pass vel_for_rothermel so FARSITE ellipse
+	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_rothermel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
