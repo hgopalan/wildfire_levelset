@@ -364,7 +364,8 @@ int main(int argc, char* argv[])
     // use_precomp_R_for_advection: when a wind-terrain model or a non-Rothermel
     // spread model is active, pass R_mf as the pre-computed ROS to advection so
     // that the advection kernel does not internally recompute Rothermel with the
-    // unmodified vel.
+    // unmodified vel.  This ensures the advected ROS matches what was computed
+    // above (including any terrain-corrected velocity or Viegas ROS override).
     const bool use_precomp_R_for_advection =
         (wind_terrain_modifies_vel ||
          inputs.wind_terrain.model == "viegas_ros"  ||
@@ -542,9 +543,8 @@ int main(int argc, char* argv[])
       }
       if (use_levelset) {
 	// Traditional level set advection.
-	// When a wind-terrain model or non-Rothermel spread model is active, pass
-	// the pre-computed R_mf so advection uses the terrain-corrected ROS directly
-	// rather than recomputing Rothermel internally with the unmodified vel.
+	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
+	// model is active (see use_precomp_R_for_advection defined above).
 	advect_levelset_weno5z_rk3(phi, vel, geom, dt_step, inputs.rothermel,
                                    terrain_slopes.get(),
                                    use_precomp_R_for_advection ? &R_mf : nullptr);

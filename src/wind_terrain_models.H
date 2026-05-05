@@ -74,9 +74,9 @@ static void apply_wind_terrain_velocity(
 
     // Buoyancy velocity scale used by viegas_wind and viegas_neto:
     //   v_b = sqrt(g * delta_m * (T_f - T_a) / T_a)
-    // delta is stored in feet; convert to metres for SI buoyancy formula.
+    // delta is stored in feet; multiply by 0.3048 to convert to metres for SI buoyancy formula.
     constexpr Real g_SI   = Real(9.81);
-    const Real delta_m    = inputs.rothermel.delta * Real(0.3048);  // ft → m
+    const Real delta_m    = inputs.rothermel.delta * Real(0.3048);  // feet to metres
     const Real T_a        = inputs.viegas.T_a;
     const Real T_f        = inputs.viegas.T_f;
     const Real T_ratio    = (T_f - T_a) / std::max(T_a, Real(1.0));
