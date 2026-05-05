@@ -413,19 +413,23 @@ void parse_inputs(InputParameters& p)
 
     // -------- Wind-terrain feedback model for Rothermel wind enhancement --------
     // Parsed before the viegas validation block so auto-enable can set viegas.enable.
-    p.wind_terrain.model    = "none";  pp.query("wind_terrain.model",    p.wind_terrain.model);
-    p.wind_terrain.k_canyon = 1.0;    pp.query("wind_terrain.k_canyon", p.wind_terrain.k_canyon);
-    p.wind_terrain.k_pimont = 0.5;    pp.query("wind_terrain.k_pimont", p.wind_terrain.k_pimont);
+    p.wind_terrain.model       = "none";  pp.query("wind_terrain.model",       p.wind_terrain.model);
+    p.wind_terrain.k_canyon    = 1.0;    pp.query("wind_terrain.k_canyon",    p.wind_terrain.k_canyon);
+    p.wind_terrain.k_pimont    = 0.5;    pp.query("wind_terrain.k_pimont",    p.wind_terrain.k_pimont);
+    p.wind_terrain.k_ridge     = 1.0;    pp.query("wind_terrain.k_ridge",     p.wind_terrain.k_ridge);
+    p.wind_terrain.k_canyon_wn = 0.5;    pp.query("wind_terrain.k_canyon_wn", p.wind_terrain.k_canyon_wn);
 
     // Validate model name
-    if (p.wind_terrain.model != "none"        &&
-        p.wind_terrain.model != "viegas_ros"  &&
-        p.wind_terrain.model != "viegas_wind" &&
-        p.wind_terrain.model != "canyon_wind" &&
-        p.wind_terrain.model != "viegas_neto" &&
-        p.wind_terrain.model != "pimont") {
+    if (p.wind_terrain.model != "none"                   &&
+        p.wind_terrain.model != "viegas_ros"             &&
+        p.wind_terrain.model != "viegas_wind"            &&
+        p.wind_terrain.model != "canyon_wind"            &&
+        p.wind_terrain.model != "viegas_neto"            &&
+        p.wind_terrain.model != "pimont"                 &&
+        p.wind_terrain.model != "windninja_ridge_canyon") {
         amrex::Abort("wind_terrain.model must be one of: "
-                     "none, viegas_ros, viegas_wind, canyon_wind, viegas_neto, pimont");
+                     "none, viegas_ros, viegas_wind, canyon_wind, viegas_neto, pimont, "
+                     "windninja_ridge_canyon");
     }
 
     // Validate model-specific parameters
@@ -434,6 +438,12 @@ void parse_inputs(InputParameters& p)
     }
     if (p.wind_terrain.model == "pimont" && p.wind_terrain.k_pimont <= 0.0) {
         amrex::Abort("wind_terrain.k_pimont must be > 0");
+    }
+    if (p.wind_terrain.model == "windninja_ridge_canyon") {
+        if (p.wind_terrain.k_ridge <= 0.0)
+            amrex::Abort("wind_terrain.k_ridge must be > 0");
+        if (p.wind_terrain.k_canyon_wn <= 0.0)
+            amrex::Abort("wind_terrain.k_canyon_wn must be > 0");
     }
 
     // Auto-enable Viegas diagnostics for Viegas-based wind-terrain models
@@ -482,6 +492,51 @@ void parse_inputs(InputParameters& p)
         Print() << "Wind-terrain model: pimont (Option 6 – Pimont et al. 2009 slope correction)\n";
         Print() << "  U_eff = U * exp(k_pimont * tan_phi),  k_pimont = "
                 << p.wind_terrain.k_pimont << "\n";
+    } else if (p.wind_terrain.model == "windninja_ridge_canyon") {
+        Print() << "Wind-terrain model: windninja_ridge_canyon (Option 7 – WindNinja ridge/canyon)\n";
+        Print() << "  Ridge  (wind upslope):   f = 1 + k_ridge * tan_phi * alignment,"
+                << "  k_ridge = " << p.wind_terrain.k_ridge << "\n";
+        Print() << "  Canyon (wind downslope): f = 1 + k_canyon_wn * tan_phi * |alignment|,"
+                << "  k_canyon_wn = " << p.wind_terrain.k_canyon_wn << "\n";
+    }
+
+    // -------- Heat flux MultiFab parameters --------
+    p.heat_flux.heat_flux_value = 0.0;    pp.query("heat_flux.value",          p.heat_flux.heat_flux_value);
+    p.heat_flux.heat_flux_file  = "";     pp.query("heat_flux.file",           p.heat_flux.heat_flux_file);
+    p.heat_flux.rho_air         = 1.2;    pp.query("heat_flux.rho_air",        p.heat_flux.rho_air);
+    p.heat_flux.Cp_air          = 1005.0; pp.query("heat_flux.Cp_air",         p.heat_flux.Cp_air);
+    p.heat_flux.T_a             = 300.0;  pp.query("heat_flux.T_a",            p.heat_flux.T_a);
+    p.heat_flux.ref_height      = 10.0;   pp.query("heat_flux.ref_height",     p.heat_flux.ref_height);
+    p.heat_flux.k_upward        = 1.0;    pp.query("heat_flux.k_upward",       p.heat_flux.k_upward);
+    p.heat_flux.k_induced       = 0.5;    pp.query("heat_flux.k_induced",      p.heat_flux.k_induced);
+    p.heat_flux.enable_upward   = 0;      pp.query("heat_flux.enable_upward",  p.heat_flux.enable_upward);
+    p.heat_flux.enable_induced  = 0;      pp.query("heat_flux.enable_induced", p.heat_flux.enable_induced);
+
+    // Validate heat flux parameters
+    if (p.heat_flux.enable_upward == 1 || p.heat_flux.enable_induced == 1) {
+        if (p.heat_flux.rho_air <= 0.0)
+            amrex::Abort("heat_flux.rho_air must be > 0");
+        if (p.heat_flux.Cp_air <= 0.0)
+            amrex::Abort("heat_flux.Cp_air must be > 0");
+        if (p.heat_flux.T_a <= 0.0)
+            amrex::Abort("heat_flux.T_a must be > 0 K");
+        if (p.heat_flux.ref_height <= 0.0)
+            amrex::Abort("heat_flux.ref_height must be > 0");
+        const bool has_hf = (p.heat_flux.heat_flux_value > 0.0 ||
+                             !p.heat_flux.heat_flux_file.empty());
+        if (!has_hf)
+            amrex::Abort("heat_flux.enable_upward/enable_induced requires "
+                         "heat_flux.value > 0 or heat_flux.file to be set");
+        Print() << "Heat flux wind model enabled:\n";
+        if (!p.heat_flux.heat_flux_file.empty())
+            Print() << "  Q from file: " << p.heat_flux.heat_flux_file << "\n";
+        else
+            Print() << "  Q = " << p.heat_flux.heat_flux_value << " W/m²  (uniform)\n";
+        if (p.heat_flux.enable_upward == 1)
+            Print() << "  Upward velocity term: k_upward = " << p.heat_flux.k_upward
+                    << "  ref_height = " << p.heat_flux.ref_height << " m\n";
+        if (p.heat_flux.enable_induced == 1)
+            Print() << "  Induced inflow term: k_induced = " << p.heat_flux.k_induced << "\n";
     }
 
     // -------- CSV fire points initialization --------

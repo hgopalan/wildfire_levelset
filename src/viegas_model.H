@@ -78,12 +78,14 @@
 // alpha is output for hazard assessment (flame projection onto unburned fuel).
 // It is NOT used to modify either model's ROS computation.
 //
-// ----------------------------------------------------------------------------
+// ============================================================================
 // Output MultiFab viegas_data (VIEGAS_NCOMP = 5 components)
-// ----------------------------------------------------------------------------
+// ============================================================================
 //   0 – viegas_ROS          : Viegas ROS [m/s]
+//                             When use_balbi = false: R_0*(1+phi_w)*Phi_s_V  (Rothermel baseline)
+//                             When use_balbi = true : A*(1+sin_w-cos_w)*Phi_s_V  (Balbi baseline)
 //   1 – viegas_eruptive_flag: 1.0 when eruptive conditions met, 0.0 otherwise
-//   2 – viegas_ROS_excess   : (R_V - R_Rothermel) / R_Rothermel ratio
+//   2 – viegas_ROS_excess   : (R_V - R_primary) / R_primary ratio
 //   3 – viegas_flame_tilt   : Viegas flame tilt angle from vertical [rad]
 //   4 – viegas_slope_factor : Viegas slope enhancement factor Phi_s_V
 // ============================================================================
@@ -96,6 +98,7 @@
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "balbi_model.H"
 
 // Number of output components in the viegas_data MultiFab.
 static constexpr int VIEGAS_NCOMP = 5;
@@ -111,13 +114,24 @@ static constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
 //
 // Fills viegas_data (VIEGAS_NCOMP components) using the Viegas (2004) model.
 //
-// This function is a DIAGNOSTIC: it runs in parallel with Rothermel and does
-// NOT modify R_mf or any Rothermel-internal quantity.
+// This function is a DIAGNOSTIC: it runs in parallel with the primary spread
+// model and does NOT modify R_mf or any primary-model-internal quantity.
+//
+// When use_balbi = false (default):
+//   The Viegas ROS uses the Rothermel baseline R_0 and wind factor phi_w:
+//     R_V = R_0 * (1 + phi_w) * Phi_s_V
+//
+// When use_balbi = true:
+//   The Viegas ROS uses the Balbi amplitude coefficient A and buoyancy
+//   velocity v_b, applying the Viegas exponential slope factor:
+//     R_V = A * (1 + sin(alpha_w) - cos(alpha_w)) * Phi_s_V
+//   where alpha_w is the flame tilt angle due to wind only (no terrain slope
+//   in the tilt, only in Phi_s_V).  This replaces the linear Balbi slope
+//   addition with the Viegas exponential enhancement.
 //
 // Parameters:
 //   viegas_data    – output MultiFab (VIEGAS_NCOMP components, no ghost cells)
-//   R_mf           – input: Rothermel ROS field [m/s] (1 component, already
-//                    computed by compute_rothermel_R)
+//   R_mf           – input: primary model ROS field [m/s]
 //   vel            – input: wind velocity field [m/s]
 //   rp             – Rothermel fuel parameters (provides R_0 baseline, delta,
 //                    wind conversion, C/B/beta_ratio_E for phi_w)
@@ -127,6 +141,10 @@ static constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
 //   fuel_model_mf  – optional: per-cell integer fuel codes
 //   fuel_table     – optional: GPU array of RothermelComputed indexed by code
 //   fuel_table_size– number of entries in fuel_table
+//   use_balbi      – when true, use Balbi amplitude/v_b instead of Rothermel R_0/phi_w
+//   bc_global      – optional: global default BalbiComputed (required when use_balbi=true)
+//   balbi_table    – optional: GPU array of BalbiComputed indexed by fuel code
+//   balbi_table_size–number of entries in balbi_table
 // ============================================================================
 static void compute_viegas_diagnostics(
     MultiFab&              viegas_data,
@@ -134,10 +152,14 @@ static void compute_viegas_diagnostics(
     const MultiFab&        vel,
     const RothermelParams& rp,
     const InputParameters::ViegasParams& vp,
-    const MultiFab*        terrain_slopes = nullptr,
-    const MultiFab*        fuel_model_mf  = nullptr,
-    const RothermelComputed* fuel_table   = nullptr,
-    int                    fuel_table_size = 0)
+    const MultiFab*        terrain_slopes  = nullptr,
+    const MultiFab*        fuel_model_mf   = nullptr,
+    const RothermelComputed* fuel_table    = nullptr,
+    int                    fuel_table_size  = 0,
+    bool                   use_balbi        = false,
+    const BalbiComputed*   bc_global_ptr    = nullptr,
+    const BalbiComputed*   balbi_table      = nullptr,
+    int                    balbi_table_size  = 0)
 {
     // Physical constant
     constexpr Real g = Real(9.81);  // gravitational acceleration [m/s²]
@@ -165,6 +187,18 @@ static void compute_viegas_diagnostics(
     const Real delta_m = rp.delta * Real(0.3048);  // ft → m
 
     // -----------------------------------------------------------------------
+    // Balbi global defaults (used when use_balbi = true)
+    // -----------------------------------------------------------------------
+    // bc_global_ptr may be nullptr when use_balbi = false; safe to read in
+    // GPU lambda only after checking the use_balbi_flag.
+    const int  use_balbi_flag   = use_balbi ? 1 : 0;
+    const Real A_balbi_global   = (bc_global_ptr != nullptr) ? bc_global_ptr->A_coeff : Real(0.0);
+    const Real vb_balbi_global  = (bc_global_ptr != nullptr) ? bc_global_ptr->v_b     : Real(1.0);
+
+    const bool use_balbi_table  = (use_balbi && balbi_table != nullptr && balbi_table_size > 0
+                                   && fuel_model_mf != nullptr);
+
+    // -----------------------------------------------------------------------
     // Viegas parameters (captured by value for GPU lambda)
     // -----------------------------------------------------------------------
     const Real a_V         = vp.a_V;
@@ -180,7 +214,7 @@ static void compute_viegas_diagnostics(
     const Real v_b_global = std::sqrt(std::max(g * delta_m * T_ratio, Real(0.0)));
 
     // -----------------------------------------------------------------------
-    // Fuel table availability
+    // Fuel table availability (Rothermel)
     // -----------------------------------------------------------------------
     const bool use_fuel_table = (fuel_model_mf != nullptr &&
                                  fuel_table != nullptr &&
@@ -198,7 +232,7 @@ static void compute_viegas_diagnostics(
     for (MFIter mfi(viegas_data); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
 
-        auto const Rr  = R_mf.const_array(mfi);     // Rothermel ROS [m/s]
+        auto const Rr  = R_mf.const_array(mfi);     // primary model ROS [m/s]
         auto const v   = vel.const_array(mfi);
 
         // Optional terrain slopes
@@ -207,9 +241,14 @@ static void compute_viegas_diagnostics(
 
         // Optional per-cell fuel model codes
         Array4<const Real> fm;
-        if (use_fuel_table) fm = fuel_model_mf->const_array(mfi);
+        if (use_fuel_table || use_balbi_table)
+            fm = fuel_model_mf->const_array(mfi);
 
         auto vd = viegas_data.array(mfi);
+
+        // Capture Balbi table pointer for GPU
+        const BalbiComputed* bt_ptr  = balbi_table;
+        const int            bt_sz   = balbi_table_size;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
 
@@ -235,43 +274,6 @@ static void compute_viegas_diagnostics(
             const Real U = std::sqrt(ux * ux + uy * uy);  // wind speed [m/s]
 
             // ----------------------------------------------------------------
-            // Per-cell or global Rothermel parameters
-            // ----------------------------------------------------------------
-            Real cell_R0   = R0_global;
-            Real cell_C    = C_global;
-            Real cell_B    = B_global;
-            Real cell_bRE  = bRE_global;
-            Real cell_waf  = waf_global;
-            Real cell_Umax = U_max_global;
-
-            if (use_fuel_table) {
-                int code = static_cast<int>(fm(i, j, k));
-                if (code >= 0 && code < fuel_table_size) {
-                    const RothermelComputed& frc = fuel_table[code];
-                    cell_R0   = frc.R0;
-                    cell_C    = frc.C;
-                    cell_B    = frc.B;
-                    cell_bRE  = frc.beta_ratio_E;
-                    cell_waf  = frc.waf;
-                    cell_Umax = frc.U_max_ftmin;
-                }
-            }
-
-            // ----------------------------------------------------------------
-            // Rothermel wind factor phi_w (same computation as compute_rothermel_R)
-            // ----------------------------------------------------------------
-            Real U_ftmin = U * wind_conv;
-            if (use_waf_flag == 1) {
-                U_ftmin *= cell_waf;
-            }
-            if (use_wind_limit == 1 && cell_Umax > Real(0.0)) {
-                U_ftmin = std::min(U_ftmin, cell_Umax);
-            }
-            const Real phi_w = (U_ftmin > Real(0.0))
-                               ? cell_C * std::pow(U_ftmin, cell_B) * cell_bRE
-                               : Real(0.0);
-
-            // ----------------------------------------------------------------
             // Terrain slope magnitude  tan(phi) = |grad z|
             // ----------------------------------------------------------------
             Real tan_phi = Real(0.0);
@@ -288,13 +290,68 @@ static void compute_viegas_diagnostics(
             const Real Phi_s_V = std::exp(a_V * tan_phi);
 
             // ----------------------------------------------------------------
-            // Viegas ROS [ft/min → m/s]
-            //   R_V = R_0 * (1 + phi_w) * Phi_s_V
-            // Uses Rothermel's R_0 (baseline) and phi_w (wind factor); only
-            // the slope factor is replaced by Viegas' exponential form.
+            // Viegas ROS
             // ----------------------------------------------------------------
-            const Real R_V = std::max(cell_R0 * (Real(1.0) + phi_w) * Phi_s_V, Real(0.0))
-                             * ros_conv;
+            Real R_V = Real(0.0);
+
+            if (use_balbi_flag == 1) {
+                // ---- Balbi baseline ----------------------------------------
+                // R_V = A * (1 + sin(alpha_w) - cos(alpha_w)) * Phi_s_V
+                // where alpha_w is computed from wind only (no terrain slope),
+                // so the Viegas Phi_s_V exponential is the sole slope term.
+                Real cell_A  = A_balbi_global;
+                Real cell_vb = vb_balbi_global;
+
+                if (use_balbi_table) {
+                    int code = static_cast<int>(fm(i, j, k));
+                    if (code >= 0 && code < bt_sz) {
+                        cell_A  = bt_ptr[code].A_coeff;
+                        cell_vb = bt_ptr[code].v_b;
+                    }
+                }
+
+                const Real vb_safe    = std::max(cell_vb, VIEGAS_VB_MIN);
+                const Real tan_alpha_w = U / vb_safe;  // wind-only tilt angle
+                const Real denom_w     = std::sqrt(Real(1.0) + tan_alpha_w * tan_alpha_w);
+                const Real sin_aw      = tan_alpha_w / denom_w;
+                const Real cos_aw      = Real(1.0) / denom_w;
+
+                R_V = std::max(cell_A * (Real(1.0) + sin_aw - cos_aw) * Phi_s_V, Real(0.0));
+
+            } else {
+                // ---- Rothermel baseline ------------------------------------
+                // R_V = R_0 * (1 + phi_w) * Phi_s_V  [ft/min → m/s]
+                Real cell_R0   = R0_global;
+                Real cell_C    = C_global;
+                Real cell_B    = B_global;
+                Real cell_bRE  = bRE_global;
+                Real cell_waf  = waf_global;
+                Real cell_Umax = U_max_global;
+
+                if (use_fuel_table) {
+                    int code = static_cast<int>(fm(i, j, k));
+                    if (code >= 0 && code < fuel_table_size) {
+                        const RothermelComputed& frc = fuel_table[code];
+                        cell_R0   = frc.R0;
+                        cell_C    = frc.C;
+                        cell_B    = frc.B;
+                        cell_bRE  = frc.beta_ratio_E;
+                        cell_waf  = frc.waf;
+                        cell_Umax = frc.U_max_ftmin;
+                    }
+                }
+
+                Real U_ftmin = U * wind_conv;
+                if (use_waf_flag == 1) U_ftmin *= cell_waf;
+                if (use_wind_limit == 1 && cell_Umax > Real(0.0))
+                    U_ftmin = std::min(U_ftmin, cell_Umax);
+                const Real phi_w = (U_ftmin > Real(0.0))
+                                   ? cell_C * std::pow(U_ftmin, cell_B) * cell_bRE
+                                   : Real(0.0);
+
+                R_V = std::max(cell_R0 * (Real(1.0) + phi_w) * Phi_s_V, Real(0.0))
+                      * ros_conv;
+            }
 
             // ----------------------------------------------------------------
             // Eruptive regime flag (Viegas 2004, Section 3)
@@ -303,8 +360,8 @@ static void compute_viegas_diagnostics(
             const Real eruptive_flag = (tan_phi > tan_phi_c) ? Real(1.0) : Real(0.0);
 
             // ----------------------------------------------------------------
-            // ROS excess ratio: positive where Rothermel under-predicts
-            //   excess = (R_V - R_Rothermel) / R_Rothermel
+            // ROS excess ratio: positive where primary model under-predicts
+            //   excess = (R_V - R_primary) / R_primary
             // ----------------------------------------------------------------
             const Real R_roth = Rr(i, j, k);
             const Real ROS_excess = (R_V - R_roth) / std::max(R_roth, VIEGAS_EPS);
