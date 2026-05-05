@@ -3,7 +3,7 @@
 > It has not been exhaustively validated against operational wildfire prediction systems.
 > **Use with caution** — review all outputs carefully before applying to real-world fire management decisions.
 
-# wildfire_levelset
+# Wildfire-AMR
 
 An AMReX-based C++ level-set solver for wildfire front propagation modeling with FARSITE elliptical expansion, Rothermel fire spread equations, and terrain effects.
 
