@@ -1,20 +1,25 @@
 // ============================================================================
 // Wind–Terrain Feedback Models for Rothermel ROS Enhancement
 // ============================================================================
-// Provides six selectable options for how terrain-induced or fire-feedback
+// Provides seven selectable options for how terrain-induced or fire-feedback
 // winds modify the Rothermel wind field before (or after) ROS computation.
 //
-//  Option 1 – "none"        : default Rothermel, no modification
-//  Option 2 – "viegas_ros"  : replace R_mf with max(R_rothermel, R_viegas) in
-//                             eruptive cells (Viegas 2004); vel unchanged
-//  Option 3 – "viegas_wind" : add Viegas buoyancy-induced upslope wind only
-//                             in eruptive cells (tan_phi > tan_phi_c)
-//  Option 4 – "canyon_wind" : Rothermel (1983) canyon wind amplification
-//                             U_eff = U * (1 + k_canyon * tan_phi)
-//  Option 5 – "viegas_neto" : Viegas & Neto (1994) buoyancy-driven upslope
-//                             wind applied at every cell
-//  Option 6 – "pimont"      : Pimont et al. (2009) exponential slope correction
-//                             U_eff = U * exp(k_pimont * tan_phi)
+//  Option 1 – "none"                  : default Rothermel, no modification
+//  Option 2 – "viegas_ros"            : replace R_mf with max(R_rothermel, R_viegas) in
+//                                       eruptive cells (Viegas 2004); vel unchanged
+//  Option 3 – "viegas_wind"           : add Viegas buoyancy-induced upslope wind only
+//                                       in eruptive cells (tan_phi > tan_phi_c)
+//  Option 4 – "canyon_wind"           : Rothermel (1983) canyon wind amplification
+//                                       U_eff = U * (1 + k_canyon * tan_phi)
+//  Option 5 – "viegas_neto"           : Viegas & Neto (1994) buoyancy-driven upslope
+//                                       wind applied at every cell
+//  Option 6 – "pimont"                : Pimont et al. (2009) exponential slope correction
+//                                       U_eff = U * exp(k_pimont * tan_phi)
+//  Option 7 – "windninja_ridge_canyon": WindNinja empirical ridge speed-up and canyon
+//                                       channeling based on wind-slope alignment:
+//                                         alignment = dot(wind_xy, upslope) / |wind|
+//                                         ridge  (alignment > 0): f = 1 + k_ridge * tan_phi * alignment
+//                                         canyon (alignment < 0): f = 1 + k_canyon_wn * tan_phi * |alignment|
 //
 // References:
 //   Rothermel, R.C. (1983). How to Predict the Spread and Intensity of Forest
@@ -26,6 +31,8 @@
 //   Pimont, F., Dupuy, J.L., Linn, R.R., Dupont, S. (2009). Validation of
 //     FIRETEC wind-flows over a canopy and fuel-break. Int. J. Wildland Fire,
 //     18(7), 775-790.
+//   WindNinja: Forthofer, J.M. (2007). Modeling Wind in Complex Terrain for Use
+//     in Fire Spread Prediction. Colorado State University MS thesis.
 // ============================================================================
 
 #ifndef WIND_TERRAIN_MODELS_H
@@ -45,8 +52,9 @@ static constexpr amrex::Real WT_SLOPE_EPS = amrex::Real(1.0e-8);
 // apply_wind_terrain_velocity
 //
 // Fills vel_eff with a terrain-modified copy of the ambient wind field vel.
-// Called for Options 3 (viegas_wind), 4 (canyon_wind), 5 (viegas_neto), and
-// 6 (pimont).  For "none" and "viegas_ros" this function should not be called.
+// Called for Options 3 (viegas_wind), 4 (canyon_wind), 5 (viegas_neto),
+// 6 (pimont), and 7 (windninja_ridge_canyon).
+// For "none" and "viegas_ros" this function should not be called.
 //
 // Parameters:
 //   vel_eff        – output: effective wind for Rothermel (3 components, same
@@ -85,12 +93,17 @@ static void apply_wind_terrain_velocity(
     const bool has_slope  = (terrain_slopes != nullptr);
 
     // Enumerate model so GPU lambda captures an int (no std::string on device)
-    // 3 = viegas_wind, 4 = canyon_wind, 5 = viegas_neto, 6 = pimont
+    // 3 = viegas_wind, 4 = canyon_wind, 5 = viegas_neto, 6 = pimont, 7 = windninja_ridge_canyon
     int model_id = 0;
-    if      (model == "viegas_wind") model_id = 3;
-    else if (model == "canyon_wind") model_id = 4;
-    else if (model == "viegas_neto") model_id = 5;
-    else if (model == "pimont")      model_id = 6;
+    if      (model == "viegas_wind")            model_id = 3;
+    else if (model == "canyon_wind")            model_id = 4;
+    else if (model == "viegas_neto")            model_id = 5;
+    else if (model == "pimont")                 model_id = 6;
+    else if (model == "windninja_ridge_canyon") model_id = 7;
+
+    // WindNinja ridge/canyon coefficients (Option 7)
+    const Real k_ridge     = inputs.wind_terrain.k_ridge;
+    const Real k_canyon_wn = inputs.wind_terrain.k_canyon_wn;
 
     // -----------------------------------------------------------------------
     // Domain-mean wind for extreme-cell clamping (same logic as Rothermel)
@@ -175,6 +188,47 @@ static void apply_wind_terrain_velocity(
                 Real factor = std::exp(k_pimont * tan_phi);
                 ux_eff = ux * factor;
                 uy_eff = uy * factor;
+            } else if (model_id == 7) {
+                // Option 7 – windninja_ridge_canyon: WindNinja empirical ridge
+                // speed-up and canyon channeling based on wind-slope alignment.
+                //
+                //   alignment = dot(wind_xy, upslope_unit) / |wind|
+                //     > 0: wind is blowing upslope  → ridge speed-up
+                //     < 0: wind is blowing downslope → canyon channeling
+                //
+                //   Ridge (alignment > 0):
+                //     f = 1 + k_ridge * tan_phi * alignment
+                //     Speed increase proportional to how directly wind climbs
+                //     the slope (Forthofer 2007, terrain-driven acceleration).
+                //
+                //   Canyon (alignment < 0):
+                //     f = 1 + k_canyon_wn * tan_phi * |alignment|
+                //     Channel the wind downslope (drainage flow amplification).
+                //
+                // The factor is always >= 1 to avoid suppressing wind speed.
+                if (tan_phi > WT_SLOPE_EPS) {
+                    const Real wind_spd = std::sqrt(ux * ux + uy * uy);
+                    if (wind_spd > WT_SLOPE_EPS) {
+                        // Upslope unit vector (points in direction of steepest ascent)
+                        const Real inv_slope = Real(1.0) / tan_phi;
+                        const Real uphill_x  = sx * inv_slope;
+                        const Real uphill_y  = sy * inv_slope;
+                        // Alignment: cos(angle between wind and upslope direction)
+                        const Real alignment = (ux * uphill_x + uy * uphill_y) / wind_spd;
+                        Real factor = Real(1.0);
+                        if (alignment > Real(0.0)) {
+                            // Wind blowing upslope: ridge speed-up
+                            factor = Real(1.0) + k_ridge * tan_phi * alignment;
+                        } else if (alignment < Real(0.0)) {
+                            // Wind blowing downslope: canyon channeling
+                            factor = Real(1.0) + k_canyon_wn * tan_phi * (-alignment);
+                        }
+                        // Enforce factor >= 1 (never suppress wind)
+                        if (factor < Real(1.0)) factor = Real(1.0);
+                        ux_eff = ux * factor;
+                        uy_eff = uy * factor;
+                    }
+                }
             }
 
             // ----------------------------------------------------------------

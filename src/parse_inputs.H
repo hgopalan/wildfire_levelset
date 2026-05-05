@@ -188,27 +188,60 @@ struct InputParameters {
     // Selects how terrain-induced or fire-feedback winds modify the Rothermel
     // wind field before (or after) the ROS computation.
     //
-    //  "none"        (Option 1) – default Rothermel, no modification
-    //  "viegas_ros"  (Option 2) – replace R_mf with max(R_rothermel, R_viegas)
-    //                             in eruptive cells (requires terrain slopes)
-    //  "viegas_wind" (Option 3) – add Viegas buoyancy-induced upslope wind only
-    //                             in eruptive cells (tan_phi > tan_phi_c)
-    //  "canyon_wind" (Option 4) – Rothermel (1983) canyon wind: scale ambient
-    //                             wind by (1 + k_canyon * tan_phi)
-    //  "viegas_neto" (Option 5) – Viegas & Neto (1994): add buoyancy-induced
-    //                             upslope wind at every cell (no eruptive threshold)
-    //  "pimont"      (Option 6) – Pimont et al. (2009): scale ambient wind by
-    //                             exp(k_pimont * tan_phi) (CFD-calibrated)
+    //  "none"                  (Option 1) – default Rothermel, no modification
+    //  "viegas_ros"            (Option 2) – replace R_mf with max(R_rothermel, R_viegas)
+    //                                       in eruptive cells (requires terrain slopes)
+    //  "viegas_wind"           (Option 3) – add Viegas buoyancy-induced upslope wind only
+    //                                       in eruptive cells (tan_phi > tan_phi_c)
+    //  "canyon_wind"           (Option 4) – Rothermel (1983) canyon wind: scale ambient
+    //                                       wind by (1 + k_canyon * tan_phi)
+    //  "viegas_neto"           (Option 5) – Viegas & Neto (1994): add buoyancy-induced
+    //                                       upslope wind at every cell (no eruptive threshold)
+    //  "pimont"                (Option 6) – Pimont et al. (2009): scale ambient wind by
+    //                                       exp(k_pimont * tan_phi) (CFD-calibrated)
+    //  "windninja_ridge_canyon"(Option 7) – WindNinja empirical ridge speed-up and
+    //                                       canyon channeling based on wind-slope alignment:
+    //                                       ridge  (alignment > 0): f = 1 + k_ridge * tan_phi * alignment
+    //                                       canyon (alignment < 0): f = 1 + k_canyon_wn * tan_phi * |alignment|
     //
     // For "viegas_ros", "viegas_wind", and "viegas_neto" the Viegas diagnostic
     // model is automatically enabled (viegas.enable is set to 1).
     // Buoyancy velocity parameters (T_a, T_f, delta) are shared with the
     // ViegasParams and RothermelParams structs respectively.
     struct WindTerrainParams {
-        std::string model;     // wind-terrain model name (default: "none")
-        amrex::Real k_canyon;  // Option 4: terrain channeling coefficient (default: 1.0)
-        amrex::Real k_pimont;  // Option 6: exponential slope correction coefficient (default: 0.5)
+        std::string model;        // wind-terrain model name (default: "none")
+        amrex::Real k_canyon;     // Option 4: terrain channeling coefficient (default: 1.0)
+        amrex::Real k_pimont;     // Option 6: exponential slope correction coefficient (default: 0.5)
+        amrex::Real k_ridge;      // Option 7: ridge speed-up coefficient (default: 1.0)
+        amrex::Real k_canyon_wn;  // Option 7: canyon channeling coefficient (default: 0.5)
     } wind_terrain;
+
+    // Heat flux MultiFab parameters for fire-induced wind corrections.
+    // Provides upward velocity (fire plume buoyancy) and induced horizontal
+    // inflow (fire entrainment) based on WindNinja-style parameterisations.
+    //
+    //  heat_flux.value   – uniform heat flux [W/m²] (0 = disabled)
+    //  heat_flux.file    – path to ASCII file (X Y Q columns; overrides .value)
+    //  heat_flux.rho_air – air density [kg/m³] (default: 1.2)
+    //  heat_flux.Cp_air  – specific heat of air [J/(kg·K)] (default: 1005.0)
+    //  heat_flux.T_a     – ambient temperature [K] (default: 300.0)
+    //  heat_flux.ref_height – reference height for buoyancy [m] (default: 10.0)
+    //  heat_flux.k_upward   – upward velocity coefficient (default: 1.0)
+    //  heat_flux.k_induced  – induced inflow coefficient (default: 0.5)
+    //  heat_flux.enable_upward  – 1 to add upward velocity term (default: 0)
+    //  heat_flux.enable_induced – 1 to add induced horizontal inflow (default: 0)
+    struct HeatFluxParams {
+        amrex::Real heat_flux_value;  // uniform heat flux [W/m²] (default: 0.0)
+        std::string heat_flux_file;   // path to X Y Q ASCII file (default: "")
+        amrex::Real rho_air;          // air density [kg/m³] (default: 1.2)
+        amrex::Real Cp_air;           // specific heat of air [J/(kg·K)] (default: 1005.0)
+        amrex::Real T_a;              // ambient temperature [K] (default: 300.0)
+        amrex::Real ref_height;       // reference height for buoyancy [m] (default: 10.0)
+        amrex::Real k_upward;         // upward velocity coefficient (default: 1.0)
+        amrex::Real k_induced;        // induced inflow coefficient (default: 0.5)
+        int enable_upward;            // 1 to enable upward velocity term (default: 0)
+        int enable_induced;           // 1 to enable induced horizontal inflow (default: 0)
+    } heat_flux;
 
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.

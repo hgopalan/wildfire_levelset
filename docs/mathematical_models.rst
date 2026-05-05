@@ -672,6 +672,197 @@ Viegas, D.X. (2004). "Slope and wind effects on fire propagation."
 *International Journal of Wildland Fire*, 13(2), 143–156.
 https://doi.org/10.1071/WF03046
 
+Viegas-Balbi Coupled Diagnostic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``fire_spread_model = balbi``, the Viegas diagnostic uses the Balbi
+amplitude coefficient :math:`A` and buoyancy velocity :math:`v_b` instead of
+the Rothermel :math:`R_0` and wind factor :math:`\phi_w`.
+
+The Viegas-Balbi rate of spread is:
+
+.. math::
+
+   R_V^{\text{Balbi}} = A \,\bigl(1 + \sin\alpha_w - \cos\alpha_w\bigr) \,
+                        \Phi_{s,V}
+
+where:
+
+* :math:`\alpha_w` is the wind-only flame tilt angle:
+  :math:`\tan\alpha_w = U / v_b` (no terrain slope in the tilt angle — the
+  slope enters only through :math:`\Phi_{s,V}`)
+* :math:`A` is the Balbi amplitude coefficient [m/s] pre-computed from fuel
+  properties (radiation term, moisture correction, and fuel geometry)
+* :math:`\Phi_{s,V} = \exp(a_V \tan\varphi)` is the same Viegas exponential
+  slope enhancement factor used in the Rothermel baseline
+
+This formulation is physically consistent: Balbi's radiation-driven ROS is
+modulated by the same exponential slope term that Viegas calibrated from
+laboratory and field eruptive fire experiments.  The ROS excess ratio becomes
+
+.. math::
+
+   \varepsilon = \frac{R_V^{\text{Balbi}} - R_{\text{Balbi}}}{R_{\text{Balbi}}}
+
+WindNinja Ridge/Canyon Terrain Speed-up (Option 7)
+---------------------------------------------------
+
+The WindNinja empirical ridge/canyon model (Option 7,
+``wind_terrain.model = windninja_ridge_canyon``) accounts for terrain-driven
+wind acceleration observed in ridge and canyon topography (Forthofer 2007).
+
+Wind-Slope Alignment
+^^^^^^^^^^^^^^^^^^^^^
+
+The alignment between the ambient wind and the upslope direction is:
+
+.. math::
+
+   a = \frac{\mathbf{U} \cdot \hat{\mathbf{n}}_s}{|\mathbf{U}|}
+
+where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
+vector and :math:`\mathbf{U}` is the horizontal wind velocity.  The alignment
+satisfies :math:`a \in [-1,\,1]`:
+
+* :math:`a > 0`: wind has an upslope component → **ridge** acceleration
+* :math:`a < 0`: wind has a downslope component → **canyon** channeling
+* :math:`a = 0`: wind is perpendicular to slope, no modification
+
+Ridge Speed-up
+^^^^^^^^^^^^^^^
+
+When the wind climbs a slope, terrain convergence amplifies the wind speed:
+
+.. math::
+
+   f_{\text{ridge}} = 1 + k_{\text{ridge}} \,\tan\varphi \, a \quad (a > 0)
+
+Canyon Channeling
+^^^^^^^^^^^^^^^^^
+
+When the wind flows down a slope (drainage flow channeling):
+
+.. math::
+
+   f_{\text{canyon}} = 1 + k_{\text{canyon,WN}} \,\tan\varphi \, |a| \quad (a < 0)
+
+In both cases the effective wind is :math:`\mathbf{U}_{\text{eff}} = f \,\mathbf{U}`
+with :math:`f \ge 1` (the model never suppresses wind speed).
+
+Parameters:
+
+* :math:`k_{\text{ridge}}` – ridge speed-up coefficient (default 1.0)
+* :math:`k_{\text{canyon,WN}}` – canyon channeling coefficient (default 0.5)
+
+Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
+in Fire Spread Prediction.* Colorado State University MS thesis.
+
+Heat Flux MultiFab and Fire-Induced Wind
+-----------------------------------------
+
+A spatially-varying (or uniform) heat flux field :math:`Q` [W/m²] represents
+the fire heat release rate at each cell.  It drives two WindNinja-style wind
+corrections that are applied after any terrain-based modification.
+
+Upward Convective Velocity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The fire plume drives a vertical velocity proportional to the buoyancy of the
+hot gas column above the fuel bed:
+
+.. math::
+
+   w_{\uparrow} = k_{\uparrow} \sqrt{\frac{g \, Q \, H_{\text{ref}}}{\rho_{\text{air}} \, C_p \, T_a}}
+
+where:
+
+* :math:`g = 9.81` m/s² – gravitational acceleration
+* :math:`Q` – heat flux [W/m²] at the cell
+* :math:`H_{\text{ref}}` – reference height [m] (``heat_flux.ref_height``, default 10 m)
+* :math:`\rho_{\text{air}}` – air density [kg/m³] (``heat_flux.rho_air``, default 1.2)
+* :math:`C_p` – specific heat of air [J/(kg·K)] (``heat_flux.Cp_air``, default 1005)
+* :math:`T_a` – ambient temperature [K] (``heat_flux.T_a``, default 300)
+* :math:`k_{\uparrow}` – upward velocity coefficient (``heat_flux.k_upward``, default 1.0)
+
+In a 3-D build, :math:`w_{\uparrow}` is added directly to the vertical wind
+component.  In a 2-D build the upward motion is projected onto the horizontal
+plane as an inflow opposite to the ambient wind direction.
+
+Induced Horizontal Inflow
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The fire-plume entrainment also creates a horizontal inflow toward the fire
+perimeter:
+
+.. math::
+
+   U_{\text{ind}} = k_{\text{ind}} \, w_{\uparrow}
+
+directed anti-parallel to the level-set gradient :math:`\nabla\phi`
+(i.e., toward decreasing :math:`\phi`, which is the interior of the fire).
+This term is only applied outside the fire perimeter (:math:`\phi \ge 0`).
+
+Balbi Buoyancy Velocity Augmentation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For the Balbi spread model, the fire heat flux additionally augments the
+fuel-derived buoyancy velocity:
+
+.. math::
+
+   v_{b,Q} = k_{\uparrow} \sqrt{\frac{g \, Q \, H_{\text{ref}}}{\rho_{\text{air}} \, C_p \, T_a}}
+
+.. math::
+
+   v_{b,\text{eff}} = \sqrt{v_{b,\text{fuel}}^2 + v_{b,Q}^2}
+
+The combined :math:`v_{b,\text{eff}}` is then used in the Balbi tilt-angle
+calculation.  A larger buoyancy velocity makes the flame more vertical (smaller
+tilt angle), reducing radiant heat transfer to unburned fuel and thereby reducing
+ROS.  This is physically consistent with observations of strongly buoyant plumes
+above high-intensity fires.
+
+Input Parameters
+^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 10 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``heat_flux.value``
+     - 0.0
+     - Uniform heat flux [W/m²]. Set > 0 to activate.
+   * - ``heat_flux.file``
+     - ""
+     - ASCII file (X Y Q columns) for spatially-varying heat flux (2D only).
+   * - ``heat_flux.rho_air``
+     - 1.2
+     - Air density [kg/m³]
+   * - ``heat_flux.Cp_air``
+     - 1005.0
+     - Specific heat of air [J/(kg·K)]
+   * - ``heat_flux.T_a``
+     - 300.0
+     - Ambient temperature [K]
+   * - ``heat_flux.ref_height``
+     - 10.0
+     - Reference height for buoyancy velocity [m]
+   * - ``heat_flux.k_upward``
+     - 1.0
+     - Upward velocity coefficient
+   * - ``heat_flux.k_induced``
+     - 0.5
+     - Induced horizontal inflow coefficient
+   * - ``heat_flux.enable_upward``
+     - 0
+     - 1 to enable upward velocity term
+   * - ``heat_flux.enable_induced``
+     - 0
+     - 1 to enable induced horizontal inflow term
+
 Level-Set Method
 ----------------
 

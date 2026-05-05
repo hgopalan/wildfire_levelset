@@ -40,6 +40,7 @@ using namespace amrex;
 #include "weise_biging_whirl.H"
 #include "viegas_model.H"
 #include "wind_terrain_models.H"
+#include "heat_flux_model.H"
 #include "cruz_crown_model.H"
 #include "compute_cruz_crown_R.H"
 
@@ -143,11 +144,16 @@ int main(int argc, char* argv[])
     // Viegas (2004) eruptive fire diagnostics and fire-terrain feedback
     //   0 – viegas_ROS          [m/s]
     //   1 – viegas_eruptive_flag [-]   (1 when eruptive conditions met)
-    //   2 – viegas_ROS_excess   [-]   (R_V - R_Rothermel)/R_Rothermel
+    //   2 – viegas_ROS_excess   [-]   (R_V - R_primary)/R_primary
     //   3 – viegas_flame_tilt   [rad]  (Viegas flame-tilt angle from vertical)
     //   4 – viegas_slope_factor [-]   (Viegas slope enhancement factor Phi_s_V)
     MultiFab viegas_data(ba, dm, VIEGAS_NCOMP, 0);
     viegas_data.setVal(0.0);
+
+    // Heat flux field [W/m²] (1 component, no ghost cells).
+    // Initialized from heat_flux.value (uniform) or heat_flux.file (spatially varying).
+    MultiFab heat_flux_mf(ba, dm, 1, 0);
+    heat_flux_mf.setVal(0.0);
 
 
     // ---------------- Initialize ---------------------------
@@ -328,11 +334,16 @@ int main(int argc, char* argv[])
     Gpu::DeviceVector<BalbiComputed> d_balbi_table;
     const BalbiComputed* d_balbi_table_ptr = nullptr;
     int balbi_table_size = 0;
+    // Store global default Balbi coefficients for Viegas+Balbi coupling
+    BalbiComputed bc_global_default;
+    bc_global_default.A_coeff = 0.0;
+    bc_global_default.v_b     = 1.0;
 
     if (inputs.fire_spread_model == "balbi") {
         // Print Balbi fuel parameter table
         print_balbi_fuel_table(inputs.rothermel, inputs.balbi,
                                inputs.rothermel.landscape_fuel_type);
+        bc_global_default = compute_balbi_params(inputs.rothermel, inputs.balbi);
 
         if (!inputs.rothermel.landscape_file.empty()) {
             std::vector<BalbiComputed> h_balbi_table =
@@ -352,14 +363,50 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ---------------- Heat flux MultiFab initialization ------------------
+    // Initialize from file (2D only) or uniform value
+    {
+        const bool hf_active = (inputs.heat_flux.enable_upward == 1 ||
+                                 inputs.heat_flux.enable_induced == 1);
+        if (hf_active) {
+#if (AMREX_SPACEDIM == 2)
+            if (!inputs.heat_flux.heat_flux_file.empty()) {
+                init_heat_flux_from_file(heat_flux_mf, geom,
+                                         inputs.heat_flux.heat_flux_file);
+                amrex::Print() << "Initialized heat flux from file: "
+                               << inputs.heat_flux.heat_flux_file << "\n";
+            } else {
+                init_heat_flux_from_value(heat_flux_mf,
+                                          inputs.heat_flux.heat_flux_value);
+                amrex::Print() << "Initialized uniform heat flux: "
+                               << inputs.heat_flux.heat_flux_value << " W/m2\n";
+            }
+#else
+            // In 3D, only uniform value is supported for now
+            init_heat_flux_from_value(heat_flux_mf,
+                                      inputs.heat_flux.heat_flux_value);
+            if (!inputs.heat_flux.heat_flux_file.empty()) {
+                amrex::Print() << "WARNING: heat_flux.file is only supported in 2D builds; "
+                                  "using heat_flux.value instead.\n";
+            } else {
+                amrex::Print() << "Initialized uniform heat flux: "
+                               << inputs.heat_flux.heat_flux_value << " W/m2\n";
+            }
+#endif
+        }
+    }
+    const bool heat_flux_active = (inputs.heat_flux.enable_upward == 1 ||
+                                   inputs.heat_flux.enable_induced == 1);
+
     // ---------------- Wind-terrain model setup ------------------
-    // wind_terrain_modifies_vel: true for Options 3-6 which produce vel_effective.
+    // wind_terrain_modifies_vel: true for Options 3-7 which produce vel_effective.
     // For "none" (Option 1) and "viegas_ros" (Option 2) the original vel is used.
     const bool wind_terrain_modifies_vel =
         (inputs.wind_terrain.model == "viegas_wind" ||
          inputs.wind_terrain.model == "canyon_wind"  ||
          inputs.wind_terrain.model == "viegas_neto"  ||
-         inputs.wind_terrain.model == "pimont");
+         inputs.wind_terrain.model == "pimont"        ||
+         inputs.wind_terrain.model == "windninja_ridge_canyon");
 
     // use_precomp_R_for_advection: when a wind-terrain model or a non-Rothermel
     // spread model is active, pass R_mf as the pre-computed ROS to advection so
@@ -368,34 +415,51 @@ int main(int argc, char* argv[])
     // above (including any terrain-corrected velocity or Viegas ROS override).
     const bool use_precomp_R_for_advection =
         (wind_terrain_modifies_vel ||
-         inputs.wind_terrain.model == "viegas_ros"  ||
-         inputs.fire_spread_model  == "balbi"        ||
-         inputs.fire_spread_model  == "cheney_gould" ||
+         heat_flux_active                              ||
+         inputs.wind_terrain.model == "viegas_ros"    ||
+         inputs.fire_spread_model  == "balbi"         ||
+         inputs.fire_spread_model  == "cheney_gould"  ||
          inputs.fire_spread_model  == "cruz_crown");
+
+    // Helper flag for Viegas+Balbi coupling
+    const bool use_balbi_for_viegas = (inputs.fire_spread_model == "balbi");
 
     // ---------------- dt from CFL --------------------------
     Real dt=10;
     const bool use_levelset = (inputs.propagation_method == "levelset");
     if (use_levelset)
       {
-        // Apply wind-terrain velocity modification (Options 3-6) before ROS computation
+        // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
         if (wind_terrain_modifies_vel) {
             apply_wind_terrain_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+        } else {
+            // Copy ambient wind into vel_effective (needed for heat flux application below)
+            MultiFab::Copy(vel_effective, vel, 0, 0, 3, 0);
         }
-        const MultiFab& vel_for_rothermel = wind_terrain_modifies_vel ? vel_effective : vel;
+
+        // Apply heat flux wind corrections (upward velocity + induced inflow)
+        if (heat_flux_active) {
+            apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi,
+                                inputs.heat_flux);
+        }
+
+        const MultiFab& vel_for_model = (wind_terrain_modifies_vel || heat_flux_active)
+                                        ? vel_effective : vel;
 
         if (inputs.fire_spread_model == "balbi") {
-            compute_balbi_R(R_mf, vel_for_rothermel, geom, inputs.rothermel, inputs.balbi,
+            compute_balbi_R(R_mf, vel_for_model, geom, inputs.rothermel, inputs.balbi,
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                             d_balbi_table_ptr, balbi_table_size);
+                             d_balbi_table_ptr, balbi_table_size,
+                             heat_flux_active ? &heat_flux_mf : nullptr,
+                             heat_flux_active ? &inputs.heat_flux : nullptr);
         } else if (inputs.fire_spread_model == "cheney_gould") {
-            compute_cheney_gould_R(R_mf, vel_for_rothermel, inputs.cheney_gould);
+            compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
         } else if (inputs.fire_spread_model == "cruz_crown") {
-            compute_cruz_crown_R(R_mf, vel_for_rothermel, inputs.cruz_crown);
+            compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
         } else {
             // Compute Rothermel wind speed R
-            compute_rothermel_R(R_mf, vel_for_rothermel, geom, inputs.rothermel,
+            compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size);
@@ -411,11 +475,16 @@ int main(int argc, char* argv[])
                                    vel, terrain_slopes.get(), inputs.weise_biging);
     }
     if (inputs.viegas.enable == 1) {
+        // For Balbi+Viegas: pass Balbi table so diagnostic uses Balbi amplitude
         compute_viegas_diagnostics(viegas_data, R_mf, vel, inputs.rothermel, inputs.viegas,
                                    terrain_slopes.get(),
                                    !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                                   d_fuel_table_ptr, fuel_table_size);
-        // Option 2: override R_mf with max(R_rothermel, R_viegas) in eruptive cells
+                                   d_fuel_table_ptr, fuel_table_size,
+                                   use_balbi_for_viegas,
+                                   use_balbi_for_viegas ? &bc_global_default : nullptr,
+                                   use_balbi_for_viegas ? d_balbi_table_ptr : nullptr,
+                                   use_balbi_for_viegas ? balbi_table_size : 0);
+        // Option 2: override R_mf with max(primary, R_viegas) in eruptive cells
         if (inputs.wind_terrain.model == "viegas_ros") {
             apply_viegas_ros_override(R_mf, viegas_data);
             if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
@@ -505,23 +574,35 @@ int main(int argc, char* argv[])
 #endif
       
       // --- Step 2: Compute surface ROS via selected fire spread model
-      // Apply wind-terrain velocity modification (Options 3-6) before ROS computation
+      // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
       if (wind_terrain_modifies_vel) {
           apply_wind_terrain_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      } else {
+          MultiFab::Copy(vel_effective, vel, 0, 0, 3, 0);
       }
-      const MultiFab& vel_for_rothermel = wind_terrain_modifies_vel ? vel_effective : vel;
+
+      // Apply heat flux wind corrections (upward velocity + induced inflow)
+      if (heat_flux_active) {
+          apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi,
+                              inputs.heat_flux);
+      }
+
+      const MultiFab& vel_for_model = (wind_terrain_modifies_vel || heat_flux_active)
+                                      ? vel_effective : vel;
 
       if (inputs.fire_spread_model == "balbi") {
-          compute_balbi_R(R_mf, vel_for_rothermel, geom, inputs.rothermel, inputs.balbi,
+          compute_balbi_R(R_mf, vel_for_model, geom, inputs.rothermel, inputs.balbi,
                            terrain_slopes.get(),
                            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                           d_balbi_table_ptr, balbi_table_size);
+                           d_balbi_table_ptr, balbi_table_size,
+                           heat_flux_active ? &heat_flux_mf : nullptr,
+                           heat_flux_active ? &inputs.heat_flux : nullptr);
       } else if (inputs.fire_spread_model == "cheney_gould") {
-          compute_cheney_gould_R(R_mf, vel_for_rothermel, inputs.cheney_gould);
+          compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
       } else if (inputs.fire_spread_model == "cruz_crown") {
-          compute_cruz_crown_R(R_mf, vel_for_rothermel, inputs.cruz_crown);
+          compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
       } else {
-          compute_rothermel_R(R_mf, vel_for_rothermel, geom, inputs.rothermel,
+          compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                terrain_slopes.get(),
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                d_fuel_table_ptr, fuel_table_size);
@@ -532,11 +613,16 @@ int main(int argc, char* argv[])
                                      vel, terrain_slopes.get(), inputs.weise_biging);
       }
       if (inputs.viegas.enable == 1) {
+          // For Balbi+Viegas: pass Balbi table so diagnostic uses Balbi amplitude
           compute_viegas_diagnostics(viegas_data, R_mf, vel, inputs.rothermel, inputs.viegas,
                                      terrain_slopes.get(),
                                      !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                                     d_fuel_table_ptr, fuel_table_size);
-          // Option 2: override R_mf with max(R_rothermel, R_viegas) in eruptive cells
+                                     d_fuel_table_ptr, fuel_table_size,
+                                     use_balbi_for_viegas,
+                                     use_balbi_for_viegas ? &bc_global_default : nullptr,
+                                     use_balbi_for_viegas ? d_balbi_table_ptr : nullptr,
+                                     use_balbi_for_viegas ? balbi_table_size : 0);
+          // Option 2: override R_mf with max(primary, R_viegas) in eruptive cells
           if (inputs.wind_terrain.model == "viegas_ros") {
               apply_viegas_ros_override(R_mf, viegas_data);
           }
@@ -552,9 +638,9 @@ int main(int argc, char* argv[])
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
 	// --- Step 4: Merge to new perimeter
-	// For wind-terrain models, pass vel_for_rothermel so FARSITE ellipse
+	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_rothermel, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
