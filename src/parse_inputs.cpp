@@ -411,6 +411,38 @@ void parse_inputs(InputParameters& p)
     p.viegas.T_a        = 300.0;  pp.query("viegas.T_a",        p.viegas.T_a);
     p.viegas.T_f        = 1000.0; pp.query("viegas.T_f",        p.viegas.T_f);
 
+    // -------- Wind-terrain feedback model for Rothermel wind enhancement --------
+    // Parsed before the viegas validation block so auto-enable can set viegas.enable.
+    p.wind_terrain.model    = "none";  pp.query("wind_terrain.model",    p.wind_terrain.model);
+    p.wind_terrain.k_canyon = 1.0;    pp.query("wind_terrain.k_canyon", p.wind_terrain.k_canyon);
+    p.wind_terrain.k_pimont = 0.5;    pp.query("wind_terrain.k_pimont", p.wind_terrain.k_pimont);
+
+    // Validate model name
+    if (p.wind_terrain.model != "none"        &&
+        p.wind_terrain.model != "viegas_ros"  &&
+        p.wind_terrain.model != "viegas_wind" &&
+        p.wind_terrain.model != "canyon_wind" &&
+        p.wind_terrain.model != "viegas_neto" &&
+        p.wind_terrain.model != "pimont") {
+        amrex::Abort("wind_terrain.model must be one of: "
+                     "none, viegas_ros, viegas_wind, canyon_wind, viegas_neto, pimont");
+    }
+
+    // Validate model-specific parameters
+    if (p.wind_terrain.model == "canyon_wind" && p.wind_terrain.k_canyon <= 0.0) {
+        amrex::Abort("wind_terrain.k_canyon must be > 0");
+    }
+    if (p.wind_terrain.model == "pimont" && p.wind_terrain.k_pimont <= 0.0) {
+        amrex::Abort("wind_terrain.k_pimont must be > 0");
+    }
+
+    // Auto-enable Viegas diagnostics for Viegas-based wind-terrain models
+    if (p.wind_terrain.model == "viegas_ros"  ||
+        p.wind_terrain.model == "viegas_wind" ||
+        p.wind_terrain.model == "viegas_neto") {
+        p.viegas.enable = 1;
+    }
+
     if (p.viegas.enable == 1) {
         if (p.viegas.a_V <= 0.0)
             amrex::Abort("viegas.a_V must be > 0");
@@ -426,6 +458,30 @@ void parse_inputs(InputParameters& p)
                 << static_cast<int>(std::atan(p.viegas.tan_phi_c) * 180.0 / 3.14159265) << " deg)"
                 << "  T_a=" << p.viegas.T_a << " K"
                 << "  T_f=" << p.viegas.T_f << " K\n";
+    }
+
+    // Print wind-terrain model info
+    if (p.wind_terrain.model == "none") {
+        Print() << "Wind-terrain model: none (Option 1 – default Rothermel)\n";
+    } else if (p.wind_terrain.model == "viegas_ros") {
+        Print() << "Wind-terrain model: viegas_ros (Option 2 – Viegas ROS as spread rate)\n";
+        Print() << "  R_final = max(R_rothermel, R_viegas) in eruptive cells"
+                << " (tan_phi > " << p.viegas.tan_phi_c << ")\n";
+    } else if (p.wind_terrain.model == "viegas_wind") {
+        Print() << "Wind-terrain model: viegas_wind (Option 3 – Viegas-induced upslope wind, eruptive cells)\n";
+        Print() << "  v_b = sqrt(g * delta * (T_f - T_a) / T_a) added to ambient wind"
+                << " where tan_phi > " << p.viegas.tan_phi_c << "\n";
+    } else if (p.wind_terrain.model == "canyon_wind") {
+        Print() << "Wind-terrain model: canyon_wind (Option 4 – Rothermel 1983 canyon wind)\n";
+        Print() << "  U_eff = U * (1 + k_canyon * tan_phi),  k_canyon = "
+                << p.wind_terrain.k_canyon << "\n";
+    } else if (p.wind_terrain.model == "viegas_neto") {
+        Print() << "Wind-terrain model: viegas_neto (Option 5 – Viegas & Neto 1994 buoyancy wind)\n";
+        Print() << "  U_ind = v_b * tan_phi added upslope at all cells\n";
+    } else if (p.wind_terrain.model == "pimont") {
+        Print() << "Wind-terrain model: pimont (Option 6 – Pimont et al. 2009 slope correction)\n";
+        Print() << "  U_eff = U * exp(k_pimont * tan_phi),  k_pimont = "
+                << p.wind_terrain.k_pimont << "\n";
     }
 
     // -------- CSV fire points initialization --------
