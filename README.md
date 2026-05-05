@@ -31,7 +31,8 @@ The documentation includes:
 - **Per size-class fuel moisture**: 1-hr, 10-hr, 100-hr dead fuel; live herbaceous and live woody moisture inputs for the multi-class Rothermel (1972) reaction intensity
 - **Fire behavior diagnostics**: Byram (1959) fireline intensity [kW/m] and flame length [m] written to every plotfile
 - **Weise & Biging (1996) fire whirl model** – optional diagnostic sub-model computing flame tilt, whirl height/radius, angular velocity, and tangential velocity from fireline intensity and wind; enabled via `weise_biging.enable = 1`
-- **Viegas (2004) eruptive fire diagnostics** – optional parallel diagnostic that computes the Viegas exponential slope enhancement factor, eruptive-regime flag (critical slope), Viegas ROS, ROS excess vs Rothermel, and flame-tilt angle for hazard assessment; enabled via `viegas.enable = 1`; shares all inputs with Rothermel but does **not** modify fire propagation
+- **Viegas (2004) eruptive fire diagnostics** – optional parallel diagnostic that computes the Viegas exponential slope enhancement factor, eruptive-regime flag (critical slope), Viegas ROS, ROS excess vs Rothermel, and flame-tilt angle for hazard assessment; enabled via `viegas.enable = 1`; shares all inputs with Rothermel; by default diagnostic-only, but can be coupled to fire propagation via the **wind-terrain feedback model** (see below)
+- **Wind-terrain feedback models** – six selectable options (`wind_terrain.model`) for how terrain-induced or fire-feedback winds modify Rothermel ROS: (1) default Rothermel; (2) Viegas ROS as actual spread rate; (3) Viegas-induced buoyancy wind as velocity perturbation; (4) Rothermel (1983) canyon wind amplification; (5) Viegas & Neto (1994) buoyancy-driven upslope wind; (6) Pimont et al. (2009) exponential slope correction
 - **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter contours
 - **Stochastic firebrand spotting** with probability-based model
 - **Physics-based firebrand spotting** using Albini (1983) lofting height and 2-D trajectory integration
@@ -188,6 +189,7 @@ Override parameters from command line:
 - **Crown fire**: `crown.enable=0`, `crown.CBH=4.0`, `crown.CBD=0.15`, `crown.FMC=100.0`
 - **Weise & Biging fire whirl**: `weise_biging.enable=0`, `weise_biging.c_r=0.1`, `weise_biging.I_B_min=1.0`
 - **Viegas eruptive fire diagnostics**: `viegas.enable=0`, `viegas.a_V=1.83`, `viegas.tan_phi_c=0.4`, `viegas.T_a=300.0`, `viegas.T_f=1000.0`
+- **Wind-terrain feedback model**: `wind_terrain.model=none` — choose `none` (default), `viegas_ros`, `viegas_wind`, `canyon_wind`, `viegas_neto`, or `pimont`; `wind_terrain.k_canyon=1.0` (Option 4); `wind_terrain.k_pimont=0.5` (Option 6)
 - **Multi-point ignition**: `fire_points_file=""` (CSV with `X Y [Z]` columns), `fire_gaussian_sigma=0.0` (≤0 = auto: 3 cells)
 
 See the [online documentation](https://hgopalan.github.io/wildfire_levelset/) for complete parameter reference.
@@ -478,17 +480,18 @@ The Viegas (2004) model is an **optional diagnostic sub-model** that characteris
 
 Viegas (2004) introduces an exponential slope enhancement factor that grows much faster than Rothermel's quadratic φ_s on steep slopes, capturing the runaway acceleration observed in laboratory and field eruptive fires.
 
-**Merging rules** (strictly enforced):
+By default the Viegas model runs as a **read-only diagnostic** alongside Rothermel. The **wind-terrain feedback model** (`wind_terrain.model`) exposes additional coupling modes that progressively integrate the Viegas fire-terrain physics into the actual spread computation (see [Wind-Terrain Feedback Models](#wind-terrain-feedback-models) below).
 
-| Coupling | Status | Rationale |
-|----------|--------|-----------|
-| Rothermel R₀ used as Viegas baseline | ✅ Compatible | Shared no-wind, no-slope ROS |
-| Same slope/wind/fuel inputs | ✅ Compatible | Consistent environmental state |
-| Viegas flame-tilt for hazard assessment | ✅ Compatible | Read-only diagnostic output |
-| Viegas induced wind → Rothermel | ❌ Excluded | Would invalidate Rothermel calibration |
-| Viegas eruptive acceleration → Rothermel ROS | ❌ Excluded | Models have incompatible ROS formulations |
-| Viegas critical slope replacing Rothermel φ_s | ❌ Excluded | Different slope factor definitions |
-| Viegas dynamic ROS inside Rothermel's static formula | ❌ Excluded | Conceptually incompatible |
+**Coupling modes**:
+
+| `wind_terrain.model` | Coupling | Notes |
+|----------------------|----------|-------|
+| `none` (default) | Diagnostic only | Viegas fields written to plotfile; spread unchanged |
+| `viegas_ros` | R = max(R_rothermel, R_viegas) in eruptive cells | Spread accelerated on steep slopes |
+| `viegas_wind` | Upslope buoyancy wind added to vel in eruptive cells | Terrain feedback via effective wind |
+| `canyon_wind` | Ambient wind scaled by (1 + k_canyon·tan φ) | Rothermel (1983) channel amplification |
+| `viegas_neto` | Upslope buoyancy wind added everywhere | Viegas & Neto (1994) |
+| `pimont` | Ambient wind scaled by exp(k_pimont·tan φ) | Pimont et al. (2009) CFD-calibrated |
 
 ### Key equations
 
@@ -550,7 +553,7 @@ The `viegas_ROS_excess` field is particularly useful for identifying cells where
 ### Example inputs file snippet
 
 ```ini
-# Rothermel primary fire spread (unchanged)
+# Rothermel primary fire spread (diagnostic-only Viegas)
 fire_spread_model  = rothermel
 propagation_method = farsite
 
@@ -568,6 +571,10 @@ viegas.T_f       = 1000.0 # flame temperature [K]
 rothermel.terrain_file = terrain.xyz
 u_x = 5.0
 u_y = 2.0
+
+# To couple Viegas to spread, add one of:
+#   wind_terrain.model = viegas_ros   # Option 2: R = max(R_rothermel, R_viegas) in eruptive cells
+#   wind_terrain.model = viegas_wind  # Option 3: upslope buoyancy wind in eruptive cells
 ```
 
 ### Reference
@@ -575,6 +582,170 @@ u_y = 2.0
 Viegas, D.X. (2004). "Slope and wind effects on fire propagation."
 *International Journal of Wildland Fire*, 13(2), 143–156.
 <https://doi.org/10.1071/WF03046>
+
+## Wind-Terrain Feedback Models
+
+The wind-terrain feedback model introduces a `wind_terrain.model` ParmParse key
+that selects how terrain-induced or fire-feedback winds modify the effective wind
+seen by the Rothermel (or other) spread model.  **Option 1 (`none`) is the
+default and preserves all existing behavior exactly.**  Options 2–6 progressively
+couple Viegas or terrain-channel wind physics into the actual fire propagation.
+
+### Options summary
+
+| Option | `wind_terrain.model` | Effect on Rothermel |
+|--------|----------------------|---------------------|
+| 1 | `none` | No modification – default Rothermel |
+| 2 | `viegas_ros` | R_final = max(R_rothermel, R_viegas) in eruptive cells (tan φ > tan_phi_c) |
+| 3 | `viegas_wind` | Add buoyancy-induced upslope wind U_ind = v_b·tan φ to vel in eruptive cells |
+| 4 | `canyon_wind` | Scale vel by (1 + k_canyon·tan φ) everywhere (Rothermel 1983) |
+| 5 | `viegas_neto` | Add upslope buoyancy wind U_ind = v_b·tan φ at every cell (no threshold) |
+| 6 | `pimont` | Scale vel by exp(k_pimont·tan φ) everywhere (Pimont et al. 2009) |
+
+Selecting `viegas_ros`, `viegas_wind`, or `viegas_neto` automatically enables
+the Viegas (2004) diagnostic model (`viegas.enable = 1`).  Terrain slopes must
+be provided (via `rothermel.terrain_file` or `rothermel.landscape_file`) for any
+slope-dependent option to have an effect.
+
+### Physical equations
+
+**Option 2 – Viegas ROS override** (requires terrain slopes):
+
+```
+R_final(i,j) = max( R_rothermel(i,j),  R_viegas(i,j) )   in eruptive cells
+             = R_rothermel(i,j)                             elsewhere
+```
+
+Eruptive cell: `tan φ(i,j) > tan_phi_c` (default 0.4, ≈ 22°).
+
+**Options 3 and 5 – Buoyancy-induced upslope wind**:
+
+```
+v_b    = sqrt(g · δ_m · (T_f − T_a) / T_a)    [buoyancy velocity, m/s]
+U_ind  = v_b · tan φ                            [induced speed, m/s]
+ΔU     = U_ind · (∇z / |∇z|)                   [directed upslope]
+U_eff  = U_ambient + ΔU
+```
+
+where `δ_m` is fuel bed depth in metres (converted from Rothermel's feet), `T_a`
+and `T_f` are taken from `viegas.T_a/T_f`, and `U_eff` is passed to Rothermel
+(and FARSITE) instead of the raw wind.
+
+Option 3 applies `ΔU` only in cells where `tan φ > tan_phi_c` (eruptive
+threshold).  Option 5 applies it everywhere.
+
+**Option 4 – Canyon wind** (Rothermel 1983):
+
+```
+U_eff = U_ambient · max(1, 1 + k_canyon · tan φ)
+```
+
+**Option 6 – Pimont exponential correction** (Pimont et al. 2009):
+
+```
+U_eff = U_ambient · exp(k_pimont · tan φ)
+```
+
+### Configuration via parmparse (`wind_terrain.*`)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `wind_terrain.model` | `none` | Wind-terrain model: `none`, `viegas_ros`, `viegas_wind`, `canyon_wind`, `viegas_neto`, or `pimont` |
+| `wind_terrain.k_canyon` | `1.0` | Terrain channeling coefficient for `canyon_wind` (Option 4) |
+| `wind_terrain.k_pimont` | `0.5` | Exponential slope coefficient for `pimont` (Option 6) |
+
+Viegas parameters (`viegas.a_V`, `viegas.tan_phi_c`, `viegas.T_a`, `viegas.T_f`) are
+shared between the Viegas diagnostic model and the buoyancy-wind models (Options 2, 3, 5).
+
+### Example inputs file snippets
+
+**Option 2 – Use Viegas ROS in eruptive cells:**
+
+```ini
+fire_spread_model  = rothermel
+propagation_method = levelset
+rothermel.fuel_model    = FM4
+rothermel.terrain_file  = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+
+wind_terrain.model = viegas_ros   # Viegas ROS replaces Rothermel on steep slopes
+viegas.a_V         = 1.83         # Viegas slope coefficient
+viegas.tan_phi_c   = 0.4          # critical slope (~22°) for eruptive-regime flag
+viegas.T_a         = 300.0        # ambient temperature [K]
+viegas.T_f         = 1000.0       # flame temperature [K]
+```
+
+**Option 3 – Viegas-induced buoyancy wind (eruptive cells only):**
+
+```ini
+fire_spread_model  = rothermel
+propagation_method = levelset
+rothermel.fuel_model    = FM4
+rothermel.terrain_file  = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+
+wind_terrain.model = viegas_wind  # add upslope buoyancy wind in eruptive cells
+viegas.tan_phi_c   = 0.4          # eruptive threshold
+viegas.T_a         = 300.0
+viegas.T_f         = 1000.0
+```
+
+**Option 4 – Rothermel (1983) canyon wind:**
+
+```ini
+fire_spread_model  = rothermel
+propagation_method = levelset
+rothermel.fuel_model    = FM4
+rothermel.terrain_file  = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+
+wind_terrain.model    = canyon_wind
+wind_terrain.k_canyon = 1.0       # terrain channeling coefficient
+```
+
+**Option 5 – Viegas & Neto (1994) buoyancy wind everywhere:**
+
+```ini
+fire_spread_model  = rothermel
+propagation_method = levelset
+rothermel.fuel_model    = FM4
+rothermel.terrain_file  = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+
+wind_terrain.model = viegas_neto  # upslope buoyancy wind at every cell
+viegas.T_a         = 300.0
+viegas.T_f         = 1000.0
+```
+
+**Option 6 – Pimont et al. (2009) exponential slope correction:**
+
+```ini
+fire_spread_model  = rothermel
+propagation_method = levelset
+rothermel.fuel_model    = FM4
+rothermel.terrain_file  = terrain.xyz
+u_x = 5.0
+u_y = 2.0
+
+wind_terrain.model    = pimont
+wind_terrain.k_pimont = 0.5       # CFD-calibrated slope coefficient
+```
+
+### References
+
+Rothermel, R.C. (1983). *How to Predict the Spread and Intensity of Forest and Range Fires.*
+USDA Forest Service General Technical Report INT-143.
+
+Viegas, D.X. & Neto, L.P.S. (1994). "Wind tunnel study of the convective air flow of slope
+fires." Annual Report, Project COMOESTAS.
+
+Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009). "Validation of FIRETEC
+wind-flows over a canopy and fuel-break." *International Journal of Wildland Fire*, 18(7), 775–790.
+<https://doi.org/10.1071/WF07130>
 
 ## Future Fire Spread Models (TODO)
 
@@ -853,7 +1024,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 2. **Wind field**
    - Spatially-varying wind supported via CSV files; fully 3-D spatially-varying wind fields are not.
    - Time-dependent wind uses linear interpolation between snapshots (2D only).
-   - One-way coupling only — fire does not modify the wind field.
+   - One-way coupling by default — fire does not modify the wind field. **Wind-terrain feedback models** (`wind_terrain.model`) allow terrain-induced wind effects to modify the effective wind seen by Rothermel, but atmospheric feedback from the fire itself is not modelled.
 
 3. **Terrain**
    - Full 2-D landscape representation: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` landscape files or terrain XYZ files (consistent with the approach used in FARSITE).  True 3-D terrain geometry (for 3-D simulations) and canopy fuel layers can be added in future.
@@ -879,7 +1050,7 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 | Capability | wildfire_levelset | FARSITE | WRF-SFIRE |
 |---|---|---|---|
 | **Fire spread model** | Rothermel (1972) ROS with Andrews (2018) wind adjustments (WAF, MEWS); Balbi (2009) physical model; Cheney & Gould (1995) grassland empirical model; elliptical directional spread (Richards 1990); Eulerian level-set implementation of Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
-| **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap via `rothermel.use_waf` / `rothermel.use_wind_limit` | WAF applied internally | WAF not explicitly applied; wind from atmospheric model |
+| **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap via `rothermel.use_waf` / `rothermel.use_wind_limit`; wind-terrain feedback models (`wind_terrain.model`) with 6 options including Rothermel (1983) canyon wind, Viegas & Neto (1994) buoyancy wind, and Pimont et al. (2009) slope correction | WAF applied internally | WAF not explicitly applied; wind from atmospheric model |
 | **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
 | **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `wrf_wind_reader.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
 | **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
@@ -924,9 +1095,13 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **Anderson, H.E. (1983)**. "Predicting wind-driven wild land fire size and shape." Research Paper INT-305, USDA Forest Service.
 - **Anderson, H.E. (1982)**. "Aids to determining fuel models for estimating fire behavior." Research Paper INT-122, USDA Forest Service.
 - **Rothermel, R.C. (1972)**. "A mathematical model for predicting fire spread in wildland fuels." Research Paper INT-115, USDA Forest Service.
+- **Rothermel, R.C. (1983)**. *How to Predict the Spread and Intensity of Forest and Range Fires.* Gen. Tech. Rep. INT-143, USDA Forest Service.
 - **Van Wagner, C.E. (1977)**. "Conditions for the start and spread of crown fire." Canadian Journal of Forest Research.
 - **Albini, F.A. (1983)**. "Potential spotting distance from wind-driven surface fires." Research Paper INT-309, USDA Forest Service.
 - **Scott, J.H. and Burgan, R.E. (2005)**. "Standard Fire Behavior Fuel Models: A Comprehensive Set for Use with Rothermel's Surface Fire Spread Model." Technical Report RMRS-GTR-153, USDA Forest Service.
+- **Viegas, D.X. & Neto, L.P.S. (1994)**. "Wind tunnel study of the convective air flow of slope fires." Annual Report, Project COMOESTAS.
+- **Viegas, D.X. (2004)**. "Slope and wind effects on fire propagation." *International Journal of Wildland Fire*, 13(2), 143–156. <https://doi.org/10.1071/WF03046>
+- **Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009)**. "Validation of FIRETEC wind-flows over a canopy and fuel-break." *International Journal of Wildland Fire*, 18(7), 775–790. <https://doi.org/10.1071/WF07130>
 
 ## License
 
