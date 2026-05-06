@@ -114,6 +114,17 @@ add_executable(levelset
                src/main.cpp
                src/parse_inputs.cpp                
               )
+# On Windows with CUDA, MSVC is the default host compiler and does not
+# understand CUDA device-side keywords (__device__, __host__, etc.) that
+# appear in AMReX headers.  Tell CMake to route these .cpp files through
+# nvcc (LANGUAGE CUDA) so they are compiled correctly on all platforms.
+if(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
+  set_source_files_properties(
+    src/main.cpp
+    src/parse_inputs.cpp
+    PROPERTIES LANGUAGE CUDA
+  )
+endif()
 target_link_libraries(levelset PRIVATE AMReX::amrex)
 if(LEVELSET_ENABLE_MPI)
   target_link_libraries(levelset PRIVATE MPI::MPI_CXX)
@@ -142,6 +153,14 @@ if(LEVELSET_BUILD_WIND_SOLVER)
   if(NOT LEVELSET_DIM_2D)
     # ---- Normal 3-D build: wind_solver is a direct target ----
     add_executable(wind_solver src/wind_solver.cpp)
+    # Same as levelset: route through nvcc on CUDA builds so MSVC does not
+    # choke on CUDA device-side keywords in AMReX headers.
+    if(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
+      set_source_files_properties(
+        src/wind_solver.cpp
+        PROPERTIES LANGUAGE CUDA
+      )
+    endif()
     target_link_libraries(wind_solver PRIVATE AMReX::amrex)
     if(LEVELSET_ENABLE_MPI)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
