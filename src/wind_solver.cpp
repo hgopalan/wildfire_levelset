@@ -498,6 +498,8 @@ int main(int argc, char* argv[])
         mlmg.setMaxFmgIter(20);
         mlmg.setVerbose(mlmg_verbose);
         mlmg.setBottomVerbose(0);
+        mlmg.setPreSmooth(16);
+        mlmg.setPostSmooth(16);
 
         lam.setVal(0.0);  // initial guess
 
