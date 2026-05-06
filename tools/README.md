@@ -4,6 +4,10 @@ Python utilities for converting geospatial data into the file formats
 consumed by the wildfire level-set solver, and for post-processing simulation
 results.
 
+> **Deprecated tool**: `tools/deprecated/terrain_wind_preprocess.py` is a
+> legacy unified script superseded by the individual tools below.  Use the
+> specific tools listed here for all new workflows.
+
 ---
 
 ## Tools

@@ -69,4 +69,4 @@ jobs:
       - name: Verify executable exists (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Test-Path build/levelset.exe -PathType Leaf
+        run: if (!(Test-Path build/levelset.exe -PathType Leaf)) { exit 1 }
