@@ -155,7 +155,7 @@ static Real idw_terrain(Real xq, Real yq,
     Real wsum = 0.0, zval = 0.0;
     for (int i = 0; i < k; ++i) {
         if (d2[i].first < Real(1.0e-12)) return z[d2[i].second]; // exact hit
-        Real w = Real(1.0) / d2[i].first;                        // 1/r² weight
+        Real w = Real(1.0) / d2[i].first;  // inverse-square-distance weight
         wsum += w;
         zval += w * z[d2[i].second];
     }
@@ -340,21 +340,18 @@ int main(int argc, char* argv[])
             amrex::ParallelFor(bx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                Real zs    = d_terr_ptr[j * nx_cap + i];
                 Real z_agl = (k + Real(0.5)) * dz_cap; // height above local terrain
 
                 if (z_agl <= Real(0.0)) {
                     vel(i, j, k, 0) = Real(0.0);
                     vel(i, j, k, 1) = Real(0.0);
                     vel(i, j, k, 2) = Real(0.0);
-                    (void)zs;
                 } else {
                     Real speed = (ustar_cap / kappa_cap)
                                * std::log((z_agl + z0_cap) / z0_cap);
                     vel(i, j, k, 0) = speed * ux_h;
                     vel(i, j, k, 1) = speed * uy_h;
                     vel(i, j, k, 2) = Real(0.0);
-                    (void)zs;
                 }
             });
         }
