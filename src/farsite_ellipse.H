@@ -317,7 +317,9 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
       cos_theta += nz * wz;
 #endif
-      // clamp to [-1, 1] to guard against floating-point rounding
+      // Clamp to [-1, 1] to guard against floating-point rounding before
+      // computing sin_theta = sqrt(1 - cos²θ).  This is cheap and benefits
+      // all shape models, including Richards (which also calls sqrt below).
       cos_theta = amrex::max(Real(-1.0), amrex::min(Real(1.0), cos_theta));
       Real sin_theta = std::sqrt(Real(1.0) - cos_theta * cos_theta);
 

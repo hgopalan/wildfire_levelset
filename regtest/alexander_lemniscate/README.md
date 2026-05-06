@@ -20,15 +20,16 @@ Properties:
 
 | Angle | Spread rate |
 |-------|-------------|
-| θ = 0  (head fire)   | `coeff_a × R_base × dt` |
+| θ = 0  (head fire)   | `(coeff_b + (coeff_a − coeff_c)/2) × R_base × dt` |
 | θ = π/2 (flank fire) | `coeff_b × R_base × dt` |
-| θ = π  (backing fire)| `coeff_c × R_base × dt` |
+| θ = π  (backing fire)| `(coeff_b − (coeff_a − coeff_c)/2) × R_base × dt` |
 
-When `coeff_b = (coeff_a + coeff_c) / 2`, the formula is a true Limaçon and
-the head/backing rates match `coeff_a` and `coeff_c` exactly.  If `coeff_b`
-is set independently, the head and backing rates may differ from `coeff_a` and
-`coeff_c` but the flank spread matches `coeff_b` exactly.  Values below zero
-are clamped to zero (non-convex shapes are suppressed).
+When `coeff_b = (coeff_a + coeff_c) / 2` (as in this regtest), the formula is
+a true Limaçon: the head rate becomes exactly `coeff_a × R_base × dt` and the
+backing rate becomes exactly `coeff_c × R_base × dt`.  For other values of
+`coeff_b` the flank rate still equals `coeff_b` exactly, while the head and
+backing rates are shifted by `coeff_b − (coeff_a + coeff_c)/2`.  Values below
+zero are clamped to zero (non-convex shapes are suppressed).
 
 ## Configuration
 
@@ -40,9 +41,10 @@ are clamped to zero (non-convex shapes are suppressed).
 
 ## Expected Behavior
 
-The fire spreads in a lemniscate / cardioid shape that is more elongated than a
-circle but less sharply anisotropic than an ellipse.  Head fire spreads fastest
-(rate `coeff_a`), flanks at rate `coeff_b`, and backing fire slowest (`coeff_c`).
+The fire spreads in a lemniscate / cardioid shape.  Because `coeff_b =
+(coeff_a + coeff_c) / 2 = 0.6`, the head fire spreads at `coeff_a × R_base =
+1.0 × R_base`, the flanks at `0.6 × R_base`, and the backing fire at `0.2 ×
+R_base`.
 
 ## Run Command
 
