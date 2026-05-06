@@ -172,11 +172,21 @@ python3 tools/farsite_fmd_reader.py --generate \
 ### `plotfile_to_geotiff.py` — GIS Export
 
 Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter
-contours.  Multi-level AMR plotfiles are supported.
+contours.  Multi-level AMR plotfiles are supported.  In addition to the stored
+plotfile fields, **derived fields** are computed on-the-fly:
+
+| Derived field    | Source fields    | Description                             |
+|------------------|------------------|-----------------------------------------|
+| `wind_speed`     | `velx`, `vely`   | Wind speed [m/s] (magnitude)            |
+| `wind_direction` | `velx`, `vely`   | Met. wind direction [° from N, cw]      |
 
 ```bash
-# Export all fire-behaviour variables
+# Export all fire-behaviour variables (including wind_speed, wind_direction)
 python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out
+
+# Export specific derived variables
+python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out \
+    -v wind_speed wind_direction reaction_intensity
 
 # Batch-convert all plt#### directories
 python3 tools/plotfile_to_geotiff.py --all --outdir gis_out \
@@ -187,7 +197,166 @@ python3 tools/plotfile_to_geotiff.py --all --outdir gis_out \
 
 ---
 
-### `perimeter_to_shapefile.py` — Fire Perimeter to Esri Shapefile
+### `ensemble_burn_probability.py` — Ensemble Burn Probability Driver
+
+FSPro-style ensemble driver.  Runs the solver *N* times with Latin hypercube
+or random perturbations of wind speed, wind direction, and dead fuel moisture,
+accumulates per-cell burn counts, and writes a probability map.
+
+Optionally computes **conditional flame length exceedance** maps — the
+probability that flame length exceeds a threshold M at each cell — using the
+`flame_length` field from the solver plotfiles.
+
+```bash
+# Serial: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --wind-speed-sigma 0.20 \
+    --wind-dir-sigma 15.0 \
+    --moisture-sigma 0.02
+
+# MPI: each ensemble member uses 4 MPI ranks
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --mpi-ranks 4
+
+# Flame length exceedance at 0.5, 1.0, 2.0, 4.0 m thresholds
+# (requires plot_int > 0 in inputs.i)
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --fl-thresholds 0.5 1.0 2.0 4.0 \
+    --fl-out-prefix fl_exceedance
+```
+
+**Outputs**:
+- `burn_probability.csv` — P_burn per cell
+- `fl_exceedance_0p5m.csv`, `fl_exceedance_1p0m.csv`, … — P(FL > M) per cell
+
+**Dependencies**: none required; `scipy` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
+
+---
+
+### `plot_burn_probability.py` — Burn Probability Visualisation
+
+Reads `burn_probability.csv` (or flame-length exceedance CSVs) from the
+ensemble driver and produces heatmap plots.  Supports single-file, multi-file
+panel layouts, and side-by-side difference maps.
+
+```bash
+# Basic heatmap
+python3 tools/plot_burn_probability.py burn_probability.csv
+
+# Custom colourmap and contour lines at 10%, 25%, 50%, 75%
+python3 tools/plot_burn_probability.py burn_probability.csv \
+    --cmap YlOrRd --vmin 0.1 --contours 0.10 0.25 0.50 0.75 \
+    --out bp_map.png
+
+# Compare two ensemble runs side by side with a difference panel
+python3 tools/plot_burn_probability.py \
+    --diff run_A/burn_probability.csv run_B/burn_probability.csv \
+    --labels "Run A (dry)" "Run B (wet)" --out diff_map.png
+
+# Plot multiple files in a panel row
+python3 tools/plot_burn_probability.py \
+    fl_exceedance_0p5m.csv fl_exceedance_2p0m.csv \
+    --labels "P(FL>0.5 m)" "P(FL>2.0 m)" --out fl_panels.png
+
+# Export as GeoTIFF (requires rasterio)
+python3 tools/plot_burn_probability.py burn_probability.csv \
+    --geotiff burn_prob.tif --epsg 32613
+```
+
+**Dependencies**: `matplotlib`, `numpy`; `rasterio` for `--geotiff` export.
+
+---
+
+### `isochrone_extractor.py` — Fire Arrival-Time Isochrones
+
+Reads the `arrival_time` field from AMReX plotfiles and extracts fire
+time-of-arrival isochrones as GeoJSON polygon features.  Each isochrone
+marks the fire perimeter at a specific elapsed simulation time.
+
+```bash
+# 10-minute isochrones from a single plotfile
+python3 tools/isochrone_extractor.py plt0100 --interval 600 --outdir iso_out
+
+# Custom times [s]
+python3 tools/isochrone_extractor.py plt0100 \
+    --times 300 600 900 1200 1800 --outdir iso_out
+
+# Batch all plt#### with UTM georeference
+python3 tools/isochrone_extractor.py --all --interval 600 \
+    --utm-origin 450000 4200000 --outdir iso_out
+```
+
+**Output**: `<outdir>/<plotfile>_isochrones.geojson` — GeoJSON FeatureCollection
+of isochrone polygons with properties `time_s`, `time_min`, `label`.
+
+**Dependencies**: `matplotlib`, `numpy`; imports the plotfile parser from
+`plotfile_to_geotiff.py` when available.
+
+---
+
+### `fire_size_summary.py` — Fire Size Statistics
+
+Reads the `fire_stats.csv` time series written by the solver (enabled with
+`fire_stats_file = fire_stats.csv` in `inputs.i`) and prints a formatted ASCII
+table of burned area, perimeter, active front cells, and emissions.  Optionally
+saves matplotlib plots.
+
+```bash
+# Print ASCII table
+python3 tools/fire_size_summary.py fire_stats.csv
+
+# Print table and save PNG plots
+python3 tools/fire_size_summary.py fire_stats.csv --plot --outdir fire_plots
+
+# Export enriched CSV with time_min column
+python3 tools/fire_size_summary.py fire_stats.csv --csv summary_min.csv
+```
+
+**Solver prerequisite**: set `fire_stats_file = fire_stats.csv` in `inputs.i`.
+
+**Dependencies**: none required; `matplotlib` for `--plot`.
+
+---
+
+### `behavior_matrix.py` — Fuel Condition Fire Behavior Matrix
+
+BehavePlus-style Rothermel (1972) fire behavior matrix tool.  Computes rate of
+spread, fireline intensity, flame length, and reaction intensity across a grid
+of wind speeds and dead fuel moisture values for any Anderson FBFM13 or Scott &
+Burgan FBFM40 fuel model.  Pure Python — no solver required.
+
+```bash
+# Anderson FM 4 (chaparral), winds 0–10 m/s, moisture 4–20%
+python3 tools/behavior_matrix.py --fuel-model 4 --fuel-system 13 \
+    --wind-min 0 --wind-max 10 --wind-steps 11 \
+    --moisture-min 0.04 --moisture-max 0.20 --moisture-steps 9 \
+    --out fm4_matrix.csv
+
+# Scott & Burgan SH5 (High load dry shrub) with slope correction
+python3 tools/behavior_matrix.py --fuel-model 145 --fuel-system 40 \
+    --slope 0.4 --out sh5_matrix.csv
+
+# Save heatmap plots
+python3 tools/behavior_matrix.py --fuel-model 4 --plot \
+    --plot-out fm4_heatmap.png
+
+# List available fuel model codes
+python3 tools/behavior_matrix.py --list-fuels --fuel-system 40
+```
+
+**Outputs**: CSV matrix with columns `wind_m_s`, `moisture_pct`, `R_ros_m_min`,
+`I_R_kW_m2`, `I_B_kW_m`, `L_f_m`, `phi_w`, `phi_s`.
+
+**Dependencies**: none required (pure Python); `matplotlib`, `numpy` for `--plot`.
 
 Converts wildfire_levelset fire perimeter output files (`.geojson`, `.csv`,
 `.dat`) to Esri Shapefile format for import into GIS applications.
@@ -243,6 +412,10 @@ FSPro-style ensemble driver.  Runs the solver *N* times with Latin hypercube
 or random perturbations of wind speed, wind direction, and dead fuel moisture,
 accumulates per-cell burn counts, and writes a probability map.
 
+Optionally computes **conditional flame length exceedance** maps — the
+probability that flame length exceeds a threshold M at each cell — using the
+`flame_length` field from the solver plotfiles.
+
 ```bash
 # Serial: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
 python3 tools/ensemble_burn_probability.py \
@@ -259,7 +432,20 @@ python3 tools/ensemble_burn_probability.py \
     --inputs inputs.i \
     --n-runs 50 \
     --mpi-ranks 4
+
+# Flame length exceedance at 0.5, 1.0, 2.0, 4.0 m thresholds
+# (requires plot_int > 0 in inputs.i)
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --fl-thresholds 0.5 1.0 2.0 4.0 \
+    --fl-out-prefix fl_exceedance
 ```
+
+**Outputs**:
+- `burn_probability.csv` — P_burn per cell
+- `fl_exceedance_0p5m.csv`, `fl_exceedance_1p0m.csv`, … — P(FL > M) per cell
 
 **Dependencies**: none required; `scipy` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
 
@@ -275,14 +461,14 @@ pip install numpy netCDF4 pyproj rasterio elevation requests scipy matplotlib sh
 
 | Package | Used by |
 |---------|---------|
-| `numpy` | `wrf_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py` |
+| `numpy` | `wrf_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py`, `plot_burn_probability.py`, `behavior_matrix.py` (optional) |
 | `netCDF4` | `wrf_wind_reader.py` (WRF wind extraction) |
 | `pyproj` | `wrf_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `utm_convert.py`, `perimeter_to_shapefile.py` |
-| `rasterio` | `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py` |
+| `rasterio` | `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py`, `plot_burn_probability.py` (optional) |
 | `elevation` | `srtm_terrain_reader.py` (SRTM download) |
 | `requests` | `landscape_writer.py` (LANDFIRE API) |
 | `scipy` | `wrf_wind_reader.py` (IDW interpolation), `ensemble_burn_probability.py` (LHS) |
-| `matplotlib` | `plotfile_to_geotiff.py` (GeoJSON perimeter contours) |
+| `matplotlib` | `plotfile_to_geotiff.py`, `isochrone_extractor.py`, `plot_burn_probability.py`, `fire_size_summary.py` (all optional) |
 | `shapely` | `perimeter_to_shapefile.py` (convex hull) |
 | `pyshp` | `perimeter_to_shapefile.py` (shapefile writing, **required**) |
 

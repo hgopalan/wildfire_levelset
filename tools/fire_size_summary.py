@@ -52,15 +52,19 @@ def read_fire_stats(csv_path: str) -> List[Dict[str, float]]:
     """Read fire_stats.csv and return a list of row dicts."""
     rows = []
     with open(csv_path, newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            parsed = {}
-            for k, v in row.items():
-                try:
-                    parsed[k.strip()] = float(v.strip())
-                except (ValueError, AttributeError):
-                    parsed[k.strip()] = v
-            rows.append(parsed)
+        # Skip comment lines before handing to DictReader
+        lines = [l for l in fh if not l.strip().startswith("#")]
+    reader = csv.DictReader(lines)
+    for row in reader:
+        parsed = {}
+        for k, v in row.items():
+            if k is None:
+                continue
+            try:
+                parsed[k.strip()] = float(v.strip()) if isinstance(v, str) else float(v)
+            except (ValueError, AttributeError):
+                parsed[k.strip()] = v
+        rows.append(parsed)
     return rows
 
 

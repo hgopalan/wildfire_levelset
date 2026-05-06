@@ -296,6 +296,141 @@ def read_phi_negative(run_dir: str) -> List[Tuple[float, float]]:
 
 
 # ---------------------------------------------------------------------------
+# Flame-length reader (reads from the final AMReX plotfile in a run dir)
+# ---------------------------------------------------------------------------
+
+def _read_plotfile_field(run_dir: str, field: str) -> Dict[Tuple[float, float], float]:
+    """Read a named scalar field from the last plt#### directory in *run_dir*.
+
+    Returns a dict mapping (x, y) → value for all cells in the plotfile.
+    Returns an empty dict if no plotfile is found or the field is absent.
+    """
+    plt_dirs = sorted(glob.glob(os.path.join(run_dir, "plt[0-9][0-9][0-9][0-9]")))
+    if not plt_dirs:
+        return {}
+    plt_path = plt_dirs[-1]
+
+    # ---- Parse Header ----
+    header_path = os.path.join(plt_path, "Header")
+    if not os.path.isfile(header_path):
+        return {}
+    with open(header_path) as fh:
+        lines = [l.rstrip("\n") for l in fh]
+
+    try:
+        idx = 1
+        ncomp = int(lines[idx]); idx += 1
+        varnames = []
+        for _ in range(ncomp):
+            varnames.append(lines[idx].strip()); idx += 1
+        _spacedim = int(lines[idx]); idx += 1
+        _time = float(lines[idx]); idx += 1
+        _finest = int(lines[idx]); idx += 1
+        problo = list(map(float, lines[idx].split())); idx += 1
+        probhi = list(map(float, lines[idx].split())); idx += 1
+        idx += 1  # ref ratios
+        idx += 1  # box count
+        box_line = lines[idx]; idx += 1
+        nums = [int(t) for t in box_line.replace("(","").replace(")","").replace(","," ").split()
+                if t.lstrip("-").isdigit()]
+        if len(nums) < 4:
+            return {}
+        nx = nums[2] - nums[0] + 1
+        ny = nums[3] - nums[1] + 1
+    except (IndexError, ValueError):
+        return {}
+
+    if field not in varnames:
+        return {}
+
+    cell_h = os.path.join(plt_path, "Level_0", "Cell_H")
+    if not os.path.isfile(cell_h):
+        return {}
+
+    # ---- Parse Cell_H to find FAB files ----
+    with open(cell_h) as fh:
+        content = fh.read()
+
+    patches = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("FAB") or (line and line[0].isdigit()):
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and "Cell" in parts[0]:
+            try:
+                patches.append((parts[0], int(parts[1])))
+            except (ValueError, IndexError):
+                pass
+
+    import struct as _struct
+    import numpy as _np
+
+    ic = varnames.index(field)
+    result: Dict[Tuple[float, float], float] = {}
+    dx = (probhi[0] - problo[0]) / nx
+    dy = (probhi[1] - problo[1]) / ny
+
+    fab_dir = os.path.join(plt_path, "Level_0")
+    for file_rel, offset in patches:
+        fab_path = os.path.join(fab_dir, os.path.basename(file_rel))
+        if not os.path.isfile(fab_path):
+            fab_path = os.path.join(plt_path, file_rel)
+        if not os.path.isfile(fab_path):
+            continue
+        try:
+            with open(fab_path, "rb") as fb:
+                fb.seek(offset)
+                hdr = b""
+                while True:
+                    byte = fb.read(1)
+                    if not byte:
+                        break
+                    hdr += byte
+                    if byte == b"\n" and b")" in hdr:
+                        break
+                hdr_str = hdr.decode("ascii", errors="replace")
+                hnums = [int(t) for t in hdr_str.replace("(","").replace(")","").replace(","," ").split()
+                         if t.lstrip("-").isdigit()]
+                if len(hnums) < 6:
+                    continue
+                fab_ncomp = hnums[0]
+                ixlo, iylo, ixhi, iyhi = hnums[2], hnums[3], hnums[4], hnums[5]
+                fab_nx = ixhi - ixlo + 1
+                fab_ny = iyhi - iylo + 1
+                n_vals = fab_ncomp * fab_nx * fab_ny
+                raw = fb.read(n_vals * 8)
+                if len(raw) < n_vals * 8:
+                    fb.seek(offset)
+                    while True:
+                        b2 = fb.read(1)
+                        if not b2:
+                            break
+                        hdr2 = b""
+                        hdr2 += b2
+                        if b2 == b"\n" and b")" in hdr2:
+                            break
+                    raw = fb.read(n_vals * 4)
+                    dtype = _np.float32
+                else:
+                    dtype = _np.float64
+                arr = _np.frombuffer(raw, dtype=dtype)
+                if arr.size != fab_ncomp * fab_nx * fab_ny:
+                    continue
+                arr = arr.reshape((fab_ncomp, fab_nx, fab_ny), order="F").transpose(0, 2, 1)
+                # Extract component ic for all cells in this FAB
+                for j in range(fab_ny):
+                    for i in range(fab_nx):
+                        x = problo[0] + (ixlo + i + 0.5) * dx
+                        y = problo[1] + (iylo + j + 0.5) * dy
+                        result[(round(x, 2), round(y, 2))] = float(arr[ic, j, i])
+        except Exception:
+            continue
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Grid accumulation
 # ---------------------------------------------------------------------------
 
@@ -329,6 +464,76 @@ def accumulate_on_grid(
                 counts[key] = counts.get(key, 0) + 1
 
     return counts, x_min, y_min, resolution
+
+
+def accumulate_flame_length(
+    all_fl_data: List[Optional[Dict[Tuple[float, float], float]]],
+    all_points:  List[List[Tuple[float, float]]],
+    thresholds:  List[float],
+    resolution:  float,
+) -> Tuple[Dict[float, Dict[Tuple[int, int], int]], float, float]:
+    """Accumulate per-cell counts where flame length exceeds each threshold.
+
+    Parameters
+    ----------
+    all_fl_data : list of per-run flame_length dicts {(x,y)->fl_m} or None.
+    all_points  : list of per-run burned (x,y) point lists.
+    thresholds  : flame length thresholds [m].
+    resolution  : grid cell size [m].
+
+    Returns
+    -------
+    exceedance_counts : {threshold: {(ix,iy): count}}
+    x_min, y_min : grid origin
+    """
+    xs = [p[0] for run in all_points for p in run]
+    ys = [p[1] for run in all_points for p in run]
+    if not xs:
+        return {t: {} for t in thresholds}, 0.0, 0.0
+
+    x_min, y_min = min(xs), min(ys)
+    exceedance: Dict[float, Dict[Tuple[int, int], int]] = {t: {} for t in thresholds}
+
+    for run_pts, fl_dict in zip(all_points, all_fl_data):
+        if fl_dict is None:
+            continue
+        visited: set = set()
+        for x, y in run_pts:
+            ix = int((x - x_min) / resolution)
+            iy = int((y - y_min) / resolution)
+            key = (ix, iy)
+            if key in visited:
+                continue
+            visited.add(key)
+            # Look up flame length in the plotfile dict (nearest key)
+            fl_val = fl_dict.get((round(x, 2), round(y, 2)), 0.0)
+            for t in thresholds:
+                if fl_val > t:
+                    exceedance[t][key] = exceedance[t].get(key, 0) + 1
+
+    return exceedance, x_min, y_min
+
+
+def write_flame_length_exceedance_csv(
+    out_path: str,
+    exceedance: Dict[Tuple[int, int], int],
+    n_runs: int,
+    threshold: float,
+    x_origin: float,
+    y_origin: float,
+    resolution: float,
+) -> None:
+    """Write P(FL > threshold) CSV: X, Y, P_fl_exceed."""
+    with open(out_path, "w") as f:
+        f.write(f"# Conditional flame length exceedance  FL > {threshold:.2f} m\n")
+        f.write(f"# n_runs = {n_runs}  resolution = {resolution} m\n")
+        f.write("X,Y,P_fl_exceed\n")
+        for (ix, iy), cnt in sorted(exceedance.items()):
+            x = x_origin + (ix + 0.5) * resolution
+            y = y_origin + (iy + 0.5) * resolution
+            p = cnt / n_runs
+            f.write(f"{x:.2f},{y:.2f},{p:.4f}\n")
+    print(f"  Wrote P(FL>{threshold:.1f}m) CSV: {out_path}  ({len(exceedance)} cells)")
 
 
 # ---------------------------------------------------------------------------
@@ -420,13 +625,16 @@ def run_member(
     mpirun: str = "mpirun",
     mpi_extra_args: Optional[List[str]] = None,
     csv_files: Optional[List[str]] = None,
-) -> Optional[List[Tuple[float, float]]]:
-    """Execute one ensemble member. Returns list of burned (x,y) or None on failure.
+    read_flame_length: bool = False,
+) -> Optional[Tuple[List[Tuple[float, float]], Optional[Dict[Tuple[float, float], float]]]]:
+    """Execute one ensemble member.
+
+    Returns (burned_points, flame_length_dict) or None on failure.
 
     Parameters
     ----------
     run_id : int
-        Ensemble member index (used for directory name and log messages).
+        Ensemble member index.
     exe : str
         Path to the solver executable.
     template_lines : list[str]
@@ -437,18 +645,19 @@ def run_member(
         Base directory for per-run scratch directories.
     keep : bool
         If False, plotfile and checkpoint sub-directories are removed after
-        the run to save disk space.
+        the run to save disk space (phi_negative .dat files are kept).
     mpi_ranks : int, optional
-        Number of MPI ranks per member.  0 (default) → serial run without
-        any MPI launcher.
+        Number of MPI ranks per member.  0 (default) → serial.
     mpirun : str, optional
         MPI launcher executable name or path (default: ``"mpirun"``).
     mpi_extra_args : list[str] or None, optional
-        Extra arguments inserted between the launcher and ``-n N``, e.g.
-        ``["--bind-to", "core"]`` (default: empty list).
+        Extra arguments inserted between the launcher and ``-n N``.
     csv_files : list[str] or None, optional
-        Pre-collected list of CSV file paths to copy into the run directory
-        so the solver can find them when run with ``cwd=run_dir``.
+        Pre-collected list of CSV file paths to copy into the run directory.
+    read_flame_length : bool, optional
+        If True, read the ``flame_length`` field from the final plotfile and
+        return it as a dict {(x, y): fl_m}.  Requires plot_int > 0 in
+        the template inputs file (default: False).
     """
     if mpi_extra_args is None:
         mpi_extra_args = []
@@ -483,11 +692,16 @@ def run_member(
         if result.returncode != 0:
             print(f"  WARNING: run {run_id} exited with code {result.returncode}", flush=True)
         pts = read_phi_negative(run_dir)
+        fl_dict: Optional[Dict[Tuple[float, float], float]] = None
+        if read_flame_length:
+            fl_dict = _read_plotfile_field(run_dir, "flame_length")
         launch_info = (f"mpi×{mpi_ranks}" if mpi_ranks > 0 else "serial")
         print(f"  Run {run_id:4d} [{launch_info}]: speed×{sample['speed_factor']:.2f}  "
               f"dir+{sample['dir_offset']:.1f}°  M_d1+{sample['moist_offset']:.3f}  "
-              f"→ {len(pts)} burned cells", flush=True)
-        return pts
+              f"→ {len(pts)} burned cells"
+              + (f"  FL cells: {len(fl_dict)}" if fl_dict is not None else ""),
+              flush=True)
+        return pts, fl_dict
     except subprocess.TimeoutExpired:
         print(f"  WARNING: run {run_id} timed out", flush=True)
         return None
@@ -550,8 +764,20 @@ def main(argv=None):
                         help="Number of parallel runs (default: 1)")
     parser.add_argument("--keep-runs",        action="store_true",
                         help="Keep individual run directories after aggregation")
+    # ---- flame length exceedance ----
+    parser.add_argument("--fl-thresholds",    nargs="+", type=float, default=None,
+                        metavar="M",
+                        help="Compute P(FL > M) maps for each flame-length threshold [m]. "
+                             "Requires plot_int > 0 in inputs.i so plotfiles are written. "
+                             "Example: --fl-thresholds 0.5 1.0 2.0 4.0")
+    parser.add_argument("--fl-out-prefix",   default="fl_exceedance",
+                        help="Output file prefix for P(FL>M) CSVs "
+                             "(default: fl_exceedance; produces fl_exceedance_0.5m.csv etc.)")
 
     args = parser.parse_args(argv)
+
+    fl_thresholds: List[float] = sorted(args.fl_thresholds) if args.fl_thresholds else []
+    do_fl = len(fl_thresholds) > 0
 
     # Validate
     if not os.path.isfile(args.inputs):
@@ -580,6 +806,9 @@ def main(argv=None):
     else:
         print("Launch mode: serial (use --mpi-ranks N for MPI)")
 
+    if do_fl:
+        print(f"Flame length exceedance thresholds [m]: {fl_thresholds}")
+
     with open(args.inputs) as f:
         template_lines = f.readlines()
 
@@ -605,6 +834,7 @@ def main(argv=None):
     csv_files: List[str] = glob.glob(os.path.join(os.getcwd(), "*.csv"))
 
     all_points: List[List[Tuple[float, float]]] = []
+    all_fl_data: List[Optional[Dict[Tuple[float, float], float]]] = []
     failed = 0
 
     if args.jobs > 1:
@@ -612,22 +842,26 @@ def main(argv=None):
             futures = {
                 pool.submit(run_member, i, args.exe, template_lines,
                             samples[i], work_dir, args.keep_runs,
-                            mpi_ranks, mpirun_cmd, mpi_extra, csv_files): i
+                            mpi_ranks, mpirun_cmd, mpi_extra, csv_files, do_fl): i
                 for i in range(args.n_runs)
             }
             for fut in as_completed(futures):
-                pts = fut.result()
-                if pts is not None:
+                result = fut.result()
+                if result is not None:
+                    pts, fl_dict = result
                     all_points.append(pts)
+                    all_fl_data.append(fl_dict)
                 else:
                     failed += 1
     else:
         for i, sample in enumerate(samples):
-            pts = run_member(i, args.exe, template_lines, sample,
-                             work_dir, args.keep_runs,
-                             mpi_ranks, mpirun_cmd, mpi_extra, csv_files)
-            if pts is not None:
+            result = run_member(i, args.exe, template_lines, sample,
+                                work_dir, args.keep_runs,
+                                mpi_ranks, mpirun_cmd, mpi_extra, csv_files, do_fl)
+            if result is not None:
+                pts, fl_dict = result
                 all_points.append(pts)
+                all_fl_data.append(fl_dict)
             else:
                 failed += 1
 
@@ -660,6 +894,26 @@ def main(argv=None):
 
     if args.geojson:
         write_burn_probability_geojson(args.geojson, counts, n_success, x0, y0, res)
+
+    # ---- Flame length exceedance maps ----
+    if do_fl and any(fl is not None for fl in all_fl_data):
+        print(f"\nComputing flame length exceedance maps for {len(fl_thresholds)} threshold(s) ...")
+        exceedance, xe0, ye0 = accumulate_flame_length(
+            all_fl_data, all_points, fl_thresholds, resolution
+        )
+        for t in fl_thresholds:
+            exc_counts = exceedance[t]
+            if not exc_counts:
+                print(f"  No cells exceed FL > {t:.1f} m")
+                continue
+            suffix = f"{t:.1f}m".replace(".", "p")
+            out_fl = f"{args.fl_out_prefix}_{suffix}.csv"
+            write_flame_length_exceedance_csv(
+                out_fl, exc_counts, n_success, t, xe0, ye0, resolution
+            )
+    elif do_fl:
+        print("WARNING: --fl-thresholds requested but no flame_length data was read "
+              "(ensure plot_int > 0 in inputs.i).", file=sys.stderr)
 
     if not args.keep_runs and args.work_dir is None:
         # Clean up the auto-created temp directory
