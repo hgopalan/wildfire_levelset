@@ -15,18 +15,19 @@ permissions:
   contents: read
 
 jobs:
+  # ── Linux & macOS CPU builds ──────────────────────────────────────────────
   build:
     name: Build (${{ matrix.os }}, ${{ matrix.build_type }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         build_type: [Release, Debug]
 
     steps:
       - name: Checkout repository (with submodules)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
@@ -44,10 +45,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      - name: Set up MSVC environment (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Configure (3D, CPU-only)
         shell: bash
         run: |
@@ -62,11 +59,133 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Verify executable exists (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Verify executable exists
         run: test -f build/levelset
 
-      - name: Verify executable exists (Windows)
-        if: runner.os == 'Windows'
+  # ── Windows CPU build (AMReX Windows settings: MSVC, no Ninja) ───────────
+  build_windows:
+    name: Build (windows-latest, ${{ matrix.build_type }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Configure (3D, CPU-only)
+        run: |
+          cmake -S . -B build `
+            -DCMAKE_VERBOSE_MAKEFILE=ON `
+            -DLEVELSET_USE_VENDORED_AMREX=ON `
+            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_ENABLE_MPI=OFF `
+            -DLEVELSET_ENABLE_EB=OFF
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} -j 4
+
+      - name: Verify executable exists
         shell: pwsh
-        run: if (!(Test-Path build/levelset.exe -PathType Leaf)) { exit 1 }
+        run: |
+          if (!(Test-Path "build/${{ matrix.build_type }}/levelset.exe" -PathType Leaf)) { exit 1 }
+
+  # ── CUDA build on Linux (Ubuntu) ─────────────────────────────────────────
+  build_cuda:
+    name: Build CUDA (ubuntu-22.04, Release)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '12.6.1'
+          method: 'network'
+          use-github-cache: 'false'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build
+
+      - name: Configure (3D, CUDA)
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_GPU_BACKEND=CUDA \
+            -DAMReX_CUDA_ARCH="8.0"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+  # ── Windows + CUDA build ──────────────────────────────────────────────────
+  build_windows_cuda:
+    name: Build Windows CUDA (windows-2022, Release)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.35
+        id: cuda-toolkit
+        with:
+          cuda: '12.6.1'
+          sub-packages: '["nvcc", "cudart", "cuda_profiler_api"]'
+          method: 'network'
+          use-github-cache: 'false'
+
+      - name: Install Ninja
+        run: |
+          curl.exe -L -o ninja-win.zip https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
+          Expand-Archive -Path ninja-win.zip -DestinationPath .
+          echo "$pwd" >> $env:GITHUB_PATH
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (3D, CUDA)
+        run: |
+          cmake -S . -B build `
+            -G "Ninja" `
+            -DCMAKE_VERBOSE_MAKEFILE=ON `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DLEVELSET_USE_VENDORED_AMREX=ON `
+            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_ENABLE_MPI=OFF `
+            -DLEVELSET_ENABLE_EB=OFF `
+            -DLEVELSET_GPU_BACKEND=CUDA `
+            -DAMReX_CUDA_ARCH="8.0" `
+            -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_CUDA_COMPILER=nvcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
