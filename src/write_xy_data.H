@@ -593,7 +593,7 @@ static void append_fire_stats(const MultiFab& phi,
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
-    long n_burned = 0, n_perim = 0, n_active = 0;
+    amrex::Long n_burned = 0, n_perim = 0, n_active = 0;
     Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
@@ -639,7 +639,7 @@ static void append_fire_stats(const MultiFab& phi,
     Real burned_ha    = static_cast<Real>(n_burned) * cell_area / Real(1.0e4);
     Real perim_km     = static_cast<Real>(n_perim)  * std::sqrt(cell_area) / Real(1000.0);
     // Convert domain-sum emission [kg/m²·cell] to mean [kg/m²]
-    long total_cells  = geom.Domain().numPts();
+    amrex::Long total_cells  = geom.Domain().numPts();
     Real mean_co2  = (total_cells > 0) ? sum_co2  / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_co   = (total_cells > 0) ? sum_co   / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_pm25 = (total_cells > 0) ? sum_pm25 / static_cast<Real>(total_cells) : Real(0.0);

@@ -827,7 +827,7 @@ int main(int argc, char* argv[])
       }
       // Print burned area and perimeter statistics
       {
-        long n_burned = 0, n_perim = 0;
+        amrex::Long n_burned = 0, n_perim = 0;
         const auto dxx = geom.CellSize();
         for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
           const Box& bx = mfi.validbox();
@@ -1148,7 +1148,7 @@ int main(int argc, char* argv[])
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
-	  long n_burned = 0, n_perim = 0;
+	  amrex::Long n_burned = 0, n_perim = 0;
 	  const auto dxx = geom.CellSize();
 	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
 	    const Box& bx = mfi.validbox();
@@ -1273,7 +1273,7 @@ int main(int argc, char* argv[])
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{
-	  long n_burned = 0, n_perim = 0;
+	  amrex::Long n_burned = 0, n_perim = 0;
 	  const auto dxx = geom.CellSize();
 	  for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
 	    const Box& bx = mfi.validbox();
