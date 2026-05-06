@@ -14,7 +14,7 @@ with open("barrier_north.csv", "w") as f:
     f.write("# X Y\n")
     for x, y in north_pts:
         f.write(f"{x:.1f} {y:.1f}\n")
-print("Created barrier_north.csv  (%d points)" % len(north_pts))
+print(f"Created barrier_north.csv  ({len(north_pts)} points)")
 
 # East barrier: short vertical stub at x=350 m from y=200 to y=300 m
 east_pts = [(350.0, y) for y in range(200, 310, 10)]
@@ -22,4 +22,4 @@ with open("barrier_east.csv", "w") as f:
     f.write("# X Y\n")
     for x, y in east_pts:
         f.write(f"{x:.1f} {y:.1f}\n")
-print("Created barrier_east.csv  (%d points)" % len(east_pts))
+print(f"Created barrier_east.csv  ({len(east_pts)} points)")
