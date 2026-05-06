@@ -269,6 +269,8 @@ int main(int argc, char* argv[])
     }
         
     // Initialize velocity field
+
+#if (AMREX_SPACEDIM == 2)
     // Storage for time-dependent wind field data
     std::vector<Real> wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1;
     std::vector<Real> wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2;
