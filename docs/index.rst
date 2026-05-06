@@ -16,6 +16,7 @@ Welcome to the documentation for the Wildfire Level-Set Solver, an AMReX-based C
    usage
    tools
    regtests
+   comparison
    api_reference
 
 Overview
