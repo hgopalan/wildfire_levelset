@@ -5,7 +5,7 @@
 
 # Wildfire-AMR
 
-An AMReX-based C++ level-set solver for wildfire front propagation modeling with FARSITE elliptical expansion, Rothermel fire spread equations, and terrain effects.
+A unified AMReX-based C++ wildfire front propagation framework providing a single interface to operational fire behaviour tools — FARSITE, BehavePlus-style spread models, and physics-based alternatives — with a path toward future two-way coupling with the Energy Research and Forecasting (ERF) atmospheric model.
 
 ## Documentation
 
