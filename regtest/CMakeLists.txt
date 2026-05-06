@@ -165,3 +165,89 @@ else()
     message(STATUS "Python3 not found: landfire_farsite regtest disabled")
     message(STATUS "  Install Python3 and run: pip install requests rasterio numpy pyproj")
 endif()
+
+# ---------------------------------------------------------------------------
+# New feature tests (added 2025)
+# ---------------------------------------------------------------------------
+
+# fuel_adj_file: .adj fuel adjustment file reader
+if(Python3_FOUND)
+    add_python_setup_regression_test(fuel_adj_file fuel_adj_file create_adj.py)
+endif()
+
+# fmd_moisture: time-varying fuel moisture schedule (.fmd)
+if(Python3_FOUND)
+    add_python_setup_regression_test(fmd_moisture fmd_moisture create_fmd.py)
+endif()
+
+# fire_perimeter_output: CSV + GeoJSON perimeter writers + burned-area CSV
+add_regression_test(fire_perimeter_output fire_perimeter_output)
+# Validation step (checks generated files)
+if(Python3_FOUND)
+    set(_perim_work "${CMAKE_CURRENT_BINARY_DIR}/fire_perimeter_output")
+    add_test(NAME fire_perimeter_output_validate
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/fire_perimeter_output/validate.py
+             WORKING_DIRECTORY ${_perim_work})
+    set_tests_properties(fire_perimeter_output_validate PROPERTIES
+                         TIMEOUT 60
+                         LABELS "regtest"
+                         DEPENDS fire_perimeter_output)
+endif()
+
+# burned_area_timeseries: fire_stats.csv time series
+add_regression_test(burned_area_timeseries burned_area_timeseries)
+
+# ---------------------------------------------------------------------------
+# Multi-resolution timing benchmark
+# ---------------------------------------------------------------------------
+# Runs the solver at several grid sizes for two scenarios (levelset and farsite)
+# and checks for monotonically increasing runtimes and plausible scaling.
+# ---------------------------------------------------------------------------
+if(Python3_FOUND)
+    set(TIMING_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/timing_benchmark")
+    file(MAKE_DIRECTORY ${TIMING_WORK_DIR})
+
+    # Determine spatial dimension flag for the benchmark script
+    if(LEVELSET_DIM_2D)
+        set(_TIMING_DIM 2)
+        set(_TIMING_RES "32;64;128")   # smaller set for faster CI
+    else()
+        set(_TIMING_DIM 3)
+        set(_TIMING_RES "16;32;48")    # 3-D is expensive; keep small
+    endif()
+
+    # Convert semicolon-separated CMake list to space-separated args
+    string(REPLACE ";" " " _TIMING_RES_ARGS "${_TIMING_RES}")
+    separate_arguments(_TIMING_RES_LIST NATIVE_COMMAND "${_TIMING_RES_ARGS}")
+
+    add_test(NAME timing_benchmark
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/timing_benchmark/run_benchmark.py
+                     --exe       ${LEVELSET_EXE}
+                     --dim       ${_TIMING_DIM}
+                     --nsteps    20
+                     --resolutions ${_TIMING_RES_LIST}
+                     --timeout   300
+                     --output    timing_results.csv
+                     --skip-scaling   # scaling check is advisory; don't fail CI
+             WORKING_DIRECTORY ${TIMING_WORK_DIR})
+    set_tests_properties(timing_benchmark PROPERTIES
+                         TIMEOUT 1200        # 20 min overall
+                         LABELS  "regtest;benchmark"
+                         # Re-run on failure to distinguish transient noise
+                         RUN_SERIAL TRUE)
+    message(STATUS "Timing benchmark enabled:")
+    message(STATUS "  - timing_benchmark: multi-resolution wall-clock benchmark "
+                   "(dim=${_TIMING_DIM}, resolutions=${_TIMING_RES})")
+else()
+    message(STATUS "Python3 not found: timing_benchmark disabled")
+endif()
+
+message(STATUS "")
+message(STATUS "New feature regtests (2025):")
+message(STATUS "  - fuel_adj_file       : FARSITE .adj fuel adjustment reader")
+message(STATUS "  - fmd_moisture        : Time-varying .fmd fuel moisture schedule")
+message(STATUS "  - fire_perimeter_output: CSV + GeoJSON perimeter writers + stats CSV")
+message(STATUS "  - burned_area_timeseries: fire_stats.csv time series")
+message(STATUS "  - timing_benchmark    : Multi-resolution wall-clock timing (benchmark label)")

@@ -28,9 +28,15 @@ The documentation includes:
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Alternative fire shape models** for the FARSITE propagation path (`farsite.fire_shape_model`): Catchpole & de Mestre (1986) true double-ellipse, Wilson (1988) single ellipse from rear focus, and Alexander et al. lemniscate (Limaçon) — see [mathematical models documentation](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html#alternative-fire-shape-models)
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
-- **FARSITE landscape files** (`.lcp`) with per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
+- **Binary and ASCII FARSITE landscape files** (`.lcp`) — the solver auto-detects binary vs ASCII format: binary `.lcp` files (FARSITE 4 format) are read natively, including **spatially-varying crown fuel layers** (CBH, CBD, canopy cover) when present (`CrownFuels != 0`); ASCII `X Y ELEV SLOPE ASPECT FUEL` format is also supported; all formats provide per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
+- **Spatial crown fuel layers** from binary LCP — per-cell crown base height (CBH), crown bulk density (CBD), and canopy cover are populated from the landscape file when `use_spatial_crown = 1` (default); written to every plotfile as `cbh`, `cbd`, and `canopy_cover` fields; the global `crown.*` scalars serve as fallbacks when no crown layers are present
+- **Fuel adjustment file (`.adj`)** — per-fuel-model rate-of-spread multipliers loaded from a FARSITE `.adj` file (`fuel_adj_file`); applied once at startup to the Rothermel lookup table; compatible with any landscape fuel type
+- **Time-varying fuel moisture (`.fmd`)** — diurnal or scenario-driven moisture schedules loaded from a FARSITE-compatible `.fmd` file (`fmd_file`); the solver interpolates linearly between timestamps and updates `M_d1`, `M_d10`, `M_d100`, `M_lh`, `M_lw` at every time step; rebuilds the Rothermel / Balbi lookup tables on each update
 - **Per size-class fuel moisture**: 1-hr, 10-hr, 100-hr dead fuel; live herbaceous and live woody moisture inputs for the multi-class Rothermel (1972) reaction intensity
 - **Fire behavior diagnostics**: Byram (1959) fireline intensity [kW/m] and flame length [m] written to every plotfile
+- **Scott / Albini (1979) maximum spotting distance table** — built-in lookup table of maximum typical spotting distances [m] by fuel model code (FBFM13 and FBFM40), optionally scaled by ambient wind speed; printed as a diagnostic alongside each Albini spotting step; functions `get_max_spot_dist_m()` and `get_max_spot_dist_scaled_m()` available in `src/scott_spotting_table.H`
+- **Fire perimeter CSV / GeoJSON writer** — at every plotfile write, the fire front boundary (cells with φ < 0 adjacent to φ ≥ 0) is extracted and written as `perimeter_NNNN.csv` (comma-separated X, Y; `write_perimeter_csv = 1`) and/or `perimeter_NNNN.geojson` (GeoJSON Polygon, `write_perimeter_geojson = 1`)
+- **Burned area / perimeter time series** — `fire_stats.csv` is created at startup and a row is appended at every plotfile step with: `step`, `time_s`, `burned_area_ha`, `perimeter_km`, `active_front_cells`, mean CO₂/CO/PM₂.₅ emissions (`fire_stats_file` parameter)
 - **Weise & Biging (1996) fire whirl model** – optional diagnostic sub-model computing flame tilt, whirl height/radius, angular velocity, and tangential velocity from fireline intensity and wind; enabled via `weise_biging.enable = 1`
 - **Viegas (2004) eruptive fire diagnostics** – optional parallel diagnostic that computes the Viegas exponential slope enhancement factor, eruptive-regime flag (critical slope), Viegas ROS, ROS excess vs primary model, and flame-tilt angle for hazard assessment; enabled via `viegas.enable = 1`; works with both Rothermel (R₀ baseline) and Balbi (amplitude A baseline); by default diagnostic-only, but can be coupled to fire propagation via the **wind-terrain feedback model** (see below)
 - **Wind-terrain feedback models** – seven selectable options (`wind_terrain.model`) for how terrain-induced or fire-feedback winds modify fire spread: (1) default, no modification; (2) Viegas ROS as actual spread rate (works with both Rothermel and Balbi); (3) Viegas-induced buoyancy wind as velocity perturbation (eruptive cells only); (4) Rothermel (1983) canyon wind amplification; (5) Viegas & Neto (1994) buoyancy-driven upslope wind; (6) Pimont et al. (2009) exponential slope correction; (7) **WindNinja ridge/canyon empirical speed-up** based on wind-slope alignment: ridge acceleration when wind climbs upslope (`f = 1 + k_ridge × tan φ × alignment`), canyon channeling when wind descends (`f = 1 + k_canyon_wn × tan φ × |alignment|`)
@@ -247,6 +253,87 @@ complete option references and worked examples.
 | `farsite_weather_reader.py` | Parse FARSITE `.wtr` RAWS weather files → time-stamped wind CSVs |
 | `fuel_moisture_from_weather.py` | Estimate equilibrium dead-fuel moisture from temperature and RH |
 | `plotfile_to_geotiff.py` | Convert AMReX plotfiles → GeoTIFF rasters and GeoJSON fire-perimeter contours |
+| `farsite_adj_reader.py` | Inspect, generate, and apply FARSITE `.adj` fuel adjustment files |
+| `farsite_fmd_reader.py` | Parse, convert, query, and generate FARSITE `.fmd` fuel moisture schedules |
+
+### `farsite_adj_reader.py` — FARSITE fuel adjustment files
+
+Reads per-fuel-model ROS multipliers from a FARSITE `.adj` file (``fuel_adj_file`` parameter), generates template files, and can apply adjustments to a Rothermel parameter CSV for inspection.
+
+```bash
+# Inspect an existing .adj file
+python3 tools/farsite_adj_reader.py --adj fire.adj
+
+# Generate a template for all FBFM13 models with adj_factor = 1.0
+python3 tools/farsite_adj_reader.py --generate --fuel-system 13 \
+    --output template_13.adj
+
+# Generate a template for specific models
+python3 tools/farsite_adj_reader.py --generate --models 4 9 10 \
+    --output chaparral_adj.adj
+
+# Apply adjustments to a Rothermel CSV for calibration inspection
+python3 tools/farsite_adj_reader.py --adj fire.adj \
+    --apply-csv rothermel_params.csv \
+    --output rothermel_adjusted.csv
+```
+
+**Fuel adjustment file format** (`fire.adj`):
+```
+# Comments start with # or !
+1
+4  1.35    # FM4 chaparral: 35% ROS increase
+10 0.85    # FM10: 15% ROS decrease
+```
+
+Integrate with the solver via `inputs.i`:
+```
+fuel_adj_file  = fire.adj
+fuel_adj_model = 4        # global model code for single-model runs (no landscape)
+```
+
+### `farsite_fmd_reader.py` — FARSITE fuel moisture schedules
+
+Reads, converts, queries, and generates FARSITE-compatible `.fmd` fuel moisture schedule files.  The solver reads these via `fmd_file` and updates moisture at every time step.
+
+```bash
+# Inspect a .fmd file
+python3 tools/farsite_fmd_reader.py --fmd fire.fmd
+
+# Convert to a flat CSV for analysis
+python3 tools/farsite_fmd_reader.py --fmd fire.fmd --output moisture.csv
+
+# Query interpolated moisture at t = 3600 s for FM4
+python3 tools/farsite_fmd_reader.py --fmd fire.fmd \
+    --query-time 3600 --fuel-model 4
+
+# Generate a 24-hour constant-moisture template for FBFM13 models
+python3 tools/farsite_fmd_reader.py --generate \
+    --models 4 9 10 \
+    --start-month 7 --start-day 15 --hours 24 \
+    --M-d1 8 --M-d10 10 --M-d100 15 \
+    --M-lh 90 --M-lw 120 \
+    --output summer_moisture.fmd
+```
+
+**FMD file format** (`fire.fmd`):
+```
+# MONTH DAY HOUR PRECIP NUM_MODELS
+7 15  800 0 2
+4  8 10 15 90 120
+9  9 11 16 88 115
+7 15 1400 0 2
+4 12 14 18 95 125
+9 13 16 20 92 120
+```
+
+Integrate with the solver via `inputs.i`:
+```
+fmd_file        = summer_moisture.fmd
+fmd_start_month = 7
+fmd_start_day   = 15
+fmd_fuel_model  = 0    # 0 = apply global schedule to all models
+```
 
 **Quick examples:**
 
@@ -284,17 +371,29 @@ cd build
 ctest -L regtest --output-on-failure
 ```
 
+Run only the timing benchmark:
+```bash
+ctest -L benchmark --output-on-failure -V
+```
+
 Or use the custom target:
 ```bash
 make regtest
 ```
 
 Available regression tests:
+
+**Core functionality**
 - `basic_levelset` - Basic level-set advection
 - `farsite_ellipse` - FARSITE elliptical expansion
 - `rothermel_fuel` - Rothermel with fuel models
 - `anderson_lw` - Anderson dynamic L/W ratio
 - `cheney_gould_grassfire` - Cheney & Gould (1995/1998) grassland fire spread
+- `catchpole_demestre` - Catchpole & de Mestre (1986) double-ellipse shape
+- `wilson_spread` - Wilson (1988) single ellipse from rear focus
+- `alexander_lemniscate` - Alexander et al. lemniscate (Limaçon) shape
+
+**Advanced features (uncomment in `regtest/CMakeLists.txt` to enable)**
 - `reinitialization` - Level-set reinitialization
 - `ellipse_sdf` - Elliptical SDF initial conditions
 - `eb_implicit` - Embedded boundary capabilities
@@ -302,17 +401,85 @@ Available regression tests:
 - `albini_spotting` - Albini (1983) physics-based firebrand spotting
 - `crown_initiation` - Crown fire initiation
 - `bulk_fuel_consumption` - Fuel consumption modeling
+
+**New feature tests (2025)**
+- `fuel_adj_file` — FARSITE `.adj` fuel adjustment file reader (requires Python3)
+- `fmd_moisture` — Time-varying `.fmd` fuel moisture schedule reader (requires Python3)
+- `fire_perimeter_output` — CSV + GeoJSON perimeter writers and `fire_stats.csv` time series
+- `fire_perimeter_output_validate` — Validates perimeter file contents after the solver run
+- `burned_area_timeseries` — `fire_stats.csv` burned area / perimeter / emissions time series
+
+**Dimension-specific tests**
 - `3d_sphere` - Full 3D simulation (3D builds only)
 - `terrain_wind` - External terrain and wind (2D builds only)
-- `time_dependent_wind` - Time-varying wind fields
-- `terrain_wind_preprocess` - Preprocessing tool integration (uses `wrf_wind_reader.py`)
-- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires Python3 + `landscape_writer.py`)
+- `time_dependent_wind` - Time-varying wind fields (2D builds only)
+
+**External data tests (requires Python3)**
+- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires `landscape_writer.py`)
+
+**Timing benchmark**
+- `timing_benchmark` *(label: `benchmark`)* — Multi-resolution wall-clock timing benchmark; runs the solver at several grid sizes for both `levelset` and `farsite` scenarios; checks monotonically increasing runtime and estimates scaling exponent α; writes `timing_results.csv`. Run manually:
+
+```bash
+# From the build directory:
+python3 ../regtest/timing_benchmark/run_benchmark.py \
+    --exe ./levelset --dim 2 --nsteps 20 \
+    --resolutions 32 64 128 256
+
+# Dry-run: preview generated inputs without running solver
+python3 ../regtest/timing_benchmark/run_benchmark.py \
+    --exe ./levelset --dim 2 --dry-run
+
+# 3D benchmark with custom resolutions
+python3 ../regtest/timing_benchmark/run_benchmark.py \
+    --exe ./levelset --dim 3 --nsteps 15 \
+    --resolutions 16 32 48 64
+```
+
+The `timing_results.csv` written to the CTest working directory contains:
+`scenario, n_cells, total_cells, wall_time_s, nsteps, steps_per_second, cells_per_step_per_s, returncode`
 
 ## Output
 
 Plotfiles are written as `plt####` directories containing:
 - `phi` - Level-set function (signed distance or indicator)
 - `velx/y/z` - Velocity field components
+- `farsite_dx/dy/dz` - FARSITE spread displacements
+- `R` - Rothermel rate of spread [m/s]
+- `fireline_intensity` - Byram (1959) fireline intensity [kW/m]
+- `flame_length` - Byram (1959) flame length [m]
+- `weise_flame_height` - Weise & Biging vertical flame height [m] (if enabled)
+- `weise_flame_tilt` - Weise & Biging flame tilt angle [rad] (if enabled)
+- `weise_whirl_height` - Weise & Biging fire whirl height [m] (if enabled)
+- `weise_whirl_radius` - Weise & Biging fire whirl core radius [m] (if enabled)
+- `weise_angular_velocity` - Weise & Biging angular velocity [rad/s] (if enabled)
+- `weise_max_tang_vel` - Weise & Biging maximum tangential velocity [m/s] (if enabled)
+- `spot_prob/count/dist/active` - Stochastic spotting fields (if enabled)
+- `albini_spot_count/active` - Albini spotting fields (if enabled)
+- `fuel_consumption` - Fuel consumption fraction (if enabled)
+- `crown_fraction` - Crown fire fraction (if enabled)
+- `elevation` - Terrain elevation [m]
+- `slope` - Terrain slope [degrees]
+- `aspect` - Terrain aspect [degrees]
+- `fuel_model` - Per-cell fuel model code
+- `cbh` - Crown base height [m] (from binary LCP crown layers or global `crown.CBH`)
+- `cbd` - Crown bulk density [kg/m³] (from binary LCP or global `crown.CBD`)
+- `canopy_cover` - Canopy cover [%] (from binary LCP layer 4)
+- `scorch_height` - Van Wagner (1973) scorch height [m] (always present)
+- `prob_ignition` - Anderson (1970) probability of sustained ignition [-] (always present)
+- `tree_mortality` - Ryan-Reinhardt (1988) style tree mortality fraction [-] (always present)
+- `crown_activity` - Crown activity class: 0=surface, 1=passive, 2=active (always present)
+- `co2_emissions` / `co_emissions` / `pm25_emissions` - Fuel emissions [kg/m²] (always present)
+- `arrival_time` - Simulation time when each cell first burned [s]
+- `heat_per_unit_area` - Heat per unit area [kJ/m²]
+- `vorticity_z` - Vertical vorticity component [1/s]
+
+**Additional output files** (written alongside each plotfile):
+- `phi_negative_NNNN.dat` — x,y coordinates of all burned cells (φ < 0)
+- `phi_envelope_NNNN.dat` — convex hull of the burned region
+- `perimeter_NNNN.csv` — fire front boundary cells (X,Y columns), enabled via `write_perimeter_csv = 1`
+- `perimeter_NNNN.geojson` — fire front as a GeoJSON Polygon, enabled via `write_perimeter_geojson = 1`
+- `fire_stats.csv` — time series of burned area [ha], perimeter [km], active front cells, and mean emissions; appended at every plotfile step (configured via `fire_stats_file`)
 - `farsite_dx/dy/dz` - FARSITE spread displacements
 - `R` - Rothermel rate of spread [m/s]
 - `fireline_intensity` - Byram (1959) fireline intensity [kW/m]
