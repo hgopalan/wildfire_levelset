@@ -16,13 +16,19 @@
 // Terrain-following initialisation:
 //   For each horizontal column (i, j) the local terrain elevation z_s is
 //   interpolated from the data file with inverse-distance weighting (IDW).
-//   The height above ground level (AGL) of cell centre (i, j, k) is
-//       z_agl = (k + 0.5) * dz  [uniform vertical grid in AGL space]
-//   so the lowest model level always lies dz/2 above the terrain surface.
+//   The vertical domain spans [z_lo, z_hi] where
+//       z_lo = min terrain elevation   (= zs_min from the terrain file)
+//       z_hi = max terrain elevation + domain_height
+//   The physical height of cell centre (i, j, k) is
+//       z_phys = z_lo + (k + 0.5) * dz
+//   The height above ground level (AGL) for column (i, j) is
+//       z_agl(i,j,k) = z_phys - z_terrain(i,j)
+//   Cells where z_agl <= 0 are inside the terrain and are zeroed/masked.
 //   The log-law profile is evaluated at z_agl:
 //       u(z_agl) = u* / κ  * ln((z_agl + z0) / z0)
 //       u*       = κ * |U_ref| / ln((z_ref + z0) / z0)
-//   Cells at z_agl <= 0 (sub-surface) are zeroed and masked in the solve.
+//   u* is constant (z_ref is height above local terrain), but z_agl varies
+//   per column, so the log-law is applied independently for each (i, j).
 //
 // Mass-consistent correction (Lagrange multiplier method, Sherman 1978):
 //   Minimise E = ∫[(u−u₀)²/α_h² + (v−v₀)²/α_h² + (w−w₀)²/α_v²] dV
@@ -36,12 +42,13 @@
 //
 // Terrain-aligned extraction:
 //   After the corrected wind field is computed, an optional 2-D slice can be
-//   extracted and written as a CSV.  The slice follows the terrain surface at
-//   a constant height above ground level (AGL), so each row records the local
-//   terrain elevation and the resulting physical extraction height:
-//       z_physical(i,j) = z_terrain(i,j) + z_agl_requested
+//   extracted and written as a CSV.  The slice is taken at a fixed k-index
+//   (constant physical z = z_lo + (k+0.5)*dz), so each row reports the
+//   per-column terrain elevation and the resulting per-column AGL:
+//       z_physical(k)  = z_lo + (k + 0.5) * dz   [m above sea-level]
+//       z_agl(i,j)     = z_physical(k) - z_terrain(i,j)
 //   Specify the extraction level with ONE of:
-//       extract_agl  = <height_m>   # AGL height [m] (snapped to nearest cell)
+//       extract_agl  = <height_m>   # target AGL [m] above minimum terrain (snapped to nearest cell)
 //       extract_k    = <k_index>    # explicit k-index (0 = lowest cell)
 //   The output CSV (extract_file) has columns:
 //       x, y, z_terrain, z_physical, z_agl, u, v, w, speed
@@ -56,8 +63,8 @@
 //   z0            = 0.1           # aerodynamic roughness length [m]
 //   dx            = 30.0          # grid spacing x [m]
 //   dy            = 30.0          # grid spacing y [m]
-//   dz            = 30.0          # grid spacing z (AGL) [m]
-//   domain_height = 300.0         # vertical extent above terrain base [m]
+//   dz            = 30.0          # grid spacing z [m]
+//   domain_height = 300.0         # vertical extent above maximum terrain elevation [m]
 //   alpha_h       = 1.0           # horizontal Lagrange anisotropy factor
 //   alpha_v       = 1.0           # vertical   Lagrange anisotropy factor
 //   mlmg_verbose  = 1             # MLMG verbosity (0 = silent, 4 = max)
@@ -237,39 +244,18 @@ int main(int argc, char* argv[])
         amrex::Print() << "wind_solver: terrain y [" << y_lo << ", " << y_hi << "] m\n";
 
         // ----------------------------------------------------------------
-        // 3. Determine grid dimensions from requested spacing
+        // 3. Determine horizontal grid dimensions from requested spacing
         // ----------------------------------------------------------------
         int nx = std::max(1, static_cast<int>(std::round((x_hi - x_lo) / dx_req)));
         int ny = std::max(1, static_cast<int>(std::round((y_hi - y_lo) / dy_req)));
-        int nz = std::max(1, static_cast<int>(std::round(domain_height / dz_req)));
 
-        // Actual cell sizes (may differ slightly from requested if domain
-        // size is not an exact multiple of dx_req / dy_req / dz_req).
+        // Actual horizontal cell sizes (may differ slightly from requested if the
+        // domain size is not an exact multiple of dx_req / dy_req).
         Real dx = (x_hi - x_lo) / nx;
         Real dy = (y_hi - y_lo) / ny;
-        Real dz = domain_height / nz;
-
-        amrex::Print() << "wind_solver: grid " << nx << " x " << ny << " x " << nz
-                       << "  (dx=" << dx << " m, dy=" << dy << " m, dz=" << dz << " m)\n";
-        amrex::Print() << "wind_solver: vertical domain [0, " << domain_height << "] m\n";
 
         // ----------------------------------------------------------------
-        // 4. Build AMReX geometry (Cartesian, non-periodic)
-        // ----------------------------------------------------------------
-        IntVect dom_lo(0, 0, 0);
-        IntVect dom_hi(nx - 1, ny - 1, nz - 1);
-        Box domain(dom_lo, dom_hi);
-
-        RealBox rb({x_lo, y_lo, 0.0}, {x_hi, y_hi, domain_height});
-        Array<int, AMREX_SPACEDIM> is_periodic{0, 0, 0};
-        Geometry geom(domain, &rb, CoordSys::cartesian, is_periodic.data());
-
-        BoxArray ba(domain);
-        ba.maxSize(max_grid_size);
-        DistributionMapping dm(ba);
-
-        // ----------------------------------------------------------------
-        // 5. Precompute per-column terrain height via IDW (host side)
+        // 4. Precompute per-column terrain height via IDW (host side)
         // ----------------------------------------------------------------
         // terrain_h[j*nx + i] = interpolated elevation at column (i,j) [m]
         std::vector<Real> terrain_h(static_cast<std::size_t>(nx) * ny);
@@ -296,8 +282,37 @@ int main(int argc, char* argv[])
                        << ", " << zs_max << "] m\n";
 
         // ----------------------------------------------------------------
+        // 5. Determine vertical domain and build AMReX geometry
+        //    Vertical range: [z_lo, z_hi] where
+        //        z_lo = minimum terrain elevation (= zs_min)
+        //        z_hi = maximum terrain elevation + domain_height
+        //    This ensures the domain covers all terrain and extends at least
+        //    domain_height metres above the highest terrain point.
+        // ----------------------------------------------------------------
+        Real z_lo = zs_min;
+        Real z_hi = zs_max + domain_height;
+        int  nz   = std::max(1, static_cast<int>(std::round((z_hi - z_lo) / dz_req)));
+        Real dz   = (z_hi - z_lo) / nz;
+
+        amrex::Print() << "wind_solver: grid " << nx << " x " << ny << " x " << nz
+                       << "  (dx=" << dx << " m, dy=" << dy << " m, dz=" << dz << " m)\n";
+        amrex::Print() << "wind_solver: vertical domain [" << z_lo
+                       << ", " << z_hi << "] m\n";
+
+        IntVect dom_lo(0, 0, 0);
+        IntVect dom_hi(nx - 1, ny - 1, nz - 1);
+        Box domain(dom_lo, dom_hi);
+
+        RealBox rb({x_lo, y_lo, z_lo}, {x_hi, y_hi, z_hi});
+        Array<int, AMREX_SPACEDIM> is_periodic{0, 0, 0};
+        Geometry geom(domain, &rb, CoordSys::cartesian, is_periodic.data());
+
+        BoxArray ba(domain);
+        ba.maxSize(max_grid_size);
+        DistributionMapping dm(ba);
+
+        // ----------------------------------------------------------------
         // 6. Allocate MultiFabs
-        //    vel0  – initial log-law wind (u0, v0, w0)       [3 comps, ng=1]
         //    lam   – Lagrange multiplier λ                   [1 comp,  ng=1]
         //    rhs   – Poisson RHS = -(∇·u0)                  [1 comp,  ng=0]
         // ----------------------------------------------------------------
@@ -331,6 +346,7 @@ int main(int argc, char* argv[])
         const Real ux_h      = ux_hat;
         const Real uy_h      = uy_hat;
         const Real dz_cap    = dz;
+        const Real z_lo_cap  = z_lo;   // physical z at bottom of domain
         const int  nx_cap    = nx;
 
         for (MFIter mfi(vel0); mfi.isValid(); ++mfi) {
@@ -340,7 +356,9 @@ int main(int argc, char* argv[])
             amrex::ParallelFor(bx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                Real z_agl = (k + Real(0.5)) * dz_cap; // height above local terrain
+                // Height above local terrain for this column
+                Real z_physical = z_lo_cap + (k + Real(0.5)) * dz_cap;
+                Real z_agl      = z_physical - d_terr_ptr[j * nx_cap + i];
 
                 if (z_agl <= Real(0.0)) {
                     vel(i, j, k, 0) = Real(0.0);
@@ -386,7 +404,8 @@ int main(int argc, char* argv[])
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
                 // Height above terrain for this cell
-                Real z_agl = (k + Real(0.5)) * dz_cap;
+                Real z_physical = z_lo_cap + (k + Real(0.5)) * dz_cap;
+                Real z_agl      = z_physical - d_terr_ptr[j * nx_cap + i];
                 if (z_agl <= Real(0.0)) { rh(i, j, k) = Real(0.0); return; }
 
                 // du/dx
@@ -505,7 +524,8 @@ int main(int argc, char* argv[])
             amrex::ParallelFor(bx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                Real z_agl = (k + Real(0.5)) * dz_cap;
+                Real z_physical = z_lo_cap + (k + Real(0.5)) * dz_cap;
+                Real z_agl      = z_physical - d_terr_ptr[j * nx_cap + i];
                 if (z_agl <= Real(0.0)) {
                     vc(i, j, k, 0) = Real(0.0);
                     vc(i, j, k, 1) = Real(0.0);
@@ -567,7 +587,8 @@ int main(int argc, char* argv[])
             amrex::ParallelFor(bx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                Real z_agl = (k + Real(0.5)) * dz_cap;
+                Real z_physical = z_lo_cap + (k + Real(0.5)) * dz_cap;
+                Real z_agl      = z_physical - d_terr_ptr[j * nx_cap + i];
 
                 // --- divergence before ---
                 Real du_b, dv_b, dw_b;
@@ -671,20 +692,17 @@ int main(int argc, char* argv[])
         // 14. Optional terrain-aligned extraction
         //
         //  Determine the extraction k-index:
-        //   • If extract_agl >= 0: snap to the cell whose centre lies closest
-        //     to the requested AGL height,
+        //   • If extract_agl >= 0: snap to the cell whose physical centre
+        //     lies at z_lo + extract_agl (i.e. extract_agl above the minimum
+        //     terrain level),
         //         k_ext = clamp( floor(extract_agl / dz), 0, nz-1 )
-        //     so that cell k_ext straddles [k*dz, (k+1)*dz) with centre at
-        //     (k+0.5)*dz.
         //   • Else if extract_k >= 0: use that index directly (clamped).
         //   • Otherwise skip.
         //
         //  For each horizontal column (i, j) the extracted point has:
         //     z_terrain  = interpolated terrain elevation [m]
-        //     z_agl      = (k_ext + 0.5) * dz            [m above terrain]
-        //     z_physical = z_terrain + z_agl              [m above sea-level]
-        //  This defines a surface that follows the terrain at a constant AGL
-        //  offset — the "terrain-aligned" representation.
+        //     z_physical = z_lo + (k_ext + 0.5) * dz     [m, same for all columns]
+        //     z_agl      = z_physical - z_terrain(i,j)    [m above local terrain, per-column]
         //
         //  Output CSV columns:
         //     x, y, z_terrain, z_physical, z_agl, u, v, w, speed
@@ -693,22 +711,26 @@ int main(int argc, char* argv[])
 
         if (do_extract) {
             // Determine k_ext
+            // extract_agl is the requested height above local terrain [m].
+            // Physical z of the target level = z_lo + (k+0.5)*dz, so
+            //   k_ext = floor(extract_agl / dz)
+            // (z_lo cancels when measuring AGL from the minimum-terrain baseline).
             int k_ext = -1;
-            Real z_agl_ext = Real(0.0);
+            Real z_phys_ext = Real(0.0);  // physical z at k_ext cell centre
 
             if (extract_agl >= Real(0.0)) {
                 // Snap requested AGL to the nearest cell-centre level
                 k_ext = static_cast<int>(std::floor(extract_agl / dz));
                 k_ext = std::max(0, std::min(nz - 1, k_ext));
-                z_agl_ext = (k_ext + Real(0.5)) * dz;
+                z_phys_ext = z_lo + (k_ext + Real(0.5)) * dz;
                 amrex::Print() << "wind_solver: terrain-aligned extraction at AGL = "
                                << extract_agl << " m  →  k = " << k_ext
-                               << "  (cell-centre AGL = " << z_agl_ext << " m)\n";
+                               << "  (physical z = " << z_phys_ext << " m)\n";
             } else {
                 k_ext = std::max(0, std::min(nz - 1, extract_k));
-                z_agl_ext = (k_ext + Real(0.5)) * dz;
+                z_phys_ext = z_lo + (k_ext + Real(0.5)) * dz;
                 amrex::Print() << "wind_solver: terrain-aligned extraction at k = "
-                               << k_ext << "  (cell-centre AGL = " << z_agl_ext << " m)\n";
+                               << k_ext << "  (physical z = " << z_phys_ext << " m)\n";
             }
 
             // Ensure all GPU work is complete before host-side data access
@@ -716,6 +738,7 @@ int main(int argc, char* argv[])
 
             // Collect (x, y, z_terrain, z_physical, z_agl, u, v, w, speed)
             // per column for the k_ext level.
+            // z_agl is computed per-column: z_phys_ext - z_terrain(i,j)
             // Each MPI rank collects its own portion; all ranks write
             // sequentially to produce a complete file.
             struct ExtPt {
@@ -748,15 +771,16 @@ int main(int argc, char* argv[])
 
                 for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
                     for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
-                        Real zs  = terrain_h[static_cast<std::size_t>(j) * nx + i];
-                        Real xc  = x_lo + (i + Real(0.5)) * dx;
-                        Real yc  = y_lo + (j + Real(0.5)) * dy;
+                        Real zs      = terrain_h[static_cast<std::size_t>(j) * nx + i];
+                        Real xc      = x_lo + (i + Real(0.5)) * dx;
+                        Real yc      = y_lo + (j + Real(0.5)) * dy;
+                        Real z_agl_c = z_phys_ext - zs;  // per-column AGL
                         Real u_  = vc(i, j, k_ext, 0);
                         Real v_  = vc(i, j, k_ext, 1);
                         Real w_  = vc(i, j, k_ext, 2);
                         Real spd = std::sqrt(u_*u_ + v_*v_ + w_*w_);
-                        local_pts.push_back({xc, yc, zs, zs + z_agl_ext,
-                                             z_agl_ext, u_, v_, w_, spd,
+                        local_pts.push_back({xc, yc, zs, z_phys_ext,
+                                             z_agl_c, u_, v_, w_, spd,
                                              i, j});
                     }
                 }
