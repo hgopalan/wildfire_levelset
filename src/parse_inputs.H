@@ -374,6 +374,35 @@ struct InputParameters {
     // when the landscape does not carry crown layers.
     int use_spatial_crown;                   // 1 to use per-cell CBH/CBD from LCP (default: 1)
 
+    // ---- Diurnal fuel moisture model (Nelson 2000 / FARSITE-style) ----
+    // When enabled and no FMD schedule is provided (fmd_file is empty), dead
+    // fuel moisture is updated each timestep using a sinusoidal diurnal cycle
+    // of temperature and relative humidity, driving the Nelson (2000) EMC
+    // equations.
+    //
+    // The diurnal cycle is:
+    //   T(t)  = T_mean + 0.5*(T_max-T_min)*sin(2π*(t+t_T_peak-t_ref)/86400)
+    //   RH(t) = RH_mean - 0.5*(RH_max-RH_min)*sin(2π*(t+t_T_peak-t_ref)/86400)
+    //
+    // where t_T_peak [s from midnight] is when T reaches its daily maximum
+    // (default: 50400 = 14:00).
+    //
+    // EMC per size class (Nelson 2000 / Simard 1968):
+    //   M_1hr   = EMC(T, RH)
+    //   M_10hr  ≈ EMC(T, RH) * 1.10  (10-hr timelag correction)
+    //   M_100hr ≈ EMC(T, RH) * 1.30  (100-hr timelag correction)
+    //
+    // Input prefix: "diurnal_moisture."
+    struct DiurnalMoistureParams {
+        int enable;             // 1 to enable diurnal moisture cycle (default: 0)
+        amrex::Real T_min;      // minimum daily temperature [°C]  (default: 15.0)
+        amrex::Real T_max;      // maximum daily temperature [°C]  (default: 35.0)
+        amrex::Real RH_min;     // minimum daily relative humidity [%] (default: 10.0)
+        amrex::Real RH_max;     // maximum daily relative humidity [%] (default: 60.0)
+        amrex::Real t_start_s;  // seconds from midnight at t=0 (default: 36000 = 10:00)
+        amrex::Real t_T_peak_s; // seconds from midnight when T is maximum (default: 50400 = 14:00)
+    } diurnal_moisture;
+
 };
 
 void parse_inputs(InputParameters& inputs);

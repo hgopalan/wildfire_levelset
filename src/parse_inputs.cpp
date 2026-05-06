@@ -648,6 +648,30 @@ void parse_inputs(InputParameters& p)
     // -------- Crown spatial layers from binary LCP --------
     p.use_spatial_crown = 1;  pp.query("use_spatial_crown", p.use_spatial_crown);
 
+    // -------- Diurnal fuel moisture model --------
+    p.diurnal_moisture.enable      = 0;       pp.query("diurnal_moisture.enable",      p.diurnal_moisture.enable);
+    p.diurnal_moisture.T_min       = 15.0;    pp.query("diurnal_moisture.T_min",       p.diurnal_moisture.T_min);
+    p.diurnal_moisture.T_max       = 35.0;    pp.query("diurnal_moisture.T_max",       p.diurnal_moisture.T_max);
+    p.diurnal_moisture.RH_min      = 10.0;    pp.query("diurnal_moisture.RH_min",      p.diurnal_moisture.RH_min);
+    p.diurnal_moisture.RH_max      = 60.0;    pp.query("diurnal_moisture.RH_max",      p.diurnal_moisture.RH_max);
+    p.diurnal_moisture.t_start_s   = 36000.0; pp.query("diurnal_moisture.t_start_s",   p.diurnal_moisture.t_start_s);
+    p.diurnal_moisture.t_T_peak_s  = 50400.0; pp.query("diurnal_moisture.t_T_peak_s",  p.diurnal_moisture.t_T_peak_s);
+
+    if (p.diurnal_moisture.enable == 1) {
+        if (p.diurnal_moisture.T_max <= p.diurnal_moisture.T_min)
+            amrex::Abort("diurnal_moisture.T_max must be > T_min");
+        if (p.diurnal_moisture.RH_min < 0.0 || p.diurnal_moisture.RH_max > 100.0 ||
+            p.diurnal_moisture.RH_max <= p.diurnal_moisture.RH_min)
+            amrex::Abort("diurnal_moisture: RH_min/RH_max must satisfy 0 <= RH_min < RH_max <= 100");
+        Print() << "Diurnal moisture model enabled (Nelson 2000 EMC):\n";
+        Print() << "  T: [" << p.diurnal_moisture.T_min << ", " << p.diurnal_moisture.T_max << "] °C"
+                << "  RH: [" << p.diurnal_moisture.RH_min << ", " << p.diurnal_moisture.RH_max << "] %\n";
+        Print() << "  t_start=" << p.diurnal_moisture.t_start_s << " s from midnight"
+                << "  t_T_peak=" << p.diurnal_moisture.t_T_peak_s << " s from midnight\n";
+        if (!p.fmd_file.empty())
+            Print() << "  WARNING: diurnal_moisture is overridden by fmd_file when both are set\n";
+    }
+
     // -------- Fire ecology diagnostics --------
     // Scorch height (Van Wagner 1973), probability of ignition (Anderson 1970),
     // tree mortality (Ryan-Reinhardt 1988), and crown activity classification

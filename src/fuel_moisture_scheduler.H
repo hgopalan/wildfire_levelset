@@ -45,10 +45,13 @@
 #include <AMReX.H>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "parse_inputs.H"
 
 // Per-fuel-model moisture snapshot at one timestamp
 struct MoistureSnapshot {
@@ -245,6 +248,86 @@ inline RothermelMoistures get_moisture_at_time(
     m.M_d100 = lo->M_d100 + a * (hi->M_d100 - lo->M_d100);
     m.M_lh   = lo->M_lh   + a * (hi->M_lh   - lo->M_lh);
     m.M_lw   = lo->M_lw   + a * (hi->M_lw   - lo->M_lw);
+    return m;
+}
+
+// ============================================================================
+// compute_diurnal_emc
+//
+// Returns dead fuel moisture content values computed from a sinusoidal diurnal
+// cycle of temperature and relative humidity using the Nelson (2000) /
+// Simard (1968) EMC equations.
+//
+// The diurnal cycle is:
+//   T(t)  = T_mean + A_T  * sin(2π * (t + t_peak - t_ref) / 86400)
+//   RH(t) = RH_mean - A_RH * sin(2π * (t + t_peak - t_ref) / 86400)
+//
+// where t_peak is the clock time [s from midnight] when T is maximum,
+// t_ref is the clock time [s from midnight] at simulation start.
+//
+// EMC equations (Simard 1968):
+//   Region 1 (RH < 10%): EMC = 0.03229 + 0.281073*rh - 0.000578*T*rh
+//   Region 2 (10% ≤ RH < 50%): EMC = 2.22749 + 0.160107*rh - 0.014784*T
+//   Region 3 (RH ≥ 50%): EMC = 21.0606 + 0.005565*rh² - 0.00035*T*rh - 0.483199*rh
+// where rh = RH/100 and T is in °C, result in %.
+//
+// Timelag corrections (Nelson 2000):
+//   M_1hr   = EMC [fraction]
+//   M_10hr  = EMC * 1.10 [fraction]
+//   M_100hr = EMC * 1.30 [fraction]
+//
+// Parameters:
+//   dp         – DiurnalMoistureParams (T_min/max, RH_min/max, t_start_s, t_T_peak_s)
+//   sim_time_s – current simulation time [s] (relative to the simulation start)
+//   defaults   – fallback moisture values (returned unchanged if not enabled)
+// ============================================================================
+inline RothermelMoistures compute_diurnal_emc(
+    const InputParameters::DiurnalMoistureParams& dp,
+    double sim_time_s,
+    const RothermelMoistures& defaults = {})
+{
+    if (dp.enable != 1) return defaults;
+
+    constexpr double TWO_PI = 6.283185307179586;
+    constexpr double DAY_S  = 86400.0;
+
+    // Phase: how far into the day we are when the simulation starts,
+    // shifted so that the peak of the sine occurs at t_T_peak_s.
+    // phase = (t_start_s + sim_time_s - t_T_peak_s) / 86400 * 2π
+    double phase = TWO_PI * (dp.t_start_s + sim_time_s - dp.t_T_peak_s) / DAY_S;
+
+    double T_mean  = 0.5 * (dp.T_max + dp.T_min);
+    double A_T     = 0.5 * (dp.T_max - dp.T_min);
+    double RH_mean = 0.5 * (dp.RH_max + dp.RH_min);
+    double A_RH    = 0.5 * (dp.RH_max - dp.RH_min);
+
+    double T_C  = T_mean  + A_T  * std::sin(phase);
+    double RH_p = RH_mean - A_RH * std::sin(phase);  // RH in % (anti-phase with T)
+
+    // Clamp to physically meaningful ranges
+    T_C  = std::max(-40.0, std::min(60.0,  T_C));
+    RH_p = std::max(1.0,   std::min(100.0, RH_p));
+
+    double rh = RH_p / 100.0;
+
+    // Nelson (2000) / Simard (1968) EMC [%]
+    double emc_pct;
+    if (RH_p < 10.0) {
+        emc_pct = 0.03229 + 0.281073 * rh - 0.000578 * T_C * rh;
+    } else if (RH_p < 50.0) {
+        emc_pct = 2.22749 + 0.160107 * rh - 0.014784 * T_C;
+    } else {
+        emc_pct = 21.0606 + 0.005565 * rh * rh - 0.00035 * T_C * rh - 0.483199 * rh;
+    }
+    emc_pct = std::max(0.5, emc_pct);  // physical lower bound
+
+    RothermelMoistures m;
+    m.M_d1   = static_cast<float>(emc_pct / 100.0);
+    m.M_d10  = static_cast<float>(emc_pct * 1.10 / 100.0);
+    m.M_d100 = static_cast<float>(emc_pct * 1.30 / 100.0);
+    // Live fuel moisture is not well-modelled by Nelson EMC; keep defaults
+    m.M_lh   = defaults.M_lh;
+    m.M_lw   = defaults.M_lw;
     return m;
 }
 

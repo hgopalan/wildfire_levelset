@@ -679,24 +679,25 @@ static bool read_landscape_binary(
 // ============================================================================
 // compute_crown_layers_from_lcp
 //
-// Populates three optional MultiFabs (all 1-component) with spatially-varying
+// Populates optional MultiFabs (all 1-component) with spatially-varying
 // crown fuel properties from a binary LCP file:
-//   cbh_mf   – crown base height [m]
-//   cbd_mf   – crown bulk density [kg/m³]
-//   cc_mf    – canopy cover [%]
+//   cbh_mf          – crown base height [m]
+//   cbd_mf          – crown bulk density [kg/m³]
+//   cc_mf           – canopy cover [%]
+//   canopy_height_mf – stand (canopy) height [m]   (layer 5 of binary LCP)
 //
 // Returns true if the file has crown layers (has_crown == true) and the
 // MultiFabs were populated; false otherwise (MultiFabs are untouched).
 //
-// All three MultiFab pointers may be nullptr if the caller does not need
-// that layer.
+// All MultiFab pointers may be nullptr if the caller does not need that layer.
 // ============================================================================
 static bool compute_crown_layers_from_lcp(
     MultiFab*          cbh_mf,
     MultiFab*          cbd_mf,
     MultiFab*          cc_mf,
     const Geometry&    geom,
-    const std::string& filename)
+    const std::string& filename,
+    MultiFab*          canopy_height_mf = nullptr)
 {
     if (!is_binary_lcp(filename)) {
         return false; // ASCII format has no crown layers
@@ -724,9 +725,11 @@ static bool compute_crown_layers_from_lcp(
         interp_flat_to_multifab(*cbh_mf, geom, xd, yd, cbh_v, false);
     if (cbd_mf && !cbd_v.empty())
         interp_flat_to_multifab(*cbd_mf, geom, xd, yd, cbd_v, false);
+    if (canopy_height_mf && !ht_v.empty())
+        interp_flat_to_multifab(*canopy_height_mf, geom, xd, yd, ht_v, false);
 
-    amrex::Print() << "Populated spatially-varying crown layers (CBH, CBD, CC) "
-                      "from binary LCP\n";
+    amrex::Print() << "Populated spatially-varying crown layers (CBH, CBD, CC, "
+                      "canopy height) from binary LCP\n";
     return true;
 }
 
