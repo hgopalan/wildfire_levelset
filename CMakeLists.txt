@@ -132,7 +132,13 @@ endif()
 
 # Recommended warnings
 if (MSVC)
-  target_compile_options(levelset PRIVATE /W4)
+  # When source files are compiled via nvcc (LANGUAGE CUDA), MSVC-style flags
+  # such as /W4 must be forwarded to the host compiler with -Xcompiler= or
+  # nvcc will treat the bare /W4 as an extra input file and abort.
+  target_compile_options(levelset PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+    $<$<COMPILE_LANGUAGE:CXX>:/W4>
+  )
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -166,7 +172,11 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
     endif()
     if(MSVC)
-      target_compile_options(wind_solver PRIVATE /W4)
+      # Same as levelset: wrap /W4 in -Xcompiler= for CUDA language files.
+      target_compile_options(wind_solver PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+        $<$<COMPILE_LANGUAGE:CXX>:/W4>
+      )
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
     endif()
