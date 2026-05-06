@@ -422,6 +422,48 @@ void parse_inputs(InputParameters& p)
     p.viegas.T_a        = 300.0;  pp.query("viegas.T_a",        p.viegas.T_a);
     p.viegas.T_f        = 1000.0; pp.query("viegas.T_f",        p.viegas.T_f);
 
+    // -------- Turbulent wind perturbation model --------
+    p.turb_wind.model       = "none"; pp.query("turb_wind.model",       p.turb_wind.model);
+    p.turb_wind.theta       = 0.1;    pp.query("turb_wind.theta",       p.turb_wind.theta);
+    p.turb_wind.sigma       = 0.5;    pp.query("turb_wind.sigma",       p.turb_wind.sigma);
+    p.turb_wind.L_c         = 0.0;    pp.query("turb_wind.L_c",         p.turb_wind.L_c);
+    p.turb_wind.sigma_theta = 0.1;    pp.query("turb_wind.sigma_theta", p.turb_wind.sigma_theta);
+    p.turb_wind.theta_max   = 0.5236; pp.query("turb_wind.theta_max",   p.turb_wind.theta_max);
+    p.turb_wind.random_seed = 0;      pp.query("turb_wind.random_seed", p.turb_wind.random_seed);
+
+    // Validate
+    if (p.turb_wind.model != "none"           &&
+        p.turb_wind.model != "ou_process"     &&
+        p.turb_wind.model != "direction_walk") {
+        amrex::Abort("turb_wind.model must be one of: none, ou_process, direction_walk");
+    }
+    if (p.turb_wind.model == "ou_process") {
+        if (p.turb_wind.theta <= 0.0)
+            amrex::Abort("turb_wind.theta must be > 0");
+        if (p.turb_wind.sigma <= 0.0)
+            amrex::Abort("turb_wind.sigma must be > 0");
+        if (p.turb_wind.L_c < 0.0)
+            amrex::Abort("turb_wind.L_c must be >= 0");
+        Print() << "Turbulent wind model: ou_process\n";
+        Print() << "  theta=" << p.turb_wind.theta << " s^-1"
+                << "  sigma=" << p.turb_wind.sigma << " m/s";
+        if (p.turb_wind.L_c > 0.0)
+            Print() << "  L_c=" << p.turb_wind.L_c << " m (spatially correlated)";
+        else
+            Print() << "  L_c=0 (domain-uniform)";
+        Print() << "\n";
+    }
+    if (p.turb_wind.model == "direction_walk") {
+        if (p.turb_wind.sigma_theta <= 0.0)
+            amrex::Abort("turb_wind.sigma_theta must be > 0");
+        if (p.turb_wind.theta_max <= 0.0)
+            amrex::Abort("turb_wind.theta_max must be > 0");
+        Print() << "Turbulent wind model: direction_walk\n";
+        Print() << "  sigma_theta=" << p.turb_wind.sigma_theta << " rad/step"
+                << "  theta_max=" << p.turb_wind.theta_max << " rad ("
+                << p.turb_wind.theta_max * (180.0 / 3.14159265) << " deg)\n";
+    }
+
     // -------- Wind-terrain feedback model for Rothermel wind enhancement --------
     // Parsed before the viegas validation block so auto-enable can set viegas.enable.
     p.wind_terrain.model       = "none";  pp.query("wind_terrain.model",       p.wind_terrain.model);

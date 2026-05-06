@@ -723,6 +723,119 @@ These modules augment the primary firespread models with wind adjustments and te
 corrections.  They are activated independently via ParmParse flags and are compatible with
 any of the firespread models unless otherwise noted.
 
+Firespread Model Enhancements
+-----------------------------
+
+These modules augment the primary firespread models with wind adjustments and terrain-feedback
+corrections.  They are activated independently via ParmParse flags and are compatible with
+any of the firespread models unless otherwise noted.
+
+Turbulent Wind Perturbation (``turb_wind.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Adds stochastic velocity perturbations to the ambient wind field at every
+timestep.  The unperturbed base wind is preserved in a separate MultiFab;
+the perturbed field is always computed as *base + perturbation* so the
+perturbation never drifts away from the intended background.
+
+Two models are available.
+
+Ornstein-Uhlenbeck Process (``turb_wind.model = ou_process``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The OU process produces temporally correlated wind gusts whose
+auto-correlation decays exponentially in time (Uhlenbeck & Ornstein 1930).
+
+**Discrete-time OU update (exact Euler–Maruyama)**
+
+.. math::
+
+   \alpha &= \exp(-\theta\,\Delta t) \\
+   \sigma_{\text{step}} &= \sigma\,\sqrt{1 - \alpha^2} \\
+   u'(t + \Delta t) &= \alpha\,u'(t) + \sigma_{\text{step}}\,\eta_u(t) \\
+   v'(t + \Delta t) &= \alpha\,v'(t) + \sigma_{\text{step}}\,\eta_v(t)
+
+where:
+
+* :math:`\theta` [s⁻¹] is the reversion rate (``turb_wind.theta``);
+  decorrelation time = :math:`1/\theta`.
+* :math:`\sigma` [m/s] is the stationary standard deviation of each cell's
+  perturbation (``turb_wind.sigma``).
+* :math:`\eta_u, \eta_v` are unit-variance noise terms (white when
+  ``L_c = 0``, spatially correlated when ``L_c > 0``; see below).
+
+The effective wind used for all ROS computations is
+
+.. math::
+
+   \mathbf{u}_{\text{eff}}(x,y) = \mathbf{u}_{\text{base}}(x,y)
+                                 + \bigl(u'(x,y),\; v'(x,y)\bigr).
+
+**Domain-uniform mode (L_c = 0)**
+
+A single pair :math:`(u', v')` is drawn and added to every cell.  This
+corresponds to a gust event coherent over the entire domain — appropriate
+when the domain is small relative to the turbulent integral scale.
+
+**Spatially correlated mode (L_c > 0)**
+
+Per-cell OU states :math:`u'(x,y)` and :math:`v'(x,y)` are maintained in a
+MultiFab.  The noise field :math:`\eta(x,y)` is constructed as:
+
+1. Draw independent :math:`\mathcal{N}(0,1)` white noise :math:`\xi(x,y)` at
+   every cell.
+2. Apply a separable 1-D Gaussian convolution in :math:`x` then :math:`y`
+   with kernel standard deviation
+
+   .. math::
+
+      \sigma_k = \frac{L_c}{\Delta x} \quad\text{[cells]}
+
+   using Neumann (nearest-cell) clamping at domain and subdomain boundaries.
+3. Rescale the smoothed field to unit RMS so the per-cell stationary standard
+   deviation remains exactly :math:`\sigma`.
+
+The resulting noise field has the approximate 2-D autocovariance
+
+.. math::
+
+   C_\eta(r_x, r_y) \approx
+   \exp\!\left(-\frac{r_x^2 + r_y^2}{2 L_c^2}\right)
+
+i.e.\ a Gaussian envelope with e-folding length :math:`L_c` (``turb_wind.L_c``).
+
+Bounded Direction Random Walk (``turb_wind.model = direction_walk``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At each timestep a Gaussian angular increment is drawn and accumulated:
+
+.. math::
+
+   \Delta\vartheta &\sim \mathcal{N}(0,\,\sigma_\vartheta^2) \\
+   \vartheta(t+\Delta t) &= \operatorname{clamp}
+       \bigl(\vartheta(t) + \Delta\vartheta,\;
+             {-\vartheta_{\max}},\; {+\vartheta_{\max}}\bigr)
+
+The entire base wind field is then rotated by the cumulative angle
+:math:`\vartheta`:
+
+.. math::
+
+   u_{\text{eff}} &= u_{\text{base}} \cos\vartheta - v_{\text{base}} \sin\vartheta \\
+   v_{\text{eff}} &= u_{\text{base}} \sin\vartheta + v_{\text{base}} \cos\vartheta
+
+Wind *speed* is preserved exactly; only direction fluctuates.  Parameters:
+``turb_wind.sigma_theta`` [rad/step] and ``turb_wind.theta_max`` [rad].
+
+**References**
+
+* Uhlenbeck, G.E. & Ornstein, L.S. (1930). On the theory of the Brownian
+  motion. *Phys. Rev.* 36(5):823–841.
+* Finney, M.A. et al. (2011). Role of wind, fuel moisture, and terrain in
+  controlling fire movement. *Ecosphere* 2(3):art17.
+* Cruz, M.G. et al. (2019). Uncertainty in wildfire behaviour research.
+  *Current Forestry Reports* 5:155–172.
+
 Andrews (2018) Wind Adjustments for Rothermel
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -753,6 +753,75 @@ Output Parameters
 
   Example: ``plot_int = 10``
 
+Turbulent Wind Perturbation Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control the stochastic wind perturbation model that adds
+temporally-correlated and (optionally) spatially-correlated fluctuations to
+the ambient wind field at every timestep.  The unperturbed base wind is
+always preserved internally; the perturbation is computed on top of it.
+
+**turb_wind.model** (default: ``"none"``)
+  Selects the turbulent wind model:
+
+  - ``none`` – no perturbation (default)
+  - ``ou_process`` – Ornstein-Uhlenbeck temporally-correlated noise.
+    When ``turb_wind.L_c = 0`` all cells receive the same domain-uniform
+    perturbation.  When ``turb_wind.L_c > 0`` per-cell spatially correlated
+    perturbations are generated via a Gaussian spatial kernel of length scale
+    ``L_c`` [m].
+  - ``direction_walk`` – bounded cumulative random walk of wind direction.
+    Wind speed is preserved exactly; only direction fluctuates.
+
+  Example: ``turb_wind.model = ou_process``
+
+**turb_wind.theta** (default: 0.1)
+  Ornstein-Uhlenbeck reversion rate :math:`\theta` [s⁻¹].  The temporal
+  decorrelation time (e-folding time of gust autocorrelation) is
+  :math:`\tau = 1/\theta`.  Only used by ``ou_process``.  Must be > 0.
+
+  Example: ``turb_wind.theta = 0.05``  (→ 20 s gust decorrelation)
+
+**turb_wind.sigma** (default: 0.5)
+  Stationary standard deviation of the OU perturbation [m/s].  Each cell's
+  long-run perturbation has standard deviation exactly ``sigma``.  Only used
+  by ``ou_process``.  Must be > 0.
+
+  Example: ``turb_wind.sigma = 1.0``
+
+**turb_wind.L_c** (default: 0.0)
+  Spatial correlation length [m].  When > 0, activates the Gaussian kernel
+  smoothing of the OU noise field so that cells within distance ``L_c``
+  receive correlated perturbations.  Setting ``L_c = 0`` gives domain-uniform
+  perturbations (all cells receive the same gust).  Only used by
+  ``ou_process``.  Must be ≥ 0.
+
+  The kernel standard deviation in cells is ``sigma_k = L_c / dx``.  For
+  ``sigma_k ≫ 1`` the perturbation field is nearly uniform over the domain;
+  for ``sigma_k ≈ 1`` each cell is nearly independent.
+
+  Example: ``turb_wind.L_c = 100.0``  (→ sigma_k = 10 cells for dx = 10 m)
+
+**turb_wind.sigma_theta** (default: 0.1)
+  Angular standard deviation [rad/step] for the ``direction_walk`` model.
+  Controls the magnitude of each step's direction increment.  Must be > 0.
+
+  Example: ``turb_wind.sigma_theta = 0.15``
+
+**turb_wind.theta_max** (default: 0.5236)
+  Maximum cumulative directional deviation [rad] for the ``direction_walk``
+  model.  The accumulated angle is clamped to :math:`\pm\theta_{\max}`.
+  The default is :math:`\pi/6 \approx 30°`.  Must be > 0.
+
+  Example: ``turb_wind.theta_max = 0.785``  (→ ±45°)
+
+**turb_wind.random_seed** (default: 0)
+  Seed for the pseudo-random number generator.  ``0`` uses the system clock
+  (non-reproducible between runs).  Any positive integer gives a
+  reproducible sequence.
+
+  Example: ``turb_wind.random_seed = 42``
+
 Wind-Terrain Feedback Model Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
