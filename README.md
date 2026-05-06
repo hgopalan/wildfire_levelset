@@ -539,30 +539,42 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 6. **Validation**
    - Limited validation against real wildfire events; parameters are calibrated to standard fuel models.
 
-## Comparison with FARSITE and WRF-Fire (WRF-SFIRE)
+## Comparison with Other Wildfire Simulation Tools
 
 > **Note on naming**: WRF-Fire and WRF-SFIRE refer to the same coupled fire–atmosphere system built on the WRF mesoscale model. The official package name is WRF-SFIRE; "WRF-Fire" is a common shorthand used in the community.
 
-| Capability | wildfire_levelset | FARSITE | WRF-SFIRE |
-|---|---|---|---|
-| **Fire spread model** | Rothermel (1972) ROS with Andrews (2018) wind adjustments (WAF, MEWS); Balbi (2009) physical model; Cheney & Gould (1995) grassland empirical model; elliptical directional spread (Richards 1990); Eulerian level-set implementation of Huygens wavelet principle | Rothermel ROS + explicit Huygens wavelet | Rothermel ROS (level-set) |
-| **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap via `rothermel.use_waf` / `rothermel.use_wind_limit`; wind-terrain feedback models (`wind_terrain.model`) with 6 options including Rothermel (1983) canyon wind, Viegas & Neto (1994) buoyancy wind, and Pimont et al. (2009) slope correction | WAF applied internally | WAF not explicitly applied; wind from atmospheric model |
-| **Terrain representation** | Full 2-D landscape: per-cell elevation, slope, aspect, and fuel model from FARSITE `.lcp` files or terrain XYZ files; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (.lcp) | Full 3-D terrain from WRF grid |
-| **Wind coupling** | One-way (prescribed; WRF output converted to CSV via `wrf_wind_reader.py`) | One-way (prescribed; gridded wind) | Two-way (fire ↔ atmosphere) |
-| **Atmospheric model** | None | None | Full WRF mesoscale atmosphere |
-| **Spatial resolution** | User-defined (AMReX grid) | Landscape raster resolution | WRF grid resolution |
-| **Fuel models** | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 |
-| **Fuel moisture** | Per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live woody) — user-specified constants; no dynamic transport | Dead/live moisture per size class | Dead/live moisture (prescribed) |
-| **Crown fire** | Van Wagner (1977) initiation | Van Wagner (1977) initiation | Van Wagner (1977) initiation |
-| **Firebrand spotting** | Stochastic + Albini (1983) 2-D trajectory | Albini empirical spotting | Not included by default |
-| **Bulk fuel burnout** | Residence-time model | Full burnout tracking per cell | Post-frontal fuel consumption |
-| **Multi-ignition** | CSV ignition file | Interactive ignition map | WPS/WRF fire restart |
-| **Fire behavior output** | `R` [m/s], fireline intensity [kW/m], flame length [m], scorch height [m], probability of ignition [-], tree mortality [-], crown activity class (surface/passive/active), CO₂/CO/PM₂.₅ emissions [kg/m²], burned area [ha] and perimeter [km] per plot interval — all in plotfiles | Spread rate, intensity in output files | Spread rate in WRF output |
-| **GPU acceleration** | Yes (AMReX CUDA/HIP/SYCL kernels) | No | No |
-| **MPI parallelism** | Yes (AMReX domain decomposition) | No | Yes (WRF MPI) |
-| **Embedded boundaries** | Yes (AMReX EB) | No | No |
-| **Operational use** | Research / prototype | Operational (US Forest Service) | Research / operational |
-| **Post-processing** | AMReX plotfiles (ParaView) + GeoTIFF/GeoJSON via `plotfile_to_geotiff.py` | GIS shapefiles / rasters | WRF standard output (NCO/Python) |
+> **Disclaimer**: The comparisons below are based on publicly available documentation and peer-reviewed literature as of 2025. Capabilities of third-party tools may have evolved or may differ across versions. Consult the official references linked in the [Tool Documentation References](#tool-documentation-references) section for authoritative and up-to-date information. This table is intended for high-level orientation only and should not be taken as an exhaustive or definitive characterisation of any tool.
+
+| Capability | wildfire_levelset | FARSITE | WRF-SFIRE | FlamMap | BehavePlus | FSPRO | QUIC-Fire | FIRETEC |
+|---|---|---|---|---|---|---|---|---|
+| **Fire spread model** | Rothermel (1972) or Balbi (2009) ROS; Cheney & Gould (1995) grassland; elliptical directional spread (Richards 1990); Eulerian level-set | Rothermel ROS; explicit Huygens wavelet propagation | Rothermel ROS (level-set) | Rothermel ROS; minimum travel time (MTT) or Huygens wavelet | Rothermel (1972) point-based ROS; no spatial propagation | Ensemble of FARSITE simulations; probabilistic spread | Coupled semi-empirical fire model with QUIC-URB 3-D wind solver | High-fidelity LES with coupled combustion physics; no empirical ROS |
+| **Wind adjustment** | Optional WAF (20-ft → midflame) and MEWS cap; 7 wind-terrain feedback models (Rothermel 1983 canyon, Viegas & Neto 1994, Pimont et al. 2009, WindNinja ridge/canyon) | WAF applied internally; MEWS cap | Wind derived from WRF atmospheric model; WAF handled in coupling | WindNinja or constant/gridded input; WAF optional | User-specified WAF option | Applied through each FARSITE instance | 3-D mass-consistent wind field computed by QUIC-URB | Wind computed by Navier-Stokes LES solver |
+| **Terrain representation** | Per-cell elevation, slope, aspect, and fuel from `.lcp` or XYZ; 2-D; 3-D terrain and canopy layer can be added in future | Full 2-D landscape (`.lcp`) | Full 3-D terrain from WRF grid | Full 2-D landscape (`.lcp`) | Point-based (user-specified slope/aspect); no raster landscape | Full 2-D landscape (`.lcp`) | Full 3-D terrain and vegetation canopy structure | Full 3-D terrain and vegetation canopy |
+| **Fire-atmosphere coupling** | None (prescribed wind fields) | None (prescribed gridded wind) | Two-way (fire ↔ WRF atmosphere, heat/momentum flux) | None (prescribed wind) | None | None (prescribed weather) | One-way/quasi-coupled (QUIC-URB wind; no fire-driven feedback) | Two-way (fully coupled LES fire–atmosphere) |
+| **Atmospheric model** | None | None | Full WRF mesoscale atmosphere (NWP) | None | None | None | Fast-response QUIC-URB 3-D mass-consistent wind model | Full 3-D Navier-Stokes LES atmosphere |
+| **Spatial resolution** | User-defined (AMReX grid); adaptive mesh refinement (AMR) | Landscape raster resolution | WRF grid resolution (typically 100 m–1 km) | Landscape raster resolution | Point-based (no spatial grid) | Landscape raster resolution (via FARSITE) | User-defined 3-D grid (typically 1–10 m) | User-defined 3-D grid (typically 1–10 m) |
+| **Fuel models** | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Anderson 13 + Scott & Burgan 40 | Custom 3-D bulk fuel density and arrangement | Continuous 3-D fuel density distribution |
+| **Fuel moisture** | Per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live woody); time-varying `.fmd` schedule | Dead/live moisture per size class | Dead/live moisture (prescribed) | Dead/live per size class; fuel moisture conditioning option | Dead/live per size class | Dead/live per size class (from historical RAWS) | User-specified bulk moisture per cell | User-specified moisture content per cell |
+| **Crown fire** | Van Wagner (1977) initiation | Van Wagner (1977) initiation | Van Wagner (1977) initiation | Scott & Reinhardt (2001) crown fire assessment | Van Wagner (1977) | Via FARSITE (Van Wagner) | Physics-based ignition via heat flux | Governed by physical combustion model |
+| **Firebrand spotting** | Stochastic + Albini (1983) 2-D trajectory model | Albini empirical spotting | Not included by default | Not standard | Albini empirical (point calculation) | Via FARSITE (Albini) | Not standard | Physics-based firebrand transport (select versions) |
+| **Bulk fuel burnout** | Residence-time model | Per-cell burnout tracking | Post-frontal fuel consumption | Not tracked separately | Not applicable | Via FARSITE | Physics-based fuel consumption | Physical combustion with full burnout |
+| **Multi-ignition** | CSV ignition file | Interactive ignition map | WPS/WRF fire restart | Ignition map or polygon | Single point or simple polygon | Multiple ignition points | User-defined ignition locations | User-defined ignition locations |
+| **GPU acceleration** | Yes (AMReX CUDA/HIP/SYCL kernels) | No | No | No | No | No | Partial (QUIC-URB GPU support in select versions) | No (primarily MPI CPU) |
+| **MPI parallelism** | Yes (AMReX domain decomposition) | No | Yes (WRF MPI) | No | No | No (ensemble via independent FARSITE instances) | Yes (QUIC MPI/OpenMP) | Yes (HPC clusters, MPI) |
+| **Embedded boundaries / obstacles** | Yes (AMReX EB for buildings, fuel breaks) | No | No | No | No | No | Yes (QUIC-URB handles buildings and obstacles) | Yes (complex 3-D geometry) |
+
+### Tool Documentation References
+
+For authoritative and up-to-date information on each tool, refer to the official sources:
+
+- **wildfire_levelset**: <https://hgopalan.github.io/wildfire_levelset/>
+- **FARSITE**: <https://www.firelab.org/project/farsite>
+- **WRF-SFIRE**: <https://github.com/openwfm/WRF-SFIRE>
+- **FlamMap**: <https://www.firelab.org/project/flammap>
+- **BehavePlus**: <https://www.firelab.org/project/behaveplusfiremodeling>
+- **FSPRO**: <https://www.firelab.org/project/fspro>
+- **QUIC-Fire**: <https://www.lanl.gov/projects/quic-fire/>
+- **FIRETEC**: <https://www.lanl.gov/org/padwp/adcles/fluid-dynamics-solid-mechanics/index.php> (see also Linn et al. 2002 below)
 
 ### Key differences from FARSITE
 
@@ -572,8 +584,6 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **Per size-class fuel moisture**: Dead fuel moisture is specified independently for 1-hr, 10-hr, and 100-hr size classes; live herbaceous and live woody moisture are specified separately.  This mirrors FARSITE's moisture inputs and drives the multi-class Rothermel (1972) reaction intensity calculation.
 - **Embedded Boundary**: AMReX EB allows irregular obstacles (buildings, fuel breaks) on the Cartesian grid without remeshing.
 - **GPU and MPI**: The AMReX backend supports CUDA/HIP/SYCL and MPI for large domains; FARSITE is serial and CPU-only.
-- **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles directly to GeoTIFF rasters and GeoJSON fire-perimeter contours; FARSITE produces GIS shapefiles/rasters natively.
-- **No interactive GUI**: This solver is driven by an input text file and command-line arguments; FARSITE ships with a Windows GUI.
 
 ### Key differences from WRF-Fire (WRF-SFIRE)
 
@@ -605,6 +615,13 @@ rasters and GeoJSON fire-perimeter contours (see Tools section below).
 - **Nelson, R.M. Jr. (2000)**. "Prediction of diurnal change in 10-h fuel stick moisture content." *Canadian Journal of Forest Research*, 30(7), 1071–1087.
 - **Seiler, W. & Crutzen, P.J. (1980)**. "Estimates of gross and net fluxes of carbon between the biosphere and the atmosphere from biomass burning." *Climatic Change*, 2(3), 207–247.
 - **Finney, M.A. (2004)**. *FARSITE: Fire Area Simulator – Model Development and Evaluation.* Research Paper RMRS-RP-4, USDA Forest Service.
+- **Finney, M.A. (2006)**. "An overview of FlamMap fire modeling capabilities." In: Andrews, P.L. & Butler, B.W. (comps.) *Fuels Management—How to Measure Success*. USDA Forest Service Proceedings RMRS-P-41. <https://www.firelab.org/project/flammap>
+- **Andrews, P.L. (2014)**. "Current status and future needs of the BehavePlus Fire Modeling System." *International Journal of Wildland Fire*, 23(1), 21–33. <https://doi.org/10.1071/WF12167>
+- **Finney, M.A., McHugh, C.W., Grenfell, I.C., Riley, K.L. & Short, K.C. (2011)**. "A simulation of probabilistic wildfire risk components for the continental United States." *Stochastic Environmental Research and Risk Assessment*, 25(7), 973–1000. <https://doi.org/10.1007/s00477-011-0462-z>
+- **Linn, R.R. (1997)**. *A transport model for prediction of wildfire behavior.* PhD Dissertation / Technical Report LA-13334-T, Los Alamos National Laboratory.
+- **Linn, R.R., Reisner, J., Colman, J.J. & Winterkamp, J. (2002)**. "Studying wildfire behavior using FIRETEC." *International Journal of Wildland Fire*, 11(4), 233–246. <https://doi.org/10.1071/WF02007>
+- **Linn, R.R., Cunningham, P., Goodrick, S. & Mell, W. (2012)**. "Introduction to special issue on numerical simulation of wildland fire." *International Journal of Wildland Fire*, 21(6), i–ii.
+- **Parsons, R.A., Mell, W.E. & McCauley, P. (2011)**. "Linking 3D spatial models of fuels and fire: effects of spatial heterogeneity on fire behavior." *Ecological Modelling*, 222(3), 679–691. <https://doi.org/10.1016/j.ecolmodel.2010.10.023>
 
 ## License
 
