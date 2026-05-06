@@ -723,13 +723,6 @@ These modules augment the primary firespread models with wind adjustments and te
 corrections.  They are activated independently via ParmParse flags and are compatible with
 any of the firespread models unless otherwise noted.
 
-Firespread Model Enhancements
------------------------------
-
-These modules augment the primary firespread models with wind adjustments and terrain-feedback
-corrections.  They are activated independently via ParmParse flags and are compatible with
-any of the firespread models unless otherwise noted.
-
 Turbulent Wind Perturbation (``turb_wind.*``)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

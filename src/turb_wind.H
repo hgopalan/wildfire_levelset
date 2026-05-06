@@ -2,7 +2,7 @@
 // turb_wind.H  –  Turbulent Wind Perturbation Model
 // ============================================================================
 //
-// Provides three turbulent wind models that add stochastic perturbations to
+// Provides three active turbulent wind models (plus "none") that add stochastic perturbations to
 // the ambient wind field at every timestep.  The unperturbed base wind is
 // preserved in a separate MultiFab so the perturbation is always computed
 // relative to the clean background field.
