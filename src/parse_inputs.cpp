@@ -184,6 +184,17 @@ void parse_inputs(InputParameters& p)
     p.farsite.coeff_a = 1.0;                     pp.query("farsite.coeff_a", p.farsite.coeff_a);
     p.farsite.coeff_b = 0.5;                     pp.query("farsite.coeff_b", p.farsite.coeff_b);
     p.farsite.coeff_c = 0.2;                     pp.query("farsite.coeff_c", p.farsite.coeff_c);
+
+    // Fire shape model (only used when propagation_method = farsite)
+    p.farsite.fire_shape_model = "richards";     pp.query("farsite.fire_shape_model", p.farsite.fire_shape_model);
+    if (p.farsite.fire_shape_model != "richards" &&
+        p.farsite.fire_shape_model != "catchpole_demestre" &&
+        p.farsite.fire_shape_model != "wilson" &&
+        p.farsite.fire_shape_model != "lemniscate") {
+        amrex::Abort("farsite.fire_shape_model must be 'richards', 'catchpole_demestre', "
+                     "'wilson', or 'lemniscate'");
+    }
+    Print() << "FARSITE fire shape model: " << p.farsite.fire_shape_model << "\n";
     
     // -------- Bulk Fuel Consumption Fraction Model parameters --------
     p.farsite.use_bulk_fuel_consumption = 0;     pp.query("farsite.use_bulk_fuel_consumption", p.farsite.use_bulk_fuel_consumption);
