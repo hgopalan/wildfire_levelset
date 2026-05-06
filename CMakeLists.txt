@@ -9,9 +9,14 @@ option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
 # The terrain-following mass-consistent wind solver requires the AMReX linear
 # solver library (MLMG / MLABecLaplacian) and is inherently 3-D.  It is
 # therefore only built when LEVELSET_DIM_2D=OFF.
+if(WIN32)
+  set(_wind_solver_default OFF)
+else()
+  set(_wind_solver_default ON)
+endif()
 option(LEVELSET_BUILD_WIND_SOLVER
        "Build the stand-alone terrain-following mass-consistent wind solver"
-       ON)
+       ${_wind_solver_default})
 # Internal option used by the ExternalProject sub-build for wind_solver when
 # LEVELSET_DIM_2D=ON.  End users should not set this directly.
 option(LEVELSET_BUILD_LEVELSET "Build the levelset fire-spread solver" ON)

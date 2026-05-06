@@ -469,6 +469,47 @@ FIRE_VARS = {
     "fuel_model",
     "fuel_consumption",
     "crown_fraction",
+    "arrival_time",
+    "reaction_intensity",
+    # Derived fields computed from velx/vely (not stored in plotfile directly)
+    "wind_speed",
+    "wind_direction",
+}
+
+# Derived fields computed from combinations of stored plotfile variables.
+# Each entry: derived_name -> (function(fab_data, varnames), description)
+# The function receives the full fab_data array and varnames list, and
+# returns a 2-D array of shape (ny, nx) or None if inputs are missing.
+
+def _derive_wind_speed(fab_data, varnames):
+    """Compute wind speed [m/s] from velx and vely."""
+    if "velx" not in varnames or "vely" not in varnames:
+        return None
+    ix = varnames.index("velx")
+    iy = varnames.index("vely")
+    return np.sqrt(fab_data[ix]**2 + fab_data[iy]**2)
+
+
+def _derive_wind_direction(fab_data, varnames):
+    """Compute meteorological wind direction [degrees from N, clockwise].
+
+    Met convention: 0° = wind blowing FROM north, 90° = FROM east, etc.
+    Computed as: dir = (270 - atan2(vy, vx) * 180/pi) mod 360
+    """
+    if "velx" not in varnames or "vely" not in varnames:
+        return None
+    ix = varnames.index("velx")
+    iy = varnames.index("vely")
+    u = fab_data[ix]
+    v = fab_data[iy]
+    # Math angle → met direction (FROM direction, degrees clockwise from N)
+    direction = (270.0 - np.degrees(np.arctan2(v, u))) % 360.0
+    return direction
+
+
+_DERIVED_FIELDS = {
+    "wind_speed":     (_derive_wind_speed,     "Wind speed [m/s] derived from velx, vely"),
+    "wind_direction": (_derive_wind_direction,  "Wind direction [° from N, clockwise] derived from velx, vely"),
 }
 
 
@@ -519,16 +560,21 @@ def convert_plotfile(
         _composite_fine_level(fab_data, fab_data_lev, total_ref)
         print(f"  Composited Level_{lev} ({nx_lev}×{ny_lev}, ref={total_ref}×) onto base grid.")
 
-    # Determine which variables to export
+    # Determine which variables to export (stored fields)
+    # Also identify any derived fields requested
     if varnames_filter:
-        export_vars = [v for v in varnames_filter if v in varnames]
-        missing = [v for v in varnames_filter if v not in varnames]
+        export_vars    = [v for v in varnames_filter if v in varnames]
+        export_derived = [v for v in varnames_filter if v in _DERIVED_FIELDS]
+        missing = [v for v in varnames_filter
+                   if v not in varnames and v not in _DERIVED_FIELDS]
         if missing:
             print(f"  WARNING: variables not found in plotfile: {missing}")
     elif fire_vars_only:
-        export_vars = [v for v in varnames if v in FIRE_VARS]
+        export_vars    = [v for v in varnames if v in FIRE_VARS]
+        export_derived = [v for v in FIRE_VARS if v in _DERIVED_FIELDS]
     else:
-        export_vars = list(varnames)
+        export_vars    = list(varnames)
+        export_derived = list(_DERIVED_FIELDS.keys())
 
     outdir.mkdir(parents=True, exist_ok=True)
     stem = plotfile_dir.name  # e.g. "plt0100"
@@ -544,6 +590,23 @@ def convert_plotfile(
                       utm_origin=utm_origin, epsg=epsg)
         vmin, vmax = np.nanmin(arr2d), np.nanmax(arr2d)
         print(f"  {vname:25s}  min={vmin:.4g}  max={vmax:.4g}  → {out_tif.name}")
+
+    # Export derived fields (e.g. wind_speed, wind_direction computed from velx/vely)
+    for vname in export_derived:
+        fn, desc = _DERIVED_FIELDS[vname]
+        arr2d = fn(fab_data, varnames)
+        if arr2d is None:
+            print(f"  Skipping derived field '{vname}': required source variables "
+                  "not in plotfile")
+            continue
+        if np.all(np.isnan(arr2d)):
+            print(f"  Skipping derived field '{vname}' (all NaN)")
+            continue
+        out_tif = outdir / f"{stem}_{vname}.tif"
+        write_geotiff(arr2d, vname, out_tif, problo, probhi, nx, ny,
+                      utm_origin=utm_origin, epsg=epsg)
+        vmin, vmax = float(np.nanmin(arr2d)), float(np.nanmax(arr2d))
+        print(f"  {vname:25s}  min={vmin:.4g}  max={vmax:.4g}  → {out_tif.name}  [{desc}]")
 
     # Write fire perimeter GeoJSON if phi is available
     if "phi" in varnames and ("phi" in export_vars or varnames_filter is None):
