@@ -516,7 +516,7 @@ static bool read_landscape_binary(
 // This is a drop-in replacement for compute_slopes_from_landscape() that
 // also handles binary LCP files.
 // ============================================================================
-static void compute_slopes_from_lcp(MultiFab& slopes,
+[[maybe_unused]] static void compute_slopes_from_lcp(MultiFab& slopes,
                                     const Geometry& geom,
                                     const std::string& filename)
 {
@@ -603,7 +603,7 @@ static void compute_slopes_from_lcp(MultiFab& slopes,
 // ============================================================================
 // compute_elevation_from_lcp
 // ============================================================================
-static void compute_elevation_from_lcp(MultiFab& elev_mf,
+[[maybe_unused]] static void compute_elevation_from_lcp(MultiFab& elev_mf,
                                        const Geometry& geom,
                                        const std::string& filename)
 {
@@ -625,7 +625,7 @@ static void compute_elevation_from_lcp(MultiFab& elev_mf,
 // ============================================================================
 // compute_fuel_model_from_lcp
 // ============================================================================
-static void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
+[[maybe_unused]] static void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
                                         const Geometry& geom,
                                         const std::string& filename)
 {
@@ -651,7 +651,7 @@ static void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
 // a binary or ASCII landscape file.  Drop-in replacement for
 // compute_landscape_slope_aspect_fuel() that also handles binary LCP.
 // ============================================================================
-static void compute_landscape_slope_aspect_fuel_lcp(
+[[maybe_unused]] static void compute_landscape_slope_aspect_fuel_lcp(
     MultiFab& slope_out,
     MultiFab& aspect_out,
     MultiFab& fuel_out,

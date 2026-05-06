@@ -298,11 +298,9 @@ int main(int argc, char* argv[])
       init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
     }
 #else
-    if (!inputs.velocity_file.empty()) {
-      init_velocity_from_file(vel, geom, inputs.velocity_file);
-    } else {
-      init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
-    }
+    // File-based velocity initialization is only supported in 2D.
+    // In 3D, use constant velocity specified via inputs.ux/uy/uz.
+    init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
 #endif
 
     // ---------------- Turbulent wind perturbation setup ----------------

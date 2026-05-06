@@ -102,14 +102,12 @@ inline void load_fuel_moisture_schedule(
     auto days_since_epoch = [](int y, int m, int d) -> long {
         // Zeller-like computation (sufficient for ordering; not ISO epoch)
         if (m < 3) { m += 12; --y; }
-        long k = y / 100;
         long J = 365L * y + y / 4 - y / 100 + y / 400
                 + (306 * (m + 1)) / 10 + d - 719591;
         return J;
     };
 
     long   ref_day_s = 0;
-    int    ref_hour  = start_hour;
     bool   ref_set   = (start_year != 0);
 
     if (ref_set) {
@@ -119,7 +117,6 @@ inline void load_fuel_moisture_schedule(
 
     std::string line;
     int line_num = 0;
-    bool first_block = true;
 
     while (std::getline(f, line)) {
         ++line_num;
