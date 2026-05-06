@@ -249,4 +249,69 @@ Real cell_list_interp(const CellListParams& cl,
     return best_v;
 }
 
+// ---------------------------------------------------------------------------
+// GPU kernel helper – nearest-neighbour lookup via cell list.
+//
+// Unlike cell_list_interp which blends neighbouring values with a smooth
+// kernel, this function returns the value of the single closest data point.
+// It is the correct choice for categorical data (e.g. FARSITE fuel model
+// numbers) where weighted-average blending would produce non-physical
+// fractional categories.
+//
+// Algorithm: search the 3×3 neighbourhood of bins centred on the query bin
+// to find the point with minimum Euclidean distance.  Falls back to a 5×5
+// ring search when the first ring is completely empty.
+// ---------------------------------------------------------------------------
+AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+Real cell_list_nearest(const CellListParams& cl,
+                       const Real* AMREX_RESTRICT vals,
+                       Real px, Real py) noexcept
+{
+    int bx = static_cast<int>((px - cl.xmin) / cl.cell_sz);
+    int by = static_cast<int>((py - cl.ymin) / cl.cell_sz);
+    bx = max(0, min(cl.nbx - 1, bx));
+    by = max(0, min(cl.nby - 1, by));
+
+    Real best_d2 = Real(1.0e30);
+    Real best_v  = Real(0.0);
+    bool found   = false;
+
+    // Search 3×3 neighbourhood (radius 1 bin)
+    for (int dby = max(0, by - 1); dby <= min(cl.nby - 1, by + 1); ++dby) {
+        for (int dbx = max(0, bx - 1); dbx <= min(cl.nbx - 1, bx + 1); ++dbx) {
+            const int b   = dby * cl.nbx + dbx;
+            const int end = cl.bstart[b] + cl.bcount[b];
+            for (int k = cl.bstart[b]; k < end; ++k) {
+                const Real ddx = px - cl.sx[k];
+                const Real ddy = py - cl.sy[k];
+                const Real d2  = ddx * ddx + ddy * ddy;
+                if (d2 < best_d2) {
+                    best_d2 = d2;
+                    best_v  = vals[k];
+                    found   = true;
+                }
+            }
+        }
+    }
+    if (found) return best_v;
+
+    // Fall back: wider 5×5 ring search when all immediate neighbours are empty
+    for (int dby = max(0, by - 2); dby <= min(cl.nby - 1, by + 2); ++dby) {
+        for (int dbx = max(0, bx - 2); dbx <= min(cl.nbx - 1, bx + 2); ++dbx) {
+            const int b   = dby * cl.nbx + dbx;
+            const int end = cl.bstart[b] + cl.bcount[b];
+            for (int k = cl.bstart[b]; k < end; ++k) {
+                const Real ddx = px - cl.sx[k];
+                const Real ddy = py - cl.sy[k];
+                const Real d2  = ddx * ddx + ddy * ddy;
+                if (d2 < best_d2) {
+                    best_d2 = d2;
+                    best_v  = vals[k];
+                }
+            }
+        }
+    }
+    return best_v;
+}
+
 #endif // SPATIAL_GRID_H
