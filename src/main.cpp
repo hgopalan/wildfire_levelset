@@ -46,6 +46,7 @@ using namespace amrex;
 #include "fire_ecology_model.H"
 #include "fire_emissions_model.H"
 #include "heat_per_unit_area.H"
+#include "burnout_time.H"
 #include "vorticity_model.H"
 #include "turb_wind.H"
 #include "fuel_adjustment.H"
@@ -159,6 +160,11 @@ int main(int argc, char* argv[])
     // Set to the current simulation time on the first timestep phi < 0.
     MultiFab arrival_time_mf(ba, dm, 1, 0);
     arrival_time_mf.setVal(Real(-1.0));
+
+    // Burnout time field [s]: arrival_time + tau_residence per burned cell.
+    // -1.0 sentinel for cells not yet burned.
+    MultiFab burnout_time_mf(ba, dm, 1, 0);
+    burnout_time_mf.setVal(Real(-1.0));
 
     // Heat per unit area [BTU/ft²]: I_R × residence_time [min] for burned cells.
     // Zero for unburned cells. Recomputed before each plotfile write.
@@ -388,15 +394,18 @@ int main(int argc, char* argv[])
     MultiFab cbh_mf(ba, dm, 1, 0);   // crown base height [m]
     MultiFab cbd_mf(ba, dm, 1, 0);   // crown bulk density [kg/m³]
     MultiFab cc_mf(ba, dm, 1, 0);    // canopy cover [%]
+    MultiFab canopy_height_mf(ba, dm, 1, 0);  // stand (canopy) height [m]
     cbh_mf.setVal(inputs.crown.CBH);
     cbd_mf.setVal(inputs.crown.CBD);
     cc_mf.setVal(0.0);
+    canopy_height_mf.setVal(0.0);
     bool has_spatial_crown = false;
     if (inputs.use_spatial_crown == 1 &&
         !inputs.rothermel.landscape_file.empty()) {
       has_spatial_crown = compute_crown_layers_from_lcp(
           &cbh_mf, &cbd_mf, &cc_mf,
-          geom, inputs.rothermel.landscape_file);
+          geom, inputs.rothermel.landscape_file,
+          &canopy_height_mf);
     }
 
     // ---------------- Fuel model lookup table for per-cell spread --------
@@ -444,16 +453,38 @@ int main(int argc, char* argv[])
     }
 
     // Helper lambda: update RothermelParams from the FMD schedule at time t_s.
+    // When no FMD schedule is provided but the diurnal moisture model is enabled,
+    // moisture is computed from the Nelson (2000) EMC diurnal cycle instead.
     // Rebuilds fuel and Balbi tables to reflect the new moisture values.
     auto apply_fmd_moisture = [&](Real t_s) {
-        if (fmd_sched.empty()) return;
-        RothermelMoistures m = get_moisture_at_time(
-            fmd_sched, static_cast<double>(t_s), inputs.fmd_fuel_model,
-            {static_cast<float>(inputs.rothermel.M_d1),
-             static_cast<float>(inputs.rothermel.M_d10),
-             static_cast<float>(inputs.rothermel.M_d100),
-             static_cast<float>(inputs.rothermel.M_lh),
-             static_cast<float>(inputs.rothermel.M_lw)});
+        RothermelMoistures m;
+        bool moisture_updated = false;
+
+        if (!fmd_sched.empty()) {
+            // FMD schedule takes priority
+            m = get_moisture_at_time(
+                fmd_sched, static_cast<double>(t_s), inputs.fmd_fuel_model,
+                {static_cast<float>(inputs.rothermel.M_d1),
+                 static_cast<float>(inputs.rothermel.M_d10),
+                 static_cast<float>(inputs.rothermel.M_d100),
+                 static_cast<float>(inputs.rothermel.M_lh),
+                 static_cast<float>(inputs.rothermel.M_lw)});
+            moisture_updated = true;
+        } else if (inputs.diurnal_moisture.enable == 1) {
+            // Diurnal EMC model (Nelson 2000)
+            m = compute_diurnal_emc(
+                inputs.diurnal_moisture,
+                static_cast<double>(t_s),
+                {static_cast<float>(inputs.rothermel.M_d1),
+                 static_cast<float>(inputs.rothermel.M_d10),
+                 static_cast<float>(inputs.rothermel.M_d100),
+                 static_cast<float>(inputs.rothermel.M_lh),
+                 static_cast<float>(inputs.rothermel.M_lw)});
+            moisture_updated = true;
+        }
+
+        if (!moisture_updated) return;
+
         inputs.rothermel.M_d1   = static_cast<amrex::Real>(m.M_d1);
         inputs.rothermel.M_d10  = static_cast<amrex::Real>(m.M_d10);
         inputs.rothermel.M_d100 = static_cast<amrex::Real>(m.M_d100);
@@ -612,7 +643,8 @@ int main(int argc, char* argv[])
             compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                                 d_fuel_table_ptr, fuel_table_size);
+                                 d_fuel_table_ptr, fuel_table_size,
+                                 has_spatial_crown ? &cc_mf : nullptr);
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
@@ -661,6 +693,7 @@ int main(int argc, char* argv[])
         compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
                                    inputs.farsite.tau_residence);
       }
+      compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
       compute_vorticity(vorticity_mf, vel, geom);
       Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
@@ -677,7 +710,7 @@ int main(int argc, char* argv[])
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -692,10 +725,10 @@ int main(int argc, char* argv[])
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -719,7 +752,9 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
       MultiFab::Copy(plotmf, cbh_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 1, 0);
       MultiFab::Copy(plotmf, cbd_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 4, 1, 0);
-      MultiFab::Copy(plotmf, cc_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+      MultiFab::Copy(plotmf, cc_mf,            0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+      MultiFab::Copy(plotmf, canopy_height_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 1, 0);
+      MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -830,7 +865,8 @@ int main(int argc, char* argv[])
           compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                terrain_slopes.get(),
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                               d_fuel_table_ptr, fuel_table_size);
+                               d_fuel_table_ptr, fuel_table_size,
+                               has_spatial_crown ? &cc_mf : nullptr);
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       if (inputs.weise_biging.enable == 1) {
@@ -871,7 +907,7 @@ int main(int argc, char* argv[])
 	// --- Step 4: Merge to new perimeter
 	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf);
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
@@ -961,6 +997,7 @@ int main(int argc, char* argv[])
 	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
 	                             inputs.farsite.tau_residence);
 	}
+	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
 	compute_vorticity(vorticity_mf, vel, geom);
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", step);
@@ -979,7 +1016,7 @@ int main(int argc, char* argv[])
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -994,10 +1031,10 @@ int main(int argc, char* argv[])
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1021,7 +1058,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
 	MultiFab::Copy(plotmf, cbh_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 1, 0);
 	MultiFab::Copy(plotmf, cbd_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 4, 1, 0);
-	MultiFab::Copy(plotmf, cc_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+	MultiFab::Copy(plotmf, cc_mf,            0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+	MultiFab::Copy(plotmf, canopy_height_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 1, 0);
+	MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
@@ -1077,6 +1116,7 @@ int main(int argc, char* argv[])
 	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
 	                             inputs.farsite.tau_residence);
 	}
+	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
 	compute_vorticity(vorticity_mf, vel, geom);
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", final_step);
@@ -1095,7 +1135,7 @@ int main(int argc, char* argv[])
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1110,10 +1150,10 @@ int main(int argc, char* argv[])
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
-				   "cbh", "cbd", "canopy_cover"
+				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1137,7 +1177,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
 	MultiFab::Copy(plotmf, cbh_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 1, 0);
 	MultiFab::Copy(plotmf, cbd_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 4, 1, 0);
-	MultiFab::Copy(plotmf, cc_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+	MultiFab::Copy(plotmf, cc_mf,            0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 5, 1, 0);
+	MultiFab::Copy(plotmf, canopy_height_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 6, 1, 0);
+	MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{

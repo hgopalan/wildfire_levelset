@@ -32,7 +32,8 @@ static void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab* slopes = nullptr,
                                 const MultiFab* fuel_model_mf = nullptr,
                                 const RothermelComputed* fuel_table = nullptr,
-                                int fuel_table_size = 0)
+                                int fuel_table_size = 0,
+                                const MultiFab* canopy_cover_mf = nullptr)
 {
     // Compute Rothermel (1972) fire spread parameters (global default)
     const RothermelComputed rc = compute_rothermel_params(rp);
@@ -53,6 +54,14 @@ static void compute_rothermel_R(MultiFab& R_mf,
     const bool use_fuel_table = (fuel_model_mf != nullptr &&
                                   fuel_table != nullptr &&
                                   fuel_table_size > 0);
+
+    // Per-cell canopy-cover-weighted WAF (Item 4):
+    // When canopy_cover_mf is provided and use_waf = 1, the WAF is modulated
+    // by the local canopy cover fraction:
+    //   waf_cell = 1.0 - (cc/100) * (1.0 - waf_fuel)
+    // cc = 0%  → waf_cell = 1.0 (open, no wind reduction)
+    // cc = 100% → waf_cell = waf_fuel (fully sheltered, full reduction)
+    const bool use_cc_waf = (canopy_cover_mf != nullptr && use_waf_flag == 1);
 
     // Compute the domain-mean wind components so that extreme wind-speed cells
     // (> 25 m/s) can be replaced with the global mean of the flow field rather
@@ -78,6 +87,12 @@ static void compute_rothermel_R(MultiFab& R_mf,
         Array4<const Real> fm;
         if (use_fuel_table) {
             fm = fuel_model_mf->const_array(mfi);
+        }
+
+        // Get per-cell canopy cover for WAF weighting (if provided)
+        Array4<const Real> cc_arr;
+        if (use_cc_waf) {
+            cc_arr = canopy_cover_mf->const_array(mfi);
         }
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
@@ -123,9 +138,17 @@ static void compute_rothermel_R(MultiFab& R_mf,
             Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
 
             // Apply Wind Adjustment Factor if enabled (Andrews 2018):
-            // converts 20-ft open wind to midflame height wind
+            // converts 20-ft open wind to midflame height wind.
+            // When canopy_cover_mf is supplied, blend per-cell:
+            //   waf_cell = 1 - (cc/100) * (1 - waf_fuel)
             if (use_waf_flag == 1) {
-                U_ftmin *= cell_waf;
+                Real waf_cell = cell_waf;
+                if (use_cc_waf) {
+                    Real cc_frac = amrex::max(Real(0.0),
+                                  amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+                    waf_cell = Real(1.0) - cc_frac * (Real(1.0) - cell_waf);
+                }
+                U_ftmin *= waf_cell;
             }
 
             // Apply maximum effective wind speed limit if enabled (Andrews 2018)

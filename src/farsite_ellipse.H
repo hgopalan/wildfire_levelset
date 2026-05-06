@@ -56,7 +56,8 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    const InputParameters::CrownInitiationParams &cp,
                                    const MultiFab *slopes = nullptr,
                                    MultiFab *fuel_consumption = nullptr,
-                                   MultiFab *crown_fire_fraction = nullptr) {
+                                   MultiFab *crown_fire_fraction = nullptr,
+                                   const MultiFab *canopy_cover_mf = nullptr) {
   // (FARSITE is always active when propagation_method = farsite; guard removed)
 
   const auto dx = geom.CellSize();
@@ -111,6 +112,9 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const Real U_max_default       = rc.U_max_ftmin;
   const int  use_waf_flag        = rp.use_waf;
   const int  use_wind_limit_flag = rp.use_wind_limit;
+
+  // Per-cell canopy-cover WAF flag
+  const bool use_cc_waf = (canopy_cover_mf != nullptr && use_waf_flag == 1);
   
   // Bulk fuel consumption model parameters
   const int use_fuel_consumption = fp.use_bulk_fuel_consumption;
@@ -160,6 +164,12 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     Array4<Real> cff;
     if (should_compute_crown_fraction) {
       cff = crown_fire_fraction->array(mfi);
+    }
+
+    // Get canopy cover array for per-cell WAF (if provided)
+    Array4<const Real> cc_arr;
+    if (use_cc_waf) {
+      cc_arr = canopy_cover_mf->const_array(mfi);
     }
 
     ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -222,9 +232,17 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       Real U_ftmin = wind_mag * wind_conv;
 
       // Apply Wind Adjustment Factor if enabled (Andrews 2018):
-      // converts 20-ft open wind to midflame height wind
+      // converts 20-ft open wind to midflame height wind.
+      // When canopy_cover_mf is supplied, blend per-cell:
+      //   waf_cell = 1 - (cc/100) * (1 - waf_global)
       if (use_waf_flag == 1) {
-          U_ftmin *= waf_default;
+          Real waf_cell = waf_default;
+          if (use_cc_waf) {
+              Real cc_frac = amrex::max(Real(0.0),
+                            amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+              waf_cell = Real(1.0) - cc_frac * (Real(1.0) - waf_default);
+          }
+          U_ftmin *= waf_cell;
       }
 
       // Apply maximum effective wind speed limit if enabled (Andrews 2018)
