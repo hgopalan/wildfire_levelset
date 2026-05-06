@@ -804,6 +804,86 @@ The resulting noise field has the approximate 2-D autocovariance
 
 i.e.\ a Gaussian envelope with e-folding length :math:`L_c` (``turb_wind.L_c``).
 
+Random Fourier Feature Spectral Noise (``turb_wind.model = spectral_noise``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The spectral noise model combines a physically correct spatial power spectrum
+with OU temporal evolution, following the Random Fourier Feature (RFF)
+methodology (Kraichnan 1970; Rahimi & Recht 2007).
+
+**Initialisation – wavenumber and phase sampling**
+
+At startup :math:`N` wavenumber pairs and phases are drawn once and remain
+fixed for the entire simulation:
+
+.. math::
+
+   k_{x,n},\; k_{y,n} &\;\sim\; \mathcal{N}\!\left(0,\; \frac{1}{L_c^2}\right)
+   \quad\text{independently,} \\
+   \phi^u_n,\; \phi^v_n &\;\sim\; \mathcal{U}[0,\; 2\pi),
+
+where :math:`L_c` is the user-specified spatial correlation length
+(``turb_wind.L_c`` [m]) and :math:`N` is the number of modes
+(``turb_wind.N_modes``).  Sampling :math:`k_x, k_y` independently from
+:math:`\mathcal{N}(0, 1/L_c^2)` corresponds to a 2-D **isotropic Gaussian**
+power spectral density :math:`S(k) \propto \exp(-k^2 L_c^2/2)`, whose
+Fourier transform is the Gaussian autocorrelation function.
+
+**Temporal update – OU amplitude evolution (CPU, every timestep)**
+
+Each mode carries a pair of scalar OU amplitude coefficients
+:math:`(A^u_n, A^v_n)` with unit stationary variance:
+
+.. math::
+
+   \alpha &= \exp(-\theta\,\Delta t), \\
+   A^u_n(t+\Delta t) &= \alpha\,A^u_n(t) + \sqrt{1-\alpha^2}\;\xi^u_n(t), \\
+   A^v_n(t+\Delta t) &= \alpha\,A^v_n(t) + \sqrt{1-\alpha^2}\;\xi^v_n(t),
+
+where :math:`\xi^u_n, \xi^v_n \sim \mathcal{N}(0,1)` are independent each step.
+
+**Field reconstruction (GPU, every timestep)**
+
+The perturbation field is reconstructed on the GPU as a weighted cosine
+superposition:
+
+.. math::
+
+   u'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
+              A^u_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^u_n\bigr), \\
+   v'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
+              A^v_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^v_n\bigr).
+
+The scale factor :math:`\sigma\sqrt{2/N}` ensures that the stationary
+variance of each cell's perturbation equals :math:`\sigma^2` [m²/s²]:
+
+.. math::
+
+   \mathrm{Var}[u'(x,y)]
+   = \sigma^2 \cdot \frac{2}{N} \cdot N \cdot 1 \cdot \mathbb{E}[\cos^2] = \sigma^2.
+
+**Properties**
+
+* Temporal decorrelation time = :math:`1/\theta` [s] (same as ``ou_process``).
+* Approximate 2-D spatial autocovariance (by the Bochner theorem):
+
+  .. math::
+
+     C(r) \approx \sigma^2 \exp\!\left(-\frac{r^2}{2 L_c^2}\right).
+
+* Energy is distributed across all resolved wavenumbers according to the
+  Gaussian PSD — unlike the grid-smoothing approach, no artificial
+  truncation of the spectrum occurs.
+* GPU-accelerated: the inner-mode loop in the reconstruction kernel runs on
+  the device; CPU workload per step is only :math:`O(N)` for the OU updates.
+
+**References**
+
+* Kraichnan, R.H. (1970). Diffusion by a random velocity field.
+  *Phys. Fluids* 13(1):22–31.
+* Rahimi, A. & Recht, B. (2007). Random features for large-scale kernel
+  machines. *NIPS 2007*.
+
 Bounded Direction Random Walk (``turb_wind.model = direction_walk``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

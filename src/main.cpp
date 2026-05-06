@@ -304,9 +304,9 @@ int main(int argc, char* argv[])
 
     // ---------------- Turbulent wind perturbation setup ----------------
     // vel_base stores the unperturbed background wind (constant or time-dependent).
-    // ou_state_mf stores the per-cell OU state (u', v') when L_c > 0.
-    // For domain-uniform OU and direction_walk the scalar state in turb_state
-    // is sufficient; ou_state_mf is left null.
+    // ou_state_mf stores the per-cell OU state (u', v') only when model=ou_process
+    // and L_c > 0.  For domain-uniform OU, spectral_noise, and direction_walk the
+    // scalar / spectral state in turb_state is sufficient; ou_state_mf is null.
     const bool turb_wind_active = (inputs.turb_wind.model != "none");
     std::unique_ptr<MultiFab> vel_base;
     std::unique_ptr<MultiFab> ou_state_mf;
@@ -314,7 +314,7 @@ int main(int argc, char* argv[])
     if (turb_wind_active) {
         vel_base = std::make_unique<MultiFab>(ba, dm, 3, 1);
         MultiFab::Copy(*vel_base, vel, 0, 0, 3, 1);
-        init_turb_wind_state(turb_state, inputs.turb_wind.random_seed);
+        init_turb_wind_state(turb_state, inputs.turb_wind);
         if (inputs.turb_wind.model == "ou_process" && inputs.turb_wind.L_c > amrex::Real(0.0)) {
             ou_state_mf = std::make_unique<MultiFab>(ba, dm, 2, 0);
             ou_state_mf->setVal(amrex::Real(0.0));

@@ -427,15 +427,18 @@ void parse_inputs(InputParameters& p)
     p.turb_wind.theta       = 0.1;    pp.query("turb_wind.theta",       p.turb_wind.theta);
     p.turb_wind.sigma       = 0.5;    pp.query("turb_wind.sigma",       p.turb_wind.sigma);
     p.turb_wind.L_c         = 0.0;    pp.query("turb_wind.L_c",         p.turb_wind.L_c);
+    p.turb_wind.N_modes     = 32;     pp.query("turb_wind.N_modes",     p.turb_wind.N_modes);
     p.turb_wind.sigma_theta = 0.1;    pp.query("turb_wind.sigma_theta", p.turb_wind.sigma_theta);
     p.turb_wind.theta_max   = 0.5236; pp.query("turb_wind.theta_max",   p.turb_wind.theta_max);
     p.turb_wind.random_seed = 0;      pp.query("turb_wind.random_seed", p.turb_wind.random_seed);
 
     // Validate
-    if (p.turb_wind.model != "none"           &&
-        p.turb_wind.model != "ou_process"     &&
+    if (p.turb_wind.model != "none"             &&
+        p.turb_wind.model != "ou_process"       &&
+        p.turb_wind.model != "spectral_noise"   &&
         p.turb_wind.model != "direction_walk") {
-        amrex::Abort("turb_wind.model must be one of: none, ou_process, direction_walk");
+        amrex::Abort("turb_wind.model must be one of: "
+                     "none, ou_process, spectral_noise, direction_walk");
     }
     if (p.turb_wind.model == "ou_process") {
         if (p.turb_wind.theta <= 0.0)
@@ -452,6 +455,21 @@ void parse_inputs(InputParameters& p)
         else
             Print() << "  L_c=0 (domain-uniform)";
         Print() << "\n";
+    }
+    if (p.turb_wind.model == "spectral_noise") {
+        if (p.turb_wind.theta <= 0.0)
+            amrex::Abort("turb_wind.theta must be > 0");
+        if (p.turb_wind.sigma <= 0.0)
+            amrex::Abort("turb_wind.sigma must be > 0");
+        if (p.turb_wind.L_c <= 0.0)
+            amrex::Abort("turb_wind.L_c must be > 0 for spectral_noise");
+        if (p.turb_wind.N_modes < 1)
+            amrex::Abort("turb_wind.N_modes must be >= 1");
+        Print() << "Turbulent wind model: spectral_noise (Random Fourier Features)\n";
+        Print() << "  theta=" << p.turb_wind.theta << " s^-1"
+                << "  sigma=" << p.turb_wind.sigma << " m/s"
+                << "  L_c="   << p.turb_wind.L_c   << " m"
+                << "  N_modes=" << p.turb_wind.N_modes << "\n";
     }
     if (p.turb_wind.model == "direction_walk") {
         if (p.turb_wind.sigma_theta <= 0.0)
