@@ -157,7 +157,7 @@ jobs:
         id: cuda-toolkit
         with:
           cuda: '12.6.1'
-          sub-packages: '["nvcc", "cudart", "cuda_profiler_api"]'
+          sub-packages: '["nvcc", "cudart", "cuda_profiler_api", "cufft_dev", "cusparse_dev", "curand_dev"]'
           method: 'network'
           use-github-cache: 'false'
 
