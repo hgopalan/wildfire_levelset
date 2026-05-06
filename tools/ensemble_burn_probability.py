@@ -14,7 +14,7 @@ Workflow
 3. For each sample:
    a. Create a scratch run directory.
    b. Write a modified ``inputs.i`` with the perturbed parameters.
-   c. Run the solver executable.
+   c. Run the solver executable (serial or MPI).
    d. Read the final ``phi_negative_NNNN.dat`` (all phi < 0 cell centres).
 4. Aggregate per-cell burn counts on a regular grid.
 5. Write ``burn_probability.csv`` (X, Y, P_burn columns) and optional GeoJSON.
@@ -31,9 +31,19 @@ The distributions are parameterised by their mean (= 1.0 for speed factor,
 are generated using a Latin hypercube or, if ``scipy`` is unavailable, simple
 uniform random sampling.
 
+MPI launch
+----------
+Pass ``--mpi-ranks N`` (N ≥ 1) to launch each solver member via MPI::
+
+    mpirun -n N ./wildfire_levelset inputs.i amrex.use_gpu_aware_mpi=0
+
+The MPI launcher command can be changed with ``--mpirun`` (default: ``mpirun``).
+When ``--mpi-ranks`` is 0 (the default) the solver is run serially without
+any MPI wrapper.
+
 Usage examples
 --------------
-  # Basic: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
+  # Basic serial: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
   python3 tools/ensemble_burn_probability.py \\
       --exe ./wildfire_levelset \\
       --inputs inputs.i \\
@@ -41,6 +51,22 @@ Usage examples
       --wind-speed-sigma 0.20 \\
       --wind-dir-sigma 15.0 \\
       --moisture-sigma 0.02
+
+  # MPI: each ensemble member uses 4 MPI ranks
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 50 \\
+      --mpi-ranks 4
+
+  # MPI with mpiexec launcher and 8 ranks per member, 2 members in parallel
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 100 \\
+      --mpirun mpiexec \\
+      --mpi-ranks 8 \\
+      --jobs 2
 
   # More runs, georeferenced probability map
   python3 tools/ensemble_burn_probability.py \\
@@ -66,6 +92,10 @@ Options
   --exe FILE           Solver executable path (default: ./wildfire_levelset)
   --inputs FILE        Template inputs.i file (default: inputs.i)
   --n-runs N           Number of ensemble members (default: 50)
+  --mpi-ranks N        MPI ranks per ensemble member; 0 = serial (default: 0)
+  --mpirun CMD         MPI launcher command (default: mpirun)
+  --mpi-args ARGS      Extra space-separated arguments inserted after the
+                       launcher but before "-n N" (default: "")
   --wind-speed-sigma S Std dev of multiplicative wind-speed factor (default: 0.20)
   --wind-dir-sigma D   Std dev of additive wind-direction offset [deg] (default: 15.0)
   --moisture-sigma M   Std dev of additive M_d1 offset [fraction] (default: 0.02)
@@ -359,6 +389,26 @@ def write_burn_probability_geojson(
 # Single run execution
 # ---------------------------------------------------------------------------
 
+def build_launch_cmd(
+    exe: str,
+    inputs_path: str,
+    mpi_ranks: int,
+    mpirun: str,
+    mpi_extra_args: List[str],
+) -> List[str]:
+    """Build the full command list for launching the solver.
+
+    Serial (mpi_ranks == 0):
+        [exe, inputs_path]
+
+    MPI (mpi_ranks >= 1):
+        [mpirun, *mpi_extra_args, "-n", str(mpi_ranks), exe, inputs_path]
+    """
+    if mpi_ranks <= 0:
+        return [exe, inputs_path]
+    return [mpirun, *mpi_extra_args, "-n", str(mpi_ranks), exe, inputs_path]
+
+
 def run_member(
     run_id: int,
     exe: str,
@@ -366,8 +416,39 @@ def run_member(
     sample: Dict[str, float],
     work_dir: str,
     keep: bool,
+    mpi_ranks: int = 0,
+    mpirun: str = "mpirun",
+    mpi_extra_args: Optional[List[str]] = None,
 ) -> Optional[List[Tuple[float, float]]]:
-    """Execute one ensemble member. Returns list of burned (x,y) or None on failure."""
+    """Execute one ensemble member. Returns list of burned (x,y) or None on failure.
+
+    Parameters
+    ----------
+    run_id : int
+        Ensemble member index (used for directory name and log messages).
+    exe : str
+        Path to the solver executable.
+    template_lines : list[str]
+        Lines of the template inputs.i file.
+    sample : dict
+        Perturbed parameter values for this member.
+    work_dir : str
+        Base directory for per-run scratch directories.
+    keep : bool
+        If False, plotfile and checkpoint sub-directories are removed after
+        the run to save disk space.
+    mpi_ranks : int, optional
+        Number of MPI ranks per member.  0 (default) → serial run without
+        any MPI launcher.
+    mpirun : str, optional
+        MPI launcher executable name or path (default: ``"mpirun"``).
+    mpi_extra_args : list[str] or None, optional
+        Extra arguments inserted between the launcher and ``-n N``, e.g.
+        ``["--bind-to", "core"]`` (default: empty list).
+    """
+    if mpi_extra_args is None:
+        mpi_extra_args = []
+
     run_dir = os.path.join(work_dir, f"run_{run_id:04d}")
     os.makedirs(run_dir, exist_ok=True)
 
@@ -376,11 +457,13 @@ def run_member(
     with open(inputs_path, "w") as f:
         f.writelines(perturbed)
 
+    cmd = build_launch_cmd(exe, inputs_path, mpi_ranks, mpirun, mpi_extra_args)
+
     log_path = os.path.join(run_dir, "run.log")
     try:
         with open(log_path, "w") as log:
             result = subprocess.run(
-                [exe, inputs_path],
+                cmd,
                 cwd=run_dir,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -389,7 +472,8 @@ def run_member(
         if result.returncode != 0:
             print(f"  WARNING: run {run_id} exited with code {result.returncode}", flush=True)
         pts = read_phi_negative(run_dir)
-        print(f"  Run {run_id:4d}: speed×{sample['speed_factor']:.2f}  "
+        launch_info = (f"mpi×{mpi_ranks}" if mpi_ranks > 0 else "serial")
+        print(f"  Run {run_id:4d} [{launch_info}]: speed×{sample['speed_factor']:.2f}  "
               f"dir+{sample['dir_offset']:.1f}°  M_d1+{sample['moist_offset']:.3f}  "
               f"→ {len(pts)} burned cells", flush=True)
         return pts
@@ -423,6 +507,15 @@ def main(argv=None):
                         help="Template inputs.i file (default: inputs.i)")
     parser.add_argument("--n-runs",           type=int, default=50,
                         help="Number of ensemble members (default: 50)")
+    # ---- MPI options ----
+    parser.add_argument("--mpi-ranks",        type=int, default=0,
+                        help="MPI ranks per member; 0 = serial (default: 0)")
+    parser.add_argument("--mpirun",           default="mpirun",
+                        help="MPI launcher command (default: mpirun)")
+    parser.add_argument("--mpi-args",         default="",
+                        help="Extra space-separated args inserted after the launcher "
+                             "and before '-n N', e.g. '--bind-to core' (default: '')")
+    # ---- perturbation ----
     parser.add_argument("--wind-speed-sigma", type=float, default=0.20,
                         help="Std dev of lognormal wind-speed multiplier (default: 0.20)")
     parser.add_argument("--wind-dir-sigma",   type=float, default=15.0,
@@ -457,6 +550,25 @@ def main(argv=None):
         print(f"ERROR: solver executable not found: {args.exe}", file=sys.stderr)
         sys.exit(1)
 
+    # Validate and resolve MPI launcher when MPI is requested
+    mpi_ranks = args.mpi_ranks
+    mpirun_cmd = args.mpirun
+    mpi_extra: List[str] = args.mpi_args.split() if args.mpi_args.strip() else []
+
+    if mpi_ranks > 0:
+        resolved = shutil.which(mpirun_cmd)
+        if resolved is None:
+            print(f"ERROR: MPI launcher '{mpirun_cmd}' not found on PATH. "
+                  "Install an MPI implementation or use --mpirun to specify the path.",
+                  file=sys.stderr)
+            sys.exit(1)
+        mpirun_cmd = resolved
+        print(f"MPI launcher: {mpirun_cmd}  ranks per member: {mpi_ranks}")
+        if mpi_extra:
+            print(f"MPI extra args: {mpi_extra}")
+    else:
+        print("Launch mode: serial (use --mpi-ranks N for MPI)")
+
     with open(args.inputs) as f:
         template_lines = f.readlines()
 
@@ -484,7 +596,8 @@ def main(argv=None):
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
             futures = {
                 pool.submit(run_member, i, args.exe, template_lines,
-                            samples[i], work_dir, args.keep_runs): i
+                            samples[i], work_dir, args.keep_runs,
+                            mpi_ranks, mpirun_cmd, mpi_extra): i
                 for i in range(args.n_runs)
             }
             for fut in as_completed(futures):
@@ -496,7 +609,8 @@ def main(argv=None):
     else:
         for i, sample in enumerate(samples):
             pts = run_member(i, args.exe, template_lines, sample,
-                             work_dir, args.keep_runs)
+                             work_dir, args.keep_runs,
+                             mpi_ranks, mpirun_cmd, mpi_extra)
             if pts is not None:
                 all_points.append(pts)
             else:
