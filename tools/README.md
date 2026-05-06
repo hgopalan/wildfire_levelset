@@ -358,6 +358,10 @@ python3 tools/behavior_matrix.py --list-fuels --fuel-system 40
 
 **Dependencies**: none required (pure Python); `matplotlib`, `numpy` for `--plot`.
 
+---
+
+### `perimeter_to_shapefile.py` — Fire Perimeter to Esri Shapefile
+
 Converts wildfire_levelset fire perimeter output files (`.geojson`, `.csv`,
 `.dat`) to Esri Shapefile format for import into GIS applications.
 
@@ -403,51 +407,6 @@ lat, lon = utm_to_latlon(330000, 3775000, zone_number=11, northern=True)
 ```
 
 **Dependencies**: none (pure Python); `pyproj` optional for higher accuracy.
-
----
-
-### `ensemble_burn_probability.py` — Ensemble Burn Probability Driver
-
-FSPro-style ensemble driver.  Runs the solver *N* times with Latin hypercube
-or random perturbations of wind speed, wind direction, and dead fuel moisture,
-accumulates per-cell burn counts, and writes a probability map.
-
-Optionally computes **conditional flame length exceedance** maps — the
-probability that flame length exceeds a threshold M at each cell — using the
-`flame_length` field from the solver plotfiles.
-
-```bash
-# Serial: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
-python3 tools/ensemble_burn_probability.py \
-    --exe ./wildfire_levelset \
-    --inputs inputs.i \
-    --n-runs 50 \
-    --wind-speed-sigma 0.20 \
-    --wind-dir-sigma 15.0 \
-    --moisture-sigma 0.02
-
-# MPI: each ensemble member uses 4 MPI ranks
-python3 tools/ensemble_burn_probability.py \
-    --exe ./wildfire_levelset \
-    --inputs inputs.i \
-    --n-runs 50 \
-    --mpi-ranks 4
-
-# Flame length exceedance at 0.5, 1.0, 2.0, 4.0 m thresholds
-# (requires plot_int > 0 in inputs.i)
-python3 tools/ensemble_burn_probability.py \
-    --exe ./wildfire_levelset \
-    --inputs inputs.i \
-    --n-runs 50 \
-    --fl-thresholds 0.5 1.0 2.0 4.0 \
-    --fl-out-prefix fl_exceedance
-```
-
-**Outputs**:
-- `burn_probability.csv` — P_burn per cell
-- `fl_exceedance_0p5m.csv`, `fl_exceedance_1p0m.csv`, … — P(FL > M) per cell
-
-**Dependencies**: none required; `scipy` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
 
 ---
 
