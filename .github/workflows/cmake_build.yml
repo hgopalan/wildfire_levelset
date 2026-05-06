@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         build_type: [Release, Debug]
 
     steps:
@@ -31,7 +31,8 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install build dependencies
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -39,7 +40,16 @@ jobs:
             cmake \
             ninja-build
 
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Configure (3D, CPU-only)
+        shell: bash
         run: |
           cmake -S . -B build \
             -G Ninja \
@@ -52,5 +62,11 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Verify executable exists
+      - name: Verify executable exists (Linux/macOS)
+        if: runner.os != 'Windows'
         run: test -f build/levelset
+
+      - name: Verify executable exists (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Test-Path build/levelset.exe -PathType Leaf

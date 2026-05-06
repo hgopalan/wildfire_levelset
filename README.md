@@ -317,9 +317,13 @@ complete option references and worked examples.
 | `landscape_writer.py` | Download LANDFIRE rasters → FARSITE landscape file (`.lcp`) |
 | `farsite_weather_reader.py` | Parse FARSITE `.wtr` RAWS weather files → time-stamped wind CSVs |
 | `fuel_moisture_from_weather.py` | Estimate equilibrium dead-fuel moisture from temperature and RH |
-| `plotfile_to_geotiff.py` | Convert AMReX plotfiles → GeoTIFF rasters and GeoJSON fire-perimeter contours |
+| `farsite_fms_reader.py` | Parse FARSITE `.fms` fuel moisture scenario files → solver inputs |
 | `farsite_adj_reader.py` | Inspect, generate, and apply FARSITE `.adj` fuel adjustment files |
 | `farsite_fmd_reader.py` | Parse, convert, query, and generate FARSITE `.fmd` fuel moisture schedules |
+| `plotfile_to_geotiff.py` | Convert AMReX plotfiles → GeoTIFF rasters and GeoJSON fire-perimeter contours |
+| `perimeter_to_shapefile.py` | Convert fire perimeter files (`.geojson`, `.csv`, `.dat`) to Esri Shapefile |
+| `utm_convert.py` | Bidirectional lat/lon ↔ UTM coordinate conversion (pure-Python or pyproj) |
+| `ensemble_burn_probability.py` | FSPro-style ensemble burn probability driver (LHS/random sampling, MPI) |
 
 ### `farsite_adj_reader.py` — FARSITE fuel adjustment files
 
@@ -398,6 +402,83 @@ fmd_file        = summer_moisture.fmd
 fmd_start_month = 7
 fmd_start_day   = 15
 fmd_fuel_model  = 0    # 0 = apply global schedule to all models
+```
+
+### `farsite_fms_reader.py` — FARSITE fuel moisture scenario files
+
+Reads a FARSITE `.fms` file specifying per-fuel-model dead and live fuel moisture contents and writes solver-compatible moisture inputs.
+
+```bash
+# Print moisture summary (table + ready-to-paste solver blocks)
+python3 tools/farsite_fms_reader.py fire.fms
+
+# Write a solver inputs.i moisture stub for fuel model 4
+python3 tools/farsite_fms_reader.py fire.fms --fuel-model 4 \
+    --write-inputs inputs_moisture.i
+
+# Export all moisture values as a CSV
+python3 tools/farsite_fms_reader.py fire.fms --write-csv moisture.csv
+
+# Query a single fuel model
+python3 tools/farsite_fms_reader.py fire.fms --query 8
+```
+
+### `perimeter_to_shapefile.py` — Fire perimeter to Esri Shapefile
+
+Converts wildfire_levelset fire perimeter output files (`.geojson`, `.csv`, `.dat`) to Esri Shapefile format for import into QGIS, ArcGIS, and other GIS tools.  Requires `pyshp` (`pip install pyshp`).
+
+```bash
+# Convert a single GeoJSON perimeter
+python3 tools/perimeter_to_shapefile.py perimeter_0100.geojson
+
+# Convert all GeoJSON perimeters with UTM zone 13N CRS
+python3 tools/perimeter_to_shapefile.py perimeter_*.geojson --epsg 32613
+
+# Batch convert everything in the current directory
+python3 tools/perimeter_to_shapefile.py --all --outdir shapefiles/
+```
+
+### `utm_convert.py` — Lat/lon ↔ UTM coordinate conversion
+
+Pure-Python WGS-84 lat/lon ↔ UTM conversion tool.  Uses pyproj when available for higher accuracy; falls back to a built-in Transverse Mercator formula otherwise.  Can also be imported as a module.
+
+```bash
+# Convert lat/lon → UTM (zone auto-detected)
+python3 tools/utm_convert.py --to-utm 34.10 -118.85
+
+# Convert UTM → lat/lon
+python3 tools/utm_convert.py --to-latlon 330000 3775000 --zone 11
+```
+
+### `ensemble_burn_probability.py` — Ensemble burn probability driver
+
+FSPro-style ensemble driver that runs the solver *N* times with Latin hypercube or random perturbations of wind speed, wind direction, and dead fuel moisture, then accumulates per-cell burn counts into a probability map.
+
+```bash
+# Serial: 50 runs, ±20% wind speed, ±15° direction, ±2% moisture
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --wind-speed-sigma 0.20 \
+    --wind-dir-sigma 15.0 \
+    --moisture-sigma 0.02
+
+# MPI: each ensemble member uses 4 MPI ranks
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 50 \
+    --mpi-ranks 4
+
+# Georeferenced probability map
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs inputs.i \
+    --n-runs 200 \
+    --resolution 30 \
+    --out burn_probability.csv \
+    --geojson burn_probability.geojson
 ```
 
 **Quick examples:**
