@@ -9,6 +9,9 @@ enable_testing()
 # Define the levelset executable path (assumes build in build/ directory)
 set(LEVELSET_EXE "${CMAKE_BINARY_DIR}/levelset" CACHE FILEPATH "Path to levelset executable")
 
+# Path to the optional wind_solver executable
+set(WIND_SOLVER_EXE "${CMAKE_BINARY_DIR}/wind_solver" CACHE FILEPATH "Path to wind_solver executable")
+
 # Find Python3 interpreter (needed for the landfire_farsite setup step)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
@@ -251,3 +254,39 @@ message(STATUS "  - fmd_moisture        : Time-varying .fmd fuel moisture schedu
 message(STATUS "  - fire_perimeter_output: CSV + GeoJSON perimeter writers + stats CSV")
 message(STATUS "  - burned_area_timeseries: fire_stats.csv time series")
 message(STATUS "  - timing_benchmark    : Multi-resolution wall-clock timing (benchmark label)")
+
+# ---------------------------------------------------------------------------
+# wind_solver regression tests (3-D builds only, requires linear solver)
+# ---------------------------------------------------------------------------
+# Function to register a wind_solver regression test
+function(add_wind_solver_regression_test TEST_NAME TEST_DIR)
+    set(TEST_INPUT   "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
+    set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
+    file(MAKE_DIRECTORY ${TEST_WORK_DIR})
+
+    # Copy terrain file if present
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv")
+        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv"
+             DESTINATION ${TEST_WORK_DIR})
+    endif()
+
+    add_test(NAME ${TEST_NAME}
+             COMMAND ${WIND_SOLVER_EXE} ${TEST_INPUT}
+             WORKING_DIRECTORY ${TEST_WORK_DIR})
+    set_tests_properties(${TEST_NAME} PROPERTIES
+                         TIMEOUT 600
+                         LABELS  "regtest;wind_solver")
+endfunction()
+
+if(LEVELSET_BUILD_WIND_SOLVER)
+    add_wind_solver_regression_test(gaussian_hill_wind_solver gaussian_hill_wind_solver)
+    message(STATUS "")
+    message(STATUS "wind_solver regtests:")
+    message(STATUS "  - gaussian_hill_wind_solver: log-law + mass-consistent Poisson solve over a Gaussian hill")
+    if(LEVELSET_DIM_2D)
+        message(STATUS "  (wind_solver built via ExternalProject 3-D sub-build)")
+    endif()
+else()
+    message(STATUS "")
+    message(STATUS "wind_solver regtests: disabled (LEVELSET_BUILD_WIND_SOLVER=OFF)")
+endif()

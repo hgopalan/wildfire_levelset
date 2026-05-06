@@ -134,6 +134,7 @@ cmake --build build -j
 | `LEVELSET_ENABLE_MPI` | `OFF` | Enable MPI parallelism |
 | `LEVELSET_GPU_BACKEND` | `NONE` | GPU backend: `NONE`, `CUDA`, `HIP`, or `SYCL` |
 | `LEVELSET_BUILD_DOCS` | `OFF` | Build Sphinx documentation |
+| `LEVELSET_BUILD_WIND_SOLVER` | `ON` | Build the terrain-following mass-consistent wind solver (3-D only) |
 | `LEVELSET_USE_VENDORED_AMREX` | `ON` | Use the bundled AMReX submodule |
 
 ### Run
@@ -148,6 +149,67 @@ Override parameters from command line:
 ```
 
 ### Example Configurations
+
+## Terrain-Following Mass-Consistent Wind Solver (`wind_solver`)
+
+A stand-alone 3-D terrain-following wind diagnostic executable is built
+alongside `levelset` in default 3-D builds.  It is inspired by **QUIC-URB**
+and the mass-consistent models of Sherman (1978) and Mathiesen (1987).
+
+### What it does
+
+1. Reads a terrain file (`X Y Z`, metres) — the horizontal domain extents are
+   derived automatically from the data.
+2. Constructs a log-law wind profile using the height above local terrain
+   (interpolated column-by-column via IDW).
+3. Solves the anisotropic Poisson equation for the Lagrange multiplier λ
+   using **AMReX MLMG** (`MLABecLaplacian`) on a single-level Cartesian
+   grid (level 0 only), enforcing ∇·**u** = 0.
+4. Writes an AMReX plotfile with the corrected 3-D wind field and diagnostics.
+
+### Quick start
+
+```bash
+# Prepare a terrain file (or use the supplied Gaussian hill example)
+cp regtest/gaussian_hill_wind_solver/terrain.csv .
+
+# Create inputs.i
+cat > inputs.i << 'EOF'
+terrain_file  = terrain.csv
+U_ref         = 10.0      # 10 m/s westerly at z_ref
+V_ref         = 0.0
+z_ref         = 10.0      # reference height [m]
+z0            = 0.1       # surface roughness [m]
+dx            = 30.0
+dy            = 30.0
+dz            = 10.0      # finer vertical spacing for near-surface resolution
+domain_height = 300.0
+plot_file     = plt_wind
+EOF
+
+./build/wind_solver inputs.i
+```
+
+### Key input parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `terrain_file` | `terrain.csv` | Terrain point cloud (X Y Z) |
+| `U_ref` | `10.0` | x-wind at reference height [m/s] |
+| `V_ref` | `0.0` | y-wind at reference height [m/s] |
+| `z_ref` | `10.0` | Reference height above local terrain [m] |
+| `z0` | `0.1` | Surface roughness length [m] |
+| `dx` | `30.0` | Grid spacing x [m] |
+| `dy` | `30.0` | Grid spacing y [m] |
+| `dz` | `30.0` | Grid spacing z [m] — reduce for vertical refinement |
+| `domain_height` | `300.0` | Vertical domain extent [m] |
+| `alpha_h` | `1.0` | Horizontal Lagrange anisotropy factor |
+| `alpha_v` | `1.0` | Vertical Lagrange anisotropy factor |
+| `plot_file` | `plt_wind` | Output plotfile prefix |
+
+See the [full documentation](https://hgopalan.github.io/wildfire_levelset/wind_solver.html)
+for the complete parameter reference, physical model description, and GIS export workflow.
+
 
 **Basic level-set (no fire spread model, constant velocity):**
 ```bash
