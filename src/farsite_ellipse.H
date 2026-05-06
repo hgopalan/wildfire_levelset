@@ -80,6 +80,13 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 
   const int use_anderson_LW = fp.use_anderson_LW;
 
+  // Fire shape model: convert string to int for GPU-safe capture
+  // 0 = richards (default), 1 = catchpole_demestre, 2 = wilson, 3 = lemniscate
+  const int fire_shape_id = (fp.fire_shape_model == "catchpole_demestre") ? 1
+                          : (fp.fire_shape_model == "wilson")             ? 2
+                          : (fp.fire_shape_model == "lemniscate")         ? 3
+                          :                                                  0;
+
   // Richards' (1990) elliptical expansion coefficients
   // These may be overridden by Anderson L/W ratio if enabled
   Real coeff_a = fp.coeff_a; // head fire coefficient
@@ -292,11 +299,6 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                           local_coeff_b, local_coeff_c);
       }
 
-      // Richards' (1990) elliptical expansion model
-      Real head_spread = local_coeff_a * R_head * dt;
-      Real flank_spread = local_coeff_b * R_head * dt;
-      Real backing_spread = local_coeff_c * R_head * dt;
-
       // Wind unit vector
       Real wx = 0.0, wy = 0.0;
 #if (AMREX_SPACEDIM == 3)
@@ -315,16 +317,35 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
       cos_theta += nz * wz;
 #endif
+      // clamp to [-1, 1] to guard against floating-point rounding
+      cos_theta = amrex::max(Real(-1.0), amrex::min(Real(1.0), cos_theta));
+      Real sin_theta = std::sqrt(Real(1.0) - cos_theta * cos_theta);
 
       Real spread_dist = 0.0;
       if (wind_mag > 1.0e-10) {
-        if (cos_theta > 0.0) {
-          Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
-          spread_dist = head_spread * cos_theta + flank_spread * sin_theta;
+        // Dispatch to selected fire shape model
+        Real scale_factor = 0.0;
+        if (fire_shape_id == 1) {
+          // Catchpole & de Mestre (1986) double-ellipse
+          scale_factor = catchpole_demestre_spread(cos_theta, sin_theta,
+                                                   local_coeff_a, local_coeff_b,
+                                                   local_coeff_c);
+        } else if (fire_shape_id == 2) {
+          // Wilson (1988) single ellipse from rear focus
+          scale_factor = wilson_spread(cos_theta, local_coeff_a, local_coeff_c);
+        } else if (fire_shape_id == 3) {
+          // Alexander et al. lemniscate (Limaçon)
+          scale_factor = alexander_lemniscate_spread(cos_theta, local_coeff_a,
+                                                     local_coeff_b, local_coeff_c);
         } else {
-          Real sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
-          spread_dist = flank_spread * sin_theta - backing_spread * cos_theta;
+          // Richards (1990) – default linear head/flank/backing combination
+          if (cos_theta > 0.0) {
+            scale_factor = local_coeff_a * cos_theta + local_coeff_b * sin_theta;
+          } else {
+            scale_factor = local_coeff_b * sin_theta - local_coeff_c * cos_theta;
+          }
         }
+        spread_dist = amrex::max(scale_factor, Real(0.0)) * R_head * dt;
       } else {
         spread_dist = R_head * dt;
       }

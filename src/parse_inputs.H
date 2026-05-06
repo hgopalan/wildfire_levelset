@@ -97,6 +97,12 @@ struct InputParameters {
         amrex::Real coeff_a;                 // head fire coefficient (default: 1.0)
         amrex::Real coeff_b;                 // flank fire coefficient (default: 0.5)
         amrex::Real coeff_c;                 // backing fire coefficient (default: 0.2)
+        // Fire shape model selection (only used with propagation_method = farsite)
+        // "richards"           – Richards (1990) ellipse (default; linear head/flank/backing combination)
+        // "catchpole_demestre" – Catchpole & de Mestre (1986) true double-ellipse from fire-front origin
+        // "wilson"             – Wilson (1988) single ellipse with fire origin at rear focus
+        // "lemniscate"         – Alexander et al. Limaçon / lemniscate-shaped wavelet
+        std::string fire_shape_model;
         // Bulk Fuel Consumption Fraction Model parameters
         int use_bulk_fuel_consumption;       // 1 to enable bulk fuel consumption model, 0 to disable (default: 0)
         amrex::Real tau_residence;           // Residence time for fuel consumption in seconds (default: 60.0)

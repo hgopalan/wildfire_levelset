@@ -471,6 +471,136 @@ The Anderson (1983) model relates the ellipse shape to wind speed:
 where :math:`L/W` is the length-to-width ratio and :math:`U` is the wind speed (mph). This ratio is then converted to the Richards' coefficients for the elliptical spread calculation.
 
 
+Alternative Fire Shape Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Four fire shape models are available for the FARSITE propagation path.  All
+share the same three user coefficients :math:`a` (head), :math:`b` (flank), and
+:math:`c` (backing), and the base rate of spread :math:`R_{head}` from the
+active fire spread model (Rothermel, Balbi, etc.).  Select the shape with:
+
+.. code-block:: ini
+
+   farsite.fire_shape_model = richards           # default
+   # or: catchpole_demestre | wilson | lemniscate
+
+
+Richards (1990) – Linear Blend (default)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The default model is a simple linear combination of head, flank, and backing
+spread distances:
+
+.. math::
+
+   r(\theta) = \begin{cases}
+       (a \cos\theta + b \sin\theta) \, R_{head} \, \Delta t & \cos\theta \ge 0 \\
+       (b \sin\theta - c \cos\theta) \, R_{head} \, \Delta t & \cos\theta < 0
+   \end{cases}
+
+Enabled by ``farsite.fire_shape_model = richards`` (default).
+
+
+Catchpole & de Mestre (1986) – True Double-Ellipse
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each Huygens wavelet is composed of **two half-ellipses** joined at the
+crosswind axis.  The head half-ellipse has semi-axes :math:`a` and :math:`b`;
+the backing half has semi-axes :math:`c` and :math:`b`.
+
+The polar spread distance from the fire-front origin is:
+
+.. math::
+
+   r(\theta) = \begin{cases}
+       \dfrac{a\,b}{\sqrt{b^2\cos^2\theta + a^2\sin^2\theta}} \, R_{head} \, \Delta t
+           & \cos\theta \ge 0 \text{ (head half)} \\[8pt]
+       \dfrac{c\,b}{\sqrt{b^2\cos^2\theta + c^2\sin^2\theta}} \, R_{head} \, \Delta t
+           & \cos\theta < 0 \text{ (backing half)}
+   \end{cases}
+
+This model is geometrically exact for the double-ellipse shape and gives:
+
+* :math:`r(0) = a\,R_{head}\,\Delta t` (head fire rate)
+* :math:`r(\pi/2) = b\,R_{head}\,\Delta t` (flank rate)
+* :math:`r(\pi) = c\,R_{head}\,\Delta t` (backing rate)
+
+Enabled by ``farsite.fire_shape_model = catchpole_demestre``.
+
+**Reference:** Catchpole, E.A. & de Mestre, N.J. (1986). *Australian Forestry*, 49(2), 102–111.
+
+
+Wilson (1988) – Single Ellipse from Rear Focus
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Wilson's model places the fire origin at the **rear focus** of a single
+ellipse.  The ellipse geometry is derived from the head (:math:`a`) and backing
+(:math:`c`) coefficients only; the flank spread follows naturally.
+
+Defining:
+
+.. math::
+
+   R_H = a\,R_{head}\,\Delta t, \quad R_B = c\,R_{head}\,\Delta t
+
+the ellipse parameters are:
+
+.. math::
+
+   a_{ell} = \frac{R_H + R_B}{2}, \quad
+   e = \frac{R_H - R_B}{R_H + R_B}, \quad
+   \ell = a_{ell}(1 - e^2) = \frac{2\,R_H\,R_B}{R_H + R_B}
+
+The conic-section polar equation from the rear focus gives:
+
+.. math::
+
+   r(\theta) = \frac{\ell}{1 - e\cos\theta}
+
+At the principal angles:
+
+* :math:`r(0) = R_H = a\,R_{head}\,\Delta t` (head fire)
+* :math:`r(\pi) = R_B = c\,R_{head}\,\Delta t` (backing fire)
+* :math:`r(\pi/2) = \ell = \dfrac{2R_H R_B}{R_H + R_B}` (harmonic mean — flank)
+
+The :math:`b` coefficient is not used by this model; the flank spread is
+determined solely by :math:`a` and :math:`c`.
+
+Enabled by ``farsite.fire_shape_model = wilson``.
+
+**Reference:** Wilson, A.A.G. (1988). *Canadian Journal of Forest Research*, 18(6), 682–687.
+
+
+Alexander et al. – Lemniscate (Limaçon)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The lemniscate model represents the fire wavelet as a Limaçon (cardioid
+family):
+
+.. math::
+
+   r(\theta) = \left[b + \frac{a - c}{2}\cos\theta\right] R_{head}\,\Delta t
+
+Principal values:
+
+* :math:`r(0) = \left(b + \tfrac{a-c}{2}\right) R_{head}\,\Delta t`
+* :math:`r(\pi/2) = b\,R_{head}\,\Delta t` (flank rate equals :math:`b` exactly)
+* :math:`r(\pi) = \left(b - \tfrac{a-c}{2}\right) R_{head}\,\Delta t`
+
+When the natural choice :math:`b = (a + c)/2` is used, the formula reduces to:
+
+.. math::
+
+   r(\theta) = \frac{a(1+\cos\theta) + c(1-\cos\theta)}{2}\,R_{head}\,\Delta t
+
+giving :math:`r(0) = a`, :math:`r(\pi) = c`, and a flank rate that is the
+arithmetic mean of head and backing.  Values below zero are clamped to zero.
+
+Enabled by ``farsite.fire_shape_model = lemniscate``.
+
+**Reference:** Alexander, M.E., Stocks, B.J., & Lawson, B.D. (1991). *Information Report NOR-X-310*, Canadian Forest Service.
+
+
 Crown Models
 ------------
 
