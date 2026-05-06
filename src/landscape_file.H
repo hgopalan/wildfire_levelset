@@ -286,8 +286,9 @@ static void compute_fuel_model_from_landscape(MultiFab& fuel_model_out,
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             Real x = problo[0] + (i + Real(0.5)) * dx[0];
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
-            // Round to nearest integer: fuel model is a discrete category
-            f(i, j, k) = std::round(cell_list_interp(cl, fuel_ptr, x, y));
+            // Fuel model is a discrete category: use nearest-neighbour lookup
+            // to avoid non-physical fractional blending across fuel boundaries.
+            f(i, j, k) = std::round(cell_list_nearest(cl, fuel_ptr, x, y));
         });
     }
 
@@ -364,8 +365,9 @@ static void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
             Real y = problo[1] + (j + Real(0.5)) * dx[1];
             s(i, j, k) = cell_list_interp(cl, slope_ptr,  x, y);
             a(i, j, k) = cell_list_interp(cl, aspect_ptr, x, y);
-            // Round to nearest integer: fuel model is a discrete category
-            f(i, j, k) = std::round(cell_list_interp(cl, fuel_ptr, x, y));
+            // Fuel model is a discrete category: use nearest-neighbour lookup
+            // to avoid non-physical fractional blending across fuel boundaries.
+            f(i, j, k) = std::round(cell_list_nearest(cl, fuel_ptr, x, y));
         });
     }
 

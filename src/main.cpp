@@ -45,6 +45,8 @@ using namespace amrex;
 #include "compute_cruz_crown_R.H"
 #include "fire_ecology_model.H"
 #include "fire_emissions_model.H"
+#include "heat_per_unit_area.H"
+#include "vorticity_model.H"
 
 
 // ======================= Main ================================================
@@ -148,6 +150,22 @@ int main(int argc, char* argv[])
     MultiFab emissions_mf(ba, dm, EMISSIONS_NCOMP, 0);
     emissions_mf.setVal(0.0);
 
+    // Arrival time field [s]: simulation time when each cell first ignited.
+    // Initialized to -1.0 (sentinel for "not yet burned").
+    // Set to the current simulation time on the first timestep phi < 0.
+    MultiFab arrival_time_mf(ba, dm, 1, 0);
+    arrival_time_mf.setVal(Real(-1.0));
+
+    // Heat per unit area [BTU/ft²]: I_R × residence_time [min] for burned cells.
+    // Zero for unburned cells. Recomputed before each plotfile write.
+    MultiFab heat_per_unit_area_mf(ba, dm, 1, 0);
+    heat_per_unit_area_mf.setVal(0.0);
+
+    // Vertical vorticity ω_z = ∂v/∂x − ∂u/∂y [s⁻¹].
+    // Recomputed from the current velocity field before each plotfile write.
+    MultiFab vorticity_mf(ba, dm, 1, 0);
+    vorticity_mf.setVal(0.0);
+
     // Weise & Biging (1996) fire whirl diagnostic fields (WEISE_NCOMP components)
     //   0 – weise_flame_height     [m]
     //   1 – weise_flame_tilt       [rad]
@@ -234,10 +252,23 @@ int main(int argc, char* argv[])
     else {
       amrex::Abort("Invalid source_type: " + inputs.source_type);
     }
+
+    // Mark cells that are already burned in the initial state (arrival_time = 0.0)
+    {
+      const Real t0 = Real(0.0);
+      for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const p  = phi.const_array(mfi);
+        auto       at = arrival_time_mf.array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+          if (p(i, j, k) < Real(0.0) && at(i, j, k) < Real(0.0)) {
+            at(i, j, k) = t0;
+          }
+        });
+      }
+    }
         
     // Initialize velocity field
-
-#if (AMREX_SPACEDIM == 2)
     // Storage for time-dependent wind field data
     std::vector<Real> wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1;
     std::vector<Real> wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2;
@@ -518,6 +549,13 @@ int main(int argc, char* argv[])
 
     // ---------------- Write initial plotfile ---------------
     {
+      // Compute per-plotfile diagnostics
+      {
+        const RothermelComputed rc_plt = compute_rothermel_params(inputs.rothermel);
+        compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
+                                   inputs.farsite.tau_residence);
+      }
+      compute_vorticity(vorticity_mf, vel, geom);
       Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
 				   , "velz", "farsite_dx", "farsite_dy", "farsite_dz", "R",
@@ -531,7 +569,8 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				   "co2_emissions", "co_emissions", "pm25_emissions"
+				   "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -544,10 +583,11 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				   "co2_emissions", "co_emissions", "pm25_emissions"
+				   "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -566,6 +606,9 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
       MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
       MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
+      MultiFab::Copy(plotmf, arrival_time_mf,       0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 1, 0);
+      MultiFab::Copy(plotmf, heat_per_unit_area_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 1, 1, 0);
+      MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -741,6 +784,21 @@ int main(int argc, char* argv[])
 
       time += dt_step;
 
+      // --- Update arrival time: mark cells that first became burned this step
+      {
+        const Real cur_time = time;
+        for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+          const Box& bx = mfi.validbox();
+          auto const p  = phi.const_array(mfi);
+          auto       at = arrival_time_mf.array(mfi);
+          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            if (p(i, j, k) < Real(0.0) && at(i, j, k) < Real(0.0)) {
+              at(i, j, k) = cur_time;
+            }
+          });
+        }
+      }
+
       // --- Dynamic fire points: check if a new ignition file has appeared
       if (!inputs.dynamic_fire_points_file.empty()) {
         apply_dynamic_fire_points(phi, geom,
@@ -757,6 +815,13 @@ int main(int argc, char* argv[])
 
       // --- Step 7: Update states, record outputs, step time
       if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
+	// Compute per-plotfile diagnostics
+	{
+	  const RothermelComputed rc_plt = compute_rothermel_params(inputs.rothermel);
+	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
+	                             inputs.farsite.tau_residence);
+	}
+	compute_vorticity(vorticity_mf, vel, geom);
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", step);
 	Vector<std::string> names = {"phi", "velx", "vely"
@@ -772,7 +837,8 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				     "co2_emissions", "co_emissions", "pm25_emissions"
+				     "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -785,10 +851,11 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				     "co2_emissions", "co_emissions", "pm25_emissions"
+				     "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -807,6 +874,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
 	MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
 	MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
+	MultiFab::Copy(plotmf, arrival_time_mf,       0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 1, 0);
+	MultiFab::Copy(plotmf, heat_per_unit_area_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 1, 1, 0);
+	MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
@@ -853,6 +923,13 @@ int main(int argc, char* argv[])
       }
       if (should_write_final)
       {
+	// Compute per-plotfile diagnostics
+	{
+	  const RothermelComputed rc_plt = compute_rothermel_params(inputs.rothermel);
+	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
+	                             inputs.farsite.tau_residence);
+	}
+	compute_vorticity(vorticity_mf, vel, geom);
 	char buf[64];
 	std::snprintf(buf, sizeof(buf), "plt%04d", final_step);
 	Vector<std::string> names = {"phi", "velx", "vely"
@@ -868,7 +945,8 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				     "co2_emissions", "co_emissions", "pm25_emissions"
+				     "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -881,10 +959,11 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-				     "co2_emissions", "co_emissions", "pm25_emissions"
+				     "co2_emissions", "co_emissions", "pm25_emissions",
+				   "arrival_time", "heat_per_unit_area", "vorticity_z"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 3, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -903,6 +982,9 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, viegas_data, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP, VIEGAS_NCOMP, 0);
 	MultiFab::Copy(plotmf, ecology_mf,   0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP, ECOLOGY_NCOMP, 0);
 	MultiFab::Copy(plotmf, emissions_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP, EMISSIONS_NCOMP, 0);
+	MultiFab::Copy(plotmf, arrival_time_mf,       0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP, 1, 0);
+	MultiFab::Copy(plotmf, heat_per_unit_area_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 1, 1, 0);
+	MultiFab::Copy(plotmf, vorticity_mf,          0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 2, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{
