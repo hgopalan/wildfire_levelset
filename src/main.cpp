@@ -52,6 +52,8 @@ using namespace amrex;
 #include "fuel_adjustment.H"
 #include "fuel_moisture_scheduler.H"
 #include "scott_spotting_table.H"
+#include "mtt_propagation.H"
+#include "barrier_polygons.H"
 
 
 // ======================= Main ================================================
@@ -608,6 +610,7 @@ int main(int argc, char* argv[])
     // ---------------- dt from CFL --------------------------
     Real dt=10;
     const bool use_levelset = (inputs.propagation_method == "levelset");
+    const bool use_mtt      = (inputs.propagation_method == "mtt");
     if (use_levelset)
       {
         // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
@@ -648,6 +651,46 @@ int main(int argc, char* argv[])
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
+      } else if (use_mtt) {
+      // For MTT: compute the ROS field now (same as levelset path),
+      // then run the Dijkstra fast-march to fill arrival_time_mf,
+      // and set a sensible dt based on the ROS field.
+      {
+        if (wind_terrain_modifies_vel) {
+            apply_wind_terrain_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+        } else {
+            MultiFab::Copy(vel_effective, vel, 0, 0, 3, 0);
+        }
+        if (heat_flux_active) {
+            apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
+        }
+        const MultiFab& vel_for_mtt = (wind_terrain_modifies_vel || heat_flux_active)
+                                      ? vel_effective : vel;
+        if (inputs.fire_spread_model == "balbi") {
+            compute_balbi_R(R_mf, vel_for_mtt, geom, inputs.rothermel, inputs.balbi,
+                             terrain_slopes.get(),
+                             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                             d_balbi_table_ptr, balbi_table_size,
+                             heat_flux_active ? &heat_flux_mf : nullptr,
+                             heat_flux_active ? &inputs.heat_flux : nullptr);
+        } else if (inputs.fire_spread_model == "cheney_gould") {
+            compute_cheney_gould_R(R_mf, vel_for_mtt, inputs.cheney_gould);
+        } else if (inputs.fire_spread_model == "cruz_crown") {
+            compute_cruz_crown_R(R_mf, vel_for_mtt, inputs.cruz_crown);
+        } else {
+            compute_rothermel_R(R_mf, vel_for_mtt, geom, inputs.rothermel,
+                                 terrain_slopes.get(),
+                                 !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                                 d_fuel_table_ptr, fuel_table_size,
+                                 has_spatial_crown ? &cc_mf : nullptr);
+        }
+        dt = compute_dt(R_mf, geom, inputs.cfl);
+        amrex::Print() << "MTT: pre-computing arrival times (dt = " << dt << ") ...\n";
+        compute_mtt_arrival_times(arrival_time_mf, phi, R_mf, geom);
+        // Set phi from arrival times at t=0
+        apply_mtt_phi_update(phi, arrival_time_mf, Real(0.0));
+        fill_boundary_extrap(phi, geom);
+      }
       } else {
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
@@ -680,6 +723,15 @@ int main(int argc, char* argv[])
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
 
+
+    // ---------------- Barrier polygon cells (firebreaks) ------------------
+    // Load once at startup; applied every time step inside the time loop.
+    std::vector<IntVect> barrier_cells =
+        load_barrier_cells(inputs.barrier_files, geom);
+
+    // Apply barriers to the initial phi (they are present from t=0)
+    if (!barrier_cells.empty())
+        apply_barrier_polygons(phi, barrier_cells, geom);
 
     // ---------------- Initialize fire statistics CSV -------------------
     if (!inputs.fire_stats_file.empty())
@@ -902,6 +954,13 @@ int main(int argc, char* argv[])
                                    terrain_slopes.get(),
                                    use_precomp_R_for_advection ? &R_mf : nullptr);
 	dt = compute_dt(R_mf, geom, inputs.cfl);
+      } else if (use_mtt) {
+	// --- MTT: phi is updated analytically from pre-computed arrival times.
+	// No re-advection needed; just set phi = arrival_time - current_time
+	// where current_time = time + dt_step (already advanced below).
+	apply_mtt_phi_update(phi, arrival_time_mf, time + dt_step);
+	fill_boundary_extrap(phi, geom);
+	// dt stays constant for MTT (fixed by initial ROS computation)
       } else {
 	// --- Step 3: FARSITE elliptical wavelet propagation (Richards 1990)
 	// --- Step 4: Merge to new perimeter
@@ -939,6 +998,12 @@ int main(int argc, char* argv[])
 	
 	// --- Step 6: Simulate post-frontal burnout
 	// (Bulk fuel consumption is computed within compute_farsite_spread)
+      }
+
+      // --- Apply barrier polygons (firebreaks): extinguish burning cells
+      //     that coincide with barrier locations, regardless of propagation method.
+      if (!barrier_cells.empty()) {
+	apply_barrier_polygons(phi, barrier_cells, geom);
       }
       if (inputs.reinit_int > 0 && (step % inputs.reinit_int == 0) && use_levelset) {
 	amrex::Print() << "Reinitializing at step " << step << "\n";

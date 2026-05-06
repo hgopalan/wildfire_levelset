@@ -305,10 +305,12 @@ void parse_inputs(InputParameters& p)
             // Explicitly disabled FARSITE → levelset
             p.propagation_method = "levelset";
         }
-        p.skip_levelset = (p.propagation_method == "farsite") ? 1 : 0; // keep field in sync
+        p.skip_levelset = (p.propagation_method == "farsite" || p.propagation_method == "mtt") ? 1 : 0;
     }
-    if (p.propagation_method != "levelset" && p.propagation_method != "farsite") {
-        amrex::Abort("propagation_method must be 'levelset' or 'farsite'");
+    if (p.propagation_method != "levelset" &&
+        p.propagation_method != "farsite"  &&
+        p.propagation_method != "mtt") {
+        amrex::Abort("propagation_method must be 'levelset', 'farsite', or 'mtt'");
     }
     Print() << "Propagation method: " << p.propagation_method << "\n";
 
@@ -694,5 +696,18 @@ void parse_inputs(InputParameters& p)
     if (p.emissions.EF_PM25 < 0.0) amrex::Abort("emissions.EF_PM25 must be >= 0");
     if (p.emissions.default_consumed_frac < 0.0 || p.emissions.default_consumed_frac > 1.0)
         amrex::Abort("emissions.default_consumed_frac must be in [0,1]");
+
+    // -------- FARSITE barrier polygon / firebreak files --------
+    // Accept a space-separated list: barrier_files = file1.csv file2.csv
+    {
+        std::vector<std::string> bfiles;
+        pp.queryarr("barrier_files", bfiles);
+        p.barrier_files = bfiles;
+        if (!p.barrier_files.empty()) {
+            Print() << "Barrier polygon files (" << p.barrier_files.size() << "):\n";
+            for (const auto& f : p.barrier_files)
+                Print() << "  " << f << "\n";
+        }
+    }
 
 }

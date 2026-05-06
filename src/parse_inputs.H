@@ -320,8 +320,24 @@ struct InputParameters {
     // or "cruz_crown"
     std::string fire_spread_model;
 
-    // Propagation method: "levelset" (default) or "farsite"
+    // Propagation method: "levelset" (default), "farsite", or "mtt"
+    //
+    //  "levelset"  – WENO5-Z/RK3 level-set advection (default).
+    //  "farsite"   – FARSITE Huygens elliptical wavelet propagation.
+    //  "mtt"       – Minimum Travel Time (Finney 2002): arrival times are
+    //                pre-computed once via a Dijkstra fast-marching sweep using
+    //                the selected ROS model; phi is updated each step as
+    //                phi = arrival_time - current_time.
     std::string propagation_method;
+
+    // ---- FARSITE barrier polygon / firebreak files ----
+    // List of CSV files, each containing X Y [Z] coordinates of barrier
+    // vertices (polyline or closed polygon).  At every time step any barrier
+    // cell that is burning (phi < 0) is extinguished (phi set to +half_cell).
+    // Specify multiple files as a space-separated list:
+    //   barrier_files = road.csv ridge_break.csv
+    // Empty list = disabled (default).
+    std::vector<std::string> barrier_files;
 
     // CSV fire points initialization (takes precedence over source_type when non-empty)
     std::string fire_points_file;            // Path to CSV file with X Y [Z] ignition point coordinates

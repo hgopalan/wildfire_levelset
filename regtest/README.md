@@ -6,18 +6,28 @@ This directory contains regression tests for the wildfire level-set solver. Each
 
 ```
 regtest/
-├── basic_levelset/       # Basic level-set advection with constant velocity
-├── farsite_ellipse/      # FARSITE elliptical fire expansion (Richards 1990)
-├── rothermel_fuel/       # Rothermel model with different fuel types
-├── balbi_fuel/           # Balbi (2009) physical fire spread model
-├── cheney_gould_grassfire/ # Cheney & Gould (1995/1998) grassland fire spread model
-├── terrain_wind/         # External terrain (Gaussian hill) and wind field
-├── anderson_lw/          # Anderson (1983) dynamic L/W ratio
-├── reinitialization/     # Level-set reinitialization testing
-├── ellipse_sdf/          # Elliptical SDF initial condition
-├── eb_implicit/          # EB implicit function initial condition
-├── 3d_sphere/           # Full 3D fire spread simulation
-└── landfire_farsite/    # FARSITE with LANDFIRE landscape (Python setup step)
+├── basic_levelset/              # Basic level-set advection with constant velocity
+├── farsite_ellipse/             # FARSITE elliptical fire expansion (Richards 1990)
+├── rothermel_fuel/              # Rothermel model with different fuel types
+├── balbi_fuel/                  # Balbi (2009) physical fire spread model
+├── cheney_gould_grassfire/      # Cheney & Gould (1995/1998) grassland fire spread
+├── terrain_wind/                # External terrain (Gaussian hill) and wind field
+├── anderson_lw/                 # Anderson (1983) dynamic L/W ratio
+├── reinitialization/            # Level-set reinitialization testing
+├── ellipse_sdf/                 # Elliptical SDF initial condition
+├── eb_implicit/                 # EB implicit function initial condition
+├── 3d_sphere/                   # Full 3D fire spread simulation
+├── landfire_farsite/            # FARSITE with LANDFIRE landscape (Python setup step)
+├── catchpole_demestre/          # Catchpole & de Mestre (1986) double-ellipse shape
+├── wilson_spread/               # Wilson (1988) single ellipse from rear focus
+├── alexander_lemniscate/        # Alexander et al. lemniscate (Limaçon) shape
+├── turb_wind/                   # Turbulent wind perturbation (spectral_noise, 2-D only)
+├── cruz_crown_continental_us/   # Cruz et al. (2005) crown fire spread – western US
+├── fire_perimeter_output/       # CSV + GeoJSON perimeter output and fire_stats.csv
+├── fmd_moisture/                # Time-varying fuel moisture schedule (.fmd)
+├── fuel_adj_file/               # FARSITE per-fuel-model ROS adjustment (.adj)
+├── mtt_propagation/             # Minimum Travel Time (MTT) propagation method ⭐ NEW
+└── barrier_polygons/            # FARSITE barrier polygon / firebreak CSV files ⭐ NEW
 ```
 
 ## Quick Start
@@ -332,6 +342,16 @@ Use this checklist to verify all capabilities:
 - [ ] **EB Capabilities**: `eb_implicit` uses implicit function geometries
 - [ ] **3D Capability**: `3d_sphere` runs in 3D mode
 - [ ] **LANDFIRE/FARSITE**: `landfire_farsite` runs with landscape file
+- [ ] **Catchpole–de Mestre shape**: `catchpole_demestre` produces double-ellipse perimeter
+- [ ] **Wilson shape**: `wilson_spread` produces ellipse with origin at rear focus
+- [ ] **Lemniscate shape**: `alexander_lemniscate` produces limaçon perimeter
+- [ ] **Turbulent wind**: `turb_wind` (2-D build) adds stochastic gusts (2-D only)
+- [ ] **Cruz crown fire**: `cruz_crown_continental_us` spreads at expected ROS
+- [ ] **Perimeter output**: `fire_perimeter_output` writes CSV, GeoJSON, and fire_stats.csv
+- [ ] **FMD moisture**: `fmd_moisture` interpolates time-varying fuel moisture
+- [ ] **Fuel adjustment**: `fuel_adj_file` scales ROS by per-fuel-model multiplier
+- [ ] **MTT propagation**: `mtt_propagation` spreads fire via minimum travel time ⭐ NEW
+- [ ] **Barrier polygons**: `barrier_polygons` extinguishes fire at barrier cells ⭐ NEW
 
 ## Build Configurations
 
