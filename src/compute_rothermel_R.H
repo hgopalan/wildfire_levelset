@@ -27,7 +27,7 @@ using namespace amrex;
 // ============================================================================
 static void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab& vel,
-                                const Geometry& geom,
+                                const Geometry& /*geom*/,
                                 const RothermelParams& rp,
                                 const MultiFab* slopes = nullptr,
                                 const MultiFab* fuel_model_mf = nullptr,
