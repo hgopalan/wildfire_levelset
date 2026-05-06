@@ -6,6 +6,12 @@ option(LEVELSET_DIM_2D "Build for 2D instead of 3D" OFF)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
 option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
+# The terrain-following mass-consistent wind solver requires the AMReX linear
+# solver library (MLMG / MLABecLaplacian) and is inherently 3-D.  It is
+# therefore only built when LEVELSET_DIM_2D=OFF.
+option(LEVELSET_BUILD_WIND_SOLVER
+       "Build the stand-alone terrain-following mass-consistent wind solver"
+       ON)
 set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
     "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
 set_property(CACHE LEVELSET_GPU_BACKEND PROPERTY STRINGS NONE CUDA HIP SYCL)
@@ -59,7 +65,12 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
   set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
-  set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
+  # The wind_solver requires AMReX linear solvers (MLMG); enable when requested.
+  if(LEVELSET_BUILD_WIND_SOLVER AND NOT LEVELSET_DIM_2D)
+    set(AMReX_LINEAR_SOLVERS ON  CACHE BOOL "Build AMReX with linear solvers (wind_solver)" FORCE)
+  else()
+    set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
+  endif()
   set(AMReX_PARTICLES OFF CACHE BOOL "Build AMReX without particle support" FORCE)
   set(AMReX_INSTALL OFF CACHE BOOL "Disable AMReX install rules when used as a subproject" FORCE)
   if(LEVELSET_ENABLE_EB)
@@ -102,6 +113,25 @@ if (MSVC)
   target_compile_options(levelset PRIVATE /W4)
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# ---------------------------------------------------------------------------
+# Optional: terrain-following mass-consistent wind solver (3-D only)
+# ---------------------------------------------------------------------------
+if(LEVELSET_BUILD_WIND_SOLVER AND NOT LEVELSET_DIM_2D)
+  add_executable(wind_solver src/wind_solver.cpp)
+  target_link_libraries(wind_solver PRIVATE AMReX::amrex)
+  if(LEVELSET_ENABLE_MPI)
+    target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
+  endif()
+  if(MSVC)
+    target_compile_options(wind_solver PRIVATE /W4)
+  else()
+    target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  message(STATUS "wind_solver executable enabled (3-D mass-consistent terrain-following wind solver)")
+elseif(LEVELSET_BUILD_WIND_SOLVER AND LEVELSET_DIM_2D)
+  message(STATUS "wind_solver skipped: requires 3-D build (LEVELSET_DIM_2D=OFF)")
 endif()
 
 # Add regression test subdirectory

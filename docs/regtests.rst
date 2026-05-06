@@ -271,6 +271,30 @@ landscape.
 **Build**: Default 3D build.  Requires Python 3 with
 ``pip install requests rasterio numpy pyproj elevation``.
 
+gaussian_hill_wind_solver
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Validates the terrain-following mass-consistent wind solver (``wind_solver``
+executable) over a Gaussian hill terrain.
+
+A 10 × 10 × 10 cell Cartesian grid (dx = dy = dz = 30 m) covers a 300 m × 300 m ×
+300 m domain.  The terrain is a Gaussian hill with peak elevation 50 m centred at
+(150, 150) m (σ = 60 m).  A 10 m/s westerly reference wind at z_ref = 10 m with
+roughness length z₀ = 0.1 m is applied.
+
+Successful completion confirms that:
+
+* The log-law profile initialisation runs without error.
+* The AMReX MLMG (``MLABecLaplacian``) solver converges to the requested tolerance.
+* The maximum divergence after correction is substantially smaller than before.
+* An AMReX plotfile ``plt_wind_gaussian`` is written.
+
+**Build**: Default 3D build with ``LEVELSET_BUILD_WIND_SOLVER=ON`` (the default).
+
+**Label**: ``regtest;wind_solver`` — can be run selectively::
+
+    ctest -L wind_solver --output-on-failure
+
 Build Configurations Summary
 -----------------------------
 
@@ -294,6 +318,9 @@ Build Configurations Summary
    * - ``albini_spotting``
      - CPU-only
      - no GPU/OpenMP flags
+   * - ``gaussian_hill_wind_solver``
+     - 3D (default)
+     - ``-DLEVELSET_BUILD_WIND_SOLVER=ON`` (default)
 
 Adding a New Regression Test
 ------------------------------
