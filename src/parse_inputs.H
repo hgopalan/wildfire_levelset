@@ -336,6 +336,44 @@ struct InputParameters {
     int chk_int;                             // Write a checkpoint file every chk_int steps; <=0 disables (default: -1)
     std::string restart_chkfile;             // Path to a checkpoint directory to restart from (default: "" = cold start)
 
+    // ---- FARSITE fuel adjustment file (.adj) ----
+    // Per-fuel-model rate-of-spread multipliers.  Applied once at startup to
+    // the Rothermel lookup table (and to RothermelParams when no landscape file
+    // is present).  Empty string = disabled.
+    std::string fuel_adj_file;               // path to FARSITE .adj file (default: "")
+    int         fuel_adj_model;              // global fuel model code for single-model runs (default: 0)
+
+    // ---- Time-varying fuel moisture schedule (.fmd) ----
+    // When set, moisture values are updated at every timestep by interpolating
+    // between entries in the schedule file.  Start date anchors the schedule to
+    // simulation time 0.  When all start fields are 0 the first record's
+    // timestamp defines t = 0.
+    std::string fmd_file;                    // path to FMD-format schedule file (default: "")
+    int fmd_start_year;                      // reference year  (default: 0 → auto)
+    int fmd_start_month;                     // reference month (default: 0 → auto)
+    int fmd_start_day;                       // reference day   (default: 0 → auto)
+    int fmd_start_hour;                      // reference hour  (0-2300, default: 0)
+    int fmd_fuel_model;                      // which fuel model to look up (0 = global/all, default: 0)
+
+    // ---- Fire statistics time series ----
+    // When non-empty, a CSV file is created at startup and a row is appended at
+    // every plotfile write with: step, time_s, burned_area_ha, perimeter_km,
+    // active_front_cells, mean_co2, mean_co, mean_pm25.
+    std::string fire_stats_file;             // output CSV path (default: "fire_stats.csv")
+
+    // ---- Fire perimeter output ----
+    // Controls whether CSV and GeoJSON perimeter files are written alongside
+    // the existing .dat (phi_negative / phi_envelope) files at every plotfile step.
+    int write_perimeter_csv;                 // 1 to write perimeter_NNNN.csv (default: 1)
+    int write_perimeter_geojson;             // 1 to write perimeter_NNNN.geojson (default: 0)
+
+    // ---- Crown spatial layers from binary LCP ----
+    // When a binary LCP with crown fuel layers is loaded, these flags control
+    // whether per-cell CBH, CBD, and canopy cover MultiFabs are populated and
+    // written to plotfiles.  The global crown.* scalars are used as fallbacks
+    // when the landscape does not carry crown layers.
+    int use_spatial_crown;                   // 1 to use per-cell CBH/CBD from LCP (default: 1)
+
 };
 
 void parse_inputs(InputParameters& inputs);

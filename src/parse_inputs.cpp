@@ -621,6 +621,33 @@ void parse_inputs(InputParameters& p)
     p.chk_int        = -1;                       pp.query("chk_int",         p.chk_int);
     p.restart_chkfile = "";                      pp.query("restart_chkfile", p.restart_chkfile);
 
+    // -------- FARSITE fuel adjustment file (.adj) --------
+    p.fuel_adj_file  = "";  pp.query("fuel_adj_file",  p.fuel_adj_file);
+    p.fuel_adj_model = 0;   pp.query("fuel_adj_model", p.fuel_adj_model);
+    if (!p.fuel_adj_file.empty())
+        Print() << "Fuel adjustment file: " << p.fuel_adj_file << "\n";
+
+    // -------- Time-varying fuel moisture schedule (.fmd) --------
+    p.fmd_file        = "";  pp.query("fmd_file",        p.fmd_file);
+    p.fmd_start_year  = 0;   pp.query("fmd_start_year",  p.fmd_start_year);
+    p.fmd_start_month = 0;   pp.query("fmd_start_month", p.fmd_start_month);
+    p.fmd_start_day   = 0;   pp.query("fmd_start_day",   p.fmd_start_day);
+    p.fmd_start_hour  = 0;   pp.query("fmd_start_hour",  p.fmd_start_hour);
+    p.fmd_fuel_model  = 0;   pp.query("fmd_fuel_model",  p.fmd_fuel_model);
+    if (!p.fmd_file.empty())
+        Print() << "Fuel moisture schedule file: " << p.fmd_file << "\n";
+
+    // -------- Fire statistics time series --------
+    p.fire_stats_file = "fire_stats.csv";
+    pp.query("fire_stats_file", p.fire_stats_file);
+
+    // -------- Fire perimeter output --------
+    p.write_perimeter_csv     = 1;  pp.query("write_perimeter_csv",     p.write_perimeter_csv);
+    p.write_perimeter_geojson = 0;  pp.query("write_perimeter_geojson", p.write_perimeter_geojson);
+
+    // -------- Crown spatial layers from binary LCP --------
+    p.use_spatial_crown = 1;  pp.query("use_spatial_crown", p.use_spatial_crown);
+
     // -------- Fire ecology diagnostics --------
     // Scorch height (Van Wagner 1973), probability of ignition (Anderson 1970),
     // tree mortality (Ryan-Reinhardt 1988), and crown activity classification
