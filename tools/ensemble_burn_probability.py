@@ -119,6 +119,11 @@ def lhs_uniform(n_samples: int, n_dims: int, rng: random.Random) -> List[List[fl
     return result
 
 
+_MIN_Q_THRESHOLD = 1e-300  # minimum argument for log to avoid -inf
+_MIN_MOISTURE    = 0.01    # minimum dead fuel moisture fraction (physical lower bound)
+_MAX_MOISTURE    = 0.60    # maximum dead fuel moisture fraction (physical upper bound)
+
+
 def norm_ppf(p: float) -> float:
     """Rational approximation of the normal quantile (Beasley-Springer-Moro)."""
     # Coefficients from Hart (1968)
@@ -128,7 +133,7 @@ def norm_ppf(p: float) -> float:
         sign, q = -1, p
     else:
         sign, q = 1, 1.0 - p
-    t = math.sqrt(-2.0 * math.log(max(q, 1e-300)))
+    t = math.sqrt(-2.0 * math.log(max(q, _MIN_Q_THRESHOLD)))
     num = a[0] + a[1]*t + a[2]*t*t
     den = 1.0 + b[0]*t + b[1]*t*t + b[2]*t*t*t
     return sign * (t - num/den)
@@ -229,7 +234,7 @@ def make_perturbed_inputs(
 
     # Apply moisture offset (clamp to [0.01, 0.60])
     m_d1 = (_get_float(lines, "rothermel.M_d1") or 0.08) + sample["moist_offset"]
-    m_d1 = max(0.01, min(0.60, m_d1))
+    m_d1 = max(_MIN_MOISTURE, min(_MAX_MOISTURE, m_d1))
     lines = _set_param(lines, "rothermel.M_d1", f"{m_d1:.4f}")
 
     return lines

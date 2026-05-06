@@ -279,6 +279,29 @@ def _parse_step(name: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def _read_and_validate(path: str, suffix: str) -> Optional[object]:
+    """Read a perimeter file and return the parsed data, or None on empty/error."""
+    if suffix == ".geojson":
+        rings = _read_geojson(path)
+        if not rings:
+            print(f"  WARNING: no rings in {path}")
+            return None
+        return rings
+    elif suffix == ".csv":
+        pts = _read_csv(path)
+        if not pts:
+            print(f"  WARNING: no points in {path}")
+            return None
+        return pts
+    elif suffix == ".dat":
+        pts = _read_dat(path)
+        if not pts:
+            print(f"  WARNING: no points in {path}")
+            return None
+        return pts
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Per-file conversion
 # ---------------------------------------------------------------------------
@@ -303,27 +326,18 @@ def convert_file(
         return True
 
     step = _parse_step(p.name)
+    data = _read_and_validate(path, suffix)
+    if data is None:
+        return False
 
     if suffix == ".geojson":
-        rings = _read_geojson(path)
-        if not rings:
-            print(f"  WARNING: no rings in {path}")
-            return False
-        _write_shapefile(out_stem, rings, step, None, epsg)
-
+        _write_shapefile(out_stem, data, step, None, epsg)
     elif suffix == ".csv":
-        pts = _read_csv(path)
-        if not pts:
-            print(f"  WARNING: no points in {path}")
-            return False
+        pts = data
         ring = pts if (pts[0] == pts[-1]) else pts + [pts[0]]
         _write_shapefile(out_stem, [ring], step, None, epsg)
-
     elif suffix == ".dat":
-        pts = _read_dat(path)
-        if not pts:
-            print(f"  WARNING: no points in {path}")
-            return False
+        pts = data
         if point_cloud:
             _write_shapefile(out_stem, [], step, None, epsg,
                              as_multipoint=True, pts=pts)
