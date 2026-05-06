@@ -1,7 +1,7 @@
 Overview
 ========
 
-The Wildfire Level-Set Solver is a computational tool for simulating wildfire spread using level-set methods and the FARSITE fire growth model. The code is built on top of AMReX, a software framework for block-structured adaptive mesh refinement.
+The Wildfire Level-Set Solver is a unified wildfire front propagation framework built on AMReX (a software library for block-structured adaptive mesh refinement). It provides a single interface to operational fire behaviour tools — FARSITE elliptical spread, BehavePlus-style Rothermel/Balbi/Cheney–Gould models, and physics-based alternatives — with a path toward future two-way coupling with the Energy Research and Forecasting (ERF) atmospheric model.
 
 Summary Flow
 ------------

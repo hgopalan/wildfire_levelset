@@ -9,7 +9,9 @@ Firespread Models
 
 Three primary fire spread model families are implemented, each with optional add-on modules.
 Select the active model with ``fire_spread_model`` and the propagation method with
-``propagation_method``.
+``propagation_method``.  Three propagation methods are available: ``levelset``
+(WENO5-Z level-set advection), ``farsite`` (FARSITE Huygens-wavelet expansion),
+and ``mtt`` (Minimum Travel Time fast-march).
 
 Rothermel (1972) Fire Spread Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -599,6 +601,124 @@ arithmetic mean of head and backing.  Values below zero are clamped to zero.
 Enabled by ``farsite.fire_shape_model = lemniscate``.
 
 **Reference:** Alexander, M.E., Stocks, B.J., & Lawson, B.D. (1991). *Information Report NOR-X-310*, Canadian Forest Service.
+
+
+Minimum Travel Time (MTT) Propagation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Minimum Travel Time method (`propagation_method = mtt`) pre-computes a
+scalar **arrival-time field** :math:`T(i,j,k)` — the time at which fire first
+reaches cell :math:`(i,j,k)` — using a Dijkstra fast-marching sweep over the
+precomputed ROS field.  The level-set field is then updated analytically at
+each simulation time :math:`t`:
+
+.. math::
+
+   \phi(i,j,k,t) = T(i,j,k) - t
+
+giving:
+
+* :math:`\phi < 0` — burned (arrival before current time)
+* :math:`\phi = 0` — fire front (arriving now)
+* :math:`\phi > 0` — unburned (fire not yet arrived)
+
+Arrival Time Computation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Starting from all ignition cells (where initial :math:`\phi < 0`,
+:math:`T = 0`), the arrival time propagates to neighbouring cells via:
+
+.. math::
+
+   T_{\text{new}} = T_{\text{current}} + \frac{d_s}{R_{\text{interface}}}
+
+where :math:`d_s` is the cell-centre-to-cell-centre distance and
+:math:`R_{\text{interface}}` is the **harmonic mean** of the two adjacent
+ROS values:
+
+.. math::
+
+   R_{\text{interface}} = \frac{2\,R_a\,R_b}{R_a + R_b}
+
+The harmonic mean is chosen to penalise paths through low-ROS cells and
+prevents numerical blow-up when one cell has very small ROS.
+
+A standard min-heap priority queue (Dijkstra) guarantees that the globally
+minimum arrival time is always processed next, making the result exact for
+any non-negative, spatially-varying ROS field.
+
+Advantages and Limitations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Advantages** relative to the level-set and FARSITE methods:
+
+* The arrival-time field is monotonically increasing; no reinitialization is
+  needed.
+* The phi update is trivially parallel (one subtraction per cell per step).
+* The fast-march is run only once, regardless of the number of time steps.
+
+**Limitations**:
+
+* The ROS field is frozen at the start; time-varying wind, moisture, or
+  diurnal models are not captured after the initial sweep.
+* The method is isotropic (spread depends only on local ROS magnitude, not
+  direction). Wind direction effects are included through the directional ROS
+  model but fire does not curve around obstacles post-computation.
+
+Select MTT with::
+
+    propagation_method = mtt
+
+It is compatible with all fire spread models (``rothermel``, ``balbi``,
+``cheney_gould``, ``cruz_crown``).
+
+**Reference:** Finney, M.A. (2002). "Fire growth using minimum travel time
+methods." *Canadian Journal of Forest Research*, 32(8), 1420–1424.
+https://doi.org/10.1139/x02-068
+
+
+Barrier Polygons / Firebreaks
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The barrier polygon feature (`barrier_files`) allows one or more CSV files of
+barrier vertex coordinates to be read at startup.  At every time step, any
+grid cell whose centre falls nearest to a barrier vertex and that is currently
+burning (:math:`\phi < 0`) is extinguished by setting:
+
+.. math::
+
+   \phi(i,j,k) \leftarrow +\tfrac{1}{2}\min(\Delta x,\, \Delta y)
+
+This models firebreaks, fuel breaks, roads, and other physical barriers
+**without** requiring the AMReX Embedded Boundary (EB) framework.
+
+Nearest-Cell Mapping
+~~~~~~~~~~~~~~~~~~~~~
+
+For each vertex :math:`(X_v, Y_v)` in a barrier CSV file, the nearest cell
+index is found by:
+
+.. math::
+
+   i = i_0 + \left\lfloor \frac{X_v - x_{\text{lo}}}{\Delta x} \right\rfloor, \quad
+   j = j_0 + \left\lfloor \frac{Y_v - y_{\text{lo}}}{\Delta y} \right\rfloor
+
+with the result clamped to the domain bounds.  The set of barrier cells is
+de-duplicated once at startup and stored on the GPU device for efficiency.
+
+Usage::
+
+    # Two CSV firebreak files (space-separated list)
+    barrier_files = road_break.csv ridge_break.csv
+
+CSV format::
+
+    # X Y  (one vertex per line; lines starting with # are ignored)
+    330100.0  3775300.0
+    330200.0  3775300.0
+
+The barrier is applied after every propagation step regardless of the
+propagation method (``levelset``, ``farsite``, or ``mtt``).
 
 
 Crown Models

@@ -292,8 +292,36 @@ Fire Model Selection
     the signed-distance evolution equation.
   - ``farsite`` – FARSITE elliptical Huygens-wavelet expansion (Richards 1990);
     uses the FARSITE spread parameters (``farsite.*``) and pre-computed ROS.
+  - ``mtt`` – Minimum Travel Time (Finney 2002); arrival times are pre-computed
+    once via a Dijkstra fast-marching sweep using the selected ROS model, then
+    ``phi = arrival_time − current_time`` is applied each step.  No
+    reinitialization is needed.  Compatible with all fire spread models.
 
-  Example: ``propagation_method = farsite``
+  Example: ``propagation_method = mtt``
+
+Barrier Polygons / Firebreaks
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**barrier_files** (default: empty)
+  Space-separated list of CSV files, each defining a barrier polyline or polygon
+  as a sequence of ``X Y [Z]`` vertex coordinates (one per line; lines starting
+  with ``#`` are ignored).  At every time step the nearest grid cells to each
+  barrier vertex are identified and any that are currently burning (``phi < 0``)
+  are extinguished by setting ``phi = +0.5 * min(dx,dy)``.
+
+  This models firebreaks, fuel breaks, roads, or other physical barriers without
+  using the AMReX Embedded Boundary (EB) framework.
+
+  Example::
+
+      barrier_files = road_break.csv ridge_break.csv
+
+  Each CSV file format::
+
+      # X Y coordinates of barrier vertices (UTM metres)
+      330100.0  3775300.0
+      330200.0  3775300.0
+      330300.0  3775300.0
 
 Rothermel Fuel Properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

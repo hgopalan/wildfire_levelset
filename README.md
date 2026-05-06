@@ -5,7 +5,7 @@
 
 # Wildfire-AMR
 
-An AMReX-based C++ level-set solver for wildfire front propagation modeling with FARSITE elliptical expansion, Rothermel fire spread equations, and terrain effects.
+A unified AMReX-based C++ wildfire front propagation framework providing a single interface to operational fire behaviour tools — FARSITE, BehavePlus-style spread models, and physics-based alternatives — with a path toward future two-way coupling with the Energy Research and Forecasting (ERF) atmospheric model.
 
 ## Documentation
 
@@ -27,6 +27,8 @@ The documentation includes:
 - **Cheney & Gould (1995 / 1998) grassland fire spread model** – empirical model calibrated for open Australian grasslands; piecewise wind-speed formula with moisture and curing corrections; activated by `fire_spread_model = cheney_gould`; configured via `cheney_gould.*`
 - **FARSITE elliptical expansion** (Richards 1990) with Anderson L/W ratio; Eulerian level-set implementation of the Huygens wavelet principle
 - **Alternative fire shape models** for the FARSITE propagation path (`farsite.fire_shape_model`): Catchpole & de Mestre (1986) true double-ellipse, Wilson (1988) single ellipse from rear focus, and Alexander et al. lemniscate (Limaçon) — see [mathematical models documentation](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html#alternative-fire-shape-models)
+- **Minimum Travel Time (MTT) propagation** (`propagation_method = mtt`) — arrival times are pre-computed once via a Dijkstra fast-marching sweep over the ROS field; φ = arrival_time − t thereafter; no reinitialization needed; compatible with all fire spread models (Finney 2002)
+- **Barrier polygon / firebreak CSV files** (`barrier_files`) — read one or more CSV files of barrier vertex coordinates; at every step, any barrier cell that is currently burning is extinguished by setting φ > 0; models roads, fuel breaks, and physical firebreaks without the EB framework
 - **Terrain effects** including slope and aspect corrections via constant values, terrain files, or FARSITE landscape files
 - **Binary and ASCII FARSITE landscape files** (`.lcp`) — the solver auto-detects binary vs ASCII format: binary `.lcp` files (FARSITE 4 format) are read natively, including **spatially-varying crown fuel layers** (CBH, CBD, canopy cover) when present (`CrownFuels != 0`); ASCII `X Y ELEV SLOPE ASPECT FUEL` format is also supported; all formats provide per-cell elevation, slope, aspect, and fuel model (landscape file takes precedence over terrain file or constant values)
 - **Spatial crown fuel layers** from binary LCP — per-cell crown base height (CBH), crown bulk density (CBD), and canopy cover are populated from the landscape file when `use_spatial_crown = 1` (default); written to every plotfile as `cbh`, `cbd`, and `canopy_cover` fields; the global `crown.*` scalars serve as fallbacks when no crown layers are present
@@ -43,6 +45,7 @@ The documentation includes:
 - **Turbulent wind perturbation** (`turb_wind.model`) – stochastic wind variability for sensitivity studies and ensemble runs: **Ornstein-Uhlenbeck (OU) process** with user-defined temporal decorrelation time (`1/theta`) and perturbation amplitude (`sigma`); optional **Gaussian spatial correlation kernel** (`L_c` [m]) driving per-cell OU states via Gaussian-smoothed white noise; **Random Fourier Feature (RFF) spectral noise** (`spectral_noise`) combining OU temporal evolution with a physically correct Gaussian power spectrum — `N_modes` wavenumbers sampled at init, scalar OU amplitudes per mode evolved on CPU, field reconstructed on GPU as cosine superposition; or **direction random walk** for bounded direction fluctuations with preserved wind speed
 - **Heat flux MultiFab** – spatially-varying or uniform fire heat release rate [W/m²] initialised from a value (`heat_flux.value`) or an ASCII file (`heat_flux.file`); drives two WindNinja-style fire-induced wind corrections: (a) upward convective velocity from fire plume buoyancy (`w_up = k_upward × sqrt(g × Q × H / (ρ Cp T_a))`); (b) induced horizontal inflow directed toward the fire perimeter; for the Balbi model the buoyancy velocity `v_b` is additionally augmented by the fire heat flux (`v_b_eff = sqrt(v_b_fuel² + v_b_Q²)`)
 - **GIS output**: `tools/plotfile_to_geotiff.py` converts plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter contours
+- **Ensemble burn probability** (`tools/ensemble_burn_probability.py`) – FSPro-style LHS/random ensemble driver; each member runs serially or via **MPI** (`--mpi-ranks N`); perturbs wind speed, direction, and moisture; accumulates per-cell burn counts into a probability map
 - **Stochastic firebrand spotting** with probability-based model
 - **Physics-based firebrand spotting** using Albini (1983) lofting height and 2-D trajectory integration
 - **Crown fire initiation** (Van Wagner 1977)

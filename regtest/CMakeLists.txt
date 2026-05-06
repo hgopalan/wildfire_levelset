@@ -201,6 +201,22 @@ endif()
 # burned_area_timeseries: fire_stats.csv time series
 add_regression_test(burned_area_timeseries burned_area_timeseries)
 
+# mtt_propagation: Minimum Travel Time propagation method
+add_regression_test(mtt_propagation mtt_propagation)
+
+# barrier_polygons: FARSITE barrier polygon / firebreak CSV files
+if(Python3_FOUND)
+    add_python_setup_regression_test(barrier_polygons barrier_polygons create_barriers.py)
+endif()
+
+# turb_wind: turbulent wind perturbation (requires 2-D build)
+if(LEVELSET_DIM_2D)
+    add_regression_test(turb_wind turb_wind)
+endif()
+
+# cruz_crown_continental_us: Cruz et al. (2005) crown fire spread model
+add_regression_test(cruz_crown_continental_us cruz_crown_continental_us)
+
 # ---------------------------------------------------------------------------
 # Multi-resolution timing benchmark
 # ---------------------------------------------------------------------------
@@ -254,6 +270,10 @@ message(STATUS "  - fmd_moisture        : Time-varying .fmd fuel moisture schedu
 message(STATUS "  - fire_perimeter_output: CSV + GeoJSON perimeter writers + stats CSV")
 message(STATUS "  - burned_area_timeseries: fire_stats.csv time series")
 message(STATUS "  - timing_benchmark    : Multi-resolution wall-clock timing (benchmark label)")
+message(STATUS "  - mtt_propagation     : Minimum Travel Time (MTT) propagation method")
+message(STATUS "  - barrier_polygons    : FARSITE barrier polygon / firebreak CSV files")
+message(STATUS "  - turb_wind           : Turbulent wind perturbation (spectral_noise)")
+message(STATUS "  - cruz_crown_continental_us: Cruz et al. (2005) crown fire spread")
 
 # ---------------------------------------------------------------------------
 # wind_solver regression tests (3-D builds only, requires linear solver)
