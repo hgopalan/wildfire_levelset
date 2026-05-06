@@ -753,6 +753,91 @@ Output Parameters
 
   Example: ``plot_int = 10``
 
+Turbulent Wind Perturbation Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control the stochastic wind perturbation model that adds
+temporally-correlated and (optionally) spatially-correlated fluctuations to
+the ambient wind field at every timestep.  The unperturbed base wind is
+always preserved internally; the perturbation is computed on top of it.
+
+**turb_wind.model** (default: ``"none"``)
+  Selects the turbulent wind model:
+
+  - ``none`` – no perturbation (default)
+  - ``ou_process`` – Ornstein-Uhlenbeck temporally-correlated noise.
+    When ``turb_wind.L_c = 0`` all cells receive the same domain-uniform
+    perturbation.  When ``turb_wind.L_c > 0`` per-cell spatially correlated
+    perturbations are generated via a Gaussian spatial kernel of length scale
+    ``L_c`` [m].
+  - ``spectral_noise`` – Random Fourier Feature (RFF) spectral noise with
+    OU temporal evolution.  ``N_modes`` wavenumber pairs are drawn at
+    initialisation from the 2-D isotropic Gaussian power spectrum (length
+    scale ``L_c``); scalar OU amplitude coefficients per mode evolve each
+    step on the CPU; the perturbation field is reconstructed on the GPU as a
+    cosine superposition.  Produces physically correct energy distribution
+    across wavenumbers.  Requires ``L_c > 0``.
+  - ``direction_walk`` – bounded cumulative random walk of wind direction.
+    Wind speed is preserved exactly; only direction fluctuates.
+
+  Example: ``turb_wind.model = spectral_noise``
+
+**turb_wind.theta** (default: 0.1)
+  Ornstein-Uhlenbeck reversion rate :math:`\theta` [s⁻¹].  The temporal
+  decorrelation time (e-folding time of gust autocorrelation) is
+  :math:`\tau = 1/\theta`.  Only used by ``ou_process``.  Must be > 0.
+
+  Example: ``turb_wind.theta = 0.05``  (→ 20 s gust decorrelation)
+
+**turb_wind.sigma** (default: 0.5)
+  Stationary standard deviation of the OU perturbation [m/s].  Each cell's
+  long-run perturbation has standard deviation exactly ``sigma``.  Only used
+  by ``ou_process``.  Must be > 0.
+
+  Example: ``turb_wind.sigma = 1.0``
+
+**turb_wind.L_c** (default: 0.0)
+  Spatial correlation length [m].  When > 0, activates the Gaussian kernel
+  smoothing of the OU noise field so that cells within distance ``L_c``
+  receive correlated perturbations.  Setting ``L_c = 0`` gives domain-uniform
+  perturbations (all cells receive the same gust).  Only used by
+  ``ou_process``.  Must be ≥ 0.
+
+  The kernel standard deviation in cells is ``sigma_k = L_c / dx``.  For
+  ``sigma_k ≫ 1`` the perturbation field is nearly uniform over the domain;
+  for ``sigma_k ≈ 1`` each cell is nearly independent.
+
+  Example: ``turb_wind.L_c = 100.0``  (→ sigma_k = 10 cells for dx = 10 m)
+
+**turb_wind.N_modes** (default: 32)
+  Number of random Fourier modes for the ``spectral_noise`` model.  More
+  modes produce a smoother, more isotropic perturbation field at the cost of
+  proportionally more GPU computation per cell per timestep.  Typical values
+  are 16–128; 32 is a good default for most wildfire grids.  Only used by
+  ``spectral_noise``.  Must be ≥ 1.
+
+  Example: ``turb_wind.N_modes = 64``
+
+**turb_wind.sigma_theta** (default: 0.1)
+  Angular standard deviation [rad/step] for the ``direction_walk`` model.
+  Controls the magnitude of each step's direction increment.  Must be > 0.
+
+  Example: ``turb_wind.sigma_theta = 0.15``
+
+**turb_wind.theta_max** (default: 0.5236)
+  Maximum cumulative directional deviation [rad] for the ``direction_walk``
+  model.  The accumulated angle is clamped to :math:`\pm\theta_{\max}`.
+  The default is :math:`\pi/6 \approx 30°`.  Must be > 0.
+
+  Example: ``turb_wind.theta_max = 0.785``  (→ ±45°)
+
+**turb_wind.random_seed** (default: 0)
+  Seed for the pseudo-random number generator.  ``0`` uses the system clock
+  (non-reproducible between runs).  Any positive integer gives a
+  reproducible sequence.
+
+  Example: ``turb_wind.random_seed = 42``
+
 Wind-Terrain Feedback Model Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

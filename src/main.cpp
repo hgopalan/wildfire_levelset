@@ -47,6 +47,7 @@ using namespace amrex;
 #include "fire_emissions_model.H"
 #include "heat_per_unit_area.H"
 #include "vorticity_model.H"
+#include "turb_wind.H"
 
 
 // ======================= Main ================================================
@@ -300,6 +301,29 @@ int main(int argc, char* argv[])
       init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
     }
 #endif
+
+    // ---------------- Turbulent wind perturbation setup ----------------
+    // vel_base stores the unperturbed background wind (constant or time-dependent).
+    // ou_state_mf stores the per-cell OU state (u', v') only when model=ou_process
+    // and L_c > 0.  For domain-uniform OU, spectral_noise, and direction_walk the
+    // scalar / spectral state in turb_state is sufficient; ou_state_mf is null.
+    const bool turb_wind_active = (inputs.turb_wind.model != "none");
+    std::unique_ptr<MultiFab> vel_base;
+    std::unique_ptr<MultiFab> ou_state_mf;
+    TurbWindState turb_state;
+    if (turb_wind_active) {
+        vel_base = std::make_unique<MultiFab>(ba, dm, 3, 1);
+        MultiFab::Copy(*vel_base, vel, 0, 0, 3, 1);
+        init_turb_wind_state(turb_state, inputs.turb_wind);
+        if (inputs.turb_wind.model == "ou_process" && inputs.turb_wind.L_c > amrex::Real(0.0)) {
+            ou_state_mf = std::make_unique<MultiFab>(ba, dm, 2, 0);
+            ou_state_mf->setVal(amrex::Real(0.0));
+            amrex::Print() << "Turbulent wind: per-cell OU with L_c="
+                           << inputs.turb_wind.L_c << " m"
+                           << "  sigma_k=" << inputs.turb_wind.L_c / geom.CellSize(0)
+                           << " cells\n";
+        }
+    }
 
     // Initialize terrain slopes
     // Priority for elevation/slope/aspect: terrain_file > landscape_file
@@ -670,13 +694,22 @@ int main(int argc, char* argv[])
       // Update time-dependent wind field if enabled
 #if (AMREX_SPACEDIM == 2)
       if (!inputs.velocity_file.empty() && inputs.use_time_dependent_wind == 1) {
-        update_time_dependent_velocity(vel, geom, inputs.velocity_file, time, inputs.wind_time_spacing,
+        // When turbulence is active, reload into vel_base; apply_turb_wind will
+        // compute vel = vel_base + perturbation immediately below.
+        MultiFab& wind_target = turb_wind_active ? *vel_base : vel;
+        update_time_dependent_velocity(wind_target, geom, inputs.velocity_file, time, inputs.wind_time_spacing,
                                         wind_x_data1, wind_y_data1, wind_u_data1, wind_v_data1,
                                         wind_x_data2, wind_y_data2, wind_u_data2, wind_v_data2,
                                         current_wind_field_index, next_wind_field_index);
       }
 #endif
-      
+
+      // Apply turbulent wind perturbation (vel = vel_base + stochastic perturbation)
+      if (turb_wind_active) {
+          apply_turb_wind(vel, *vel_base, ou_state_mf.get(), turb_state,
+                          dt_step, inputs.turb_wind, geom);
+      }
+
       // --- Step 2: Compute surface ROS via selected fire spread model
       // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
       if (wind_terrain_modifies_vel) {
