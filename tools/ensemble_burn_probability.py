@@ -419,6 +419,7 @@ def run_member(
     mpi_ranks: int = 0,
     mpirun: str = "mpirun",
     mpi_extra_args: Optional[List[str]] = None,
+    csv_files: Optional[List[str]] = None,
 ) -> Optional[List[Tuple[float, float]]]:
     """Execute one ensemble member. Returns list of burned (x,y) or None on failure.
 
@@ -445,12 +446,22 @@ def run_member(
     mpi_extra_args : list[str] or None, optional
         Extra arguments inserted between the launcher and ``-n N``, e.g.
         ``["--bind-to", "core"]`` (default: empty list).
+    csv_files : list[str] or None, optional
+        Pre-collected list of CSV file paths to copy into the run directory
+        so the solver can find them when run with ``cwd=run_dir``.
     """
     if mpi_extra_args is None:
         mpi_extra_args = []
+    if csv_files is None:
+        csv_files = []
 
     run_dir = os.path.join(work_dir, f"run_{run_id:04d}")
     os.makedirs(run_dir, exist_ok=True)
+
+    # Copy CSV files from the original working directory into the run directory
+    # so that the solver can find them when it runs with cwd=run_dir.
+    for csv_file in csv_files:
+        shutil.copy2(csv_file, run_dir)
 
     perturbed = make_perturbed_inputs(template_lines, sample)
     inputs_path = os.path.join(run_dir, "inputs.i")
@@ -589,6 +600,10 @@ def main(argv=None):
     print(f"Working directory: {work_dir}")
     print(f"Running {args.n_runs} members (jobs={args.jobs}) ...")
 
+    # Collect CSV files from the current directory once; they will be copied
+    # into each per-member run directory before the solver is launched.
+    csv_files: List[str] = glob.glob(os.path.join(os.getcwd(), "*.csv"))
+
     all_points: List[List[Tuple[float, float]]] = []
     failed = 0
 
@@ -597,7 +612,7 @@ def main(argv=None):
             futures = {
                 pool.submit(run_member, i, args.exe, template_lines,
                             samples[i], work_dir, args.keep_runs,
-                            mpi_ranks, mpirun_cmd, mpi_extra): i
+                            mpi_ranks, mpirun_cmd, mpi_extra, csv_files): i
                 for i in range(args.n_runs)
             }
             for fut in as_completed(futures):
@@ -610,7 +625,7 @@ def main(argv=None):
         for i, sample in enumerate(samples):
             pts = run_member(i, args.exe, template_lines, sample,
                              work_dir, args.keep_runs,
-                             mpi_ranks, mpirun_cmd, mpi_extra)
+                             mpi_ranks, mpirun_cmd, mpi_extra, csv_files)
             if pts is not None:
                 all_points.append(pts)
             else:
