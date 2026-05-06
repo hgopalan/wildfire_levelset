@@ -12,6 +12,9 @@ option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
 option(LEVELSET_BUILD_WIND_SOLVER
        "Build the stand-alone terrain-following mass-consistent wind solver"
        ON)
+# Internal option used by the ExternalProject sub-build for wind_solver when
+# LEVELSET_DIM_2D=ON.  End users should not set this directly.
+option(LEVELSET_BUILD_LEVELSET "Build the levelset fire-spread solver" ON)
 set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
     "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
 set_property(CACHE LEVELSET_GPU_BACKEND PROPERTY STRINGS NONE CUDA HIP SYCL)
@@ -65,7 +68,9 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
   set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
-  # The wind_solver requires AMReX linear solvers (MLMG); enable when requested.
+  # The wind_solver requires AMReX linear solvers (MLMG).
+  # In a 3-D build, enable them now.  In a 2-D build, the wind_solver gets
+  # its own 3-D AMReX via ExternalProject, so we keep this build 2-D.
   if(LEVELSET_BUILD_WIND_SOLVER AND NOT LEVELSET_DIM_2D)
     set(AMReX_LINEAR_SOLVERS ON  CACHE BOOL "Build AMReX with linear solvers (wind_solver)" FORCE)
   else()
@@ -99,6 +104,7 @@ else()
   endif()
 endif()
 
+if(LEVELSET_BUILD_LEVELSET)
 add_executable(levelset 
                src/main.cpp
                src/parse_inputs.cpp                
@@ -114,24 +120,63 @@ if (MSVC)
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+endif() # LEVELSET_BUILD_LEVELSET
 
 # ---------------------------------------------------------------------------
-# Optional: terrain-following mass-consistent wind solver (3-D only)
+# Optional: terrain-following mass-consistent wind solver (always 3-D)
+#
+# The wind_solver is inherently 3-D (it uses the full 3-D AMReX linear
+# solver stack).  When the user requests LEVELSET_DIM_2D=ON the main AMReX
+# build uses SPACEDIM=2, so wind_solver cannot share that library.  In that
+# case we kick off a separate CMake sub-project (via ExternalProject_Add)
+# configured with SPACEDIM=3 and LEVELSET_BUILD_LEVELSET=OFF so that only
+# wind_solver and its AMReX-3D dependency are compiled.  The resulting
+# binary is copied to CMAKE_BINARY_DIR alongside the 2-D levelset solver.
 # ---------------------------------------------------------------------------
-if(LEVELSET_BUILD_WIND_SOLVER AND NOT LEVELSET_DIM_2D)
-  add_executable(wind_solver src/wind_solver.cpp)
-  target_link_libraries(wind_solver PRIVATE AMReX::amrex)
-  if(LEVELSET_ENABLE_MPI)
-    target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
-  endif()
-  if(MSVC)
-    target_compile_options(wind_solver PRIVATE /W4)
+if(LEVELSET_BUILD_WIND_SOLVER)
+  if(NOT LEVELSET_DIM_2D)
+    # ---- Normal 3-D build: wind_solver is a direct target ----
+    add_executable(wind_solver src/wind_solver.cpp)
+    target_link_libraries(wind_solver PRIVATE AMReX::amrex)
+    if(LEVELSET_ENABLE_MPI)
+      target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
+    endif()
+    if(MSVC)
+      target_compile_options(wind_solver PRIVATE /W4)
+    else()
+      target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    message(STATUS "wind_solver: enabled (3-D, same AMReX build)")
   else()
-    target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
+    # ---- 2-D + 3-D co-build: wind_solver in an ExternalProject sub-build ----
+    include(ExternalProject)
+    ExternalProject_Add(wind_solver_3d_subbuild
+      SOURCE_DIR  "${CMAKE_CURRENT_SOURCE_DIR}"
+      BINARY_DIR  "${CMAKE_CURRENT_BINARY_DIR}/wind_solver_3d"
+      CMAKE_ARGS
+        "-DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}"
+        "-DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER}"
+        "-DLEVELSET_USE_VENDORED_AMREX:BOOL=ON"
+        "-DLEVELSET_DIM_2D:BOOL=OFF"          # force 3-D for wind_solver
+        "-DLEVELSET_BUILD_LEVELSET:BOOL=OFF"  # skip the 2-D levelset target
+        "-DLEVELSET_BUILD_WIND_SOLVER:BOOL=ON"
+        "-DLEVELSET_ENABLE_MPI:BOOL=${LEVELSET_ENABLE_MPI}"
+        "-DLEVELSET_ENABLE_EB:BOOL=OFF"
+        "-DLEVELSET_GPU_BACKEND:STRING=${LEVELSET_GPU_BACKEND}"
+      BUILD_COMMAND
+        "${CMAKE_COMMAND}" --build "<BINARY_DIR>" --target wind_solver
+      INSTALL_COMMAND
+        "${CMAKE_COMMAND}" -E copy_if_different
+          "<BINARY_DIR>/wind_solver"
+          "${CMAKE_CURRENT_BINARY_DIR}/wind_solver"
+      BUILD_BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/wind_solver"
+    )
+    message(STATUS "wind_solver: will be built as a 3-D ExternalProject sub-build")
+    message(STATUS "  (2-D levelset + 3-D wind_solver co-build)")
+    message(STATUS "  Sub-build directory: ${CMAKE_CURRENT_BINARY_DIR}/wind_solver_3d")
   endif()
-  message(STATUS "wind_solver executable enabled (3-D mass-consistent terrain-following wind solver)")
-elseif(LEVELSET_BUILD_WIND_SOLVER AND LEVELSET_DIM_2D)
-  message(STATUS "wind_solver skipped: requires 3-D build (LEVELSET_DIM_2D=OFF)")
+else()
+  message(STATUS "wind_solver: disabled (LEVELSET_BUILD_WIND_SOLVER=OFF)")
 endif()
 
 # Add regression test subdirectory
