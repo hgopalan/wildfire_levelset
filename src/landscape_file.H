@@ -1,5 +1,7 @@
-// landscape_file.H - FARSITE landscape file (.lcp) reader for ASCII format
-// Supports reading elevation, slope, aspect, and fuel model data
+// landscape_file.H - FARSITE landscape file (.lcp) reader
+// Supports both binary LCP and ASCII (X Y ELEV SLOPE ASPECT FUEL) formats.
+// Binary format also provides canopy cover, stand height, crown base height,
+// and crown bulk density when the file was created with crown fuel layers.
 #ifndef LANDSCAPE_FILE_H
 #define LANDSCAPE_FILE_H
 
@@ -15,6 +17,7 @@
 #include <vector>
 
 #include "spatial_grid.H"
+#include "lcp_binary_reader.H"
 
 using namespace amrex;
 
@@ -372,6 +375,359 @@ static void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
     }
 
     amrex::Print() << "Interpolated landscape slope/aspect/fuel from " << n_points << " data points\n";
+}
+
+// ============================================================================
+// Helper: build spatial index and interpolate data from a flat array of
+// (x,y,value) points on to a MultiFab.  Identical kernel to the ASCII path.
+// ============================================================================
+static void interp_flat_to_multifab(
+    MultiFab& mf,
+    const Geometry& geom,
+    const std::vector<double>& x_data,
+    const std::vector<double>& y_data,
+    const std::vector<float>&  values,
+    bool nearest_neighbor = false)
+{
+    int n = static_cast<int>(x_data.size());
+    if (n == 0) return;
+
+    double x_min = *std::min_element(x_data.begin(), x_data.end());
+    double x_max = *std::max_element(x_data.begin(), x_data.end());
+    double y_min = *std::min_element(y_data.begin(), y_data.end());
+    double y_max = *std::max_element(y_data.begin(), y_data.end());
+    double area  = (x_max - x_min) * (y_max - y_min);
+    Real h = (area > 0.0 && n > 1)
+                 ? static_cast<Real>(std::sqrt(area / static_cast<double>(n)))
+                 : Real(1.0);
+
+    // Convert to Real vectors for cell-list builder
+    std::vector<Real> rx(x_data.begin(), x_data.end());
+    std::vector<Real> ry(y_data.begin(), y_data.end());
+    std::vector<Real> rv(values.begin(), values.end());
+
+    Gpu::DeviceVector<Real> d_sx, d_sy, d_sv;
+    Gpu::DeviceVector<int>  d_bstart, d_bcount;
+    CellListParams cl;
+
+    std::vector<int> sidx = build_cell_list(rx, ry, h,
+                                             d_sx, d_sy,
+                                             d_bstart, d_bcount, cl);
+    std::vector<Real> v_sorted = reorder_values(rv, sidx);
+    d_sv.resize(n);
+    Gpu::copy(Gpu::hostToDevice, v_sorted.begin(), v_sorted.end(), d_sv.begin());
+
+    cl.sx     = d_sx.data();
+    cl.sy     = d_sy.data();
+    cl.bstart = d_bstart.data();
+    cl.bcount = d_bcount.data();
+
+    Real const* vptr = d_sv.data();
+    const auto dx    = geom.CellSizeArray();
+    const auto plo   = geom.ProbLoArray();
+    const bool nn    = nearest_neighbor;
+
+    for (MFIter mfi(mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto out = mf.array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            Real x = plo[0] + (i + Real(0.5)) * dx[0];
+            Real y = plo[1] + (j + Real(0.5)) * dx[1];
+            out(i, j, k) = nn ? std::round(cell_list_nearest(cl, vptr, x, y))
+                               : cell_list_interp(cl, vptr, x, y);
+        });
+    }
+}
+
+// ============================================================================
+// read_landscape_binary
+//
+// Reads a binary FARSITE LCP file and produces cell-centred coordinates that
+// can be passed to the interpolation helpers above.  Crown layer data vectors
+// (cbh_out, cbd_out, cc_out, ht_out) are populated only when
+// grid_info.has_crown == true; otherwise they remain empty.
+//
+// Coordinate convention: the LCP stores data row 0 = northernmost row.
+// We convert to (x, y) physical coordinates where x = easting, y = northing
+// (using the LCP's XLL/YLL corner and CellSize).
+// ============================================================================
+static bool read_landscape_binary(
+    const std::string&    filename,
+    LcpGridInfo&          grid_info,
+    std::vector<double>&  x_out,
+    std::vector<double>&  y_out,
+    std::vector<float>&   elev_out,
+    std::vector<float>&   slope_out,
+    std::vector<float>&   aspect_out,
+    std::vector<float>&   fuel_float_out,    // fuel model as float for interp
+    std::vector<int>&     fuel_int_out,      // fuel model as int
+    std::vector<float>&   cc_out,            // canopy cover [%]
+    std::vector<float>&   ht_out,            // stand height [m]
+    std::vector<float>&   cbh_out,           // crown base height [m]
+    std::vector<float>&   cbd_out)           // crown bulk density [kg/m³]
+{
+    std::vector<float> cc_raw, ht_raw, cbh_raw, cbd_raw;
+    if (!read_lcp_binary(filename, grid_info, elev_out, slope_out, aspect_out,
+                         fuel_int_out, cc_raw, ht_raw, cbh_raw, cbd_raw)) {
+        return false;
+    }
+
+    const int R = grid_info.numrows;
+    const int C = grid_info.numcols;
+    const double cs   = grid_info.cellsize;
+    const double xll  = grid_info.xllcorner;
+    const double yll  = grid_info.yllcorner;
+
+    // Convert foot-based grid to metres if needed
+    const double cs_m = (grid_info.gridunits == 1) ? cs * 0.30480 : cs;
+    const double xll_m= (grid_info.gridunits == 1) ? xll * 0.30480 : xll;
+    const double yll_m= (grid_info.gridunits == 1) ? yll * 0.30480 : yll;
+
+    int ncells = R * C;
+    x_out.resize(ncells);
+    y_out.resize(ncells);
+    fuel_float_out.resize(ncells);
+
+    for (int r = 0; r < R; ++r) {
+        for (int c = 0; c < C; ++c) {
+            int idx = r * C + c;
+            // Cell centre: row 0 is northernmost → northing decreases with r
+            x_out[idx] = xll_m + (c + 0.5) * cs_m;
+            y_out[idx] = yll_m + (R - r - 0.5) * cs_m;
+            fuel_float_out[idx] = static_cast<float>(fuel_int_out[idx]);
+        }
+    }
+
+    cc_out  = cc_raw;
+    ht_out  = ht_raw;
+    cbh_out = cbh_raw;
+    cbd_out = cbd_raw;
+    return true;
+}
+
+// ============================================================================
+// compute_slopes_from_lcp
+//
+// Reads a landscape file (binary or ASCII) and populates a 2-component
+// MultiFab with (slope_x, slope_y) = tan(slope) × (cos(aspect), sin(aspect)).
+// Dispatches to the binary reader when the file is recognised as binary LCP;
+// falls back to the existing ASCII path otherwise.
+//
+// This is a drop-in replacement for compute_slopes_from_landscape() that
+// also handles binary LCP files.
+// ============================================================================
+static void compute_slopes_from_lcp(MultiFab& slopes,
+                                    const Geometry& geom,
+                                    const std::string& filename)
+{
+    if (is_binary_lcp(filename)) {
+        LcpGridInfo info;
+        std::vector<double> xd, yd;
+        std::vector<float>  elev, slope_f, aspect_f, fuel_f, cc, ht, cbh, cbd;
+        std::vector<int>    fuel_i;
+
+        if (!read_landscape_binary(filename, info, xd, yd, elev, slope_f,
+                                   aspect_f, fuel_f, fuel_i, cc, ht, cbh, cbd)) {
+            amrex::Abort("Failed to read binary LCP file: " + filename);
+        }
+
+        int n = static_cast<int>(slope_f.size());
+        amrex::Print() << "Binary LCP: " << info.numrows << "×" << info.numcols
+                       << " cells,  crown layers: "
+                       << (info.has_crown ? "yes" : "no") << "\n";
+
+        // Build slope_x, slope_y from slope (degrees) and aspect (degrees, FARSITE)
+        // FARSITE aspect: 0°=North, CW.  Math aspect: aspect_math = 90 - aspect_farsite.
+        Gpu::DeviceVector<Real> d_sx, d_sy, d_slope, d_aspect;
+        Gpu::DeviceVector<int>  d_bstart, d_bcount;
+        CellListParams cl;
+
+        std::vector<Real> rx(xd.begin(), xd.end());
+        std::vector<Real> ry(yd.begin(), yd.end());
+
+        double xmin = *std::min_element(xd.begin(), xd.end());
+        double xmax = *std::max_element(xd.begin(), xd.end());
+        double ymin = *std::min_element(yd.begin(), yd.end());
+        double ymax = *std::max_element(yd.begin(), yd.end());
+        double area = (xmax - xmin) * (ymax - ymin);
+        Real h = (area > 0.0 && n > 1)
+                     ? static_cast<Real>(std::sqrt(area / static_cast<double>(n)))
+                     : Real(1.0);
+
+        std::vector<int> sidx = build_cell_list(rx, ry, h, d_sx, d_sy,
+                                                 d_bstart, d_bcount, cl);
+
+        std::vector<Real> slope_r(n), aspect_r(n);
+        for (int i = 0; i < n; ++i) {
+            slope_r[i]  = static_cast<Real>(slope_f[sidx[i]]);
+            aspect_r[i] = static_cast<Real>(aspect_f[sidx[i]]);
+        }
+        d_slope.resize(n);  d_aspect.resize(n);
+        Gpu::copy(Gpu::hostToDevice, slope_r.begin(),  slope_r.end(),  d_slope.begin());
+        Gpu::copy(Gpu::hostToDevice, aspect_r.begin(), aspect_r.end(), d_aspect.begin());
+
+        cl.sx     = d_sx.data();
+        cl.sy     = d_sy.data();
+        cl.bstart = d_bstart.data();
+        cl.bcount = d_bcount.data();
+        Real const* sp = d_slope.data();
+        Real const* ap = d_aspect.data();
+
+        const auto dx  = geom.CellSizeArray();
+        const auto plo = geom.ProbLoArray();
+
+        for (MFIter mfi(slopes); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto s = slopes.array(mfi);
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                Real x = plo[0] + (i + Real(0.5)) * dx[0];
+                Real y = plo[1] + (j + Real(0.5)) * dx[1];
+                Real sl  = cell_list_interp(cl, sp, x, y);
+                Real asp = cell_list_interp(cl, ap, x, y);
+
+                Real sl_rad  = sl  * Real(M_PI) / Real(180.0);
+                Real asp_rad = (Real(90.0) - asp) * Real(M_PI) / Real(180.0);
+                Real tan_sl  = std::tan(sl_rad);
+                s(i, j, k, 0) = tan_sl * std::cos(asp_rad);
+                s(i, j, k, 1) = tan_sl * std::sin(asp_rad);
+            });
+        }
+        amrex::Print() << "Computed slopes from binary LCP (" << n << " cells)\n";
+
+    } else {
+        // ASCII fallback
+        compute_slopes_from_landscape(slopes, geom, filename);
+    }
+}
+
+// ============================================================================
+// compute_elevation_from_lcp
+// ============================================================================
+static void compute_elevation_from_lcp(MultiFab& elev_mf,
+                                       const Geometry& geom,
+                                       const std::string& filename)
+{
+    if (is_binary_lcp(filename)) {
+        LcpGridInfo info;
+        std::vector<double> xd, yd;
+        std::vector<float>  elev_v, slope_f, aspect_f, fuel_f, cc, ht, cbh, cbd;
+        std::vector<int>    fuel_i;
+        if (!read_landscape_binary(filename, info, xd, yd, elev_v, slope_f,
+                                   aspect_f, fuel_f, fuel_i, cc, ht, cbh, cbd))
+            amrex::Abort("Failed to read binary LCP: " + filename);
+        interp_flat_to_multifab(elev_mf, geom, xd, yd, elev_v, false);
+        amrex::Print() << "Interpolated elevation from binary LCP\n";
+    } else {
+        compute_elevation_from_landscape(elev_mf, geom, filename);
+    }
+}
+
+// ============================================================================
+// compute_fuel_model_from_lcp
+// ============================================================================
+static void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
+                                        const Geometry& geom,
+                                        const std::string& filename)
+{
+    if (is_binary_lcp(filename)) {
+        LcpGridInfo info;
+        std::vector<double> xd, yd;
+        std::vector<float>  elev_v, slope_f, aspect_f, fuel_f, cc, ht, cbh, cbd;
+        std::vector<int>    fuel_i;
+        if (!read_landscape_binary(filename, info, xd, yd, elev_v, slope_f,
+                                   aspect_f, fuel_f, fuel_i, cc, ht, cbh, cbd))
+            amrex::Abort("Failed to read binary LCP: " + filename);
+        interp_flat_to_multifab(fuel_mf, geom, xd, yd, fuel_f, /*nearest=*/true);
+        amrex::Print() << "Interpolated fuel model from binary LCP\n";
+    } else {
+        compute_fuel_model_from_landscape(fuel_mf, geom, filename);
+    }
+}
+
+// ============================================================================
+// compute_landscape_slope_aspect_fuel_lcp
+//
+// Populates slope [deg], aspect [deg], and fuel model MultiFabs from either
+// a binary or ASCII landscape file.  Drop-in replacement for
+// compute_landscape_slope_aspect_fuel() that also handles binary LCP.
+// ============================================================================
+static void compute_landscape_slope_aspect_fuel_lcp(
+    MultiFab& slope_out,
+    MultiFab& aspect_out,
+    MultiFab& fuel_out,
+    const Geometry& geom,
+    const std::string& filename)
+{
+    if (is_binary_lcp(filename)) {
+        LcpGridInfo info;
+        std::vector<double> xd, yd;
+        std::vector<float>  elev_v, slope_f, aspect_f, fuel_f, cc, ht, cbh, cbd;
+        std::vector<int>    fuel_i;
+        if (!read_landscape_binary(filename, info, xd, yd, elev_v, slope_f,
+                                   aspect_f, fuel_f, fuel_i, cc, ht, cbh, cbd))
+            amrex::Abort("Failed to read binary LCP: " + filename);
+        interp_flat_to_multifab(slope_out,  geom, xd, yd, slope_f,  false);
+        interp_flat_to_multifab(aspect_out, geom, xd, yd, aspect_f, false);
+        interp_flat_to_multifab(fuel_out,   geom, xd, yd, fuel_f,   /*nearest=*/true);
+        amrex::Print() << "Interpolated slope/aspect/fuel from binary LCP\n";
+    } else {
+        compute_landscape_slope_aspect_fuel(slope_out, aspect_out, fuel_out,
+                                            geom, filename);
+    }
+}
+
+// ============================================================================
+// compute_crown_layers_from_lcp
+//
+// Populates three optional MultiFabs (all 1-component) with spatially-varying
+// crown fuel properties from a binary LCP file:
+//   cbh_mf   – crown base height [m]
+//   cbd_mf   – crown bulk density [kg/m³]
+//   cc_mf    – canopy cover [%]
+//
+// Returns true if the file has crown layers (has_crown == true) and the
+// MultiFabs were populated; false otherwise (MultiFabs are untouched).
+//
+// All three MultiFab pointers may be nullptr if the caller does not need
+// that layer.
+// ============================================================================
+static bool compute_crown_layers_from_lcp(
+    MultiFab*          cbh_mf,
+    MultiFab*          cbd_mf,
+    MultiFab*          cc_mf,
+    const Geometry&    geom,
+    const std::string& filename)
+{
+    if (!is_binary_lcp(filename)) {
+        return false; // ASCII format has no crown layers
+    }
+
+    LcpGridInfo info;
+    std::vector<double> xd, yd;
+    std::vector<float>  elev_v, slope_f, aspect_f, fuel_f, cc_v, ht_v, cbh_v, cbd_v;
+    std::vector<int>    fuel_i;
+
+    if (!read_landscape_binary(filename, info, xd, yd, elev_v, slope_f,
+                               aspect_f, fuel_f, fuel_i, cc_v, ht_v, cbh_v, cbd_v))
+        amrex::Abort("Failed to read binary LCP: " + filename);
+
+    // Canopy cover is always available from binary LCP (layer 4)
+    if (cc_mf && !cc_v.empty())
+        interp_flat_to_multifab(*cc_mf, geom, xd, yd, cc_v, false);
+
+    if (!info.has_crown) {
+        amrex::Print() << "Binary LCP: no crown fuel layers (CrownFuels = 0)\n";
+        return false;
+    }
+
+    if (cbh_mf && !cbh_v.empty())
+        interp_flat_to_multifab(*cbh_mf, geom, xd, yd, cbh_v, false);
+    if (cbd_mf && !cbd_v.empty())
+        interp_flat_to_multifab(*cbd_mf, geom, xd, yd, cbd_v, false);
+
+    amrex::Print() << "Populated spatially-varying crown layers (CBH, CBD, CC) "
+                      "from binary LCP\n";
+    return true;
 }
 
 #endif // LANDSCAPE_FILE_H

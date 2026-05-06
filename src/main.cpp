@@ -797,6 +797,9 @@ int main(int argc, char* argv[])
                           dt_step, inputs.turb_wind, geom);
       }
 
+      // Update time-varying fuel moisture from FMD schedule
+      apply_fmd_moisture(time);
+
       // --- Step 2: Compute surface ROS via selected fire spread model
       // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
       if (wind_terrain_modifies_vel) {
@@ -881,6 +884,23 @@ int main(int argc, char* argv[])
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {
 	  compute_albini_spotting(phi, albini_data, vel, R_mf, geom,
 	                          inputs.rothermel, inputs.albini_spotting, step);
+	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
+	  // Print the table maximum for the dominant global fuel model and
+	  // the current mean wind speed to help the user assess whether
+	  // trajectory-integrated distances are physically reasonable.
+	  if (ParallelDescriptor::IOProcessor()) {
+	    Real wind_speed_ms = std::sqrt(inputs.ux * inputs.ux + inputs.uy * inputs.uy);
+	    float d_max_base   = get_max_spot_dist_m(inputs.fuel_adj_model > 0
+	                             ? inputs.fuel_adj_model : 4,  // fallback to FM4 (chaparral)
+	                             inputs.rothermel.landscape_fuel_type);
+	    float d_max_scaled = get_max_spot_dist_scaled_m(
+	                             inputs.fuel_adj_model > 0 ? inputs.fuel_adj_model : 4,
+	                             static_cast<float>(wind_speed_ms),
+	                             inputs.rothermel.landscape_fuel_type);
+	    amrex::Print() << "  Scott/Albini max spotting: base=" << d_max_base
+	                   << " m  scaled(U=" << wind_speed_ms << " m/s)="
+	                   << d_max_scaled << " m\n";
+	  }
 	}
 	
 	// --- Step 6: Simulate post-frontal burnout
