@@ -131,10 +131,16 @@ if(LEVELSET_ENABLE_MPI)
 endif()
 
 # Recommended warnings
+# On CUDA builds with MSVC as host compiler, /W4 must be wrapped with
+# -Xcompiler so nvcc forwards it to the host compiler rather than treating
+# it as a bare nvcc argument (which causes a "single input file" fatal error).
 if (MSVC)
-  target_compile_options(levelset PRIVATE /W4)
+  target_compile_options(levelset PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+    $<$<COMPILE_LANGUAGE:CXX>:/W4>
+  )
 else()
-  target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 endif()
 endif() # LEVELSET_BUILD_LEVELSET
 
@@ -166,7 +172,10 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
     endif()
     if(MSVC)
-      target_compile_options(wind_solver PRIVATE /W4)
+      target_compile_options(wind_solver PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+        $<$<COMPILE_LANGUAGE:CXX>:/W4>
+      )
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
     endif()
