@@ -1,0 +1,58 @@
+Start testing: May 07 02:55 UTC
+----------------------------------------------------------
+1/24 Testing: basic_levelset
+1/24 Test: basic_levelset
+Command: "/home/runner/work/wildfire_levelset/wildfire_levelset/build-precheck/levelset" "/home/runner/work/wildfire_levelset/wildfire_levelset/regtest/basic_levelset/inputs.i"
+Directory: /home/runner/work/wildfire_levelset/wildfire_levelset/build-precheck/regtest/basic_levelset
+"basic_levelset" start time: May 07 02:55 UTC
+Output:
+----------------------------------------------------------
+Initializing AMReX (26.04)...
+AMReX (26.04) initialized
+FARSITE fire shape model: richards
+Propagation method: levelset
+Fire spread model: Rothermel (1972)
+Wind-terrain model: none (Option 1 – default Rothermel)
+Computed dt = 0.1499270262
+  Burned area: 8.90625e-05 ha  Perimeter: 0.012125 km
+Wrote 3648 negative phi points to phi_negative_0000.dat
+Wrote 24 convex hull points (from 40 negative phi points) to phi_envelope_0000.dat
+Time:0 with timestep:0.1499270262
+Time:0.1499270262 with timestep:0.1499270262
+Time:0.2998540523 with timestep:0.1499270262
+Time:0.4497810785 with timestep:0.1499270262
+Time:0.5997081047 with timestep:0.1499270262
+Time:0.7496351309 with timestep:0.1499270262
+Time:0.899562157 with timestep:0.1499270262
+Time:1.049489183 with timestep:0.1499270262
+Time:1.199416209 with timestep:0.1499270262
+Time:1.349343236 with timestep:0.1499270262
+Time:1.499270262 with timestep:0.1499270262
+Time:1.649197288 with timestep:0.1499270262
+Time:1.799124314 with timestep:0.1499270262
+Time:1.94905134 with timestep:0.1499270262
+Wrote final plt0014
+  Burned area: 0.00349831543 ha  Perimeter: 1.98584375 km
+Wrote 143291 negative phi points to phi_negative_0014.dat
+Wrote 4 convex hull points (from 128 negative phi points) to phi_envelope_0014.dat
+Wrote 127094 perimeter points to perimeter_0014.csv
+Unused ParmParse Variables:
+  [TOP]::reinit_dtau(nvals = 1)  :: [0.5]
+  [TOP]::reinit_iters(nvals = 1)  :: [20]
+  [TOP]::sphere_center_x(nvals = 1)  :: [0.3]
+  [TOP]::sphere_center_y(nvals = 1)  :: [0.5]
+  [TOP]::sphere_center_z(nvals = 1)  :: [0.5]
+
+AMReX (26.04) finalized
+<end of output>
+Test time =   1.30 sec
+----------------------------------------------------------
+Test Passed.
+"basic_levelset" end time: May 07 02:55 UTC
+"basic_levelset" time elapsed: 00:00:01
+----------------------------------------------------------
+
+End testing: May 07 02:55 UTC
+
+regtest =   1.30 sec*proc
+

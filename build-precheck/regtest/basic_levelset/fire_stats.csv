@@ -1,0 +1,2 @@
+step,time_s,burned_area_ha,perimeter_km,active_front_cells,total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2
+14,2.09898,0.00349832,1.98584,0,0.672793,0.0437101,0.0069422
