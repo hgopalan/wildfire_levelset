@@ -220,16 +220,12 @@ static void compute_viegas_diagnostics(
     const Long ncells_vel   = vel.boxArray().numPts();
     const Real ux_mean = (ncells_vel > 0) ? vel.sum(0) / Real(ncells_vel) : Real(0.0);
     const Real uy_mean = (ncells_vel > 0) ? vel.sum(1) / Real(ncells_vel) : Real(0.0);
-
-    const bool has_slope = (terrain_slopes != nullptr);
-    // Number of output components in the viegas_data MultiFab.
-    static constexpr int VIEGAS_NCOMP = 5;
-
     // Tiny positive value used as denominator floor when computing ROS excess.
-    static constexpr amrex::Real VIEGAS_EPS    = WildfireConst::VIEGAS_EPS;
-
+    const Real VIEGAS_EPS    = WildfireConst::VIEGAS_EPS;
     // Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
-    static constexpr amrex::Real VIEGAS_VB_MIN = WildfireConst::VIEGAS_VB_MIN;
+    const Real VIEGAS_VB_MIN = WildfireConst::VIEGAS_VB_MIN;
+    const bool has_slope = (terrain_slopes != nullptr);
+
     for (MFIter mfi(viegas_data); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
 

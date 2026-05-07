@@ -112,7 +112,7 @@ static void apply_wind_terrain_velocity(
     const Real ux_mean = (ncells_vel > 0) ? vel.sum(0) / Real(ncells_vel) : Real(0.0);
     const Real uy_mean = (ncells_vel > 0) ? vel.sum(1) / Real(ncells_vel) : Real(0.0);
     // Minimum slope magnitude to avoid division-by-zero in uphill unit-vector.
-    static constexpr amrex::Real WT_SLOPE_EPS = WildfireConst::WT_SLOPE_EPS;
+    const Real WT_SLOPE_EPS = WildfireConst::WT_SLOPE_EPS;
     for (MFIter mfi(vel_eff); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const v  = vel.const_array(mfi);
