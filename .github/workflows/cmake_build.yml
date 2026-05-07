@@ -84,9 +84,9 @@ jobs:
             -DCMAKE_VERBOSE_MAKEFILE=ON `
             -DLEVELSET_USE_VENDORED_AMREX=ON `
             -DLEVELSET_DIM_2D=OFF `
-            -DLEVELSET_ENABLE_MPI=OFF `
+            -DLEVELSET_ENABLE_MPI=ON `
             -DLEVELSET_ENABLE_EB=OFF `
-            -DLEVELSET_BUILD_WIND_SOLVER=OFF
+            -DLEVELSET_BUILD_WIND_SOLVER=ON
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} -j 4
