@@ -131,8 +131,16 @@ if(LEVELSET_ENABLE_MPI)
 endif()
 
 # Recommended warnings
+# When source files are compiled as CUDA (language=CUDA), CMake uses nvcc as the
+# compiler driver.  MSVC-style flags (e.g. /W4) must be wrapped with
+# -Xcompiler= so nvcc forwards them to the host compiler; passing them bare
+# causes nvcc to treat them as input files and abort with
+# "A single input file is required for a non-link phase".
 if (MSVC)
-  target_compile_options(levelset PRIVATE /W4)
+  target_compile_options(levelset PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+    $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/W4>
+  )
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -166,7 +174,10 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
     endif()
     if(MSVC)
-      target_compile_options(wind_solver PRIVATE /W4)
+      target_compile_options(wind_solver PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+        $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/W4>
+      )
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
     endif()

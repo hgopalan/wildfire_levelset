@@ -46,7 +46,7 @@
 using namespace amrex;
 
 // Minimum slope magnitude to avoid division-by-zero in uphill unit-vector.
-static constexpr amrex::Real WT_SLOPE_EPS = amrex::Real(1.0e-8);
+inline constexpr amrex::Real WT_SLOPE_EPS = amrex::Real(1.0e-8);
 
 // ============================================================================
 // apply_wind_terrain_velocity

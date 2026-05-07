@@ -74,7 +74,7 @@ namespace BalbiUnits {
 // Minimum safe buoyancy velocity [m/s] used as a numerical floor.
 // Prevents division-by-zero in the GPU tilt-angle kernel while remaining
 // orders of magnitude below physically meaningful v_b values (≥ 1 m/s).
-constexpr amrex::Real BALBI_V_B_MIN = 1.0e-3;
+inline constexpr amrex::Real BALBI_V_B_MIN = 1.0e-3;
 
 // Minimum dimensionless ignition-energy ratio B* before the cell is treated
 // as non-burnable (A_coeff = 0).  Numerically, 1e-6 is well below any

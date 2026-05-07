@@ -104,10 +104,10 @@
 static constexpr int VIEGAS_NCOMP = 5;
 
 // Tiny positive value used as denominator floor when computing ROS excess.
-static constexpr amrex::Real VIEGAS_EPS = amrex::Real(1.0e-10);
+inline constexpr amrex::Real VIEGAS_EPS = amrex::Real(1.0e-10);
 
 // Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
-static constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
+inline constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
 
 // ============================================================================
 // compute_viegas_diagnostics
