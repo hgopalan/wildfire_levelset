@@ -187,6 +187,11 @@ jobs:
             -DCMAKE_CUDA_COMPILER=nvcc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Build AMReX submodule (3D target)
+        run: |
+          cmake --build build --target amrex_3d --config Release -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build
         run: |
           cmake --build build --config Release -j 4
