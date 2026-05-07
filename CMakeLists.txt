@@ -131,8 +131,16 @@ if(LEVELSET_ENABLE_MPI)
 endif()
 
 # Recommended warnings
+# When compiling .cpp files as CUDA (LANGUAGE CUDA), nvcc receives compiler
+# flags directly.  MSVC-style flags like /W4 that are not prefixed with
+# -Xcompiler= are misinterpreted by nvcc as extra input files, causing:
+#   nvcc fatal : A single input file is required for a non-link phase
+# Use a generator expression to wrap the flag appropriately.
 if (MSVC)
-  target_compile_options(levelset PRIVATE /W4)
+  target_compile_options(levelset PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+    $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/W4>
+  )
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -166,7 +174,10 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
     endif()
     if(MSVC)
-      target_compile_options(wind_solver PRIVATE /W4)
+      target_compile_options(wind_solver PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+        $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/W4>
+      )
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
     endif()
