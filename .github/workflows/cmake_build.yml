@@ -196,3 +196,250 @@ jobs:
         run: |
           cmake --build build --config Release -j 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # ── Linux HIP build (ROCm 6.2, Ubuntu 22.04) ─────────────────────────────
+  build_hip:
+    name: Build HIP (ubuntu-22.04, Release)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build wget gnupg
+
+      - name: Add ROCm apt repository (Ubuntu 22.04 / jammy)
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
+          echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.2.2 jammy main' \
+            | sudo tee /etc/apt/sources.list.d/rocm.list
+          printf 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600\n' \
+            | sudo tee /etc/apt/preferences.d/rocm-pin-600
+          sudo apt-get update -qq
+
+      - name: Install ROCm/HIP (compiler + dev headers)
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            hipcc hip-dev rocm-cmake
+
+      - name: Configure (3D, HIP, gfx90a)
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hipcc \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_GPU_BACKEND=HIP \
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF \
+            -DAMReX_AMD_ARCH="gfx90a"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+  # ── Windows HIP build (AMD HIP SDK 6.2) ───────────────────────────────────
+  build_windows_hip:
+    name: Build Windows HIP (windows-2022, Release)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Download and install AMD HIP SDK
+        shell: pwsh
+        run: |
+          $url = "https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-Win10-Win11-For-HIP.exe"
+          $installer = "$env:TEMP\AMD-HIP-SDK.exe"
+          Write-Host "Downloading AMD HIP SDK for Windows..."
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running AMD HIP SDK silent install..."
+          Start-Process $installer -ArgumentList "-install" -Wait -NoNewWindow
+          # Add HIP SDK bin directory to PATH for subsequent steps
+          $hipBin = "C:\Program Files\AMD\ROCm\6.2\bin"
+          if (Test-Path $hipBin) {
+            Write-Host "Adding $hipBin to GITHUB_PATH"
+            "$hipBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          } else {
+            Write-Warning "Expected HIP SDK directory not found: $hipBin"
+          }
+
+      - name: Install Ninja
+        shell: pwsh
+        run: |
+          curl.exe -L -o ninja-win.zip https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
+          Expand-Archive -Path ninja-win.zip -DestinationPath "$env:TEMP\ninja"
+          "$env:TEMP\ninja" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (3D, HIP, gfx90a)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_VERBOSE_MAKEFILE=ON `
+            -DLEVELSET_USE_VENDORED_AMREX=ON `
+            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_ENABLE_MPI=OFF `
+            -DLEVELSET_ENABLE_EB=OFF `
+            -DLEVELSET_GPU_BACKEND=HIP `
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF `
+            -DAMReX_AMD_ARCH="gfx90a"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # ── Linux SYCL build (Intel oneAPI DPC++, Ubuntu 22.04) ──────────────────
+  build_sycl:
+    name: Build SYCL (ubuntu-22.04, Release)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build wget gnupg
+
+      - name: Add Intel oneAPI apt repository
+        run: |
+          wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update -qq
+
+      - name: Install Intel DPC++/C++ compiler
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            intel-oneapi-compiler-dpcpp-cpp
+
+      - name: Configure (3D, SYCL)
+        shell: bash
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DCMAKE_CXX_COMPILER=icpx \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_GPU_BACKEND=SYCL \
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          cmake --build build --parallel
+
+  # ── Windows SYCL build (Intel oneAPI DPC++, Windows 2022) ────────────────
+  build_windows_sycl:
+    name: Build Windows SYCL (windows-2022, Release)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Download and install Intel DPC++/C++ compiler
+        shell: pwsh
+        run: |
+          # Intel oneAPI DPC++/C++ Compiler offline installer for Windows
+          $url = "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/ebf5d9aa-17a7-46a4-b5df-ace004227c0e/w_dpcpp-cpp-compiler_p_2025.1.0.58_offline.exe"
+          $installer = "$env:TEMP\intel-dpcpp.exe"
+          Write-Host "Downloading Intel DPC++/C++ compiler..."
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running Intel DPC++ silent install..."
+          Start-Process $installer `
+            -ArgumentList "--silent","--eula","accept","--action","install" `
+            -Wait -NoNewWindow
+
+      - name: Set Intel oneAPI environment variables
+        shell: pwsh
+        run: |
+          $setvars = "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          if (Test-Path $setvars) {
+            # Capture the environment after sourcing setvars and propagate to GitHub Actions
+            $env_output = cmd.exe /C "`"$setvars`" && set"
+            foreach ($line in $env_output) {
+              if ($line -match '^([^=]+)=(.*)$') {
+                $name  = $Matches[1]
+                $value = $Matches[2]
+                [System.Environment]::SetEnvironmentVariable($name, $value, "Process")
+                "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              }
+            }
+          } else {
+            Write-Warning "setvars.bat not found – install may have failed"
+            exit 1
+          }
+
+      - name: Install Ninja
+        shell: pwsh
+        run: |
+          curl.exe -L -o ninja-win.zip https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
+          Expand-Archive -Path ninja-win.zip -DestinationPath "$env:TEMP\ninja"
+          "$env:TEMP\ninja" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (3D, SYCL)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_VERBOSE_MAKEFILE=ON `
+            -DCMAKE_CXX_COMPILER=icpx `
+            -DLEVELSET_USE_VENDORED_AMREX=ON `
+            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_ENABLE_MPI=OFF `
+            -DLEVELSET_ENABLE_EB=OFF `
+            -DLEVELSET_GPU_BACKEND=SYCL `
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
