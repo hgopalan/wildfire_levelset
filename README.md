@@ -147,8 +147,6 @@ Override parameters from command line:
 ./build/levelset nsteps=200 plot_int=20 cfl=0.4 u_x=0.3 u_y=0.1 u_z=0.0
 ```
 
-### Example Configurations
-
 ## Terrain-Following Mass-Consistent Wind Solver (`wind_solver`)
 
 A stand-alone 3-D terrain-following wind diagnostic executable is built
@@ -209,58 +207,10 @@ EOF
 See the [full documentation](https://hgopalan.github.io/wildfire_levelset/wind_solver.html)
 for the complete parameter reference, physical model description, and GIS export workflow.
 
-
-**Basic level-set (no fire spread model, constant velocity):**
-```bash
-./build/levelset u_x=0.5 u_y=0.0
-```
-
-**Rothermel + level-set with terrain file:**
-```bash
-./build/levelset fire_spread_model=rothermel propagation_method=levelset \
-    rothermel.terrain_file=terrain.xyz u_x=0.5 u_y=0.0
-```
-
-**Rothermel + FARSITE ellipse propagation with Anderson L/W ratio:**
-```bash
-./build/levelset fire_spread_model=rothermel propagation_method=farsite \
-    farsite.use_anderson_LW=1 u_x=0.5 u_y=0.0
-```
-
-**Balbi + FARSITE propagation:**
-```bash
-./build/levelset fire_spread_model=balbi propagation_method=farsite \
-    farsite.use_anderson_LW=1 u_x=0.5 u_y=0.0
-```
-
-**With firebrand spotting (FARSITE propagation):**
-```bash
-./build/levelset propagation_method=farsite spotting.enable=1 spotting.P_base=0.03 spotting.d_mean=0.15 u_x=0.4
-```
-
-See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/) for the complete runtime parameter reference, fire spread model equations, and tool usage guides.
-
 ## Tools
 
 Python utilities live in the `tools/` directory for terrain/landscape download, weather file parsing, GIS export, and ensemble analysis.
 See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) for complete option references and worked examples.
-
-## Testing
-
-```bash
-cd build
-ctest -L regtest --output-on-failure   # regression tests
-ctest -L benchmark --output-on-failure -V  # timing benchmark
-make regtest                            # or via custom target
-```
-
-Regression tests cover core level-set propagation, all fire spread models, firebrand spotting, crown fire, fuel adjustment/moisture files, perimeter output, 2D/3D scenarios, and an optional LANDFIRE integration test. See `regtest/` for the full list.
-
-## Output
-
-Simulation results are written as AMReX plotfiles (`plt####`) containing the level-set function, velocity field, rate of spread, fireline intensity, terrain fields, and optional diagnostics (spotting, crown fire, fire whirl, eruptive fire, emissions). Additional files include burned-cell coordinates, convex hull envelopes, fire perimeter CSV/GeoJSON files, and a `fire_stats.csv` time series of burned area, perimeter, and emissions.
-
-View plotfiles with ParaView or use `tools/plotfile_to_geotiff.py` to export GeoTIFF rasters and GeoJSON contours for GIS. See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/usage.html#output) for a complete field listing.
 
 ## Limitations and Known Constraints
 
