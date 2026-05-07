@@ -82,7 +82,7 @@ static constexpr Real HF_G = WildfireConst::GRAVITY;
 //
 // Fills Q_mf uniformly with the given value [W/m²].
 // ============================================================================
-static void init_heat_flux_from_value(MultiFab& Q_mf, Real value)
+inline void init_heat_flux_from_value(MultiFab& Q_mf, Real value)
 {
     Q_mf.setVal(std::max(value, Real(0.0)));
 }
@@ -98,7 +98,7 @@ static void init_heat_flux_from_value(MultiFab& Q_mf, Real value)
 // Lines starting with '#' or blank lines are ignored.
 // ============================================================================
 #if (AMREX_SPACEDIM == 2)
-static void init_heat_flux_from_file(MultiFab& Q_mf,
+inline void init_heat_flux_from_file(MultiFab& Q_mf,
                                      const Geometry& geom,
                                      const std::string& filename)
 {
@@ -200,7 +200,7 @@ static void init_heat_flux_from_file(MultiFab& Q_mf,
 //   2D: upward motion is projected onto the horizontal plane as an inflow
 //       directed upstream (anti-parallel to the ambient wind direction).
 // ============================================================================
-static void apply_heatflux_wind(MultiFab&              vel_eff,
+inline void apply_heatflux_wind(MultiFab&              vel_eff,
                                 const MultiFab&        vel,
                                 const MultiFab&        Q_mf,
                                 const MultiFab*        phi_mf,

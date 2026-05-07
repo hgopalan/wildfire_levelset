@@ -19,7 +19,7 @@ using namespace amrex;
 // ======================= Write all negative phi cells as x-y file ================
 // Writes coordinates (x, y) of all cells where phi < 0 to a file
 // ==================================================================================
-static void write_negative_phi_xy(const MultiFab& phi, 
+inline void write_negative_phi_xy(const MultiFab& phi, 
                                    const Geometry& geom, 
                                    const std::string& filename)
 {
@@ -188,7 +188,7 @@ static std::vector<std::pair<Real, Real>> compute_convex_hull(
 // collected; interior cells cannot lie on the convex hull so discarding them has
 // no effect on the result while drastically reducing the point count.
 // ==================================================================================
-static void write_negative_phi_convex_hull(const MultiFab& phi, 
+inline void write_negative_phi_convex_hull(const MultiFab& phi, 
                                            const Geometry& geom, 
                                            const std::string& filename)
 {
@@ -336,7 +336,7 @@ static void write_negative_phi_convex_hull(const MultiFab& phi,
 // When sorting = true (default) the boundary points are sorted by angle
 // around the centroid to produce a traversal-ordered perimeter.
 // ============================================================================
-static void write_fire_perimeter_csv(const MultiFab& phi,
+inline void write_fire_perimeter_csv(const MultiFab& phi,
                                      const Geometry& geom,
                                      const std::string& filename)
 {
@@ -439,7 +439,7 @@ static void write_fire_perimeter_csv(const MultiFab& phi,
 // domain is in a UTM projection, or arbitrary for idealised runs).
 // To use with mapping tools, specify the CRS separately or pre-project.
 // ============================================================================
-static void write_fire_perimeter_geojson(const MultiFab& phi,
+inline void write_fire_perimeter_geojson(const MultiFab& phi,
                                          const Geometry& geom,
                                          const std::string& filename,
                                          int  step,
@@ -563,7 +563,7 @@ static void write_fire_perimeter_geojson(const MultiFab& phi,
 // Writes the CSV header row for the burned area / perimeter time series.
 // Should be called once at simulation startup before the first append.
 // ============================================================================
-static void write_fire_stats_header(const std::string& filename)
+inline void write_fire_stats_header(const std::string& filename)
 {
     if (!ParallelDescriptor::IOProcessor()) return;
     std::ofstream out(filename, std::ios::out | std::ios::trunc);
@@ -584,7 +584,7 @@ static void write_fire_stats_header(const std::string& filename)
 //
 // emissions_mf is optional (pass nullptr to skip emission stats).
 // ============================================================================
-static void append_fire_stats(const MultiFab& phi,
+inline void append_fire_stats(const MultiFab& phi,
                                const Geometry& geom,
                                const MultiFab* emissions_mf,
                                int step, Real time_s,

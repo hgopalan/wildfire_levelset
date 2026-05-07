@@ -95,7 +95,7 @@ constexpr int ECOLOGY_NCOMP = 4;
 //                            tree_height for mortality; crown.enable not
 //                            checked here — ecology is always computed)
 // ============================================================================
-static void compute_fire_ecology(
+inline void compute_fire_ecology(
     MultiFab&                                    ecology_mf,
     const MultiFab&                              fireline_intensity_mf,
     const MultiFab&                              R_mf,

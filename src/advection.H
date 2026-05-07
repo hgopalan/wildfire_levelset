@@ -5,7 +5,7 @@
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 
-static void build_rhs_weno5z(const MultiFab& phi,
+inline void build_rhs_weno5z(const MultiFab& phi,
                              const MultiFab& vel,
                              MultiFab& rhs,
                              const Geometry& geom,
@@ -119,7 +119,7 @@ static void build_rhs_weno5z(const MultiFab& phi,
 
 
 // ======================= WENO5-Z advection + RK3 ==================
-static void advect_levelset_weno5z_rk3(MultiFab& phi,
+inline void advect_levelset_weno5z_rk3(MultiFab& phi,
                                        const MultiFab& vel,
                                        const Geometry& geom,
                                        Real dt,

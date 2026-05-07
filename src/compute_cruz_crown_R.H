@@ -34,7 +34,7 @@ using namespace amrex;
 //   vel    – velocity field (wind, m/s)
 //   ccp    – Cruz–Crown model parameters (CBD, MC10)
 // ============================================================================
-static void compute_cruz_crown_R(MultiFab& R_mf,
+inline void compute_cruz_crown_R(MultiFab& R_mf,
                                   const MultiFab& vel,
                                   const InputParameters::CruzCrownParams& ccp)
 {

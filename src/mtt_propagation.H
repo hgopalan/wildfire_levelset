@@ -63,7 +63,7 @@ using namespace amrex;
 //                      fire spread model; must have at least 0 ghost cells.
 //   geom             – AMReX Geometry describing the Cartesian grid.
 // ============================================================================
-static void compute_mtt_arrival_times(MultiFab& arrival_time_mf,
+inline void compute_mtt_arrival_times(MultiFab& arrival_time_mf,
                                       const MultiFab& phi,
                                       const MultiFab& R_mf,
                                       const Geometry& geom)
@@ -254,7 +254,7 @@ static void compute_mtt_arrival_times(MultiFab& arrival_time_mf,
 //   arrival_time_mf – MTT arrival times [s] (computed by compute_mtt_arrival_times).
 //   time            – current simulation time [s].
 // ============================================================================
-static void apply_mtt_phi_update(MultiFab& phi,
+inline void apply_mtt_phi_update(MultiFab& phi,
                                  const MultiFab& arrival_time_mf,
                                  Real time)
 {

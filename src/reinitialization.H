@@ -10,7 +10,7 @@ Real smoothed_sign(Real phi0, Real eps)
 // ================================================================
 // Corrected reinitialization routine
 // ================================================================
-static void reinitialize_phi(MultiFab& phi,
+inline void reinitialize_phi(MultiFab& phi,
                              const Geometry& geom,
                              int n_iters,
                              Real dtau)

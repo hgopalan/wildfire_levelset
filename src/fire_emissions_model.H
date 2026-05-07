@@ -63,7 +63,7 @@ constexpr int EMISSIONS_NCOMP = 3;
 //   rp                    - Rothermel parameters (provides fuel load)
 //   ep                    - emissions parameters (EF values, default fraction)
 // ============================================================================
-static void compute_fire_emissions(
+inline void compute_fire_emissions(
     MultiFab&                                 emissions_mf,
     const MultiFab&                           phi,
     const MultiFab&                           fuel_consumption_mf,

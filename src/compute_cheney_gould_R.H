@@ -33,7 +33,7 @@ using namespace amrex;
 //   vel    – velocity field (wind, m/s)
 //   cgp    – Cheney–Gould model parameters (moisture, curing)
 // ============================================================================
-static void compute_cheney_gould_R(MultiFab& R_mf,
+inline void compute_cheney_gould_R(MultiFab& R_mf,
                                     const MultiFab& vel,
                                     const InputParameters::CheneyGouldParams& cgp)
 {

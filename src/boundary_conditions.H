@@ -23,7 +23,7 @@
 // creating circular reads from uninitialised memory.  Different MPI
 // decompositions exposed the uninitialised reads differently, producing
 // nondeterministic crashes.
-static void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
+inline void fill_boundary_extrap(MultiFab& mf, const Geometry& geom)
 {
     // Sanity-check: at least one ghost cell layer must be present.
     // (AMREX_ASSERT is active unless AMREX_ASSERT_OFF is defined.)

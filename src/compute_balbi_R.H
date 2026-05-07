@@ -36,7 +36,7 @@ using namespace amrex;
 // Physical constant for heat flux buoyancy – use shared constant
 static constexpr Real BALBI_HF_G = WildfireConst::GRAVITY;
 
-static void compute_balbi_R(MultiFab& R_mf,
+inline void compute_balbi_R(MultiFab& R_mf,
                              const MultiFab& vel,
                              const Geometry& /*geom*/,
                              const RothermelParams& rp,

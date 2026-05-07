@@ -160,7 +160,7 @@ static std::vector<IntVect> load_barrier_cells(
 //   barrier_cells – list of barrier cell indices returned by load_barrier_cells.
 //   geom          – AMReX Geometry (used to obtain cell spacing).
 // ============================================================================
-static void apply_barrier_polygons(MultiFab& phi,
+inline void apply_barrier_polygons(MultiFab& phi,
                                    const std::vector<IntVect>& barrier_cells,
                                    const Geometry& geom)
 {

@@ -21,7 +21,7 @@ using namespace amrex;
 // Reads terrain file in X Y Z format and computes slopes (tan(angle)) for each cell
 // Slopes are stored in a MultiFab with 2 components: slope_x and slope_y
 // ==================================================================================
-static void compute_slopes_from_terrain(MultiFab& slopes, 
+inline void compute_slopes_from_terrain(MultiFab& slopes, 
                                         const Geometry& geom, 
                                         const std::string& filename)
 {
@@ -123,7 +123,7 @@ static void compute_slopes_from_terrain(MultiFab& slopes,
 // using a Gaussian RBF kernel.  The result is stored in a single-component
 // MultiFab (component 0 = elevation in the same units as the terrain file).
 // ==================================================================================
-static void compute_elevation_from_terrain(MultiFab& elevation,
+inline void compute_elevation_from_terrain(MultiFab& elevation,
                                            const Geometry& geom,
                                            const std::string& filename)
 {
@@ -205,7 +205,7 @@ static void compute_elevation_from_terrain(MultiFab& elevation,
 // Converts a 2-component slopes MultiFab (slope_x = tan*cos, slope_y = tan*sin) into
 // slope magnitude in degrees and aspect in degrees (FARSITE convention: 0=North, CW).
 // ========================================================================================
-static void compute_slope_aspect_from_slopes(const MultiFab& slopes,
+inline void compute_slope_aspect_from_slopes(const MultiFab& slopes,
                                              MultiFab& slope_out,
                                              MultiFab& aspect_out)
 {

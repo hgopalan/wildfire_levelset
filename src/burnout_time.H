@@ -44,7 +44,7 @@ using namespace amrex;
 //   arrival_time_mf  – input:  simulation time of ignition [s]; -1.0 = unburned
 //   tau_residence    – fire residence time [s] (farsite.tau_residence)
 // ============================================================================
-static void compute_burnout_time(MultiFab&       burnout_time_mf,
+inline void compute_burnout_time(MultiFab&       burnout_time_mf,
                                   const MultiFab& arrival_time_mf,
                                   amrex::Real     tau_residence)
 {

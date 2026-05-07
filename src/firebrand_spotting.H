@@ -32,7 +32,7 @@ using namespace amrex;
 // ============================================================================
 // Compute spotting probability field based on wind, fire intensity, and moisture
 // ============================================================================
-static void compute_spotting_probability(
+inline void compute_spotting_probability(
     MultiFab &spotting_data,
     const MultiFab &phi,
     const MultiFab &vel,
@@ -114,7 +114,7 @@ static void compute_spotting_probability(
 // ============================================================================
 // Generate firebrand spots using stochastic sampling
 // ============================================================================
-static void generate_firebrand_spots(
+inline void generate_firebrand_spots(
     MultiFab &phi,
     MultiFab &spotting_data,
     const MultiFab &vel,

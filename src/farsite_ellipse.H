@@ -48,7 +48,7 @@ constexpr Real PHI_RESET_MULTIPLIER = -1.0;
 // Optionally applies Van Wagner (1977) crown fire initiation
 // Optionally computes bulk fuel consumption fraction if enabled
 // ============================================================================
-static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
+inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    MultiFab &farsite_spread,
                                    const Geometry &geom, Real dt,
                                    const RothermelParams &rp,

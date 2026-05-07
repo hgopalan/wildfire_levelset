@@ -140,7 +140,7 @@
 //   balbi_table    – optional: GPU array of BalbiComputed indexed by fuel code
 //   balbi_table_size–number of entries in balbi_table
 // ============================================================================
-static void compute_viegas_diagnostics(
+inline void compute_viegas_diagnostics(
     MultiFab&              viegas_data,
     const MultiFab&        R_mf,
     const MultiFab&        vel,

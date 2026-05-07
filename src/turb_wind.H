@@ -160,7 +160,7 @@ struct TurbWindState {
 // and random phases from the 2-D isotropic Gaussian spectrum with length
 // scale L_c.  Must be called once before the time loop.
 // ============================================================================
-static void init_turb_wind_state(TurbWindState& state,
+inline void init_turb_wind_state(TurbWindState& state,
                                   const InputParameters::TurbWindParams& tp)
 {
     const unsigned int s = (tp.random_seed == 0)
@@ -236,7 +236,7 @@ static void init_turb_wind_state(TurbWindState& state,
 // After both passes the field is rescaled to unit RMS so the OU sigma
 // parameter retains its meaning as the stationary standard deviation.
 // ============================================================================
-static void apply_gaussian_spatial_kernel(MultiFab& mf, double sigma_k)
+inline void apply_gaussian_spatial_kernel(MultiFab& mf, double sigma_k)
 {
     if (sigma_k < 1.0e-6) return;
 
@@ -354,7 +354,7 @@ static void apply_gaussian_spatial_kernel(MultiFab& mf, double sigma_k)
 //   tp        – turbulent wind parameters
 //   geom      – domain geometry (cell sizes and problo)
 // ============================================================================
-static void apply_turb_wind(MultiFab&         vel,
+inline void apply_turb_wind(MultiFab&         vel,
                              const MultiFab&   vel_base,
                              MultiFab*         ou_state,
                              TurbWindState&    state,

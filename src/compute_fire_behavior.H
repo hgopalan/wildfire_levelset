@@ -39,7 +39,7 @@ using namespace amrex;
 //   rp                     – Rothermel fuel parameters (provides fuel load
 //                            and heat content)
 // ============================================================================
-static void compute_fire_behavior(MultiFab& fireline_intensity_mf,
+inline void compute_fire_behavior(MultiFab& fireline_intensity_mf,
                                   MultiFab& flame_length_mf,
                                   const MultiFab& R_mf,
                                   const RothermelParams& rp)
