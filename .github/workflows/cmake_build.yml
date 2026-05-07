@@ -134,6 +134,7 @@ jobs:
             -DLEVELSET_DIM_2D=OFF \
             -DLEVELSET_ENABLE_MPI=OFF \
             -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF \
             -DLEVELSET_GPU_BACKEND=CUDA \
             -DAMReX_CUDA_ARCH="8.0"
 
