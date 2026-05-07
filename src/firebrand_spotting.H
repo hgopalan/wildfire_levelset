@@ -55,6 +55,17 @@ inline void compute_spotting_probability(
     const Real beta_ratio_E = rc.beta_ratio_E;
     const Real wind_conv = rc.wind_conv;
     
+    // Extract scalar fields from structs that contain std::string members.
+    // SYCL requires that all values captured by a device lambda are trivially
+    // copyable ("device copyable").  SpottingParams and RothermelParams each
+    // contain std::string fields, so they cannot be captured directly.
+    const Real sp_k_wind      = sp.k_wind;
+    const Real sp_I_critical  = sp.I_critical;
+    const Real sp_P_base      = sp.P_base;
+    const Real rp_M_x         = rp.M_x;
+    const Real rp_M_f         = rp.M_f;
+    const Real rp_h_heat      = rp.h_heat;
+
     // Loop over all boxes
     for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();
@@ -89,20 +100,20 @@ inline void compute_spotting_probability(
             Real U_ftmin = wind_mag * wind_conv;
             
             // Wind factor for probability: f(wind) = 1 - exp(-k_wind * U^2)
-            Real f_wind = Real(1.0) - std::exp(-sp.k_wind * U_ftmin * U_ftmin / Real(100.0));
+            Real f_wind = Real(1.0) - std::exp(-sp_k_wind * U_ftmin * U_ftmin / Real(100.0));
             
             // Moisture factor: f(moisture) = max(0, (M_x - M_f) / M_x)
-            Real f_moisture = amrex::max(Real(0.0), (rp.M_x - rp.M_f) / rp.M_x);
+            Real f_moisture = amrex::max(Real(0.0), (rp_M_x - rp_M_f) / rp_M_x);
             
             // Intensity factor: approximated from rate of spread
             // φ_w (wind factor from Rothermel)
             Real phi_w = (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : Real(0.0);
             Real R = R0 * (Real(1.0) + phi_w);
-            Real intensity = R * rp.h_heat; // Simplified intensity (BTU/ft²/min)
-            Real f_intensity = amrex::min(Real(1.0), intensity / sp.I_critical);
+            Real intensity = R * rp_h_heat; // Simplified intensity (BTU/ft²/min)
+            Real f_intensity = amrex::min(Real(1.0), intensity / sp_I_critical);
             
             // Combined probability
-            Real P_spot = sp.P_base * f_wind * f_intensity * f_moisture;
+            Real P_spot = sp_P_base * f_wind * f_intensity * f_moisture;
             P_spot = amrex::min(Real(1.0), amrex::max(Real(0.0), P_spot));
             
             // Store probability in component 0
