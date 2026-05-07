@@ -247,7 +247,7 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 
       // Apply maximum effective wind speed limit if enabled (Andrews 2018)
       if (use_wind_limit_flag == 1 && U_max_default > Real(0.0)) {
-          U_ftmin = std::min(U_ftmin, U_max_default);
+          U_ftmin = amrex::min(U_ftmin, U_max_default);
       }
 
       // Wind factor φ_w (Rothermel Eq. 47)
@@ -261,14 +261,14 @@ static void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
         Real slope_x = s(i, j, k, 0);
         Real slope_y = s(i, j, k, 1);
         Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-        phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq,
+        phi_s = amrex::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq,
                          Real(0.0));
       } else {
         phi_s = phi_s_const;
       }
 
       // Rate of spread using full Rothermel model [ft/min] → simulation units
-      Real R_surface_ftmin = std::max(R0 * (1.0 + phi_w + phi_s), 0.0);
+      Real R_surface_ftmin = amrex::max(R0 * (1.0 + phi_w + phi_s), Real(0.0));
       Real R_surface = R_surface_ftmin * ros_conv;
       
       // Apply Van Wagner crown fire initiation if enabled

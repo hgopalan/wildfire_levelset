@@ -101,14 +101,14 @@ static void build_rhs_weno5z(const MultiFab& phi,
                     Real slope_x = s(i,j,k,0);
                     Real slope_y = s(i,j,k,1);
                     Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                    phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
+                    phi_s = amrex::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq, Real(0.0));
                 } else {
                     // Use constant phi_s from RothermelComputed
                     phi_s = phi_s_const;
                 }
 
                 // Rate of spread [ft/min] → simulation units
-                R = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+                R = amrex::max(R0 * (1.0 + phi_w + phi_s), Real(0.0)) * ros_conv;
             }
 
             // Final RHS (keeps your WENO5 & RK3 integrators intact)

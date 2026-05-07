@@ -1,5 +1,3 @@
-#include <limits>
-
 // ======================= Initialize from CSV fire points (signed distance) =========
 // Each row in the CSV provides the coordinates of an ignition point (X Y in 2D,
 // X Y Z in 3D).  The level-set field phi is initialised as a true signed-distance
@@ -107,12 +105,11 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
             (void)k;
             (void)pz;  // Z coordinates unused in 2D
 #endif
-            // Compute the minimum distance from this cell to any ignition point.
             // phi = min_dist - sigma is a true signed-distance function:
             //   phi < 0  inside the union of fire disks (radius sigma)
             //   phi > 0  outside  (|grad phi| = 1 everywhere)
             //   phi = 0  on the fire perimeter (the level-set front)
-            amrex::Real min_dist = std::numeric_limits<amrex::Real>::max();
+            amrex::Real min_dist = amrex::Real(1.0e37);
             for (int n = 0; n < npts; ++n) {
 #if (AMREX_SPACEDIM == 3)
                 amrex::Real r2 = (x - px[n])*(x - px[n])
@@ -202,14 +199,17 @@ static void init_phi_box(MultiFab& phi, const Geometry& geom,
             Real cz = Real(0.5) * (zmin + zmax);
             Real hz = Real(0.5) * (zmax - zmin);
             Real qz = std::abs(z - cz) - hz;
-            Real d = std::sqrt(std::max(qx, Real(0.0)) * std::max(qx, Real(0.0)) +
-                               std::max(qy, Real(0.0)) * std::max(qy, Real(0.0)) +
-                               std::max(qz, Real(0.0)) * std::max(qz, Real(0.0)))
-                   + std::min(std::max({qx, qy, qz}), Real(0.0));
+            Real qx0 = amrex::max(qx, Real(0.0));
+            Real qy0 = amrex::max(qy, Real(0.0));
+            Real qz0 = amrex::max(qz, Real(0.0));
+            Real qmax = amrex::max(amrex::max(qx, qy), qz);
+            Real d = std::sqrt(qx0 * qx0 + qy0 * qy0 + qz0 * qz0)
+                   + amrex::min(qmax, Real(0.0));
 #else
-            Real d = std::sqrt(std::max(qx, Real(0.0)) * std::max(qx, Real(0.0)) +
-                               std::max(qy, Real(0.0)) * std::max(qy, Real(0.0)))
-                   + std::min(std::max(qx, qy), Real(0.0));
+            Real qx0 = amrex::max(qx, Real(0.0));
+            Real qy0 = amrex::max(qy, Real(0.0));
+            Real d = std::sqrt(qx0 * qx0 + qy0 * qy0)
+                   + amrex::min(amrex::max(qx, qy), Real(0.0));
 #endif
             p(i,j,k) = d;
         });
@@ -702,7 +702,7 @@ static void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
             (void)k;
             (void)pz;
 #endif
-            amrex::Real min_dist = std::numeric_limits<amrex::Real>::max();
+            amrex::Real min_dist = amrex::Real(1.0e37);
             for (int n = 0; n < npts; ++n) {
 #if (AMREX_SPACEDIM == 3)
                 amrex::Real r2 = (x - px[n])*(x - px[n])

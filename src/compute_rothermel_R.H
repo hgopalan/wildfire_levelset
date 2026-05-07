@@ -153,7 +153,7 @@ static void compute_rothermel_R(MultiFab& R_mf,
 
             // Apply maximum effective wind speed limit if enabled (Andrews 2018)
             if (use_wind_limit_flag == 1 && cell_U_max > Real(0.0)) {
-                U_ftmin = std::min(U_ftmin, cell_U_max);
+                U_ftmin = amrex::min(U_ftmin, cell_U_max);
             }
 
             // Wind factor φ_w (Rothermel Eq. 47)
@@ -169,14 +169,14 @@ static void compute_rothermel_R(MultiFab& R_mf,
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-                phi_s = std::max(PHI_S_COEFFICIENT * std::pow(cell_beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
+                phi_s = amrex::max(PHI_S_COEFFICIENT * std::pow(cell_beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
             } else {
                 // Use constant phi_s from RothermelComputed
                 phi_s = phi_s_const;
             }
 
             // Rate of spread [ft/min] → simulation units
-            R(i,j,k) = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            R(i,j,k) = amrex::max(cell_R0 * (1.0 + phi_w + phi_s), Real(0.0)) * ros_conv;
         });
     }
 }
