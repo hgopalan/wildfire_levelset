@@ -21,6 +21,7 @@
 #ifndef COMPUTE_FIRE_BEHAVIOR_H
 #define COMPUTE_FIRE_BEHAVIOR_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
@@ -43,21 +44,15 @@ static void compute_fire_behavior(MultiFab& fireline_intensity_mf,
                                   const MultiFab& R_mf,
                                   const RothermelParams& rp)
 {
-    // Unit conversions
-    // 1 BTU/lb = 2.326 kJ/kg
-    // 1 lb/ft² = 4.8824 kg/m²
-    constexpr Real BTU_PER_LB_TO_KJ_PER_KG = 2.326;
-    constexpr Real LB_FT2_TO_KG_M2          = 4.8824;
-
     // Heat content [kJ/kg]
-    const Real h_kJ_kg = rp.h_heat * BTU_PER_LB_TO_KJ_PER_KG;
+    const Real h_kJ_kg = rp.h_heat * WildfireConst::BTU_LB_TO_KJ_KG;
 
     // Available (net) fuel load [kg/m²]
     // Use per-class total when multi-class fuel is active; fall back to w0.
     const Real total_per_class = rp.w_d1 + rp.w_d10 + rp.w_d100
                                 + rp.w_lh + rp.w_lw;
     const Real w_eff_lb_ft2 = (total_per_class > 0.0) ? total_per_class : rp.w0;
-    const Real w_net_kg_m2  = w_eff_lb_ft2 * (1.0 - rp.S_T) * LB_FT2_TO_KG_M2;
+    const Real w_net_kg_m2  = w_eff_lb_ft2 * (1.0 - rp.S_T) * WildfireConst::LB_FT2_TO_KG_M2;
 
     const Real h_times_w = h_kJ_kg * w_net_kg_m2;  // kJ/m²
 

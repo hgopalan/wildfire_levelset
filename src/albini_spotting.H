@@ -32,6 +32,7 @@
 #ifndef ALBINI_SPOTTING_H
 #define ALBINI_SPOTTING_H
 
+#include "constants.H"
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 #include <AMReX.H>
@@ -43,13 +44,6 @@
 #include <cmath>
 
 using namespace amrex;
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-// BTU/ft/s -> kW/m conversion factor
-static constexpr Real BTU_FTS_TO_KW_M = Real(3.459);
 
 // ============================================================================
 // Compute Byram's fire line intensity [kW/m] from Rothermel parameters
@@ -65,7 +59,7 @@ Real albini_byram_intensity(Real R_ros_sim, const RothermelParams& rp)
 {
     Real R_ftmin = (rp.ros_conv > Real(0.0)) ? (R_ros_sim / rp.ros_conv) : Real(0.0);
     Real I_B_BTU = R_ftmin * rp.w0 * rp.h_heat / Real(60.0);
-    return I_B_BTU * BTU_FTS_TO_KW_M;
+    return I_B_BTU * WildfireConst::BTU_FTS_TO_KW_M;
 }
 
 // ============================================================================

@@ -25,6 +25,7 @@
 #ifndef CROWN_INITIATION_H
 #define CROWN_INITIATION_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <cmath>
 #include "parse_inputs.H"
@@ -318,8 +319,8 @@ amrex::Real convert_intensity_to_metric(amrex::Real I_B_imperial)
 {
     using namespace amrex;
     
-    // Conversion factor: BTU/ft/s to kW/m
-    constexpr Real conversion = Real(3.4613);
+    // Conversion factor: BTU/ft/s → kW/m
+    constexpr Real conversion = WildfireConst::BTU_FTS_TO_KW_M_VW;
     
     return I_B_imperial * conversion;
 }
@@ -338,8 +339,8 @@ amrex::Real convert_intensity_to_imperial(amrex::Real I_B_metric)
 {
     using namespace amrex;
     
-    // Conversion factor: kW/m to BTU/ft/s
-    constexpr Real conversion = Real(1.0 / 3.4613);
+    // Conversion factor: kW/m → BTU/ft/s
+    constexpr Real conversion = Real(1.0) / WildfireConst::BTU_FTS_TO_KW_M_VW;
     
     return I_B_metric * conversion;
 }

@@ -29,10 +29,6 @@
 
 using namespace amrex;
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 // ============================================================================
 // Compute spotting probability field based on wind, fire intensity, and moisture
 // ============================================================================

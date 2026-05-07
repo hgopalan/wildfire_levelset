@@ -93,6 +93,7 @@
 #ifndef VIEGAS_MODEL_H
 #define VIEGAS_MODEL_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
@@ -104,10 +105,10 @@
 static constexpr int VIEGAS_NCOMP = 5;
 
 // Tiny positive value used as denominator floor when computing ROS excess.
-static constexpr amrex::Real VIEGAS_EPS = amrex::Real(1.0e-10);
+static constexpr amrex::Real VIEGAS_EPS    = WildfireConst::VIEGAS_EPS;
 
 // Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
-static constexpr amrex::Real VIEGAS_VB_MIN = amrex::Real(1.0e-3);
+static constexpr amrex::Real VIEGAS_VB_MIN = WildfireConst::VIEGAS_VB_MIN;
 
 // ============================================================================
 // compute_viegas_diagnostics
@@ -162,7 +163,7 @@ static void compute_viegas_diagnostics(
     int                    balbi_table_size  = 0)
 {
     // Physical constant
-    constexpr Real g = Real(9.81);  // gravitational acceleration [m/s²]
+    constexpr Real g = WildfireConst::GRAVITY;  // gravitational acceleration [m/s²]
 
     // -----------------------------------------------------------------------
     // Pre-compute global Rothermel parameters for the default fuel
@@ -266,7 +267,7 @@ static void compute_viegas_diagnostics(
             // ----------------------------------------------------------------
             Real ux = v(i, j, k, 0);
             Real uy = v(i, j, k, 1);
-            constexpr Real MAX_WIND_SQ = Real(25.0) * Real(25.0);
+            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux * ux + uy * uy > MAX_WIND_SQ) {
                 ux = ux_mean;
                 uy = uy_mean;

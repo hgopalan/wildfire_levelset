@@ -42,6 +42,7 @@
 #ifndef FUEL_MOISTURE_SCHEDULER_H
 #define FUEL_MOISTURE_SCHEDULER_H
 
+#include "constants.H"
 #include <AMReX.H>
 
 #include <algorithm>
@@ -288,8 +289,8 @@ inline RothermelMoistures compute_diurnal_emc(
 {
     if (dp.enable != 1) return defaults;
 
-    constexpr double TWO_PI = 6.283185307179586;
-    constexpr double DAY_S  = 86400.0;
+    constexpr double TWO_PI = WildfireConst::TWO_PI;
+    constexpr double DAY_S  = WildfireConst::DAY_S;
 
     // Phase: how far into the day we are when the simulation starts,
     // shifted so that the peak of the sine occurs at t_T_peak_s.

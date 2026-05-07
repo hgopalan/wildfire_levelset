@@ -61,15 +61,12 @@
 #ifndef WEISE_BIGING_WHIRL_H
 #define WEISE_BIGING_WHIRL_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 using namespace amrex;
 
@@ -107,9 +104,9 @@ static void compute_weise_biging_whirl(
     const InputParameters::WeiseBigingParams& wp)
 {
     // Physical constants
-    constexpr Real g      = Real(9.81);     // gravitational acceleration [m/s²]
-    constexpr Real TWO_PI = Real(2.0 * M_PI);
-    constexpr Real r_min  = Real(0.01);     // minimum whirl radius to prevent division by zero [m]
+    constexpr Real g      = WildfireConst::GRAVITY;    // gravitational acceleration [m/s²]
+    constexpr Real TWO_PI = WildfireConst::TWO_PI;
+    constexpr Real r_min  = WildfireConst::WB_WHIRL_R_MIN;  // minimum whirl radius [m]
 
     // Model parameters (captured by value for GPU lambda)
     const Real c_r    = wp.c_r;
@@ -117,8 +114,8 @@ static void compute_weise_biging_whirl(
 
     // Empirical Weise & Biging (1996) flame-tilt coefficients:
     //   tan(θ_wind) = A_wb × Fr^B_wb
-    constexpr Real A_wb = Real(0.382);
-    constexpr Real B_wb = Real(0.432);
+    constexpr Real A_wb = WildfireConst::WB_A_COEFF;
+    constexpr Real B_wb = WildfireConst::WB_B_COEFF;
 
     // Domain-mean wind components (used to clamp extreme per-cell values)
     const Long ncells_vel   = vel.boxArray().numPts();
@@ -161,7 +158,7 @@ static void compute_weise_biging_whirl(
             // ------------------------------------------------------------------
             Real ux = v(i, j, k, 0);
             Real uy = v(i, j, k, 1);
-            constexpr Real MAX_WIND_SQ = Real(25.0) * Real(25.0);
+            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux * ux + uy * uy > MAX_WIND_SQ) {
                 ux = ux_mean;
                 uy = uy_mean;

@@ -38,6 +38,7 @@
 #ifndef CRUZ_CROWN_MODEL_H
 #define CRUZ_CROWN_MODEL_H
 
+#include "constants.H"
 #include "parse_inputs.H"
 #include <AMReX.H>
 #include <AMReX_GpuContainers.H>
@@ -73,12 +74,12 @@ inline CruzCrownComputed compute_cruz_crown_params(
     // MC10 [%]: clamp to valid range
     const amrex::Real MC10 = amrex::max(amrex::Real(0.0), ccp.MC10);
 
-    // Cruz et al. (2005) empirical constants
-    constexpr amrex::Real A_const    = 11.02;  // lead coefficient
-    constexpr amrex::Real cbd_exp    = 0.19;   // CBD exponent
-    constexpr amrex::Real mc_coeff   = 0.17;   // moisture exponent coefficient
-    constexpr amrex::Real wind_exp   = 0.90;   // wind exponent
-    constexpr amrex::Real min_per_s  = 60.0;   // m/min → m/s conversion
+    // Cruz et al. (2005) empirical constants (from WildfireConst)
+    constexpr amrex::Real A_const   = WildfireConst::CRUZ_A_LEAD;
+    constexpr amrex::Real cbd_exp   = WildfireConst::CRUZ_CBD_EXP;
+    constexpr amrex::Real mc_coeff  = WildfireConst::CRUZ_MC_COEFF;
+    constexpr amrex::Real wind_exp  = WildfireConst::CRUZ_WIND_EXP;
+    constexpr amrex::Real min_per_s = amrex::Real(60.0);  // m/min → m/s conversion
 
     // Pre-compute the canopy/moisture factor:
     //   (11.02 × CBD^0.19 × exp(-0.17 × MC10)) / 60   [m/s per (km/h)^0.90]

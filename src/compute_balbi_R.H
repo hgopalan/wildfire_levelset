@@ -23,6 +23,7 @@
 #ifndef COMPUTE_BALBI_R_H
 #define COMPUTE_BALBI_R_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
@@ -32,8 +33,8 @@
 
 using namespace amrex;
 
-// Physical constant for heat flux buoyancy
-static constexpr Real BALBI_HF_G = Real(9.81);
+// Physical constant for heat flux buoyancy – use shared constant
+static constexpr Real BALBI_HF_G = WildfireConst::GRAVITY;
 
 static void compute_balbi_R(MultiFab& R_mf,
                              const MultiFab& vel,
@@ -92,7 +93,7 @@ static void compute_balbi_R(MultiFab& R_mf,
             // Wind components -- clamp extreme wind speeds
             Real ux = v(i,j,k,0);
             Real uy = v(i,j,k,1);
-            constexpr Real MAX_WIND_SQ = 25.0 * 25.0;  // 25 m/s threshold
+            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux*ux + uy*uy > MAX_WIND_SQ) {
                 ux = ux_global_mean;
                 uy = uy_global_mean;

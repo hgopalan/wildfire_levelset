@@ -57,6 +57,7 @@
 #ifndef HEAT_FLUX_MODEL_H
 #define HEAT_FLUX_MODEL_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
@@ -73,8 +74,8 @@
 
 using namespace amrex;
 
-// Gravitational acceleration [m/s²] (local to this translation unit)
-static constexpr Real HF_G = Real(9.81);
+// Gravitational acceleration [m/s²] — alias to the shared constant
+static constexpr Real HF_G = WildfireConst::GRAVITY;
 
 // ============================================================================
 // init_heat_flux_from_value
@@ -237,7 +238,7 @@ static void apply_heatflux_wind(MultiFab&              vel_eff,
             // Ambient wind, clamping extreme values
             Real ux = v(i, j, k, 0);
             Real uy = v(i, j, k, 1);
-            constexpr Real MAX_WIND_SQ = Real(25.0) * Real(25.0);
+            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux * ux + uy * uy > MAX_WIND_SQ) {
                 ux = ux_mean;
                 uy = uy_mean;

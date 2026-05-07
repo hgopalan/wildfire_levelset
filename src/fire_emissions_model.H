@@ -41,6 +41,7 @@
 #ifndef FIRE_EMISSIONS_MODEL_H
 #define FIRE_EMISSIONS_MODEL_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
@@ -71,12 +72,11 @@ static void compute_fire_emissions(
 {
     // Fuel load [kg/m²]
     // Use per-class total when multi-class fuel is active; fall back to w0.
-    constexpr Real LB_FT2_TO_KG_M2 = Real(4.8824);
     const Real total_per_class = rp.w_d1 + rp.w_d10 + rp.w_d100
                                 + rp.w_lh + rp.w_lw;
     const Real w_eff_lb_ft2 = (total_per_class > Real(0.0))
                               ? total_per_class : rp.w0;
-    const Real W_fuel = w_eff_lb_ft2 * LB_FT2_TO_KG_M2;  // kg/m²
+    const Real W_fuel = w_eff_lb_ft2 * WildfireConst::LB_FT2_TO_KG_M2;  // kg/m²
 
     // Emission factors [kg species / kg fuel]
     const Real EF_CO2  = Real(ep.EF_CO2);
