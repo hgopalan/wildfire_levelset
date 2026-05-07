@@ -170,14 +170,14 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure (3D, CUDA)
+      - name: Configure (2D, CUDA)
         run: |
           cmake -S . -B build `
             -G "Ninja" `
             -DCMAKE_VERBOSE_MAKEFILE=ON `
             -DCMAKE_BUILD_TYPE=Release `
             -DLEVELSET_USE_VENDORED_AMREX=ON `
-            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_DIM_2D=ON `
             -DLEVELSET_ENABLE_MPI=OFF `
             -DLEVELSET_ENABLE_EB=OFF `
             -DLEVELSET_BUILD_WIND_SOLVER=OFF `
