@@ -133,6 +133,10 @@ endif()
 # Recommended warnings
 if (MSVC)
   target_compile_options(levelset PRIVATE /W4)
+elseif(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
+  # -Wno-pedantic suppresses "style of line directive is a GCC extension"
+  # warnings emitted by nvcc when compiling .cpp files as CUDA translation units.
+  target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -167,6 +171,10 @@ if(LEVELSET_BUILD_WIND_SOLVER)
     endif()
     if(MSVC)
       target_compile_options(wind_solver PRIVATE /W4)
+    elseif(LEVELSET_GPU_BACKEND STREQUAL "CUDA")
+      # -Wno-pedantic suppresses "style of line directive is a GCC extension"
+      # warnings emitted by nvcc when compiling .cpp files as CUDA translation units.
+      target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wno-pedantic)
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
     endif()
