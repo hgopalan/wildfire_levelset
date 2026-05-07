@@ -140,7 +140,7 @@ if (MSVC)
     $<$<COMPILE_LANGUAGE:CXX>:/W4>
   )
 else()
-  target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 endif()
 endif() # LEVELSET_BUILD_LEVELSET
 
