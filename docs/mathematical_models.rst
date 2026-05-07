@@ -4,14 +4,11 @@ Mathematical Models
 This section describes the mathematical models implemented in the wildfire level-set solver.
 
 
-Firespread Models
------------------
+Fire Spread Models
+------------------
 
-Three primary fire spread model families are implemented, each with optional add-on modules.
-Select the active model with ``fire_spread_model`` and the propagation method with
-``propagation_method``.  Three propagation methods are available: ``levelset``
-(WENO5-Z level-set advection), ``farsite`` (FARSITE Huygens-wavelet expansion),
-and ``mtt`` (Minimum Travel Time fast-march).
+Three primary fire spread model families are implemented.  Select the active
+model with ``fire_spread_model``.
 
 Rothermel (1972) Fire Spread Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -412,6 +409,15 @@ grasslands and the slope correction is intentionally omitted in this
 implementation. For slope effects, use the Rothermel or Balbi models instead.
 
 
+
+
+Propagation Methods
+-------------------
+
+Three propagation methods are available and selected with ``propagation_method``:
+``levelset`` (WENO5-Z level-set advection), ``farsite`` (FARSITE Huygens-wavelet
+expansion), and ``mtt`` (Minimum Travel Time fast-march).
+
 Level-Set Method
 ^^^^^^^^^^^^^^^^
 
@@ -437,6 +443,7 @@ The gradient :math:`|\nabla\phi|` is computed using:
 .. math::
 
    |\nabla\phi| = \sqrt{\left(\frac{\partial\phi}{\partial x}\right)^2 + \left(\frac{\partial\phi}{\partial y}\right)^2}
+
 
 
 FARSITE Elliptical Expansion Model (Richards 1990)
@@ -602,7 +609,6 @@ Enabled by ``farsite.fire_shape_model = lemniscate``.
 
 **Reference:** Alexander, M.E., Stocks, B.J., & Lawson, B.D. (1991). *Information Report NOR-X-310*, Canadian Forest Service.
 
-
 Minimum Travel Time (MTT) Propagation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -677,50 +683,6 @@ methods." *Canadian Journal of Forest Research*, 32(8), 1420–1424.
 https://doi.org/10.1139/x02-068
 
 
-Barrier Polygons / Firebreaks
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The barrier polygon feature (`barrier_files`) allows one or more CSV files of
-barrier vertex coordinates to be read at startup.  At every time step, any
-grid cell whose centre falls nearest to a barrier vertex and that is currently
-burning (:math:`\phi < 0`) is extinguished by setting:
-
-.. math::
-
-   \phi(i,j,k) \leftarrow +\tfrac{1}{2}\min(\Delta x,\, \Delta y)
-
-This models firebreaks, fuel breaks, roads, and other physical barriers
-**without** requiring the AMReX Embedded Boundary (EB) framework.
-
-Nearest-Cell Mapping
-~~~~~~~~~~~~~~~~~~~~~
-
-For each vertex :math:`(X_v, Y_v)` in a barrier CSV file, the nearest cell
-index is found by:
-
-.. math::
-
-   i = i_0 + \left\lfloor \frac{X_v - x_{\text{lo}}}{\Delta x} \right\rfloor, \quad
-   j = j_0 + \left\lfloor \frac{Y_v - y_{\text{lo}}}{\Delta y} \right\rfloor
-
-with the result clamped to the domain bounds.  The set of barrier cells is
-de-duplicated once at startup and stored on the GPU device for efficiency.
-
-Usage::
-
-    # Two CSV firebreak files (space-separated list)
-    barrier_files = road_break.csv ridge_break.csv
-
-CSV format::
-
-    # X Y  (one vertex per line; lines starting with # are ignored)
-    330100.0  3775300.0
-    330200.0  3775300.0
-
-The barrier is applied after every propagation step regardless of the
-propagation method (``levelset``, ``farsite``, or ``mtt``).
-
-
 Crown Models
 ------------
 
@@ -756,6 +718,7 @@ For active crown fire spread, the critical wind speed :math:`U_{active}` is:
    U_{active} = \frac{3}{\sqrt{CBD}}
 
 where :math:`CBD` is the canopy bulk density (kg/m³).
+
 
 
 Spotting Models
@@ -836,198 +799,59 @@ Each plot file contains four Albini-specific scalar fields:
 * ``albini_dist`` – maximum landing distance from each source cell.
 * ``albini_active`` – flag (1) at cells that received a spot ignition.
 
-Firespread Model Enhancements
------------------------------
 
-These modules augment the primary firespread models with wind adjustments and terrain-feedback
-corrections.  They are activated independently via ParmParse flags and are compatible with
-any of the firespread models unless otherwise noted.
 
-Turbulent Wind Perturbation (``turb_wind.*``)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Adds stochastic velocity perturbations to the ambient wind field at every
-timestep.  The unperturbed base wind is preserved in a separate MultiFab;
-the perturbed field is always computed as *base + perturbation* so the
-perturbation never drifts away from the intended background.
+Model Enhancements
+------------------
 
-Two models are available.
+These modules augment the primary fire spread models.  They are activated
+independently via ParmParse flags and are compatible with any of the fire
+spread models unless otherwise noted.
 
-Ornstein-Uhlenbeck Process (``turb_wind.model = ou_process``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Barrier Polygons / Firebreaks
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The OU process produces temporally correlated wind gusts whose
-auto-correlation decays exponentially in time (Uhlenbeck & Ornstein 1930).
-
-**Discrete-time OU update (exact Euler–Maruyama)**
+The barrier polygon feature (`barrier_files`) allows one or more CSV files of
+barrier vertex coordinates to be read at startup.  At every time step, any
+grid cell whose centre falls nearest to a barrier vertex and that is currently
+burning (:math:`\phi < 0`) is extinguished by setting:
 
 .. math::
 
-   \alpha &= \exp(-\theta\,\Delta t) \\
-   \sigma_{\text{step}} &= \sigma\,\sqrt{1 - \alpha^2} \\
-   u'(t + \Delta t) &= \alpha\,u'(t) + \sigma_{\text{step}}\,\eta_u(t) \\
-   v'(t + \Delta t) &= \alpha\,v'(t) + \sigma_{\text{step}}\,\eta_v(t)
+   \phi(i,j,k) \leftarrow +\tfrac{1}{2}\min(\Delta x,\, \Delta y)
 
-where:
+This models firebreaks, fuel breaks, roads, and other physical barriers
+**without** requiring the AMReX Embedded Boundary (EB) framework.
 
-* :math:`\theta` [s⁻¹] is the reversion rate (``turb_wind.theta``);
-  decorrelation time = :math:`1/\theta`.
-* :math:`\sigma` [m/s] is the stationary standard deviation of each cell's
-  perturbation (``turb_wind.sigma``).
-* :math:`\eta_u, \eta_v` are unit-variance noise terms (white when
-  ``L_c = 0``, spatially correlated when ``L_c > 0``; see below).
+Nearest-Cell Mapping
+~~~~~~~~~~~~~~~~~~~~~
 
-The effective wind used for all ROS computations is
+For each vertex :math:`(X_v, Y_v)` in a barrier CSV file, the nearest cell
+index is found by:
 
 .. math::
 
-   \mathbf{u}_{\text{eff}}(x,y) = \mathbf{u}_{\text{base}}(x,y)
-                                 + \bigl(u'(x,y),\; v'(x,y)\bigr).
+   i = i_0 + \left\lfloor \frac{X_v - x_{\text{lo}}}{\Delta x} \right\rfloor, \quad
+   j = j_0 + \left\lfloor \frac{Y_v - y_{\text{lo}}}{\Delta y} \right\rfloor
 
-**Domain-uniform mode (L_c = 0)**
+with the result clamped to the domain bounds.  The set of barrier cells is
+de-duplicated once at startup and stored on the GPU device for efficiency.
 
-A single pair :math:`(u', v')` is drawn and added to every cell.  This
-corresponds to a gust event coherent over the entire domain — appropriate
-when the domain is small relative to the turbulent integral scale.
+Usage::
 
-**Spatially correlated mode (L_c > 0)**
+    # Two CSV firebreak files (space-separated list)
+    barrier_files = road_break.csv ridge_break.csv
 
-Per-cell OU states :math:`u'(x,y)` and :math:`v'(x,y)` are maintained in a
-MultiFab.  The noise field :math:`\eta(x,y)` is constructed as:
+CSV format::
 
-1. Draw independent :math:`\mathcal{N}(0,1)` white noise :math:`\xi(x,y)` at
-   every cell.
-2. Apply a separable 1-D Gaussian convolution in :math:`x` then :math:`y`
-   with kernel standard deviation
+    # X Y  (one vertex per line; lines starting with # are ignored)
+    330100.0  3775300.0
+    330200.0  3775300.0
 
-   .. math::
+The barrier is applied after every propagation step regardless of the
+propagation method (``levelset``, ``farsite``, or ``mtt``).
 
-      \sigma_k = \frac{L_c}{\Delta x} \quad\text{[cells]}
-
-   using Neumann (nearest-cell) clamping at domain and subdomain boundaries.
-3. Rescale the smoothed field to unit RMS so the per-cell stationary standard
-   deviation remains exactly :math:`\sigma`.
-
-The resulting noise field has the approximate 2-D autocovariance
-
-.. math::
-
-   C_\eta(r_x, r_y) \approx
-   \exp\!\left(-\frac{r_x^2 + r_y^2}{2 L_c^2}\right)
-
-i.e.\ a Gaussian envelope with e-folding length :math:`L_c` (``turb_wind.L_c``).
-
-Random Fourier Feature Spectral Noise (``turb_wind.model = spectral_noise``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The spectral noise model combines a physically correct spatial power spectrum
-with OU temporal evolution, following the Random Fourier Feature (RFF)
-methodology (Kraichnan 1970; Rahimi & Recht 2007).
-
-**Initialisation – wavenumber and phase sampling**
-
-At startup :math:`N` wavenumber pairs and phases are drawn once and remain
-fixed for the entire simulation:
-
-.. math::
-
-   k_{x,n},\; k_{y,n} &\;\sim\; \mathcal{N}\!\left(0,\; \frac{1}{L_c^2}\right)
-   \quad\text{independently,} \\
-   \phi^u_n,\; \phi^v_n &\;\sim\; \mathcal{U}[0,\; 2\pi),
-
-where :math:`L_c` is the user-specified spatial correlation length
-(``turb_wind.L_c`` [m]) and :math:`N` is the number of modes
-(``turb_wind.N_modes``).  Sampling :math:`k_x, k_y` independently from
-:math:`\mathcal{N}(0, 1/L_c^2)` corresponds to a 2-D **isotropic Gaussian**
-power spectral density :math:`S(k) \propto \exp(-k^2 L_c^2/2)`, whose
-Fourier transform is the Gaussian autocorrelation function.
-
-**Temporal update – OU amplitude evolution (CPU, every timestep)**
-
-Each mode carries a pair of scalar OU amplitude coefficients
-:math:`(A^u_n, A^v_n)` with unit stationary variance:
-
-.. math::
-
-   \alpha &= \exp(-\theta\,\Delta t), \\
-   A^u_n(t+\Delta t) &= \alpha\,A^u_n(t) + \sqrt{1-\alpha^2}\;\xi^u_n(t), \\
-   A^v_n(t+\Delta t) &= \alpha\,A^v_n(t) + \sqrt{1-\alpha^2}\;\xi^v_n(t),
-
-where :math:`\xi^u_n, \xi^v_n \sim \mathcal{N}(0,1)` are independent each step.
-
-**Field reconstruction (GPU, every timestep)**
-
-The perturbation field is reconstructed on the GPU as a weighted cosine
-superposition:
-
-.. math::
-
-   u'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
-              A^u_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^u_n\bigr), \\
-   v'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
-              A^v_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^v_n\bigr).
-
-The scale factor :math:`\sigma\sqrt{2/N}` ensures that the stationary
-variance of each cell's perturbation equals :math:`\sigma^2` [m²/s²]:
-
-.. math::
-
-   \mathrm{Var}[u'(x,y)]
-   = \sigma^2 \cdot \frac{2}{N} \cdot N \cdot 1 \cdot \mathbb{E}[\cos^2] = \sigma^2.
-
-**Properties**
-
-* Temporal decorrelation time = :math:`1/\theta` [s] (same as ``ou_process``).
-* Approximate 2-D spatial autocovariance (by the Bochner theorem):
-
-  .. math::
-
-     C(r) \approx \sigma^2 \exp\!\left(-\frac{r^2}{2 L_c^2}\right).
-
-* Energy is distributed across all resolved wavenumbers according to the
-  Gaussian PSD — unlike the grid-smoothing approach, no artificial
-  truncation of the spectrum occurs.
-* GPU-accelerated: the inner-mode loop in the reconstruction kernel runs on
-  the device; CPU workload per step is only :math:`O(N)` for the OU updates.
-
-**References**
-
-* Kraichnan, R.H. (1970). Diffusion by a random velocity field.
-  *Phys. Fluids* 13(1):22–31.
-* Rahimi, A. & Recht, B. (2007). Random features for large-scale kernel
-  machines. *NIPS 2007*.
-
-Bounded Direction Random Walk (``turb_wind.model = direction_walk``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-At each timestep a Gaussian angular increment is drawn and accumulated:
-
-.. math::
-
-   \Delta\vartheta &\sim \mathcal{N}(0,\,\sigma_\vartheta^2) \\
-   \vartheta(t+\Delta t) &= \operatorname{clamp}
-       \bigl(\vartheta(t) + \Delta\vartheta,\;
-             {-\vartheta_{\max}},\; {+\vartheta_{\max}}\bigr)
-
-The entire base wind field is then rotated by the cumulative angle
-:math:`\vartheta`:
-
-.. math::
-
-   u_{\text{eff}} &= u_{\text{base}} \cos\vartheta - v_{\text{base}} \sin\vartheta \\
-   v_{\text{eff}} &= u_{\text{base}} \sin\vartheta + v_{\text{base}} \cos\vartheta
-
-Wind *speed* is preserved exactly; only direction fluctuates.  Parameters:
-``turb_wind.sigma_theta`` [rad/step] and ``turb_wind.theta_max`` [rad].
-
-**References**
-
-* Uhlenbeck, G.E. & Ornstein, L.S. (1930). On the theory of the Brownian
-  motion. *Phys. Rev.* 36(5):823–841.
-* Finney, M.A. et al. (2011). Role of wind, fuel moisture, and terrain in
-  controlling fire movement. *Ecosphere* 2(3):art17.
-* Cruz, M.G. et al. (2019). Uncertainty in wildfire behaviour research.
-  *Current Forestry Reports* 5:155–172.
 
 Andrews (2018) Wind Adjustments for Rothermel
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1082,190 +906,9 @@ USDA Forest Service.
 https://doi.org/10.2737/RMRS-GTR-371
 
 
-Wind-Terrain Feedback Models (Options 1–6)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``wind_terrain.model`` ParmParse key selects how terrain-induced or
-fire-feedback winds modify the effective wind seen by the fire spread model.
-**Option 1 (``none``) is the default and preserves all existing behaviour.**
-Options 2–6 progressively couple Viegas or terrain-channel wind physics into
-the actual fire propagation.  Option 7 (``windninja_ridge_canyon``) is described
-in the following section.
-
-Options Summary
-~~~~~~~~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 10 25 65
-
-   * - Option
-     - ``wind_terrain.model``
-     - Effect on fire spread model
-   * - 1
-     - ``none``
-     - No modification — default behaviour
-   * - 2
-     - ``viegas_ros``
-     - :math:`R_{\text{final}} = \max(R_\text{Rothermel}, R_\text{Viegas})` in eruptive cells (:math:`\tan\varphi > \tan\varphi_c`)
-   * - 3
-     - ``viegas_wind``
-     - Add buoyancy-induced upslope wind :math:`U_\text{ind} = v_b\tan\varphi` in eruptive cells only
-   * - 4
-     - ``canyon_wind``
-     - Scale ambient wind by :math:`(1 + k_\text{canyon}\tan\varphi)` everywhere (Rothermel 1983)
-   * - 5
-     - ``viegas_neto``
-     - Add upslope buoyancy wind :math:`U_\text{ind} = v_b\tan\varphi` at every cell (no threshold)
-   * - 6
-     - ``pimont``
-     - Scale ambient wind by :math:`\exp(k_\text{pimont}\tan\varphi)` everywhere (Pimont et al. 2009)
-
-Selecting ``viegas_ros``, ``viegas_wind``, or ``viegas_neto`` automatically enables
-the Viegas (2004) diagnostic model (``viegas.enable = 1``).  Terrain slopes must be
-provided (via ``rothermel.terrain_file`` or ``rothermel.landscape_file``) for any
-slope-dependent option to have an effect.
-
-Physical Equations
-~~~~~~~~~~~~~~~~~~~
-
-**Option 2 — Viegas ROS override** (requires terrain slopes):
-
-.. math::
-
-   R_{\text{final}}(i,j) =
-   \begin{cases}
-     \max\!\bigl(R_\text{Rothermel}(i,j),\; R_\text{Viegas}(i,j)\bigr)
-       & \tan\varphi(i,j) > \tan\varphi_c \\
-     R_\text{Rothermel}(i,j)
-       & \text{otherwise}
-   \end{cases}
-
-**Options 3 and 5 — Buoyancy-induced upslope wind**:
-
-.. math::
-
-   v_b                  &= \sqrt{g\,\delta_m\,(T_f - T_a) / T_a} \\
-   U_\text{ind}         &= v_b\,\tan\varphi \\
-   \Delta\mathbf{U}     &= U_\text{ind}\,\hat{\mathbf{n}}_s \\
-   \mathbf{U}_\text{eff}&= \mathbf{U}_\text{ambient} + \Delta\mathbf{U}
-
-where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
-vector, :math:`\delta_m` is fuel bed depth [m], and :math:`T_a`, :math:`T_f`
-are taken from ``viegas.T_a`` / ``viegas.T_f``.  Option 3 applies
-:math:`\Delta\mathbf{U}` only where :math:`\tan\varphi > \tan\varphi_c`;
-Option 5 applies it everywhere.
-
-**Option 4 — Canyon wind** (Rothermel 1983):
-
-.. math::
-
-   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
-   \,\max\!\bigl(1,\; 1 + k_\text{canyon}\tan\varphi\bigr)
-
-**Option 6 — Pimont exponential correction** (Pimont et al. 2009):
-
-.. math::
-
-   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
-   \,\exp\!\bigl(k_\text{pimont}\tan\varphi\bigr)
-
-Configuration via Parmparse (``wind_terrain.*``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 15 55
-
-   * - Parameter
-     - Default
-     - Description
-   * - ``wind_terrain.model``
-     - ``none``
-     - Model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, or ``windninja_ridge_canyon``
-   * - ``wind_terrain.k_canyon``
-     - 1.0
-     - Terrain channeling coefficient for ``canyon_wind`` (Option 4)
-   * - ``wind_terrain.k_pimont``
-     - 0.5
-     - Exponential slope coefficient for ``pimont`` (Option 6)
-
-Viegas parameters (``viegas.a_V``, ``viegas.tan_phi_c``, ``viegas.T_a``,
-``viegas.T_f``) are shared between the Viegas diagnostic model and the
-buoyancy-wind options (2, 3, 5); see
-`Viegas (2004) Eruptive Fire Diagnostics`_ above.
-
-References
-~~~~~~~~~~~
-
-Rothermel, R.C. (1983). *How to Predict the Spread and Intensity of Forest and
-Range Fires.* USDA Forest Service General Technical Report INT-143.
-
-Viegas, D.X. & Neto, L.P.S. (1994). "Wind tunnel study of the convective air
-flow of slope fires." Annual Report, Project COMOESTAS.
-
-Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009). "Validation of
-FIRETEC wind-flows over a canopy and fuel-break." *International Journal of
-Wildland Fire*, 18(7), 775–790.
-https://doi.org/10.1071/WF07130
-
-
-WindNinja Ridge/Canyon Terrain Speed-up (Option 7)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The WindNinja empirical ridge/canyon model (Option 7,
-``wind_terrain.model = windninja_ridge_canyon``) accounts for terrain-driven
-wind acceleration observed in ridge and canyon topography (Forthofer 2007).
-
-Wind-Slope Alignment
-~~~~~~~~~~~~~~~~~~~~~
-
-The alignment between the ambient wind and the upslope direction is:
-
-.. math::
-
-   a = \frac{\mathbf{U} \cdot \hat{\mathbf{n}}_s}{|\mathbf{U}|}
-
-where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
-vector and :math:`\mathbf{U}` is the horizontal wind velocity.  The alignment
-satisfies :math:`a \in [-1,\,1]`:
-
-* :math:`a > 0`: wind has an upslope component → **ridge** acceleration
-* :math:`a < 0`: wind has a downslope component → **canyon** channeling
-* :math:`a = 0`: wind is perpendicular to slope, no modification
-
-Ridge Speed-up
-~~~~~~~~~~~~~~~
-
-When the wind climbs a slope, terrain convergence amplifies the wind speed:
-
-.. math::
-
-   f_{\text{ridge}} = 1 + k_{\text{ridge}} \,\tan\varphi \, a \quad (a > 0)
-
-Canyon Channeling
-~~~~~~~~~~~~~~~~~
-
-When the wind flows down a slope (drainage flow channeling):
-
-.. math::
-
-   f_{\text{canyon}} = 1 + k_{\text{canyon,WN}} \,\tan\varphi \, |a| \quad (a < 0)
-
-In both cases the effective wind is :math:`\mathbf{U}_{\text{eff}} = f \,\mathbf{U}`
-with :math:`f \ge 1` (the model never suppresses wind speed).
-
-Parameters:
-
-* :math:`k_{\text{ridge}}` – ridge speed-up coefficient (default 1.0)
-* :math:`k_{\text{canyon,WN}}` – canyon channeling coefficient (default 0.5)
-
-Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
-in Fire Spread Prediction.* Colorado State University MS thesis.
 
 Heat Flux MultiFab and Fire-Induced Wind
-
------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A spatially-varying (or uniform) heat flux field :math:`Q` [W/m²] represents
 the fire heat release rate at each cell.  It drives two WindNinja-style wind
@@ -1369,6 +1012,7 @@ Input Parameters
    * - ``heat_flux.enable_induced``
      - 0
      - 1 to enable induced horizontal inflow term
+
 
 
 Diagnostic Models
@@ -2020,3 +1664,468 @@ References
   biosphere and the atmosphere from biomass burning." *Climatic Change*, 2(3), 207–247.
 * Andreae, M.O. & Merlet, P. (2001). "Emission of trace gases and aerosols from biomass
   burning." *Global Biogeochemical Cycles*, 15(4), 955–966.
+
+
+
+Wind Models
+-----------
+
+Six wind modelling approaches are available, ranging from a simple constant
+uniform wind to a fully physics-based mass-consistent terrain-following solver.
+The selection is made through a combination of input parameters as described
+below.
+
+Uniform Wind
+^^^^^^^^^^^^
+
+The simplest wind specification sets constant velocity components over the
+entire domain for the whole simulation:
+
+.. code-block:: ini
+
+   u_x = 2.0   # x-wind component [m/s]
+   u_y = 0.5   # y-wind component [m/s]
+   u_z = 0.0   # z-wind component [m/s] (3-D only)
+
+The default is ``u_x = 0.25``, ``u_y = 0.0``, ``u_z = 0.0``.  This is the
+fallback when no wind file or terrain-following solver is used.
+
+Mass-Consistent Wind Solver
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A stand-alone 3-D terrain-following wind diagnostic executable (``wind_solver``)
+is built alongside ``levelset`` in default 3-D builds.  It constructs a
+mass-consistent wind field by fitting a log-law initial profile to the terrain
+and then solving the anisotropic Poisson equation (Sherman 1978) to enforce
+:math:`\nabla \cdot \mathbf{u} = 0`.
+
+The corrected wind field is written as an AMReX plotfile which can be
+converted to a CSV file for use as ``velocity_file`` input in the fire
+simulation.
+
+See the :ref:`wind_solver` page for the complete model description, input
+parameter reference, and GIS export workflow.
+
+Wind File — Steady (Spatially-Varying)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A spatially-varying but time-constant wind field can be supplied as a CSV file:
+
+.. code-block:: ini
+
+   velocity_file = wind_data.csv
+
+The file must contain one sample point per line with columns
+**X  Y  U  V** (in metres and m/s respectively).  The solver interpolates
+the wind onto the computational grid using inverse-distance weighting (IDW)
+at initialisation.  When ``velocity_file`` is set, it overrides
+``u_x`` / ``u_y`` / ``u_z``.
+
+CSV format::
+
+    # X [m]  Y [m]  U [m/s]  V [m/s]
+    0       0       2.0      0.5
+    1000    0       2.1      0.4
+    0       1000    1.9      0.6
+    1000    1000    2.0      0.5
+
+Wind File — Unsteady (Time-Dependent)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``use_time_dependent_wind = 1``, the solver loads a sequence of wind
+snapshot files and performs temporal linear interpolation between them.  This
+is only available in 2-D builds.
+
+.. code-block:: ini
+
+   velocity_file          = wind_t0.csv      # base snapshot (t = 0)
+   use_time_dependent_wind = 1
+   wind_time_spacing      = 3600.0           # seconds between snapshots
+
+Snapshot files follow the naming convention:
+
+* ``<velocity_file>`` — time index 0
+* ``<base>_1.csv``    — time index 1
+* ``<base>_2.csv``    — time index 2
+
+At each simulation step the solver:
+
+1. Determines which two snapshots bracket the current time.
+2. Loads both files (IDW spatial interpolation).
+3. Performs temporal linear interpolation.
+
+For example, with ``wind_time_spacing = 3600.0`` s:
+
+* At t = 0 s  : uses snapshot 0
+* At t = 1800 s : 50 % blend of snapshots 0 and 1
+* At t = 3600 s : uses snapshot 1
+
+
+Turbulent Wind Perturbation (``turb_wind.*``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Adds stochastic velocity perturbations to the ambient wind field at every
+timestep.  The unperturbed base wind is preserved in a separate MultiFab;
+the perturbed field is always computed as *base + perturbation* so the
+perturbation never drifts away from the intended background.
+
+Two models are available.
+
+Ornstein-Uhlenbeck Process (``turb_wind.model = ou_process``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The OU process produces temporally correlated wind gusts whose
+auto-correlation decays exponentially in time (Uhlenbeck & Ornstein 1930).
+
+**Discrete-time OU update (exact Euler–Maruyama)**
+
+.. math::
+
+   \alpha &= \exp(-\theta\,\Delta t) \\
+   \sigma_{\text{step}} &= \sigma\,\sqrt{1 - \alpha^2} \\
+   u'(t + \Delta t) &= \alpha\,u'(t) + \sigma_{\text{step}}\,\eta_u(t) \\
+   v'(t + \Delta t) &= \alpha\,v'(t) + \sigma_{\text{step}}\,\eta_v(t)
+
+where:
+
+* :math:`\theta` [s⁻¹] is the reversion rate (``turb_wind.theta``);
+  decorrelation time = :math:`1/\theta`.
+* :math:`\sigma` [m/s] is the stationary standard deviation of each cell's
+  perturbation (``turb_wind.sigma``).
+* :math:`\eta_u, \eta_v` are unit-variance noise terms (white when
+  ``L_c = 0``, spatially correlated when ``L_c > 0``; see below).
+
+The effective wind used for all ROS computations is
+
+.. math::
+
+   \mathbf{u}_{\text{eff}}(x,y) = \mathbf{u}_{\text{base}}(x,y)
+                                 + \bigl(u'(x,y),\; v'(x,y)\bigr).
+
+**Domain-uniform mode (L_c = 0)**
+
+A single pair :math:`(u', v')` is drawn and added to every cell.  This
+corresponds to a gust event coherent over the entire domain — appropriate
+when the domain is small relative to the turbulent integral scale.
+
+**Spatially correlated mode (L_c > 0)**
+
+Per-cell OU states :math:`u'(x,y)` and :math:`v'(x,y)` are maintained in a
+MultiFab.  The noise field :math:`\eta(x,y)` is constructed as:
+
+1. Draw independent :math:`\mathcal{N}(0,1)` white noise :math:`\xi(x,y)` at
+   every cell.
+2. Apply a separable 1-D Gaussian convolution in :math:`x` then :math:`y`
+   with kernel standard deviation
+
+   .. math::
+
+      \sigma_k = \frac{L_c}{\Delta x} \quad\text{[cells]}
+
+   using Neumann (nearest-cell) clamping at domain and subdomain boundaries.
+3. Rescale the smoothed field to unit RMS so the per-cell stationary standard
+   deviation remains exactly :math:`\sigma`.
+
+The resulting noise field has the approximate 2-D autocovariance
+
+.. math::
+
+   C_\eta(r_x, r_y) \approx
+   \exp\!\left(-\frac{r_x^2 + r_y^2}{2 L_c^2}\right)
+
+i.e.\ a Gaussian envelope with e-folding length :math:`L_c` (``turb_wind.L_c``).
+
+Random Fourier Feature Spectral Noise (``turb_wind.model = spectral_noise``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The spectral noise model combines a physically correct spatial power spectrum
+with OU temporal evolution, following the Random Fourier Feature (RFF)
+methodology (Kraichnan 1970; Rahimi & Recht 2007).
+
+**Initialisation – wavenumber and phase sampling**
+
+At startup :math:`N` wavenumber pairs and phases are drawn once and remain
+fixed for the entire simulation:
+
+.. math::
+
+   k_{x,n},\; k_{y,n} &\;\sim\; \mathcal{N}\!\left(0,\; \frac{1}{L_c^2}\right)
+   \quad\text{independently,} \\
+   \phi^u_n,\; \phi^v_n &\;\sim\; \mathcal{U}[0,\; 2\pi),
+
+where :math:`L_c` is the user-specified spatial correlation length
+(``turb_wind.L_c`` [m]) and :math:`N` is the number of modes
+(``turb_wind.N_modes``).  Sampling :math:`k_x, k_y` independently from
+:math:`\mathcal{N}(0, 1/L_c^2)` corresponds to a 2-D **isotropic Gaussian**
+power spectral density :math:`S(k) \propto \exp(-k^2 L_c^2/2)`, whose
+Fourier transform is the Gaussian autocorrelation function.
+
+**Temporal update – OU amplitude evolution (CPU, every timestep)**
+
+Each mode carries a pair of scalar OU amplitude coefficients
+:math:`(A^u_n, A^v_n)` with unit stationary variance:
+
+.. math::
+
+   \alpha &= \exp(-\theta\,\Delta t), \\
+   A^u_n(t+\Delta t) &= \alpha\,A^u_n(t) + \sqrt{1-\alpha^2}\;\xi^u_n(t), \\
+   A^v_n(t+\Delta t) &= \alpha\,A^v_n(t) + \sqrt{1-\alpha^2}\;\xi^v_n(t),
+
+where :math:`\xi^u_n, \xi^v_n \sim \mathcal{N}(0,1)` are independent each step.
+
+**Field reconstruction (GPU, every timestep)**
+
+The perturbation field is reconstructed on the GPU as a weighted cosine
+superposition:
+
+.. math::
+
+   u'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
+              A^u_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^u_n\bigr), \\
+   v'(x,y) &= \sigma\sqrt{\frac{2}{N}}\sum_{n=1}^{N}
+              A^v_n\cos\!\bigl(k_{x,n}\,x + k_{y,n}\,y + \phi^v_n\bigr).
+
+The scale factor :math:`\sigma\sqrt{2/N}` ensures that the stationary
+variance of each cell's perturbation equals :math:`\sigma^2` [m²/s²]:
+
+.. math::
+
+   \mathrm{Var}[u'(x,y)]
+   = \sigma^2 \cdot \frac{2}{N} \cdot N \cdot 1 \cdot \mathbb{E}[\cos^2] = \sigma^2.
+
+**Properties**
+
+* Temporal decorrelation time = :math:`1/\theta` [s] (same as ``ou_process``).
+* Approximate 2-D spatial autocovariance (by the Bochner theorem):
+
+  .. math::
+
+     C(r) \approx \sigma^2 \exp\!\left(-\frac{r^2}{2 L_c^2}\right).
+
+* Energy is distributed across all resolved wavenumbers according to the
+  Gaussian PSD — unlike the grid-smoothing approach, no artificial
+  truncation of the spectrum occurs.
+* GPU-accelerated: the inner-mode loop in the reconstruction kernel runs on
+  the device; CPU workload per step is only :math:`O(N)` for the OU updates.
+
+**References**
+
+* Kraichnan, R.H. (1970). Diffusion by a random velocity field.
+  *Phys. Fluids* 13(1):22–31.
+* Rahimi, A. & Recht, B. (2007). Random features for large-scale kernel
+  machines. *NIPS 2007*.
+
+Bounded Direction Random Walk (``turb_wind.model = direction_walk``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At each timestep a Gaussian angular increment is drawn and accumulated:
+
+.. math::
+
+   \Delta\vartheta &\sim \mathcal{N}(0,\,\sigma_\vartheta^2) \\
+   \vartheta(t+\Delta t) &= \operatorname{clamp}
+       \bigl(\vartheta(t) + \Delta\vartheta,\;
+             {-\vartheta_{\max}},\; {+\vartheta_{\max}}\bigr)
+
+The entire base wind field is then rotated by the cumulative angle
+:math:`\vartheta`:
+
+.. math::
+
+   u_{\text{eff}} &= u_{\text{base}} \cos\vartheta - v_{\text{base}} \sin\vartheta \\
+   v_{\text{eff}} &= u_{\text{base}} \sin\vartheta + v_{\text{base}} \cos\vartheta
+
+Wind *speed* is preserved exactly; only direction fluctuates.  Parameters:
+``turb_wind.sigma_theta`` [rad/step] and ``turb_wind.theta_max`` [rad].
+
+**References**
+
+* Uhlenbeck, G.E. & Ornstein, L.S. (1930). On the theory of the Brownian
+  motion. *Phys. Rev.* 36(5):823–841.
+* Finney, M.A. et al. (2011). Role of wind, fuel moisture, and terrain in
+  controlling fire movement. *Ecosphere* 2(3):art17.
+* Cruz, M.G. et al. (2019). Uncertainty in wildfire behaviour research.
+  *Current Forestry Reports* 5:155–172.
+
+
+Wind-Terrain Feedback Models (Options 1–6)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``wind_terrain.model`` ParmParse key selects how terrain-induced or
+fire-feedback winds modify the effective wind seen by the fire spread model.
+**Option 1 (``none``) is the default and preserves all existing behaviour.**
+Options 2–6 progressively couple Viegas or terrain-channel wind physics into
+the actual fire propagation.  Option 7 (``windninja_ridge_canyon``) is described
+in the following section.
+
+Options Summary
+~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 65
+
+   * - Option
+     - ``wind_terrain.model``
+     - Effect on fire spread model
+   * - 1
+     - ``none``
+     - No modification — default behaviour
+   * - 2
+     - ``viegas_ros``
+     - :math:`R_{\text{final}} = \max(R_\text{Rothermel}, R_\text{Viegas})` in eruptive cells (:math:`\tan\varphi > \tan\varphi_c`)
+   * - 3
+     - ``viegas_wind``
+     - Add buoyancy-induced upslope wind :math:`U_\text{ind} = v_b\tan\varphi` in eruptive cells only
+   * - 4
+     - ``canyon_wind``
+     - Scale ambient wind by :math:`(1 + k_\text{canyon}\tan\varphi)` everywhere (Rothermel 1983)
+   * - 5
+     - ``viegas_neto``
+     - Add upslope buoyancy wind :math:`U_\text{ind} = v_b\tan\varphi` at every cell (no threshold)
+   * - 6
+     - ``pimont``
+     - Scale ambient wind by :math:`\exp(k_\text{pimont}\tan\varphi)` everywhere (Pimont et al. 2009)
+
+Selecting ``viegas_ros``, ``viegas_wind``, or ``viegas_neto`` automatically enables
+the Viegas (2004) diagnostic model (``viegas.enable = 1``).  Terrain slopes must be
+provided (via ``rothermel.terrain_file`` or ``rothermel.landscape_file``) for any
+slope-dependent option to have an effect.
+
+Physical Equations
+~~~~~~~~~~~~~~~~~~~
+
+**Option 2 — Viegas ROS override** (requires terrain slopes):
+
+.. math::
+
+   R_{\text{final}}(i,j) =
+   \begin{cases}
+     \max\!\bigl(R_\text{Rothermel}(i,j),\; R_\text{Viegas}(i,j)\bigr)
+       & \tan\varphi(i,j) > \tan\varphi_c \\
+     R_\text{Rothermel}(i,j)
+       & \text{otherwise}
+   \end{cases}
+
+**Options 3 and 5 — Buoyancy-induced upslope wind**:
+
+.. math::
+
+   v_b                  &= \sqrt{g\,\delta_m\,(T_f - T_a) / T_a} \\
+   U_\text{ind}         &= v_b\,\tan\varphi \\
+   \Delta\mathbf{U}     &= U_\text{ind}\,\hat{\mathbf{n}}_s \\
+   \mathbf{U}_\text{eff}&= \mathbf{U}_\text{ambient} + \Delta\mathbf{U}
+
+where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
+vector, :math:`\delta_m` is fuel bed depth [m], and :math:`T_a`, :math:`T_f`
+are taken from ``viegas.T_a`` / ``viegas.T_f``.  Option 3 applies
+:math:`\Delta\mathbf{U}` only where :math:`\tan\varphi > \tan\varphi_c`;
+Option 5 applies it everywhere.
+
+**Option 4 — Canyon wind** (Rothermel 1983):
+
+.. math::
+
+   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
+   \,\max\!\bigl(1,\; 1 + k_\text{canyon}\tan\varphi\bigr)
+
+**Option 6 — Pimont exponential correction** (Pimont et al. 2009):
+
+.. math::
+
+   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
+   \,\exp\!\bigl(k_\text{pimont}\tan\varphi\bigr)
+
+Configuration via Parmparse (``wind_terrain.*``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``wind_terrain.model``
+     - ``none``
+     - Model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, or ``windninja_ridge_canyon``
+   * - ``wind_terrain.k_canyon``
+     - 1.0
+     - Terrain channeling coefficient for ``canyon_wind`` (Option 4)
+   * - ``wind_terrain.k_pimont``
+     - 0.5
+     - Exponential slope coefficient for ``pimont`` (Option 6)
+
+Viegas parameters (``viegas.a_V``, ``viegas.tan_phi_c``, ``viegas.T_a``,
+``viegas.T_f``) are shared between the Viegas diagnostic model and the
+buoyancy-wind options (2, 3, 5); see
+`Viegas (2004) Eruptive Fire Diagnostics`_ above.
+
+References
+~~~~~~~~~~~
+
+Rothermel, R.C. (1983). *How to Predict the Spread and Intensity of Forest and
+Range Fires.* USDA Forest Service General Technical Report INT-143.
+
+Viegas, D.X. & Neto, L.P.S. (1994). "Wind tunnel study of the convective air
+flow of slope fires." Annual Report, Project COMOESTAS.
+
+Pimont, F., Dupuy, J.-L., Linn, R.R. & Dupont, S. (2009). "Validation of
+FIRETEC wind-flows over a canopy and fuel-break." *International Journal of
+Wildland Fire*, 18(7), 775–790.
+https://doi.org/10.1071/WF07130
+
+
+WindNinja Ridge/Canyon Terrain Speed-up (Option 7)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The WindNinja empirical ridge/canyon model (Option 7,
+``wind_terrain.model = windninja_ridge_canyon``) accounts for terrain-driven
+wind acceleration observed in ridge and canyon topography (Forthofer 2007).
+
+Wind-Slope Alignment
+~~~~~~~~~~~~~~~~~~~~~
+
+The alignment between the ambient wind and the upslope direction is:
+
+.. math::
+
+   a = \frac{\mathbf{U} \cdot \hat{\mathbf{n}}_s}{|\mathbf{U}|}
+
+where :math:`\hat{\mathbf{n}}_s = \nabla z / |\nabla z|` is the unit upslope
+vector and :math:`\mathbf{U}` is the horizontal wind velocity.  The alignment
+satisfies :math:`a \in [-1,\,1]`:
+
+* :math:`a > 0`: wind has an upslope component → **ridge** acceleration
+* :math:`a < 0`: wind has a downslope component → **canyon** channeling
+* :math:`a = 0`: wind is perpendicular to slope, no modification
+
+Ridge Speed-up
+~~~~~~~~~~~~~~~
+
+When the wind climbs a slope, terrain convergence amplifies the wind speed:
+
+.. math::
+
+   f_{\text{ridge}} = 1 + k_{\text{ridge}} \,\tan\varphi \, a \quad (a > 0)
+
+Canyon Channeling
+~~~~~~~~~~~~~~~~~
+
+When the wind flows down a slope (drainage flow channeling):
+
+.. math::
+
+   f_{\text{canyon}} = 1 + k_{\text{canyon,WN}} \,\tan\varphi \, |a| \quad (a < 0)
+
+In both cases the effective wind is :math:`\mathbf{U}_{\text{eff}} = f \,\mathbf{U}`
+with :math:`f \ge 1` (the model never suppresses wind speed).
+
+Parameters:
+
+* :math:`k_{\text{ridge}}` – ridge speed-up coefficient (default 1.0)
+* :math:`k_{\text{canyon,WN}}` – canyon channeling coefficient (default 0.5)
+
+Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
+in Fire Spread Prediction.* Colorado State University MS thesis.
+
