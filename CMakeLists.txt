@@ -130,11 +130,18 @@ if(LEVELSET_ENABLE_MPI)
   target_link_libraries(levelset PRIVATE MPI::MPI_CXX)
 endif()
 
-# Recommended warnings
+# Recommended warnings.
+# When .cpp files are compiled as CUDA (LANGUAGE CUDA), nvcc is the driver on
+# all platforms.  On Windows with MSVC as the host compiler, /W4 must be
+# forwarded to the host via -Xcompiler; passing it bare causes nvcc to split
+# the flag at the space and emit "single file needed" errors.
 if (MSVC)
-  target_compile_options(levelset PRIVATE /W4)
+  target_compile_options(levelset PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:/W4>
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+  )
 else()
-  target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 endif()
 endif() # LEVELSET_BUILD_LEVELSET
 
@@ -166,9 +173,12 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_link_libraries(wind_solver PRIVATE MPI::MPI_CXX)
     endif()
     if(MSVC)
-      target_compile_options(wind_solver PRIVATE /W4)
+      target_compile_options(wind_solver PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/W4>
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+      )
     else()
-      target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
+      target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wno-pedantic)
     endif()
     message(STATUS "wind_solver: enabled (3-D, same AMReX build)")
   else()
