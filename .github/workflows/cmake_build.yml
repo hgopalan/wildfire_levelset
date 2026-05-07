@@ -140,6 +140,129 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+  # ── Linux HIP build (AMD ROCm 6.2.2, Ubuntu 22.04) ──────────────────────
+  build_hip:
+    name: Build HIP (ubuntu-22.04, Release)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build wget gnupg
+
+      - name: Add ROCm apt repository (Ubuntu 22.04 / jammy)
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
+          echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.2.2 jammy main' \
+            | sudo tee /etc/apt/sources.list.d/rocm.list
+          printf 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600\n' \
+            | sudo tee /etc/apt/preferences.d/rocm-pin-600
+          sudo apt-get update -qq
+
+      - name: Install ROCm/HIP packages
+        # rocm-dev pulls in rocm-device-libs (the bitcode files hipcc/clang++ need).
+        # rocrand-dev / rocprim-dev / rocsparse-dev / hiprand-dev are required by AMReX.
+        # This mirrors the canonical set used by AMReX, ERF, and AMR-Wind CI.
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            rocm-dev rocrand-dev rocprim-dev hiprand-dev rocsparse-dev rocm-cmake
+          echo 'export PATH=/opt/rocm/llvm/bin:/opt/rocm/bin:$PATH' \
+            | sudo tee /etc/profile.d/rocm.sh
+
+      - name: Configure (3D, HIP, gfx90a)
+        shell: bash
+        run: |
+          source /etc/profile.d/rocm.sh
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DCMAKE_C_COMPILER=$(which clang) \
+            -DCMAKE_CXX_COMPILER=$(which clang++) \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_GPU_BACKEND=HIP \
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF \
+            -DAMReX_AMD_ARCH="gfx90a"
+
+      - name: Build
+        shell: bash
+        run: |
+          source /etc/profile.d/rocm.sh
+          cmake --build build --parallel
+
+  # ── Linux SYCL build (Intel oneAPI DPC++, Ubuntu 22.04) ──────────────────
+  build_sycl:
+    name: Build SYCL (ubuntu-22.04, Release)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build wget gnupg
+
+      - name: Add Intel oneAPI apt repository
+        run: |
+          wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update -qq
+
+      - name: Install Intel DPC++/C++ compiler and MKL
+        # intel-oneapi-mkl-devel is required: AMReX includes <oneapi/mkl/rng.hpp>
+        # from AMReX_RandomEngine.H when building for SYCL.
+        # This mirrors the canonical set used by AMReX, ERF, and AMR-Wind CI.
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            intel-oneapi-compiler-dpcpp-cpp \
+            intel-oneapi-mkl-devel
+
+      - name: Configure (3D, SYCL)
+        shell: bash
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DCMAKE_C_COMPILER=$(which icx) \
+            -DCMAKE_CXX_COMPILER=$(which icpx) \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_GPU_BACKEND=SYCL \
+            -DLEVELSET_BUILD_WIND_SOLVER=OFF
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          cmake --build build --parallel
+
   # ── Windows + CUDA build ──────────────────────────────────────────────────
   build_windows_cuda:
     name: Build Windows CUDA (windows-2022, Release)
