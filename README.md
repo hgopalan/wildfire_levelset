@@ -5,6 +5,24 @@
 
 # Wildfire-AMR
 
+## CI / Build Status
+
+| Configuration | Status |
+|---------------|--------|
+| Linux & macOS CPU (GCC/Clang, Release + Debug) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Windows CPU (MSVC, Release + Debug) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Linux GPU — CUDA 12.6 (Ubuntu 22.04) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Windows GPU — CUDA 12.6 (MSVC + nvcc) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Linux GPU — HIP/ROCm 6.2 (Ubuntu 22.04) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Windows GPU — HIP/ROCm 6.2 (AMD HIP SDK) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Linux GPU — SYCL/oneAPI 2025.x (Ubuntu 22.04) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Windows GPU — SYCL/oneAPI 2025.x (Intel DPC++) | [![CMake Build](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/cmake_build.yml) |
+| Documentation | [![Docs](https://github.com/hgopalan/wildfire_levelset/actions/workflows/docs.yml/badge.svg)](https://github.com/hgopalan/wildfire_levelset/actions/workflows/docs.yml) |
+
+> All GPU build jobs are **compile-only** (no GPU hardware required on the CI runner).
+> They verify that the source and the bundled AMReX submodule configure and compile
+> cleanly for each backend.
+
 A unified AMReX-based C++ wildfire front propagation framework providing a single interface to operational fire behaviour tools — FARSITE, BehavePlus-style spread models, and physics-based alternatives — with a path toward future two-way coupling with the Energy Research and Forecasting (ERF) atmospheric model.
 
 ## Documentation
