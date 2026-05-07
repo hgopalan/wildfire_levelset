@@ -36,6 +36,7 @@
 #ifndef COMPUTE_REACTION_INTENSITY_H
 #define COMPUTE_REACTION_INTENSITY_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
@@ -46,7 +47,7 @@
 using namespace amrex;
 
 // Unit conversion: BTU/ft²/min → kW/m²
-static constexpr amrex::Real BTU_FT2_MIN_TO_KW_M2 = amrex::Real(0.18941);
+static constexpr amrex::Real BTU_FT2_MIN_TO_KW_M2 = WildfireConst::BTU_FT2MIN_TO_KW_M2;
 
 // ============================================================================
 // compute_reaction_intensity

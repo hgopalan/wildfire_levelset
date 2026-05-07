@@ -1,6 +1,7 @@
 // ============================================================================
 // UPDATED: Build RHS with WENO5-Z using Eq. (2) with Rothermel (1972) ROS
 // ============================================================================
+#include "constants.H"
 #include "parse_inputs.H"
 #include "rothermel_model.H"
 
@@ -20,8 +21,8 @@ static void build_rhs_weno5z(const MultiFab& phi,
 #endif
 
     // Artificial viscosity ε per Eq. (2); use a single uniform value across the domain.
-    // Paper default ~0.4 is common operationally. 
-    constexpr Real eps_visc = 0.4;
+    // Paper default ~0.4 is common operationally.
+    constexpr Real eps_visc = WildfireConst::ADVECTION_VISC;
 
     // Helper: discrete Laplacian Δφ (second-order)
     auto laplacian_phi = [=] AMREX_GPU_HOST_DEVICE (Array4<const Real> const& p,

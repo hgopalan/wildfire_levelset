@@ -4,6 +4,7 @@
 #ifndef COMPUTE_ROTHERMEL_R_H
 #define COMPUTE_ROTHERMEL_R_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
@@ -104,8 +105,7 @@ static void compute_rothermel_R(MultiFab& R_mf,
             // flow field.  Using the global mean (rather than just the four
             // immediate neighbours) handles clusters of adjacent extreme cells
             // where a local-neighbour average would still be unreliable.
-            constexpr Real MAX_WIND_SPEED_MS = 25.0;
-            constexpr Real MAX_WIND_SPEED_SQ = MAX_WIND_SPEED_MS * MAX_WIND_SPEED_MS;
+            constexpr Real MAX_WIND_SPEED_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux*ux + uy*uy > MAX_WIND_SPEED_SQ) {
                 ux = ux_global_mean;
                 uy = uy_global_mean;
@@ -164,8 +164,8 @@ static void compute_rothermel_R(MultiFab& R_mf,
             if (use_terrain) {
                 // Compute phi_s from terrain slopes at this cell
                 // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
-                constexpr Real PHI_S_COEFFICIENT = 5.275;
-                constexpr Real BETA_EXPONENT = -0.3;
+                constexpr Real PHI_S_COEFFICIENT = WildfireConst::PHI_S_COEFF;
+                constexpr Real BETA_EXPONENT     = WildfireConst::PHI_S_BETA_EXP;
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;

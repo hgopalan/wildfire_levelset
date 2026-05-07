@@ -8,13 +8,9 @@
 #ifndef FIRE_MODELS_H
 #define FIRE_MODELS_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <cmath>
-
-// Math constants for portability
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 // ============================================================================
 // Anderson (1983) L/W ratio calculation based on wind speed

@@ -26,6 +26,7 @@
 #ifndef ROTHERMEL_MODEL_H
 #define ROTHERMEL_MODEL_H
 
+#include "constants.H"
 #include "parse_inputs.H"
 #include "fuel_database.H"
 #include "andrews_model.H"
@@ -56,8 +57,8 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     RothermelComputed rc;
 
     // Fixed SAV constants (ft⁻¹) for coarser dead fuel size classes
-    constexpr Real SIGMA_D10  = 109.0;
-    constexpr Real SIGMA_D100 =  30.0;
+    constexpr Real SIGMA_D10  = WildfireConst::SIGMA_D10;
+    constexpr Real SIGMA_D100 = WildfireConst::SIGMA_D100;
 
     // -----------------------------------------------------------------------
     // Determine which computation path to use

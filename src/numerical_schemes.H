@@ -9,11 +9,12 @@
 //   stencil 1: uses f1, f2  -> q1 = f2 - f1
 // Ideal weights: C0 = 1/3, C1 = 2/3
 // ================================================================
+#include "constants.H"
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real weno3_reconstruct(Real fm1, Real f0, Real fp1)
 {
     // Smoothness indicators for the two 2-point stencils
-    constexpr Real weno_eps = Real(1.0e-6);
+    constexpr Real weno_eps = WildfireConst::WENO_EPS;
     const Real beta0 = (f0  - fm1) * (f0  - fm1);
     const Real beta1 = (fp1 - f0)  * (fp1 - f0);
 
@@ -56,7 +57,7 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // Detect unbounded phi: check all stencil values (WENO3 needs ±2 cells).
     // If any value is NaN/Inf or beyond the threshold, drop to WENO1.
     // ----------------------------------------------------------------
-    constexpr Real phi_bound = Real(1e6);
+    constexpr Real phi_bound = WildfireConst::PHI_BOUND;
 
     auto is_bad = [&](Real v) -> bool {
         return !std::isfinite(v) || std::abs(v) > phi_bound;

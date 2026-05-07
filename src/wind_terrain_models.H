@@ -38,6 +38,7 @@
 #ifndef WIND_TERRAIN_MODELS_H
 #define WIND_TERRAIN_MODELS_H
 
+#include "constants.H"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
@@ -46,7 +47,7 @@
 using namespace amrex;
 
 // Minimum slope magnitude to avoid division-by-zero in uphill unit-vector.
-static constexpr amrex::Real WT_SLOPE_EPS = amrex::Real(1.0e-8);
+static constexpr amrex::Real WT_SLOPE_EPS = WildfireConst::WT_SLOPE_EPS;
 
 // ============================================================================
 // apply_wind_terrain_velocity
@@ -83,8 +84,8 @@ static void apply_wind_terrain_velocity(
     // Buoyancy velocity scale used by viegas_wind and viegas_neto:
     //   v_b = sqrt(g * delta_m * (T_f - T_a) / T_a)
     // delta is stored in feet; multiply by 0.3048 to convert to metres for SI buoyancy formula.
-    constexpr Real g_SI   = Real(9.81);
-    const Real delta_m    = inputs.rothermel.delta * Real(0.3048);  // feet to metres
+    constexpr Real g_SI   = WildfireConst::GRAVITY;
+    const Real delta_m    = inputs.rothermel.delta * WildfireConst::FT_TO_M;  // feet to metres
     const Real T_a        = inputs.viegas.T_a;
     const Real T_f        = inputs.viegas.T_f;
     const Real T_ratio    = (T_f - T_a) / std::max(T_a, Real(1.0));
@@ -126,7 +127,7 @@ static void apply_wind_terrain_velocity(
             // ----------------------------------------------------------------
             Real ux = v(i, j, k, 0);
             Real uy = v(i, j, k, 1);
-            constexpr Real MAX_WIND_SQ = Real(25.0) * Real(25.0);
+            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
             if (ux * ux + uy * uy > MAX_WIND_SQ) {
                 ux = ux_mean;
                 uy = uy_mean;

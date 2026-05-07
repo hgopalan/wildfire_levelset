@@ -44,6 +44,7 @@
 #ifndef BALBI_MODEL_H
 #define BALBI_MODEL_H
 
+#include "constants.H"
 #include "parse_inputs.H"
 #include "fuel_database.H"
 #include <AMReX.H>
@@ -61,25 +62,26 @@ struct BalbiComputed {
 
 // ============================================================================
 // Unit-conversion constants (US/Rothermel → SI)
+// Aliases into WildfireConst for use with 'using namespace BalbiUnits'.
 // ============================================================================
 namespace BalbiUnits {
-    constexpr amrex::Real FT_TO_M          = 0.3048;    // ft → m
-    constexpr amrex::Real FT_INV_TO_M_INV  = 3.28084;   // ft⁻¹ → m⁻¹
-    constexpr amrex::Real LB_FT2_TO_KG_M2  = 4.8824;    // lb/ft² → kg/m²
-    constexpr amrex::Real LB_FT3_TO_KG_M3  = 16.0185;   // lb/ft³ → kg/m³
-    constexpr amrex::Real BTU_LB_TO_J_KG   = 2326.0;    // BTU/lb → J/kg
-    constexpr amrex::Real G                = 9.81;       // m/s²
+    inline constexpr amrex::Real FT_TO_M          = WildfireConst::FT_TO_M;
+    inline constexpr amrex::Real FT_INV_TO_M_INV  = WildfireConst::FT_INV_TO_M_INV;
+    inline constexpr amrex::Real LB_FT2_TO_KG_M2  = WildfireConst::LB_FT2_TO_KG_M2;
+    inline constexpr amrex::Real LB_FT3_TO_KG_M3  = WildfireConst::LB_FT3_TO_KG_M3;
+    inline constexpr amrex::Real BTU_LB_TO_J_KG   = WildfireConst::BTU_LB_TO_J_KG;
+    inline constexpr amrex::Real G                = WildfireConst::GRAVITY;
 }
 
 // Minimum safe buoyancy velocity [m/s] used as a numerical floor.
 // Prevents division-by-zero in the GPU tilt-angle kernel while remaining
 // orders of magnitude below physically meaningful v_b values (≥ 1 m/s).
-constexpr amrex::Real BALBI_V_B_MIN = 1.0e-3;
+inline constexpr amrex::Real BALBI_V_B_MIN    = WildfireConst::BALBI_V_B_MIN;
 
 // Minimum dimensionless ignition-energy ratio B* before the cell is treated
 // as non-burnable (A_coeff = 0).  Numerically, 1e-6 is well below any
 // physically plausible value for B* (typically 0.01–0.10).
-constexpr amrex::Real BALBI_B_STAR_MIN = 1.0e-6;
+inline constexpr amrex::Real BALBI_B_STAR_MIN = WildfireConst::BALBI_B_STAR_MIN;
 
 // ============================================================================
 // Compute Balbi (2009) model coefficients from fuel + thermal parameters
