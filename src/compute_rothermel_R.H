@@ -25,7 +25,7 @@ using namespace amrex;
 // parameters (R0, C, B, beta_ratio_E, beta) corresponding to its local fuel
 // code.  Codes outside [0, fuel_table_size) fall back to the global default.
 // ============================================================================
-static void compute_rothermel_R(MultiFab& R_mf,
+inline void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab& vel,
                                 const Geometry& /*geom*/,
                                 const RothermelParams& rp,

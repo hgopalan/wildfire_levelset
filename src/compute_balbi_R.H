@@ -35,7 +35,7 @@ using namespace amrex;
 // Physical constant for heat flux buoyancy
 static constexpr Real BALBI_HF_G = Real(9.81);
 
-static void compute_balbi_R(MultiFab& R_mf,
+inline void compute_balbi_R(MultiFab& R_mf,
                              const MultiFab& vel,
                              const Geometry& /*geom*/,
                              const RothermelParams& rp,

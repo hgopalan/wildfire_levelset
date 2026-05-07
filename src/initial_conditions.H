@@ -22,7 +22,7 @@
 //
 // sigma   > 0  use provided value (physical units)
 // sigma  <= 0  auto-select as 3 * min(dx, dy [, dz])
-static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
+inline void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
                                           const std::string& filename,
                                           amrex::Real sigma)
 {
@@ -131,7 +131,7 @@ static void init_phi_from_fire_points_csv(MultiFab& phi, const Geometry& geom,
 }
 
 // ======================= Initialize signed distance (sphere) ======================
-static void init_phi_sphere(MultiFab& phi, const Geometry& geom,
+inline void init_phi_sphere(MultiFab& phi, const Geometry& geom,
                             Real cx, Real cy, Real cz, Real radius)
 {
 #if (AMREX_SPACEDIM == 2)
@@ -165,7 +165,7 @@ static void init_phi_sphere(MultiFab& phi, const Geometry& geom,
 }
 
 // ======================= Initialize signed distance (box) ======================
-static void init_phi_box(MultiFab& phi, const Geometry& geom,
+inline void init_phi_box(MultiFab& phi, const Geometry& geom,
                          Real xmin, Real ymin, Real zmin, 
                          Real xmax, Real ymax, Real zmax) 
 {
@@ -218,7 +218,7 @@ static void init_phi_box(MultiFab& phi, const Geometry& geom,
 
 // ======================= Initialize indicator function (sphere) ======================
 // For FARSITE mode: phi = -1 inside the sphere, phi = 0 outside
-static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
+inline void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
                                        Real cx, Real cy, Real cz, Real radius)
 {
 #if (AMREX_SPACEDIM == 2)
@@ -254,7 +254,7 @@ static void init_phi_sphere_indicator(MultiFab& phi, const Geometry& geom,
 
 // ======================= Initialize indicator function (box) ======================
 // For FARSITE mode: phi = -1 inside the box, phi = 0 outside
-static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
+inline void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
                          Real xmin, Real ymin, Real zmin, 
                          Real xmax, Real ymax, Real zmax) 
 {
@@ -296,7 +296,7 @@ static void init_phi_box_indicator(MultiFab& phi, const Geometry& geom,
 }
 
 // ======================= Initialize signed distance (ellipse) ======================
-static void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
+inline void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
                              Real cx, Real cy, Real cz, Real rx, Real ry, Real rz)
 {
 #if (AMREX_SPACEDIM == 2)
@@ -354,7 +354,7 @@ static void init_phi_ellipse(MultiFab& phi, const Geometry& geom,
 
 // ======================= Initialize indicator function (ellipse) ======================
 // For FARSITE mode: phi = -1 inside the ellipse, phi = 0 outside
-static void init_phi_ellipse_indicator(MultiFab& phi, const Geometry& geom,
+inline void init_phi_ellipse_indicator(MultiFab& phi, const Geometry& geom,
                                         Real cx, Real cy, Real cz, Real rx, Real ry, Real rz)
 {
 #if (AMREX_SPACEDIM == 2)
@@ -392,7 +392,7 @@ static void init_phi_ellipse_indicator(MultiFab& phi, const Geometry& geom,
 // ======================= Initialize from EB signed distance function ======================
 // This function initializes phi using an implicit function that could represent
 // an embedded boundary geometry
-static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
+inline void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
                                        const std::string& eb_type,
                                        Real param1, Real param2, Real param3,
                                        Real param4, Real param5, Real param6)
@@ -510,7 +510,7 @@ static void init_phi_from_eb_implicit(MultiFab& phi, const Geometry& geom,
 
 // ======================= Initialize indicator function from EB implicit ==========
 // For FARSITE mode: phi = -1 inside (fire), phi = 0 outside (no fire)
-static void init_phi_from_eb_implicit_indicator(MultiFab& phi, const Geometry& geom,
+inline void init_phi_from_eb_implicit_indicator(MultiFab& phi, const Geometry& geom,
                                                  const std::string& eb_type,
                                                  Real param1, Real param2, Real param3,
                                                  Real param4, Real param5, Real param6)
@@ -616,7 +616,7 @@ static void init_phi_from_eb_implicit_indicator(MultiFab& phi, const Geometry& g
 //
 // sigma > 0  use provided value (physical units)
 // sigma <=0  auto-select as 3 * min(dx, dy [, dz])
-static void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
+inline void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
                                        const std::string& filename,
                                        amrex::Real sigma)
 {
@@ -726,7 +726,7 @@ static void apply_dynamic_fire_points(MultiFab& phi, const Geometry& geom,
 // ======================= Checkpoint write =======================================
 // Writes phi and scalar metadata (step number, simulation time) to an AMReX
 // checkpoint directory named `chk_name`.
-static void write_checkpoint(const std::string& chk_name,
+inline void write_checkpoint(const std::string& chk_name,
                               const MultiFab& phi,
                               const Geometry& /*geom*/,
                               int step,
@@ -756,7 +756,7 @@ static void write_checkpoint(const std::string& chk_name,
 // ======================= Checkpoint read ========================================
 // Reads phi and scalar metadata from a previously written checkpoint directory.
 // On return `step` and `time` reflect the saved state.
-static void read_checkpoint(const std::string& chk_name,
+inline void read_checkpoint(const std::string& chk_name,
                              MultiFab& phi,
                              int& step,
                              amrex::Real& time)
