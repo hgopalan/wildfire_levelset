@@ -247,79 +247,14 @@ See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/t
 
 ## Testing
 
-Run regression tests:
 ```bash
 cd build
-ctest -L regtest --output-on-failure
+ctest -L regtest --output-on-failure   # regression tests
+ctest -L benchmark --output-on-failure -V  # timing benchmark
+make regtest                            # or via custom target
 ```
 
-Run only the timing benchmark:
-```bash
-ctest -L benchmark --output-on-failure -V
-```
-
-Or use the custom target:
-```bash
-make regtest
-```
-
-Available regression tests:
-
-**Core functionality**
-- `basic_levelset` - Basic level-set advection
-- `farsite_ellipse` - FARSITE elliptical expansion
-- `rothermel_fuel` - Rothermel with fuel models
-- `anderson_lw` - Anderson dynamic L/W ratio
-- `cheney_gould_grassfire` - Cheney & Gould (1995/1998) grassland fire spread
-- `catchpole_demestre` - Catchpole & de Mestre (1986) double-ellipse shape
-- `wilson_spread` - Wilson (1988) single ellipse from rear focus
-- `alexander_lemniscate` - Alexander et al. lemniscate (Limaçon) shape
-
-**Advanced features (uncomment in `regtest/CMakeLists.txt` to enable)**
-- `reinitialization` - Level-set reinitialization
-- `ellipse_sdf` - Elliptical SDF initial conditions
-- `eb_implicit` - Embedded boundary capabilities
-- `firebrand_spotting` - Stochastic firebrand spotting model
-- `albini_spotting` - Albini (1983) physics-based firebrand spotting
-- `crown_initiation` - Crown fire initiation
-- `bulk_fuel_consumption` - Fuel consumption modeling
-
-**New feature tests (2025)**
-- `fuel_adj_file` — FARSITE `.adj` fuel adjustment file reader (requires Python3)
-- `fmd_moisture` — Time-varying `.fmd` fuel moisture schedule reader (requires Python3)
-- `fire_perimeter_output` — CSV + GeoJSON perimeter writers and `fire_stats.csv` time series
-- `fire_perimeter_output_validate` — Validates perimeter file contents after the solver run
-- `burned_area_timeseries` — `fire_stats.csv` burned area / perimeter / emissions time series
-
-**Dimension-specific tests**
-- `3d_sphere` - Full 3D simulation (3D builds only)
-- `terrain_wind` - External terrain and wind (2D builds only)
-- `time_dependent_wind` - Time-varying wind fields (2D builds only)
-
-**External data tests (requires Python3)**
-- `landfire_farsite` - FARSITE with auto-downloaded LANDFIRE landscape (requires `landscape_writer.py`)
-
-**Timing benchmark**
-- `timing_benchmark` *(label: `benchmark`)* — Multi-resolution wall-clock timing benchmark; runs the solver at several grid sizes for both `levelset` and `farsite` scenarios; checks monotonically increasing runtime and estimates scaling exponent α; writes `timing_results.csv`. Run manually:
-
-```bash
-# From the build directory:
-python3 ../regtest/timing_benchmark/run_benchmark.py \
-    --exe ./levelset --dim 2 --nsteps 20 \
-    --resolutions 32 64 128 256
-
-# Dry-run: preview generated inputs without running solver
-python3 ../regtest/timing_benchmark/run_benchmark.py \
-    --exe ./levelset --dim 2 --dry-run
-
-# 3D benchmark with custom resolutions
-python3 ../regtest/timing_benchmark/run_benchmark.py \
-    --exe ./levelset --dim 3 --nsteps 15 \
-    --resolutions 16 32 48 64
-```
-
-The `timing_results.csv` written to the CTest working directory contains:
-`scenario, n_cells, total_cells, wall_time_s, nsteps, steps_per_second, cells_per_step_per_s, returncode`
+Regression tests cover core level-set propagation, all fire spread models, firebrand spotting, crown fire, fuel adjustment/moisture files, perimeter output, 2D/3D scenarios, and an optional LANDFIRE integration test. See `regtest/` for the full list.
 
 ## Output
 
