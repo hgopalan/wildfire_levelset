@@ -101,14 +101,7 @@
 #include "rothermel_model.H"
 #include "balbi_model.H"
 
-// Number of output components in the viegas_data MultiFab.
-static constexpr int VIEGAS_NCOMP = 5;
 
-// Tiny positive value used as denominator floor when computing ROS excess.
-static constexpr amrex::Real VIEGAS_EPS    = WildfireConst::VIEGAS_EPS;
-
-// Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
-static constexpr amrex::Real VIEGAS_VB_MIN = WildfireConst::VIEGAS_VB_MIN;
 
 // ============================================================================
 // compute_viegas_diagnostics
@@ -229,7 +222,14 @@ static void compute_viegas_diagnostics(
     const Real uy_mean = (ncells_vel > 0) ? vel.sum(1) / Real(ncells_vel) : Real(0.0);
 
     const bool has_slope = (terrain_slopes != nullptr);
+    // Number of output components in the viegas_data MultiFab.
+    static constexpr int VIEGAS_NCOMP = 5;
 
+    // Tiny positive value used as denominator floor when computing ROS excess.
+    static constexpr amrex::Real VIEGAS_EPS    = WildfireConst::VIEGAS_EPS;
+
+    // Minimum buoyancy velocity [m/s] to prevent division-by-zero in tilt calc.
+    static constexpr amrex::Real VIEGAS_VB_MIN = WildfireConst::VIEGAS_VB_MIN;
     for (MFIter mfi(viegas_data); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
 

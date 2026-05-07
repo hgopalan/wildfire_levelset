@@ -201,6 +201,8 @@ int main(int argc, char* argv[])
     //   2 – viegas_ROS_excess   [-]   (R_V - R_primary)/R_primary
     //   3 – viegas_flame_tilt   [rad]  (Viegas flame-tilt angle from vertical)
     //   4 – viegas_slope_factor [-]   (Viegas slope enhancement factor Phi_s_V)
+    // Number of output components in the viegas_data MultiFab.
+    static constexpr int VIEGAS_NCOMP = 5;
     MultiFab viegas_data(ba, dm, VIEGAS_NCOMP, 0);
     viegas_data.setVal(0.0);
 

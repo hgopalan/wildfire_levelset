@@ -88,12 +88,15 @@ static void compute_balbi_R(MultiFab& R_mf,
 
         const BalbiComputed* tbl    = fuel_table;
         const int            tbl_sz = fuel_table_size;
+        constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
+        constexpr Real local_BALBI_V_B_MIN= BALBI_V_B_MIN;
+        constexpr Real local_BALBI_HF_G = BALBI_HF_G;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // Wind components -- clamp extreme wind speeds
             Real ux = v(i,j,k,0);
             Real uy = v(i,j,k,1);
-            constexpr Real MAX_WIND_SQ = WildfireConst::MAX_WIND_SPEED_SQ;
+
             if (ux*ux + uy*uy > MAX_WIND_SQ) {
                 ux = ux_global_mean;
                 uy = uy_global_mean;
@@ -119,11 +122,11 @@ static void compute_balbi_R(MultiFab& R_mf,
                     const Real denom = hf_rho_air * hf_Cp_air * hf_T_a;
                     if (denom > Real(0.0)) {
                         const Real v_b_Q = hf_k_up *
-                                           std::sqrt(BALBI_HF_G * Q_cell * hf_refH / denom);
+                                           std::sqrt(local_BALBI_HF_G * Q_cell * hf_refH / denom);
                         cell_vb = std::sqrt(cell_vb * cell_vb + v_b_Q * v_b_Q);
                     }
                 }
-                cell_vb = amrex::max(cell_vb, BALBI_V_B_MIN);
+                cell_vb = amrex::max(cell_vb, local_BALBI_V_B_MIN);
             }
 
             // Wind speed magnitude [m/s]
