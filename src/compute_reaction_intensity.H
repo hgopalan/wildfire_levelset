@@ -61,7 +61,7 @@ static constexpr amrex::Real BTU_FT2_MIN_TO_KW_M2 = WildfireConst::BTU_FT2MIN_TO
 //                           device (nullptr → use global rp)
 //   fuel_table_size       – number of entries in d_fuel_table_ptr
 // ============================================================================
-static void compute_reaction_intensity(
+inline void compute_reaction_intensity(
     MultiFab&                      reaction_intensity_mf,
     const MultiFab*                fuel_model_mf,
     const RothermelParams&         rp,

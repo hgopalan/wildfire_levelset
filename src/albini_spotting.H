@@ -156,7 +156,7 @@ static bool albini_interp_wind(
 // NOTE: This function requires serial execution (no MPI / OMP / GPU),
 //       identical to the constraint in firebrand_spotting.H.
 // ============================================================================
-static void compute_albini_spotting(
+inline void compute_albini_spotting(
     MultiFab& phi,
     MultiFab& albini_data,
     const MultiFab& vel,

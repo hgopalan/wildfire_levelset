@@ -11,7 +11,7 @@
 #include "spatial_grid.H"
 
 // ======================= Initialize velocity (constant) ==========================
-static void init_velocity_constant(MultiFab& vel, const Geometry& geom, Real ux, Real uy, Real uz)
+inline void init_velocity_constant(MultiFab& vel, const Geometry& geom, Real ux, Real uy, Real uz)
 {
     (void)geom;  // Suppress unused parameter warning
 #if (AMREX_SPACEDIM == 2)
@@ -35,7 +35,7 @@ static void init_velocity_constant(MultiFab& vel, const Geometry& geom, Real ux,
 
 // ======================= Initialize velocity from unstructured 2D data ===========
 #if (AMREX_SPACEDIM == 2)
-static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const std::string& filename)
+inline void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const std::string& filename)
 {
     // Read unstructured data from file (X Y U V format)
     std::vector<Real> x_data, y_data, u_data, v_data;
@@ -126,7 +126,7 @@ static void init_velocity_from_file(MultiFab& vel, const Geometry& geom, const s
 }
 
 // ======================= Update time-dependent velocity field ====================
-static void load_wind_field_data(const std::string& filename,
+inline void load_wind_field_data(const std::string& filename,
                                   std::vector<Real>& x_data,
                                   std::vector<Real>& y_data,
                                   std::vector<Real>& u_data,
@@ -166,7 +166,7 @@ static void load_wind_field_data(const std::string& filename,
 }
 
 // ======================= Interpolate velocity field using two time snapshots ====
-static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
+inline void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
                                         const std::vector<Real>& x_data1, const std::vector<Real>& y_data1,
                                         const std::vector<Real>& u_data1, const std::vector<Real>& v_data1,
                                         const std::vector<Real>& x_data2, const std::vector<Real>& y_data2,
@@ -248,7 +248,7 @@ static void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
 }
 
 // ======================= Update time-dependent velocity field ====================
-static void update_time_dependent_velocity(MultiFab& vel, const Geometry& geom,
+inline void update_time_dependent_velocity(MultiFab& vel, const Geometry& geom,
                                             const std::string& base_filename,
                                             Real current_time,
                                             Real wind_time_spacing,

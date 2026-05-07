@@ -95,7 +95,7 @@ static constexpr int WEISE_NCOMP = 6;
 //                           in tan(slope) units; nullptr = flat terrain
 //   wp                    – Weise & Biging model parameters
 // ============================================================================
-static void compute_weise_biging_whirl(
+inline void compute_weise_biging_whirl(
     MultiFab&       weise_data,
     const MultiFab& fireline_intensity_mf,
     const MultiFab& flame_length_mf,

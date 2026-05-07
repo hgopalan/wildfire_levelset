@@ -49,7 +49,7 @@ using namespace amrex;
 //   I_R           – reaction intensity [BTU/ft²·min] (from Rothermel model)
 //   tau_residence – fire residence time [s]
 // ============================================================================
-static void compute_heat_per_unit_area(MultiFab&       hpa_mf,
+inline void compute_heat_per_unit_area(MultiFab&       hpa_mf,
                                        const MultiFab& phi,
                                        amrex::Real     I_R,
                                        amrex::Real     tau_residence)

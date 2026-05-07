@@ -65,7 +65,7 @@ using namespace amrex;
 //   inputs         – full input parameter set (uses wind_terrain, viegas, and
 //                    rothermel sub-structs)
 // ============================================================================
-static void apply_wind_terrain_velocity(
+inline void apply_wind_terrain_velocity(
     MultiFab&              vel_eff,
     const MultiFab&        vel,
     const MultiFab*        terrain_slopes,
@@ -258,7 +258,7 @@ static void apply_wind_terrain_velocity(
 //                   component 0 = viegas_ROS [m/s]
 //                   component 1 = viegas_eruptive_flag (1.0 where eruptive)
 // ============================================================================
-static void apply_viegas_ros_override(
+inline void apply_viegas_ros_override(
     MultiFab&       R_mf,
     const MultiFab& viegas_data)
 {

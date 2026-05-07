@@ -30,7 +30,7 @@ using namespace amrex;
 // - ASPECT: aspect in degrees (0-360, 0=North, 90=East, 180=South, 270=West)
 // - FUEL_MODEL: fuel model number (optional)
 // ============================================================================
-static void read_landscape_file(const std::string& filename,
+inline void read_landscape_file(const std::string& filename,
                                 std::vector<Real>& x_data,
                                 std::vector<Real>& y_data,
                                 std::vector<Real>& elevation_data,
@@ -86,7 +86,7 @@ static void read_landscape_file(const std::string& filename,
 // The landscape file contains slope and aspect, which we convert to
 // slope_x and slope_y (tangent of slope angle in x and y directions)
 // ============================================================================
-static void compute_slopes_from_landscape(MultiFab& slopes, 
+inline void compute_slopes_from_landscape(MultiFab& slopes, 
                                          const Geometry& geom, 
                                          const std::string& filename)
 {
@@ -175,7 +175,7 @@ static void compute_slopes_from_landscape(MultiFab& slopes,
 // Interpolate elevation from landscape file data to a MultiFab.
 // Uses inverse distance weighting on the elevation column of the file.
 // ============================================================================
-static void compute_elevation_from_landscape(MultiFab& elevation,
+inline void compute_elevation_from_landscape(MultiFab& elevation,
                                              const Geometry& geom,
                                              const std::string& filename)
 {
@@ -237,7 +237,7 @@ static void compute_elevation_from_landscape(MultiFab& elevation,
 // Used when a terrain file provides elevation/slope/aspect but fuel
 // information is still needed from the landscape file.
 // ============================================================================
-static void compute_fuel_model_from_landscape(MultiFab& fuel_model_out,
+inline void compute_fuel_model_from_landscape(MultiFab& fuel_model_out,
                                               const Geometry& geom,
                                               const std::string& filename)
 {
@@ -303,7 +303,7 @@ static void compute_fuel_model_from_landscape(MultiFab& fuel_model_out,
 // landscape file data to MultiFabs.  All three MultiFabs must have 1
 // component and no ghost cells.
 // ============================================================================
-static void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
+inline void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
                                                 MultiFab& aspect_out,
                                                 MultiFab& fuel_model_out,
                                                 const Geometry& geom,
@@ -381,7 +381,7 @@ static void compute_landscape_slope_aspect_fuel(MultiFab& slope_out,
 // Helper: build spatial index and interpolate data from a flat array of
 // (x,y,value) points on to a MultiFab.  Identical kernel to the ASCII path.
 // ============================================================================
-static void interp_flat_to_multifab(
+inline void interp_flat_to_multifab(
     MultiFab& mf,
     const Geometry& geom,
     const std::vector<double>& x_data,
@@ -516,7 +516,7 @@ static bool read_landscape_binary(
 // This is a drop-in replacement for compute_slopes_from_landscape() that
 // also handles binary LCP files.
 // ============================================================================
-[[maybe_unused]] static void compute_slopes_from_lcp(MultiFab& slopes,
+[[maybe_unused]] inline void compute_slopes_from_lcp(MultiFab& slopes,
                                     const Geometry& geom,
                                     const std::string& filename)
 {
@@ -603,7 +603,7 @@ static bool read_landscape_binary(
 // ============================================================================
 // compute_elevation_from_lcp
 // ============================================================================
-[[maybe_unused]] static void compute_elevation_from_lcp(MultiFab& elev_mf,
+[[maybe_unused]] inline void compute_elevation_from_lcp(MultiFab& elev_mf,
                                        const Geometry& geom,
                                        const std::string& filename)
 {
@@ -625,7 +625,7 @@ static bool read_landscape_binary(
 // ============================================================================
 // compute_fuel_model_from_lcp
 // ============================================================================
-[[maybe_unused]] static void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
+[[maybe_unused]] inline void compute_fuel_model_from_lcp(MultiFab& fuel_mf,
                                         const Geometry& geom,
                                         const std::string& filename)
 {
@@ -651,7 +651,7 @@ static bool read_landscape_binary(
 // a binary or ASCII landscape file.  Drop-in replacement for
 // compute_landscape_slope_aspect_fuel() that also handles binary LCP.
 // ============================================================================
-[[maybe_unused]] static void compute_landscape_slope_aspect_fuel_lcp(
+[[maybe_unused]] inline void compute_landscape_slope_aspect_fuel_lcp(
     MultiFab& slope_out,
     MultiFab& aspect_out,
     MultiFab& fuel_out,

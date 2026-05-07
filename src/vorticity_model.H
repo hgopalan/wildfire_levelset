@@ -47,7 +47,7 @@ using namespace amrex;
 //                          ≥ 1 ghost cell)
 //   geom         – grid geometry (provides cell sizes)
 // ============================================================================
-static void compute_vorticity(MultiFab&       vorticity_mf,
+inline void compute_vorticity(MultiFab&       vorticity_mf,
                                MultiFab&       vel,
                                const Geometry& geom)
 {
