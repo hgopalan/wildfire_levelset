@@ -289,6 +289,165 @@ If your compiler doesn't support C++17::
 
 Solution: Upgrade to a newer compiler (GCC 7+, Clang 5+, MSVC 2017+).
 
+GPU Builds
+----------
+
+CUDA (Linux)
+^^^^^^^^^^^^
+
+Install the CUDA toolkit (12.6 or later recommended) before configuring::
+
+    cmake -S . -B build \
+      -DLEVELSET_GPU_BACKEND=CUDA \
+      -DAMReX_CUDA_ARCH="8.0"
+    cmake --build build --parallel
+
+.. note::
+   The wind solver is currently disabled on CUDA builds (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``
+   is set automatically) because it has unresolved CUDA-compatibility issues.
+
+**Known issues encountered during development**
+
+* **``identifier undefined in device code``** — ``static constexpr`` variables at file scope in
+  headers have internal linkage and are invisible to NVCC's separate device-code compilation
+  pass.  Fixed by changing them to ``inline constexpr`` (C++17 inline variables), which have
+  external linkage and can be inlined directly into device code.
+
+* **``-Wpedantic`` triggers NVCC diagnostics** — NVCC emits ``"style of line directive is a
+  GCC extension"`` and ``"ISO C++ forbids taking address of function '::main'"`` when
+  ``-Wpedantic`` is active.  Fixed by replacing ``-Wpedantic`` with ``-Wno-pedantic`` for
+  CUDA builds in ``CMakeLists.txt``.
+
+* **GPU-unsafe lambdas** — AMReX ``ParallelFor`` device lambdas must capture by value
+  (``[=]``), not by reference (``[&]``), because host stack pointers are inaccessible from GPU
+  threads.  Additionally, ``std::max({a, b, c})`` (initializer-list overload) is not available
+  in CUDA device code; use ``amrex::max(amrex::max(a, b), c)`` instead.
+
+* **``std::min``/``std::max`` in device lambdas** — The ``<algorithm>`` overloads are not
+  portable across CUDA/HIP/SYCL backends; replace them with ``amrex::min``/``amrex::max``
+  inside ``ParallelFor`` kernels.
+
+CUDA (Windows)
+^^^^^^^^^^^^^^
+
+Windows CUDA builds require Visual Studio 2019 or later (MSVC) with the CUDA toolkit installed.
+Use the ``build_windows_cuda`` CI job as a reference.
+
+.. note::
+   On Windows CUDA builds, the wind solver is disabled (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``)
+   to reduce the build surface.
+
+**Known issues encountered during development**
+
+* **MSVC-style ``/W4`` flag passed to NVCC** — When ``.cpp`` files are compiled through
+  ``nvcc`` (``LANGUAGE CUDA``), bare MSVC flags like ``/W4`` land as separate NVCC arguments.
+  NVCC misinterprets ``/W4`` as an input file and aborts with ``"A single input file is
+  required for a non-link phase when an outputfile is specified"``.  Fixed by wrapping the flag
+  in a CMake generator expression::
+
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+      $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/W4>
+
+* **``static`` functions with device lambdas rejected on Windows CUDA** — NVCC on Windows
+  rejects extended ``__device__`` / ``__host__ __device__`` lambdas inside functions with
+  internal linkage (``static void`` in headers).  Fixed by changing all such free functions in
+  headers from ``static void`` to ``inline void``; ``inline`` provides external linkage while
+  remaining safe to define in headers included across multiple translation units.
+
+* **Project ``.cpp`` files not routed through NVCC** — On Windows, ``src/main.cpp`` and
+  ``src/parse_inputs.cpp`` were compiled by MSVC instead of NVCC.  AMReX headers expose CUDA
+  device-side keywords that MSVC cannot parse.  Fixed by marking the affected source files
+  with ``PROPERTIES LANGUAGE CUDA`` in ``CMakeLists.txt`` when the CUDA backend is enabled.
+
+* **Missing CUDA sub-packages** — The Windows CUDA CI job failed with a ``curand`` error
+  because ``curand_dev`` was absent from the ``Jimver/cuda-toolkit`` sub-package list.  The
+  required sub-packages (matching the AMReX reference recipe) are::
+
+      ["nvcc", "cudart", "cuda_profiler_api", "cufft_dev", "cusparse_dev", "curand_dev"]
+
+* **AMReX headers not ready when project sources compile** — Ninja's parallel scheduler can
+  start compiling ``src/*.cpp`` before AMReX's generated headers (e.g., ``AMReX_Config.H``)
+  have been written to the build tree.  This manifests as the same misleading ``"A single
+  input file is required"`` NVCC error.  Fixed by adding an explicit ``add_dependencies`` or
+  pre-build step that compiles the ``amrex_3d`` target before the project sources.
+
+* **Wrong Ninja target name for pre-build step** — The AMReX pre-build step must target
+  ``amrex_3d`` (the name CMake generates for the 3-D AMReX library), not the alias ``amrex``.
+  Requesting the alias aborts the CI job before the main build starts.
+
+HIP / AMD ROCm (Linux)
+^^^^^^^^^^^^^^^^^^^^^^
+
+Install ROCm 6.2 (Ubuntu 22.04 / Jammy) before configuring.  The recommended package set
+mirrors the one used by AMReX, ERF, and AMR-Wind CI::
+
+    sudo apt-get install -y \
+      rocm-dev rocrand-dev rocprim-dev hiprand-dev rocsparse-dev rocm-cmake
+
+Configure using the ROCm Clang compilers (sourced from ``/etc/profile.d/rocm.sh``)::
+
+    source /etc/profile.d/rocm.sh
+    cmake -S . -B build \
+      -G Ninja \
+      -DCMAKE_C_COMPILER=$(which clang) \
+      -DCMAKE_CXX_COMPILER=$(which clang++) \
+      -DLEVELSET_GPU_BACKEND=HIP \
+      -DLEVELSET_BUILD_WIND_SOLVER=OFF \
+      -DAMReX_AMD_ARCH="gfx90a"
+    cmake --build build --parallel
+
+.. note::
+   The wind solver is currently disabled on HIP builds
+   (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``).
+
+**Known issues encountered during development**
+
+* **Missing ROCm device library packages** — An earlier CI recipe installed only ``hipcc``,
+  ``hip-dev``, and ``rocm-cmake``.  This was insufficient: ``rocm-dev`` is the critical
+  addition because it pulls in ``rocm-device-libs`` — the GPU bitcode files that
+  ``hipcc``/``clang++`` requires when targeting HIP.  Without it, the build fails with
+  unresolved device-code symbols.
+
+* **Duplicate YAML job keys silently discarded** — ``cmake_build.yml`` previously contained
+  two ``build_hip:`` keys.  YAML does not allow duplicate mapping keys; GitHub Actions
+  silently drops the first definition, so the stronger job (with full ROCm packages) was
+  never running.  Fixed by removing the duplicate weaker definition.
+
+* **Wrong compiler selected** — An earlier recipe passed ``/opt/rocm/bin/hipcc`` as the CXX
+  compiler.  The correct approach (matching AMReX/ERF/AMR-Wind CI) is to source the ROCm
+  environment and then use ``$(which clang++)`` / ``$(which clang)``.
+
+SYCL / Intel oneAPI (Linux)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Install the Intel DPC++/C++ compiler and MKL before configuring::
+
+    # Add the Intel oneAPI apt repository first, then:
+    sudo apt-get install -y \
+      intel-oneapi-compiler-dpcpp-cpp \
+      intel-oneapi-mkl-devel
+
+Configure using the Intel compilers (sourced from ``/opt/intel/oneapi/setvars.sh``)::
+
+    source /opt/intel/oneapi/setvars.sh
+    cmake -S . -B build \
+      -G Ninja \
+      -DCMAKE_C_COMPILER=$(which icx) \
+      -DCMAKE_CXX_COMPILER=$(which icpx) \
+      -DLEVELSET_GPU_BACKEND=SYCL \
+      -DLEVELSET_BUILD_WIND_SOLVER=OFF
+    cmake --build build --parallel
+
+**Known issues encountered during development**
+
+* **Missing ``intel-oneapi-mkl-devel``** — AMReX includes ``<oneapi/mkl/rng.hpp>`` from
+  ``AMReX_RandomEngine.H`` when building for SYCL.  If only the compiler package is installed
+  (without ``intel-oneapi-mkl-devel``), the build fails with a missing header error.
+
+* **Duplicate YAML job keys** — The same issue as HIP above: ``cmake_build.yml`` previously
+  had two ``build_sycl:`` keys; GitHub Actions silently used only the second (lighter)
+  definition, which was missing the MKL package.
+
 Platform-Specific Notes
 -----------------------
 
