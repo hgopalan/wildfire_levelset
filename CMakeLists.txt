@@ -136,6 +136,20 @@ if (MSVC)
 else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# When using the vendored AMReX submodule, Ninja may interleave the
+# compilation of levelset source files with AMReX's own build, causing
+# CUDA compilation to start before AMReX's generated headers (e.g.
+# AMReX_Config.H) have been written to the build tree.
+# target_link_libraries() only enforces ordering at the *link* step, so
+# we add an explicit build-order dependency here to cover the *compile*
+# step as well.
+if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt")
+  get_target_property(_amrex_build_target AMReX::amrex ALIASED_TARGET)
+  if(_amrex_build_target)
+    add_dependencies(levelset ${_amrex_build_target})
+  endif()
+endif()
 endif() # LEVELSET_BUILD_LEVELSET
 
 # ---------------------------------------------------------------------------
@@ -169,6 +183,13 @@ if(LEVELSET_BUILD_WIND_SOLVER)
       target_compile_options(wind_solver PRIVATE /W4)
     else()
       target_compile_options(wind_solver PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    # Same compile-step ordering guard as for the levelset target above.
+    if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt")
+      get_target_property(_amrex_build_target AMReX::amrex ALIASED_TARGET)
+      if(_amrex_build_target)
+        add_dependencies(wind_solver ${_amrex_build_target})
+      endif()
     endif()
     message(STATUS "wind_solver: enabled (3-D, same AMReX build)")
   else()
