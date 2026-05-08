@@ -156,6 +156,19 @@ int main(int argc, char* argv[])
                   has_spatial_crown, spatial_moisture_mf, has_spatial_moisture,
                   ba, dm, geom, inputs);
 
+    // ---- Topographic horizon angles (FARSITE 8-direction scan) -------------
+    // Precomputed once here because elevation never changes during a run.
+    // Guarded by use_topographic_horizon so users can skip the expensive
+    // MPI global-gather + O(N^2) CPU sweep when it is not needed.
+    std::unique_ptr<MultiFab> horizon_mf;
+    if (inputs.solar_radiation.enable == 1 &&
+        inputs.solar_radiation.use_topographic_horizon == 1) {
+        horizon_mf = std::make_unique<MultiFab>(ba, dm, 8, 0);
+        compute_topographic_horizon_angles(
+            *horizon_mf, elevation_mf, geom,
+            inputs.solar_radiation.horizon_scan_max_dist_m);
+    }
+
     // ---- GPU lookup tables and crown/Balbi coefficients -------------------
     FuelTableData ftd = setup_fuel_tables(inputs, fuel_model_mf);
     // Unpack frequently used pointers for backward compatibility with time loop.
@@ -252,6 +265,7 @@ int main(int argc, char* argv[])
                                    has_spatial_crown, cc_mf,
                                    spatial_moisture_mf,
                                    /*elapsed_s=*/Real(0.0),
+                                   horizon_mf.get(),
                                    /*print_position=*/true);
     }
 
@@ -618,7 +632,8 @@ int main(int argc, char* argv[])
                                      slope_mf, aspect_mf,
                                      has_spatial_crown, cc_mf,
                                      spatial_moisture_mf,
-                                     static_cast<amrex::Real>(time));
+                                     static_cast<amrex::Real>(time),
+                                     horizon_mf.get());
       }
 
       // Update FMC seasonal schedule (updates crown.FMC used by Van Wagner model)
