@@ -401,6 +401,17 @@ struct InputParameters {
     int         wtr_start_day;              // calendar day   of first .wtr record (0=auto)
     int         wtr_start_hour;             // HHMM hour      of first .wtr record (0=auto)
 
+    // ---- Multiple weather stations with spatial interpolation ----
+    // When non-empty, a CSV station-list file is parsed to build spatially-
+    // varying wind and weather fields via inverse-distance weighting (IDW) of
+    // per-station .wtr records.  Each row in the station list is:
+    //   station_id, x_m, y_m, wtr_file
+    // The IDW velocity field replaces the constant ux/uy wind at each timestep.
+    // Domain-mean T/RH from IDW centroid are used for the diurnal moisture model.
+    // (default: "" = disabled; multi_wtr_file takes precedence over wtr_file)
+    std::string multi_wtr_file;              // path to station list CSV (default: "")
+    amrex::Real multi_wtr_idw_power;         // IDW exponent p (default: 2.0)
+
     // ---- Aerial retardant suppression model ----
     // CSV file of drop zones: (drop_time_s, effectiveness, tau_decay_s, n_vertices)
     // followed by n_vertices rows of (x y) polygon vertices.

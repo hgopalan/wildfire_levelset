@@ -133,6 +133,7 @@ if(Python3_FOUND)
 endif()
 add_regression_test(cheney_gould_grassfire   moisture/cheney_gould_grassfire)
 add_regression_test(precip_wetting           moisture/precip_wetting)
+add_regression_test(spatial_moisture_output  moisture/spatial_moisture_output)
 
 # ===========================================================================
 # fuel/ – fuel models and adjustment files
@@ -189,6 +190,7 @@ add_regression_test(bulk_fuel_consumption    misc/bulk_fuel_consumption)
 
 if(Python3_FOUND)
     add_python_setup_regression_test(landfire_farsite misc/landfire_farsite create_landscape.py)
+    add_python_setup_regression_test(nonburnable_mask misc/nonburnable_mask create_landscape.py)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -265,7 +267,7 @@ message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
 message(STATUS "  terrain/        : terrain_wind (2-D), balbi_viegas_heatflux,")
 message(STATUS "                    windninja_ridge_canyon")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
-message(STATUS "                    precip_wetting")
+message(STATUS "                    precip_wetting, spatial_moisture_output")
 message(STATUS "  fuel/           : fuel_adj_file")
 message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
 message(STATUS "                    polygon_ignition, polyline_ignition")
@@ -273,7 +275,8 @@ message(STATUS "  wind/           : time_dependent_wind (2-D), turb_wind (2-D),"
 message(STATUS "                    wind_dir_schedule")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci")
 message(STATUS "  misc/           : 3d_sphere (3-D), eb_implicit, mtt_propagation,")
-message(STATUS "                    bulk_fuel_consumption, timing_benchmark, landfire_farsite")
+message(STATUS "                    bulk_fuel_consumption, timing_benchmark,")
+message(STATUS "                    landfire_farsite, nonburnable_mask")
 message(STATUS "")
 message(STATUS "All domains use UTM Zone 11N, Southern California reference")
 message(STATUS "  (330000 E, 3775000 N  →  Malibu / Santa Monica Mountains area)")

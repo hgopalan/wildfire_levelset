@@ -21,160 +21,140 @@ Comparison with Other Wildfire Simulation Tools
 Capability Summary
 ------------------
 
+Tools are grouped into three columns to keep the table compact:
+
+* **Group A — Operational fire behavior tools**: FARSITE · FlamMap · BehavePlus
+* **Group B — Physics-based LES/CFD tools**: QUIC-Fire (QUIC-URB) · FIRETEC
+* **Group C — Coupled fire–atmosphere NWP**: WRF-Fire (WRF-SFIRE)
+
 .. list-table::
    :header-rows: 1
-   :widths: 22 26 10 10 10 10 12
+   :widths: 22 28 20 15 15
 
    * - Capability
      - **Wildfire-AMR** (this solver)
-     - FARSITE
-     - WRF-SFIRE
-     - FlamMap
-     - BehavePlus
-     - QUIC-Fire / FIRETEC
-   * - **Surface spread models**
-     - Rothermel (1972); Balbi (2009); Cheney–Gould (1995) grassland;
-       Cruz–Alexander–Wakimoto (2005) crown; FBP O1a/O1b/S1–S3 (Forestry
-       Canada 1992); Lautenberger (2013) physics-based
+     - **Group A** — FARSITE / FlamMap / BehavePlus
+     - **Group B** — QUIC-Fire / FIRETEC
+     - **Group C** — WRF-Fire (WRF-SFIRE)
+   * - **Surface spread model**
+     - Rothermel (1972), Balbi (2009), and 5 others
+       (Cheney–Gould, Cruz crown, FBP, Lautenberger,
+       plus Viegas eruptive option)
+     - Rothermel (1972) in all three
+     - Semi-empirical QUIC; physics LES FIRETEC
      - Rothermel (1972)
-     - Rothermel (1972)
-     - Rothermel (1972)
-     - Rothermel (1972)
-     - Semi-empirical (QUIC); physics LES (FIRETEC)
    * - **Propagation method**
-     - Eulerian level-set (WENO5-Z/RK3); FARSITE Huygens ellipse (Richards
-       1990); Minimum Travel Time (Finney 2002)
-     - Huygens wavelet (explicit vertex propagation)
-     - Eulerian level-set
-     - MTT or Huygens wavelet
-     - Point-based; no spatial propagation
-     - Eulerian CFD grid
+     - Eulerian level-set (WENO5-Z / RK3);
+       FARSITE Huygens ellipse; MTT
+     - FARSITE: Huygens wavelet;
+       FlamMap: MTT or Huygens;
+       BehavePlus: point (no spatial propagation)
+     - Eulerian CFD (QUIC-URB / HIGRAD-FIRETEC)
+     - Eulerian level-set on WRF grid
    * - **Crown fire**
-     - Van Wagner (1977) initiation + passive CF blend;
-       Rothermel (1991) active ROS (3.34 × R\ :sub:`surface`);
-       Cruz et al. (2005) active ROS;
-       Scott & Reinhardt (2001) full TI/CI (bisection)
-     - Van Wagner (1977); active crown via R\ :sub:`c` = 3.34 R\ :sub:`s`
-     - Van Wagner (1977)
-     - Scott & Reinhardt (2001) full assessment
-     - Van Wagner (1977)
-     - Physics-based (heat flux / combustion)
-   * - **Wind adjustment**
-     - WAF (Andrews 2018, 20-ft → midflame); MEWS cap; 7 wind-terrain
-       feedback models (canyon, Viegas, Pimont, WindNinja ridge/canyon)
-     - WAF + MEWS cap (internal)
-     - WRF-derived; WAF in coupling layer
-     - WindNinja or gridded; WAF optional
-     - User-specified WAF
-     - 3-D mass-consistent (QUIC-URB) or LES
-   * - **Fuel models**
-     - FBFM13 (Anderson 13); FBFM40 (Scott–Burgan 40); custom inline;
-       FBP O1a/O1b grass + S1–S3 slash; per-cell from LANDFIRE LCP
-     - FBFM13 + FBFM40
-     - FBFM13
-     - FBFM13 + FBFM40
-     - FBFM13 + FBFM40
-     - Custom 3-D bulk density
-   * - **Fuel moisture**
-     - 1-hr/10-hr/100-hr dead + live herb/woody per cell; FMD schedule;
-       Nelson (2000) diurnal EMC; precipitation wetting;
-       per-cell from FARSITE .fms; solar shade adjustment
-     - Dead/live per size class; FMD schedule
-     - Dead/live (prescribed)
-     - Dead/live per class; conditioning option
-     - Dead/live per class
-     - Bulk moisture per cell
-   * - **Flame diagnostics**
-     - Byram (1959) fireline intensity & flame length;
-       Thomas (1963) inverse (I\ :sub:`B` from observed L\ :sub:`f`);
-       scorch height; tree mortality; crown activity class
-     - Fireline intensity; flame length
-     - Fireline intensity
-     - Full fire behavior outputs
-     - Full fire behavior outputs
-     - Physics-derived heat release
-   * - **Firebrand spotting**
-     - Albini (1983) 2-D trajectory; Albini (1979) torching-tree;
-       stochastic lognormal/exponential distance model
-     - Albini empirical
-     - Not included
-     - Not standard
-     - Albini (point)
-     - Physics-based (select FIRETEC versions)
-   * - **Terrain**
-     - Per-cell elevation, slope, aspect from LCP or XYZ terrain file;
-       2-D domain
-     - Full 2-D LCP landscape
-     - Full 3-D WRF terrain
-     - Full 2-D LCP landscape
-     - Point-based (user slope/aspect)
-     - Full 3-D terrain + canopy
-   * - **Fire–atmosphere coupling**
-     - None (prescribed wind; heat-flux plume correction optional)
-     - None
-     - Two-way (fire ↔ WRF; heat/momentum flux)
-     - None
-     - None
-     - One-way (QUIC-URB) or two-way LES (FIRETEC)
-   * - **Fuel burnout / depletion**
-     - Residence-time burnout; per-class exponential decay;
-       per-cell residual fuel tracking
-     - Per-cell burnout
-     - Post-frontal consumption
-     - Not tracked
-     - Not applicable
+     - Van Wagner (1977) + Rothermel (1991) + Cruz
+       et al. (2005) + Scott–Reinhardt (2001) TI/CI
+     - Van Wagner (1977); FARSITE/FlamMap active
+       via R\ :sub:`c`\ = 3.34 R\ :sub:`s`;
+       BehavePlus: Van Wagner point calc.
      - Physics-based combustion
-   * - **Ignition types**
-     - Point CSV; sphere/box/ellipse; closed polygon; polyline (line fire);
-       dynamic fire-points polling; Gaussian sigma blending
-     - Interactive ignition map; polygon
-     - WPS/WRF restart
-     - Ignition map or polygon
-     - Single point / simple polygon
-     - User-defined locations
+     - Van Wagner (1977)
+   * - **Wind adjustment**
+     - WAF (Andrews 2018); MEWS cap;
+       7 wind-terrain feedback models
+     - FARSITE/FlamMap: WAF + MEWS (internal);
+       BehavePlus: user-specified WAF
+     - 3-D mass-consistent (QUIC-URB) or LES
+     - WRF-derived; WAF in coupling layer
+   * - **Fuel models**
+     - FBFM13 + FBFM40; FBP grass/slash;
+       Lautenberger; per-cell LCP
+     - FARSITE/FlamMap: FBFM13 + FBFM40;
+       BehavePlus: FBFM13 + FBFM40
+     - Custom 3-D bulk density per cell
+     - FBFM13
+   * - **Fuel moisture**
+     - All size classes; FMD schedule;
+       Nelson (2000) diurnal EMC;
+       precipitation wetting; solar shading;
+       per-cell .fms; spatial output in plotfiles
+     - FARSITE/FlamMap: dead/live + FMD +
+       conditioning;
+       BehavePlus: dead/live per class
+     - Bulk moisture per cell
+     - Dead/live (prescribed)
+   * - **Non-burnable masking**
+     - ✓ Codes 91–99 / NB1–NB9 → ROS = 0
+     - ✓ (all three)
+     - N/A (3-D grid)
+     - Partial (fuel mask)
+   * - **Flame diagnostics**
+     - Byram intensity + flame length;
+       scorch height; tree mortality; TI/CI;
+       NFDRS ERC
+     - FARSITE: intensity + flame length;
+       FlamMap: full outputs;
+       BehavePlus: full outputs
+     - Physics heat release
+     - Intensity + flame length
+   * - **Firebrand spotting**
+     - Albini (1983) 2-D trajectory + torching;
+       stochastic distance model
+     - FARSITE: Albini empirical;
+       FlamMap: not standard;
+       BehavePlus: Albini (point)
+     - Select FIRETEC versions
+     - Not included
+   * - **Terrain & landscape**
+     - Per-cell elev./slope/aspect/fuel from LCP
+       or XYZ terrain file; 2-D domain
+     - All three: full 2-D LCP landscape;
+       BehavePlus: user slope/aspect
+     - Full 3-D terrain + canopy
+     - Full 3-D WRF terrain
+   * - **Weather input**
+     - Single .wtr; FMD schedule;
+       **multi-station IDW** spatial interpolation
+     - FARSITE: per-station .wtr;
+       FlamMap: gridded or single station;
+       BehavePlus: single point
+     - Prescribed per-cell
+     - WRF atmospheric profiles
+   * - **Fire–atmosphere coupling**
+     - None (prescribed wind; heat-flux plume
+       correction optional)
+     - None in all three
+     - One-way QUIC-URB; two-way LES FIRETEC
+     - Two-way (fire ↔ WRF)
    * - **Barrier / suppression**
-     - Polyline firebreaks (CSV); multiple barrier files;
-       extinguish-on-contact logic
-     - Dozer/hand lines; aerial retardant
+     - Polyline firebreaks (CSV);
+       aerial retardant (ROS + spotting suppressed)
+     - FARSITE: dozer/hand lines + retardant;
+       FlamMap/BehavePlus: not included
      - Not included
      - Not included
-     - Not applicable
-     - Not included
-   * - **Spatial resolution**
-     - User-defined; AMReX AMR-ready; uniform 2-D default
-     - Landscape raster resolution
-     - WRF grid (100 m – 1 km)
-     - Landscape raster resolution
-     - Point-based
-     - 1–10 m 3-D grid
    * - **GPU acceleration**
-     - ✓ AMReX CUDA / HIP / SYCL kernels
-     - ✗
-     - ✗
-     - ✗
-     - ✗
+     - ✓ AMReX CUDA / HIP / SYCL
+     - ✗ (all three are serial / CPU-only)
      - Partial (QUIC-URB select versions)
+     - ✗
    * - **MPI parallelism**
      - ✓ AMReX domain decomposition
-     - ✗
-     - ✓ WRF MPI
-     - ✗
-     - ✗
+     - ✗ (all three serial)
      - ✓ MPI/OpenMP
+     - ✓ WRF MPI
    * - **Embedded boundaries**
-     - ✓ AMReX EB (buildings, fuel breaks, complex geometry)
+     - ✓ AMReX EB (buildings, fuel breaks)
+     - ✗ (all three)
+     - ✓ QUIC-URB / FIRETEC 3-D geometry
      - ✗
-     - ✗
-     - ✗
-     - ✗
-     - ✓ (QUIC-URB / FIRETEC 3-D geometry)
    * - **Open source**
-     - ✓ (MIT licence)
-     - ✗ (USFS proprietary binary)
-     - ✓ (WRF open source)
-     - ✗ (USFS proprietary binary)
-     - ✓ (open source)
-     - Partial (QUIC-Fire: research licence; FIRETEC: research only)
+     - ✓ MIT licence
+     - FARSITE/FlamMap: proprietary USFS binary;
+       BehavePlus: open source
+     - Research licence (QUIC-Fire);
+       restricted (FIRETEC)
+     - ✓ WRF open source
 
 Tool Documentation References
 ------------------------------
@@ -184,11 +164,11 @@ official sources:
 
 * **Wildfire-AMR**: https://hgopalan.github.io/wildfire_levelset/
 * **FARSITE**: https://www.firelab.org/project/farsite
-* **WRF-SFIRE**: https://github.com/openwfm/WRF-SFIRE
 * **FlamMap**: https://www.firelab.org/project/flammap
 * **BehavePlus**: https://www.firelab.org/project/behaveplusfiremodeling
 * **QUIC-Fire**: https://www.lanl.gov/projects/quic-fire/
 * **FIRETEC**: https://www.lanl.gov/org/padwp/adcles/fluid-dynamics-solid-mechanics/index.php
+* **WRF-SFIRE**: https://github.com/openwfm/WRF-SFIRE
 
 Key Differences from FARSITE
 -----------------------------
@@ -205,11 +185,17 @@ Key Differences from FARSITE
   O1a/O1b/S1–S3 (Forestry Canada 1992), and Lautenberger (2013)
   physics-based. FARSITE ships only with Rothermel (1972).
 
-* **Richer crown fire pipeline**: Wildfire-AMR supports Van Wagner (1977)
-  passive blending via the crowning fraction CF = (I\ :sub:`B`/I\ :sub:`o`)\ :sup:`2/3`,
-  Rothermel (1991) active crown ROS (3.34 × R\ :sub:`surface`), Cruz et al.
-  (2005) wind-dependent crown ROS, and full Scott & Reinhardt (2001) TI/CI via
-  bisection. FARSITE uses the Rothermel (1991) multiplier internally.
+* **Non-burnable cell masking**: Fuel model codes 91–99 and NB1–NB9 (water,
+  rock, urban, bare ground) are explicitly zeroed in the ROS kernel so fire
+  cannot creep through sparse-fuel numerical noise into non-burnable areas.
+
+* **Multiple weather stations**: ``multi_wtr_file`` loads per-station .wtr
+  files and produces spatially-varying wind and T/RH via IDW interpolation,
+  matching FARSITE's multi-station weather capability.
+
+* **Retardant spotting suppression**: ``retardant_file`` now suppresses both
+  ROS and spotting probability inside active drop zones, consistent with
+  FARSITE's aerial retardant model.
 
 * **Wind adjustments are optional**: FARSITE applies WAF and MEWS internally.
   Wildfire-AMR exposes both via ``rothermel.use_waf`` and
@@ -251,9 +237,10 @@ Key Differences from FlamMap
   level-set, FARSITE Huygens, or MTT.
 
 * **Crown fire depth**: FlamMap provides the full Scott & Reinhardt (2001)
-  crown fire assessment. Wildfire-AMR now matches this with bisection-based
-  TI/CI plus Van Wagner (1977) passive blending and Rothermel (1991) active
+  crown fire assessment. Wildfire-AMR matches this with bisection-based
+  TI/CI plus Van Wagner (1977) passive blending and Cruz et al. (2005) active
   crown ROS.
 
 * **GPU / open source**: FlamMap is a closed-source Windows binary; Wildfire-AMR
   is MIT-licensed and GPU-accelerated.
+

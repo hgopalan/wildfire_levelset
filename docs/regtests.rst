@@ -460,7 +460,8 @@ grouped by physical category:
 | ``terrain``      | terrain_wind, balbi_viegas_heatflux,                    |
 |                  | windninja_ridge_canyon                                  |
 +------------------+---------------------------------------------------------+
-| ``moisture``     | fmd_moisture, cheney_gould_grassfire, precip_wetting    |
+| ``moisture``     | fmd_moisture, cheney_gould_grassfire, precip_wetting,   |
+|                  | spatial_moisture_output                                 |
 +------------------+---------------------------------------------------------+
 | ``fuel``         | fuel_adj_file                                           |
 +------------------+---------------------------------------------------------+
@@ -472,7 +473,8 @@ grouped by physical category:
 | ``diagnostics``  | scott_reinhardt_indices                                 |
 +------------------+---------------------------------------------------------+
 | ``misc``         | 3d_sphere, eb_implicit, mtt_propagation,                |
-|                  | bulk_fuel_consumption, timing_benchmark, landfire_farsite|
+|                  | bulk_fuel_consumption, timing_benchmark,                |
+|                  | landfire_farsite, nonburnable_mask                      |
 +------------------+---------------------------------------------------------+
 
 All tests use UTM Zone 11N, Southern California reference coordinates

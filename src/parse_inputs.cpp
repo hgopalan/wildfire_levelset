@@ -1111,6 +1111,19 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // ---- Multiple weather stations with spatial IDW interpolation ----
+    p.multi_wtr_file       = "";   pp.query("multi_wtr_file",       p.multi_wtr_file);
+    p.multi_wtr_idw_power  = 2.0;  pp.query("multi_wtr_idw_power",  p.multi_wtr_idw_power);
+    if (!p.multi_wtr_file.empty()) {
+        Print() << "Multi-station weather: " << p.multi_wtr_file
+                << " (IDW power=" << p.multi_wtr_idw_power << ")\n";
+        // multi_wtr implicitly enables diurnal moisture
+        if (p.diurnal_moisture.enable != 1) {
+            p.diurnal_moisture.enable = 1;
+            Print() << "  NOTE: multi_wtr_file enables diurnal moisture model automatically.\n";
+        }
+    }
+
     // -------- Aerial retardant suppression --------
     p.retardant_file = "";    pp.query("retardant_file", p.retardant_file);
     if (!p.retardant_file.empty()) {

@@ -222,6 +222,16 @@ inline constexpr amrex::Real LAUT_A_L = amrex::Real(1.05e-5);
 inline constexpr amrex::Real ROTHERMEL1991_CROWN_MULT = amrex::Real(3.34);
 
 // ============================================================================
+// Minimum rate of spread (FARSITE stall threshold)
+// ============================================================================
+
+/// Minimum ROS [m/s] below which spread is stalled to zero.
+/// FARSITE stops fire propagation below ~0.01 chains/hr (≈ 0.056 ft/min ≈ 2.8e-4 m/s).
+/// We use a slightly more generous floor of 1e-4 m/s to avoid numerical creep
+/// in sparse-fuel areas while not suppressing legitimate slow backing fires.
+inline constexpr amrex::Real ROS_MIN_MS = amrex::Real(1.0e-4);
+
+// ============================================================================
 // Thomas (1963) / Byram (1959) flame length <-> intensity
 // ============================================================================
 

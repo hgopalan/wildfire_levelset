@@ -143,6 +143,13 @@ inline void compute_rothermel_R(MultiFab& R_mf,
 
             if (use_fuel_table) {
                 int code = static_cast<int>(fm(i, j, k));
+                // Non-burnable landscape codes (FBFM40: 91–99; FBFM13: NB equivalent)
+                // Zero ROS prevents fire from crossing water, rock, urban areas, etc.
+                if (code == 91 || code == 92 || code == 93 ||
+                    code == 98 || code == 99) {
+                    R(i, j, k) = Real(0.0);
+                    return;
+                }
                 if (code >= 0 && code < fuel_table_size) {
                     const RothermelComputed& frc = fuel_table[code];
                     cell_R0          = frc.R0;
@@ -207,7 +214,9 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             }
 
             // Rate of spread [ft/min] → simulation units
-            R(i,j,k) = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
+            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            R(i,j,k) = (R_raw >= WildfireConst::ROS_MIN_MS) ? R_raw : Real(0.0);
         });
     }
 }
