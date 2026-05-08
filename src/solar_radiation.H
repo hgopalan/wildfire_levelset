@@ -423,4 +423,100 @@ inline amrex::Real advance_solar_date(
     return static_cast<amrex::Real>(hour_of_day);
 }
 
+// ============================================================================
+// apply_solar_radiation_step
+//
+// Computes the solar position for the given simulation time, derives per-cell
+// terrain and canopy shade fractions, and (when the diurnal moisture model is
+// active) writes shade-adjusted dead-fuel moistures into spatial_moisture_mf
+// (components 0-2: M_d1, M_d10, M_d100).
+//
+// Called once at t=0 (elapsed_s = 0) for the initial state and once per
+// timestep inside the main time loop.
+//
+// Parameters:
+//   inputs            – full input parameter set (solar_radiation, diurnal_moisture)
+//   shade_fraction_mf – output per-cell shade fraction [0,1] (1 component)
+//   slope_mf          – terrain slope [deg], FARSITE convention
+//   aspect_mf         – terrain aspect [deg], FARSITE 0=N CW
+//   has_spatial_crown – true when the canopy-cover MultiFab is populated
+//   cc_mf             – canopy-cover [%] MultiFab (used only when has_spatial_crown)
+//   spatial_moisture_mf – in/out: dead-fuel moistures updated when diurnal_moisture active
+//   elapsed_s         – elapsed simulation time [s] (0 at start)
+//   print_position    – when true, print the computed solar elevation/azimuth
+// ============================================================================
+inline void apply_solar_radiation_step(
+    const InputParameters& inputs,
+    MultiFab&              shade_fraction_mf,
+    const MultiFab&        slope_mf,
+    const MultiFab&        aspect_mf,
+    bool                   has_spatial_crown,
+    const MultiFab&        cc_mf,
+    MultiFab&              spatial_moisture_mf,
+    amrex::Real            elapsed_s,
+    bool                   print_position = false)
+{
+    // Advance calendar date by elapsed simulation time
+    int sol_year  = inputs.solar_radiation.year;
+    int sol_month = inputs.solar_radiation.month;
+    int sol_day   = inputs.solar_radiation.day;
+    amrex::Real hour_local = advance_solar_date(
+        sol_year, sol_month, sol_day,
+        inputs.solar_radiation.sim_start_hour,
+        elapsed_s);
+
+    // Compute solar position
+    SolarPosition sun = compute_solar_position(
+        inputs.solar_radiation.latitude,
+        inputs.solar_radiation.longitude,
+        sol_year, sol_month, sol_day,
+        hour_local,
+        inputs.solar_radiation.timezone_offset);
+
+    if (print_position) {
+        amrex::Print() << "Solar position at t=0: elevation="
+                       << sun.elevation_rad * (180.0 / WildfireConst::PI) << " deg"
+                       << "  azimuth="
+                       << sun.azimuth_rad   * (180.0 / WildfireConst::PI) << " deg\n";
+    }
+
+    // Per-cell terrain + canopy shade fraction
+    const MultiFab* cc_for_shade = (inputs.solar_radiation.use_canopy_shading == 1
+                                    && has_spatial_crown) ? &cc_mf : nullptr;
+    compute_shade_fraction_mf(shade_fraction_mf,
+                              slope_mf, aspect_mf,
+                              cc_for_shade,
+                              sun,
+                              inputs.solar_radiation.use_canopy_shading,
+                              static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover));
+
+    // Per-cell shade-adjusted EMC (requires diurnal T_air / RH)
+    if (inputs.diurnal_moisture.enable == 1) {
+        const double phase = WildfireConst::TWO_PI *
+            (inputs.diurnal_moisture.t_start_s +
+             static_cast<double>(elapsed_s) -
+             inputs.diurnal_moisture.t_T_peak_s)
+            / WildfireConst::DAY_S;
+        const double T_mean  = 0.5 * (inputs.diurnal_moisture.T_max +
+                                      inputs.diurnal_moisture.T_min);
+        const double A_T     = 0.5 * (inputs.diurnal_moisture.T_max -
+                                      inputs.diurnal_moisture.T_min);
+        const double RH_mean = 0.5 * (inputs.diurnal_moisture.RH_max +
+                                      inputs.diurnal_moisture.RH_min);
+        const double A_RH    = 0.5 * (inputs.diurnal_moisture.RH_max -
+                                      inputs.diurnal_moisture.RH_min);
+        double T_C  = T_mean  + A_T  * std::sin(phase);
+        double RH_p = RH_mean - A_RH * std::sin(phase);
+        T_C  = std::max(-40.0, std::min(60.0,  T_C));
+        RH_p = std::max(1.0,   std::min(100.0, RH_p));
+
+        apply_solar_emc_to_spatial_moisture(
+            spatial_moisture_mf,
+            shade_fraction_mf,
+            static_cast<amrex::Real>(T_C),
+            static_cast<amrex::Real>(RH_p),
+            inputs.solar_radiation.solar_heating_C);
+    }
+}
+
 #endif // SOLAR_RADIATION_H

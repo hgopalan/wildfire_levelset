@@ -109,6 +109,7 @@ using namespace amrex;
 
 // ---- Project headers: output ----
 #include "write_xy_data.H"
+#include "plot_results.H"
 
 // ---- Project headers: field setup ----
 #include "multifab_setup.H"
