@@ -757,7 +757,11 @@ int main(int argc, char* argv[])
                 R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
             });
         }
-        if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
+        // Only recompute dt if active crown cells exist and could raise the max ROS.
+        // Check the max crown ROS (global) to decide if a recomputation is warranted.
+        if (use_levelset && R_crown_g_ms > Real(0.0)) {
+            dt = compute_dt(R_mf, geom, inputs.cfl);
+        }
     }
 
     // Fire emissions (CO₂, CO, PM₂.₅) from fuel load × consumption fraction

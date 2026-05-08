@@ -100,6 +100,8 @@ from typing import Dict, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 # Albini (1979) maximum spotting distance nomograph (Cap 1)
 # ---------------------------------------------------------------------------
+# Albini (1979) spotting distance empirical constants (Cap 1)
+# ---------------------------------------------------------------------------
 # Albini, F.A. (1979). Spot fire distance from burning trees – a predictive
 # model. USDA Forest Service General Technical Report INT-56.
 #
@@ -119,6 +121,14 @@ from typing import Dict, List, Optional, Tuple
 # These are condensed fits to the full Albini (1979) nomograph curves and give
 # reasonable maximum spotting distance estimates for planning purposes.
 # ---------------------------------------------------------------------------
+
+# Albini (1979) Eq. 7 plume height scaling: H_z [m] = _ALBINI_PLUME_COEFF * I_B^(1/3)
+_ALBINI_PLUME_COEFF     = 12.2
+# Empirical firebrand horizontal transport factor F_h from Albini (1979) Table 2
+_ALBINI_F_H             = 0.0176
+# Scott & Reinhardt (2005) crown-fire spotting: L_spot [m] = coeff * I_B^exp [kW/m]
+_ALBINI_CROWN_COEFF     = 0.0176
+_ALBINI_CROWN_EXPONENT  = 0.655  # Scott & Reinhardt (2005), Eq. 12
 
 def albini_spotting_distance(
     I_B_kW_m: float,
@@ -147,15 +157,15 @@ def albini_spotting_distance(
 
     if mode == "torching":
         # Albini (1979) Eq. 7 approximation:
-        #   H_z [m] = 12.2 * I_B^(1/3)           (plume lofting height)
-        #   L_spot [m] = 0.0176 * U_ftmin^0.5 * H_z
-        H_z = 12.2 * I_B_kW_m ** (1.0 / 3.0)
-        U_ftmin = U_ms * 196.85
-        L_spot = 0.0176 * math.sqrt(max(U_ftmin, 0.0)) * H_z
+        #   H_z [m] = _ALBINI_PLUME_COEFF * I_B^(1/3)   (plume lofting height)
+        #   L_spot [m] = _ALBINI_F_H * U_ftmin^0.5 * H_z
+        H_z = _ALBINI_PLUME_COEFF * I_B_kW_m ** (1.0 / 3.0)
+        U_ftmin = U_ms * _M_S_TO_FT_MIN
+        L_spot = _ALBINI_F_H * math.sqrt(max(U_ftmin, 0.0)) * H_z
     else:
-        # Scott & Reinhardt (2005) crown-fire spotting approximation:
-        #   L_spot [m] = 0.0176 * I_B^0.655
-        L_spot = 0.0176 * I_B_kW_m ** 0.655
+        # Scott & Reinhardt (2005) crown-fire spotting approximation (Eq. 12):
+        #   L_spot [m] = _ALBINI_CROWN_COEFF * I_B^_ALBINI_CROWN_EXPONENT
+        L_spot = _ALBINI_CROWN_COEFF * I_B_kW_m ** _ALBINI_CROWN_EXPONENT
     return max(L_spot, 0.0)
 
 

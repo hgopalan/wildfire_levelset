@@ -195,6 +195,31 @@ _BTU_FT_S_TO_KW_M = 0.34879
 _FT_MIN_TO_M_MIN  = 0.3048
 
 
+# ---------------------------------------------------------------------------
+# Van Wagner (1977) crown fire empirical constants
+# ---------------------------------------------------------------------------
+# Van Wagner, C.E. (1977). Conditions for the start and spread of crown fire.
+#   Canadian Journal of Forest Research, 7(1), 23–34.
+#
+# Critical initiation intensity (Van Wagner 1977, Eq. 1):
+#   I_o [kW/m] = _VW_I0_COEFF × CBH × (_VW_I0_CONST + _VW_I0_FMC × FMC%)
+_VW_I0_COEFF  = 0.010   # Van Wagner (1977) Eq. 1 leading coefficient
+_VW_I0_CONST  = 460.0   # Van Wagner (1977) Eq. 1 intercept [°C·s/m]
+_VW_I0_FMC    = 25.9    # Van Wagner (1977) Eq. 1 FMC coefficient
+
+# Critical active crown ROS (Van Wagner 1977, Eq. 2):
+#   R'_SA [m/min] = _VW_CROWN_ROS_NUM / CBD [kg/m³]
+_VW_CROWN_ROS_NUM  = 3.0   # Van Wagner (1977) Eq. 2 numerator [m²/min·kg]
+
+# Moisture reduction factor bounds for active crown ROS
+# (Scott & Reinhardt 2001, following Van Wagner 1977 discussion):
+#   m_factor = 1 - (FMC - _VW_MF_FMC_REF) / _VW_MF_FMC_RANGE
+#   clamped to [_VW_MF_MIN, 1.0]
+_VW_MF_FMC_REF   = 100.0   # reference foliar moisture [%] (Scott & Reinhardt 2001)
+_VW_MF_FMC_RANGE = 200.0   # FMC denominator [%]
+_VW_MF_MIN       = 0.3     # minimum moisture reduction factor (Scott & Reinhardt 2001)
+
+
 def _get_fuel(code: int, system: str) -> Optional[Tuple]:
     db = _FBFM13 if system == "13" else _FBFM40
     return db.get(code)
@@ -206,6 +231,10 @@ def _get_fuel(code: int, system: str) -> Optional[Tuple]:
 
 def critical_crown_intensity(CBH: float, FMC: float) -> float:
     """Compute Van Wagner (1977) critical surface fire intensity for crown initiation.
+
+    Uses Eq. 1 from Van Wagner (1977):
+
+        I_o [kW/m] = _VW_I0_COEFF × CBH × (_VW_I0_CONST + _VW_I0_FMC × FMC%)
 
     Parameters
     ----------
@@ -221,11 +250,20 @@ def critical_crown_intensity(CBH: float, FMC: float) -> float:
     """
     CBH = max(CBH, 0.1)
     FMC = max(FMC, 50.0)
-    return 0.010 * CBH * (460.0 + 25.9 * FMC)
+    return _VW_I0_COEFF * CBH * (_VW_I0_CONST + _VW_I0_FMC * FMC)
 
 
 def active_crown_ros(CBD: float, FMC: float = 100.0) -> float:
     """Compute Van Wagner (1977) active crown fire rate of spread.
+
+    Uses Eq. 2 from Van Wagner (1977):
+
+        R'_SA [m/min] = _VW_CROWN_ROS_NUM / CBD
+
+    A moisture reduction factor (Scott & Reinhardt 2001) is applied:
+
+        m_factor = 1 - (FMC - _VW_MF_FMC_REF) / _VW_MF_FMC_RANGE
+        m_factor = clamp(m_factor, _VW_MF_MIN, 1.0)
 
     Parameters
     ----------
@@ -240,10 +278,9 @@ def active_crown_ros(CBD: float, FMC: float = 100.0) -> float:
         Active crown fire ROS R'_SA [m/min].
     """
     CBD = max(CBD, 0.01)
-    R_sa = 3.0 / CBD
-    # Moisture reduction (reduces ROS for wetter canopies)
-    m_factor = 1.0 - (FMC - 100.0) / 200.0
-    m_factor = max(0.3, min(1.0, m_factor))
+    R_sa = _VW_CROWN_ROS_NUM / CBD
+    m_factor = 1.0 - (FMC - _VW_MF_FMC_REF) / _VW_MF_FMC_RANGE
+    m_factor = max(_VW_MF_MIN, min(1.0, m_factor))
     return R_sa * m_factor
 
 

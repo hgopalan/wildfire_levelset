@@ -68,11 +68,27 @@ from typing import Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
+# Anderson (1970) probability-of-ignition constants
+# ---------------------------------------------------------------------------
+# Anderson, H.E. (1970). Forest fuel ignitibility.
+#   Fire Technology, 6(4), 312–319.  Eq. 4 (as reported in Rothermel 1983).
+#
+#   P_i = min(1, max(0, _PI_COEFF * T_fuel_F^_PI_TEMP_EXP * exp(_PI_MC_COEFF * MC%)))
+_PI_COEFF      = 0.000048   # empirical coefficient  (Anderson 1970, Eq. 4)
+_PI_TEMP_EXP   = 1.4        # temperature exponent   (Anderson 1970, Eq. 4)
+_PI_MC_COEFF   = -0.07      # moisture coefficient   (Anderson 1970, Eq. 4)
+
+
+# ---------------------------------------------------------------------------
 # Core P_i calculation
 # ---------------------------------------------------------------------------
 
 def prob_ignition(T_fuel_F: float, MC_pct: float) -> float:
     """Compute Anderson (1970) probability of ignition.
+
+    Uses the empirical formula reported in Rothermel (1983):
+
+        P_i = min(1, max(0, _PI_COEFF × T_fuel_F^_PI_TEMP_EXP × exp(_PI_MC_COEFF × MC%)))
 
     Parameters
     ----------
@@ -88,7 +104,7 @@ def prob_ignition(T_fuel_F: float, MC_pct: float) -> float:
     """
     if T_fuel_F <= 0.0:
         return 0.0
-    raw = 0.000048 * (T_fuel_F ** 1.4) * math.exp(-0.07 * MC_pct)
+    raw = _PI_COEFF * (T_fuel_F ** _PI_TEMP_EXP) * math.exp(_PI_MC_COEFF * MC_pct)
     return min(1.0, max(0.0, raw))
 
 
