@@ -50,6 +50,11 @@ Overview
      - FSPro-style values-at-risk (VAR) overlay: match asset inventory to burn
        probability map, compute expected loss per asset and category, produce
        prioritised at-risk list and optional Monte-Carlo exceedance curve.
+   * - ``topographic_horizon_analysis.py``
+     - Compute and visualise FARSITE topographic horizon angles from an XYZ
+       terrain CSV or a built-in synthetic canyon profile.  Identifies which
+       cells are in ridge shadow for a given solar elevation / azimuth.
+       Also serves as executable documentation of the C++ horizon-scan algorithm.
    * - ``behavior_matrix.py``
      - Generate Rothermel fire behavior matrices across moisture / wind ranges
    * - ``crown_fire_worksheet.py``

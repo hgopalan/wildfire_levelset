@@ -684,6 +684,14 @@ struct InputParameters {
         amrex::Real solar_heating_C; // max solar heating of fuel above air temp [°C] (default: 17.0)
         int use_canopy_shading;      // 1 to include canopy cover in shade fraction (default: 1)
         amrex::Real cloud_cover;     // domain-uniform cloud fraction [0, 1] (0 = clear sky; default: 0.0)
+        // FARSITE full topographic horizon scan (expensive – off by default).
+        // For each cell, 8 compass-direction ray marches find the maximum terrain-
+        // elevation angle (horizon angle); the cell is shaded when the solar
+        // elevation is below that angle.  Requires a global MPI gather of the
+        // elevation field – can be costly on large domains or many ranks.
+        // Set use_topographic_horizon = 0 to skip this step entirely.
+        int         use_topographic_horizon; // 1 = FARSITE 8-dir horizon scan (default: 0)
+        amrex::Real horizon_scan_max_dist_m; // max ray-march distance [m]; 0 = full domain (default: 0.0)
     } solar_radiation;
 
     // ---- Canadian FBP System fire spread model parameters ----

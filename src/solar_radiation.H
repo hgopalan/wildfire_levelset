@@ -212,6 +212,12 @@ inline SolarPosition compute_solar_position(
 //   f_total = max(f_terrain_canopy, cloud_cover)
 // When cloud_cover = 1 the entire domain is fully overcast (f = 1 everywhere).
 //
+// Topographic horizon shading (optional): the pre-computed 8-direction horizon
+// MultiFab is consulted.  The horizon elevation angle for the solar azimuth is
+// obtained by linear interpolation between the two bounding compass directions
+// (each covers 45°).  If the solar elevation angle is below that interpolated
+// horizon angle, the cell is in the shadow of a distant ridge.
+//
 // Parameters:
 //   shade_mf     – output MultiFab (1 component), filled in-place
 //   slope_mf     – terrain slope [deg] (1 component, FARSITE convention)
@@ -220,6 +226,8 @@ inline SolarPosition compute_solar_position(
 //   sun          – solar position (elevation_rad, azimuth_rad)
 //   use_canopy   – 1 to include canopy_cover shading, 0 to ignore
 //   cloud_cover  – domain-uniform cloud fraction [0, 1] (default 0 = clear sky)
+//   horizon_mf   – 8-comp horizon-angle MultiFab from
+//                  compute_topographic_horizon_angles(); nullptr = skip
 // ============================================================================
 inline void compute_shade_fraction_mf(
     MultiFab&           shade_mf,
@@ -228,7 +236,8 @@ inline void compute_shade_fraction_mf(
     const MultiFab*     cc_mf,
     const SolarPosition& sun,
     int                 use_canopy,
-    amrex::Real         cloud_cover = amrex::Real(0.0))
+    amrex::Real         cloud_cover = amrex::Real(0.0),
+    const MultiFab*     horizon_mf  = nullptr)
 {
     constexpr amrex::Real DEG2RAD = WildfireConst::PI / amrex::Real(180.0);
 
@@ -248,6 +257,27 @@ inline void compute_shade_fraction_mf(
     const amrex::Real cos_elev = std::cos(sun_elev);
     const amrex::Real sin_elev = std::sin(sun_elev);
     const bool has_cc          = (cc_mf != nullptr && use_canopy == 1);
+    const bool has_hz          = (horizon_mf != nullptr);
+
+    // Pre-compute direction interpolation weights for the horizon check once,
+    // outside the per-cell kernel (same solar azimuth for the whole domain).
+    // The 8 horizon directions are evenly spaced at 45° starting from N=0°.
+    // dir_lo / dir_hi are the bounding direction indices; hz_frac is the
+    // fractional weight toward dir_hi.
+    int         hz_dir_lo = 0;
+    int         hz_dir_hi = 1;
+    amrex::Real hz_frac   = amrex::Real(0.0);
+    if (has_hz) {
+        constexpr amrex::Real RAD2DEG = amrex::Real(180.0) / WildfireConst::PI;
+        amrex::Real az_deg = sun_az * RAD2DEG;
+        // Normalise to [0, 360)
+        az_deg = std::fmod(az_deg, amrex::Real(360.0));
+        if (az_deg < amrex::Real(0.0)) az_deg += amrex::Real(360.0);
+        amrex::Real dir_f = az_deg / amrex::Real(45.0);
+        hz_dir_lo = static_cast<int>(dir_f) % 8;
+        hz_dir_hi = (hz_dir_lo + 1) % 8;
+        hz_frac   = dir_f - std::floor(dir_f);
+    }
 
     for (MFIter mfi(shade_mf); mfi.isValid(); ++mfi) {
         const Box& bx    = mfi.validbox();
@@ -259,7 +289,15 @@ inline void compute_shade_fraction_mf(
         Array4<const Real> cc_arr;
         if (has_cc) cc_arr = cc_mf->const_array(mfi);
 
-        const amrex::Real cloud_f = cc_frac;
+        // Capture horizon array only when needed
+        Array4<const Real> hz_arr;
+        if (has_hz) hz_arr = horizon_mf->const_array(mfi);
+
+        const amrex::Real cloud_f    = cc_frac;
+        const int         d_lo       = hz_dir_lo;
+        const int         d_hi       = hz_dir_hi;
+        const amrex::Real frac       = hz_frac;
+        const bool        use_hz     = has_hz;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             amrex::Real slope_deg  = slope (i, j, k);
@@ -287,6 +325,15 @@ inline void compute_shade_fraction_mf(
                 f = amrex::max(f, f_canopy);
             }
 
+            // Topographic horizon shading (FARSITE far-field ridge check).
+            // Interpolate horizon angle between the two bounding compass
+            // directions and shade the cell if the sun is below that angle.
+            if (use_hz) {
+                amrex::Real hz = hz_arr(i, j, k, d_lo) * (amrex::Real(1.0) - frac)
+                               + hz_arr(i, j, k, d_hi) * frac;
+                if (sun_elev < hz) f = amrex::Real(1.0);
+            }
+
             // Cloud-cover shading: domain-uniform overcast fraction
             f = amrex::max(f, cloud_f);
 
@@ -296,8 +343,139 @@ inline void compute_shade_fraction_mf(
 }
 
 // ============================================================================
-// apply_solar_emc_to_spatial_moisture
+// compute_topographic_horizon_angles
 //
+// One-time precomputation of per-cell terrain horizon angles in 8 compass
+// directions (N, NE, E, SE, S, SW, W, NW — FARSITE clockwise convention).
+//
+// For each cell (i, j) and each direction d, the function ray-marches outward
+// step by step and tracks the maximum elevation angle to any terrain point:
+//
+//   θ_horizon[d](i,j) = max_{s=1..S}  atan2( z(i+s·di, j+s·dj) − z(i,j),
+//                                             s · step_dist[d] )
+//
+// where step_dist accounts for the actual physical cell spacing (diagonal
+// directions use √(dx²+dy²)).
+//
+// The result is stored in an 8-component MultiFab with the layout:
+//   comp 0 = N   (azimuth   0°)    comp 4 = S   (azimuth 180°)
+//   comp 1 = NE  (azimuth  45°)    comp 5 = SW  (azimuth 225°)
+//   comp 2 = E   (azimuth  90°)    comp 6 = W   (azimuth 270°)
+//   comp 3 = SE  (azimuth 135°)    comp 7 = NW  (azimuth 315°)
+//
+// Implementation notes
+// --------------------
+//  • The computation is CPU-only.  The full elevation field is gathered to
+//    all MPI ranks via ParallelDescriptor::ReduceRealSum before the scan.
+//  • A pinned-memory (host-accessible) MultiFab is used to move elevation
+//    data between device and host in GPU builds.
+//  • THIS IS EXPENSIVE.  On an N×N grid the scan is O(8 N³) in the worst
+//    case (full-domain scan).  Control cost with max_scan_dist_m > 0.
+//  • Callers should guard this call behind
+//      inputs.solar_radiation.use_topographic_horizon == 1
+//    so that users can skip it when the expense is not justified.
+//
+// Parameters:
+//   horizon_mf        – output 8-component MultiFab (same layout as elevation_mf)
+//   elevation_mf      – ground elevation [m], 1 component
+//   geom              – AMReX geometry (provides cell size and domain bounds)
+//   max_scan_dist_m   – maximum ray-march distance [m]; 0 = scan full domain
+// ============================================================================
+inline void compute_topographic_horizon_angles(
+    MultiFab&           horizon_mf,
+    const MultiFab&     elevation_mf,
+    const Geometry&     geom,
+    amrex::Real         max_scan_dist_m = amrex::Real(0.0))
+{
+    // ---- Domain bookkeeping ------------------------------------------------
+    const Box& domain = geom.Domain();
+    const int  ni     = domain.length(0);
+    const int  nj     = domain.length(1);
+    const int  lo_i   = domain.smallEnd(0);
+    const int  lo_j   = domain.smallEnd(1);
+
+    const amrex::Real dx_m = static_cast<amrex::Real>(geom.CellSize(0));
+    const amrex::Real dy_m = static_cast<amrex::Real>(geom.CellSize(1));
+    const amrex::Real diag = std::sqrt(dx_m * dx_m + dy_m * dy_m);
+
+    // Maximum number of steps per ray
+    const int max_steps = (max_scan_dist_m > amrex::Real(0.0))
+        ? static_cast<int>(std::ceil(static_cast<double>(max_scan_dist_m)
+                                     / std::min(dx_m, dy_m)))
+        : std::max(ni, nj);
+
+    // ---- Step vectors for the 8 compass directions -------------------------
+    // FARSITE CW from N: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+    const int         DI[8]        = { 0,  1,  1,  1,  0, -1, -1, -1};
+    const int         DJ[8]        = { 1,  1,  0, -1, -1, -1,  0,  1};
+    const amrex::Real step_dist[8] = {dy_m, diag, dx_m, diag,
+                                      dy_m, diag, dx_m, diag};
+
+    // ---- Copy elevation to pinned (host-accessible) memory -----------------
+    // MFInfo::SetArena(The_Pinned_Arena()) gives CPU-accessible memory in both
+    // CPU and GPU builds (regular heap on CPU, pinned host memory on GPU).
+    MultiFab elev_pinned(elevation_mf.boxArray(),
+                         elevation_mf.DistributionMap(), 1, 0,
+                         MFInfo().SetArena(amrex::The_Pinned_Arena()));
+    MultiFab::Copy(elev_pinned, elevation_mf, 0, 0, 1, 0);
+    amrex::Gpu::streamSynchronize();   // ensure DtoH copy is complete
+
+    // ---- Build global flat elevation array (all ranks) ---------------------
+    std::vector<amrex::Real> elev_flat(ni * nj, amrex::Real(0.0));
+    for (MFIter mfi(elev_pinned); mfi.isValid(); ++mfi) {
+        const Box& bx  = mfi.validbox();
+        auto const arr = elev_pinned[mfi].const_array();  // host pointer
+        for (int jj = bx.smallEnd(1); jj <= bx.bigEnd(1); ++jj)
+            for (int ii = bx.smallEnd(0); ii <= bx.bigEnd(0); ++ii)
+                elev_flat[(jj - lo_j) * ni + (ii - lo_i)] = arr(ii, jj, 0, 0);
+    }
+    // Sum across MPI ranks: each rank owns non-overlapping tiles, so the sum
+    // reconstructs the complete domain elevation on every rank.
+    amrex::ParallelDescriptor::ReduceRealSum(elev_flat.data(), ni * nj);
+
+    // ---- Horizon scan on each owned tile -----------------------------------
+    MultiFab hz_pinned(horizon_mf.boxArray(),
+                       horizon_mf.DistributionMap(), 8, 0,
+                       MFInfo().SetArena(amrex::The_Pinned_Arena()));
+
+    for (MFIter mfi(hz_pinned); mfi.isValid(); ++mfi) {
+        const Box& bx  = mfi.validbox();
+        auto       arr = hz_pinned[mfi].array();  // host pointer
+
+        for (int jj = bx.smallEnd(1); jj <= bx.bigEnd(1); ++jj) {
+            for (int ii = bx.smallEnd(0); ii <= bx.bigEnd(0); ++ii) {
+                const amrex::Real elev_src =
+                    elev_flat[(jj - lo_j) * ni + (ii - lo_i)];
+
+                for (int d = 0; d < 8; ++d) {
+                    amrex::Real max_angle = amrex::Real(-0.5) * WildfireConst::PI; // -π/2 floor
+                    const amrex::Real sd  = step_dist[d];
+
+                    for (int s = 1; s <= max_steps; ++s) {
+                        const int it = ii + s * DI[d] - lo_i;
+                        const int jt = jj + s * DJ[d] - lo_j;
+                        if (it < 0 || it >= ni || jt < 0 || jt >= nj) break;
+
+                        const amrex::Real elev_tgt = elev_flat[jt * ni + it];
+                        const amrex::Real angle =
+                            std::atan2(elev_tgt - elev_src,
+                                       static_cast<amrex::Real>(s) * sd);
+                        if (angle > max_angle) max_angle = angle;
+                    }
+                    arr(ii, jj, 0, d) = max_angle;
+                }
+            }
+        }
+    }
+
+    // ---- Upload results to device (no-op on CPU builds) --------------------
+    MultiFab::Copy(horizon_mf, hz_pinned, 0, 0, 8, 0);
+    amrex::Gpu::streamSynchronize();
+
+    amrex::Print() << "Topographic horizon angles precomputed for all 8 directions.\n";
+}
+
+
 // Computes per-cell shade-adjusted equilibrium moisture content (EMC) using
 // the Simard (1968) equations with a solar-heating-corrected fuel temperature,
 // then stores the result in components 0-2 of spatial_moisture_mf
@@ -443,6 +621,8 @@ inline amrex::Real advance_solar_date(
 //   cc_mf             – canopy-cover [%] MultiFab (used only when has_spatial_crown)
 //   spatial_moisture_mf – in/out: dead-fuel moistures updated when diurnal_moisture active
 //   elapsed_s         – elapsed simulation time [s] (0 at start)
+//   horizon_mf        – 8-comp horizon-angle MultiFab from
+//                       compute_topographic_horizon_angles(); nullptr = skip
 //   print_position    – when true, print the computed solar elevation/azimuth
 // ============================================================================
 inline void apply_solar_radiation_step(
@@ -454,6 +634,7 @@ inline void apply_solar_radiation_step(
     const MultiFab&        cc_mf,
     MultiFab&              spatial_moisture_mf,
     amrex::Real            elapsed_s,
+    const MultiFab*        horizon_mf    = nullptr,
     bool                   print_position = false)
 {
     // Advance calendar date by elapsed simulation time
@@ -488,7 +669,8 @@ inline void apply_solar_radiation_step(
                               cc_for_shade,
                               sun,
                               inputs.solar_radiation.use_canopy_shading,
-                              static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover));
+                              static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover),
+                              horizon_mf);
 
     // Per-cell shade-adjusted EMC (requires diurnal T_air / RH)
     if (inputs.diurnal_moisture.enable == 1) {

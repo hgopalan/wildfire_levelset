@@ -124,6 +124,11 @@ if(LEVELSET_DIM_2D)
 endif()
 add_regression_test(balbi_viegas_heatflux    terrain/balbi_viegas_heatflux)
 add_regression_test(windninja_ridge_canyon   terrain/windninja_ridge_canyon)
+if(Python3_FOUND)
+    add_python_setup_regression_test(solar_horizon_shading
+                                     terrain/solar_horizon_shading
+                                     create_terrain.py)
+endif()
 
 # ===========================================================================
 # moisture/ – fuel moisture models (FMD schedule, diurnal, precipitation)
@@ -265,7 +270,7 @@ message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,
 message(STATUS "                    fmc_seasonal, rothermel1991_crown")
 message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
 message(STATUS "  terrain/        : terrain_wind (2-D), balbi_viegas_heatflux,")
-message(STATUS "                    windninja_ridge_canyon")
+message(STATUS "                    windninja_ridge_canyon, solar_horizon_shading")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
 message(STATUS "                    precip_wetting, spatial_moisture_output")
 message(STATUS "  fuel/           : fuel_adj_file")

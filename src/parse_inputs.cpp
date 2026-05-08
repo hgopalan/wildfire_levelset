@@ -1047,6 +1047,13 @@ void parse_inputs(InputParameters& p)
     p.solar_radiation.cloud_cover = 0.0;
     pp.query("solar_radiation.cloud_cover",        p.solar_radiation.cloud_cover);
 
+    p.solar_radiation.use_topographic_horizon = 0;
+    p.solar_radiation.horizon_scan_max_dist_m = 0.0;
+    pp.query("solar_radiation.use_topographic_horizon",
+             p.solar_radiation.use_topographic_horizon);
+    pp.query("solar_radiation.horizon_scan_max_dist_m",
+             p.solar_radiation.horizon_scan_max_dist_m);
+
     if (p.solar_radiation.enable == 1) {
         if (p.solar_radiation.latitude < -90.0 || p.solar_radiation.latitude > 90.0)
             amrex::Abort("solar_radiation.latitude must be in [-90, 90] degrees");
@@ -1094,6 +1101,20 @@ void parse_inputs(InputParameters& p)
             Print() << "  Cloud cover: " << p.solar_radiation.cloud_cover
                     << " (domain-uniform; reduces solar heating by "
                     << int(p.solar_radiation.cloud_cover * 100.0) << "%)\n";
+        if (p.solar_radiation.horizon_scan_max_dist_m < 0.0)
+            amrex::Abort("solar_radiation.horizon_scan_max_dist_m must be >= 0");
+        if (p.solar_radiation.use_topographic_horizon == 1) {
+            Print() << "  Topographic horizon scan: enabled (FARSITE 8-direction)\n";
+            if (p.solar_radiation.horizon_scan_max_dist_m > 0.0)
+                Print() << "  Horizon scan max distance: "
+                        << p.solar_radiation.horizon_scan_max_dist_m << " m\n";
+            else
+                Print() << "  Horizon scan max distance: full domain\n";
+            Print() << "  NOTE: horizon scan requires a global MPI gather of the\n"
+                    << "  elevation field and an O(N^2) CPU sweep -- expensive on\n"
+                    << "  large domains / many ranks.  Set\n"
+                    << "  solar_radiation.use_topographic_horizon = 0 to skip.\n";
+        }
     }
 
     // -------- Multiple scheduled ignitions --------
