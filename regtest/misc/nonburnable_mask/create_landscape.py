@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-create_nonburnable_landscape.py
+create_landscape.py
 Generate a synthetic LCP-format landscape for the nonburnable_mask regtest.
 
 The landscape is 64x64 cells at ~6.25 m resolution covering a 400 m x 400 m

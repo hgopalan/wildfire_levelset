@@ -218,6 +218,13 @@ inline constexpr amrex::Real LAUT_A_L = amrex::Real(1.05e-5);
 // Rothermel (1991) crown fire constant
 // ============================================================================
 
+/// Live fuel moisture conditioning targets as multiples of 100-hr dead EMC.
+/// Based on FARSITE conditioning behaviour (Finney 1998):
+///   M_lh_target = M_d100 × 1.5  (live herbaceous ≈ 150% of 100-hr dead)
+///   M_lw_target = M_d100 × 2.0  (live woody     ≈ 200% of 100-hr dead)
+inline constexpr amrex::Real COND_LH_EMC_MULT = amrex::Real(1.5);
+inline constexpr amrex::Real COND_LW_EMC_MULT = amrex::Real(2.0);
+
 /// Rothermel (1991) active crown fire ROS multiplier: R_crown = 3.34 x R_surface
 inline constexpr amrex::Real ROTHERMEL1991_CROWN_MULT = amrex::Real(3.34);
 

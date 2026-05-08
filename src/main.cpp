@@ -850,8 +850,8 @@ int main(int argc, char* argv[])
                 : 1.0;
             const float M_lh_init = static_cast<float>(inputs.rothermel.M_lh);
             const float M_lw_init = static_cast<float>(inputs.rothermel.M_lw);
-            const float M_lh_target = emc_cond.M_d100 * 1.5f; // typical green-up target
-            const float M_lw_target = emc_cond.M_d100 * 2.0f; // live woody ≈ higher moisture
+            const float M_lh_target = emc_cond.M_d100 * static_cast<float>(WildfireConst::COND_LH_EMC_MULT);
+            const float M_lw_target = emc_cond.M_d100 * static_cast<float>(WildfireConst::COND_LW_EMC_MULT);
             emc_cond.M_lh = M_lh_init + static_cast<float>(cond_frac) * (M_lh_target - M_lh_init);
             emc_cond.M_lw = M_lw_init + static_cast<float>(cond_frac) * (M_lw_target - M_lw_init);
             apply_precipitation_moisture(precip_state, emc_cond, rain_rate,
@@ -866,8 +866,8 @@ int main(int argc, char* argv[])
         inputs.rothermel.M_d1000 = static_cast<amrex::Real>(precip_state.M_d1000);
         inputs.rothermel.M_f    = static_cast<amrex::Real>(precip_state.M_d1);
         // Live fuel moisture from conditioning (linear ramp result)
-        inputs.rothermel.M_lh   = static_cast<amrex::Real>(precip_state.M_d100 * 1.5f);
-        inputs.rothermel.M_lw   = static_cast<amrex::Real>(precip_state.M_d100 * 2.0f);
+        inputs.rothermel.M_lh   = static_cast<amrex::Real>(precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LH_EMC_MULT));
+        inputs.rothermel.M_lw   = static_cast<amrex::Real>(precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LW_EMC_MULT));
         amrex::Print() << "Conditioning complete: M_d1=" << precip_state.M_d1
                        << " M_d10=" << precip_state.M_d10
                        << " M_d100=" << precip_state.M_d100
