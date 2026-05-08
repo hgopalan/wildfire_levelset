@@ -43,6 +43,11 @@ struct RothermelParams {
     // --- Andrews (2018) wind adjustments ---
     int use_waf;              // 1: apply Wind Adjustment Factor (converts 20-ft→midflame wind)  default: 0
     int use_wind_limit;       // 1: apply maximum effective wind speed (MEWS) limit              default: 0
+    // --- Live herbaceous fuel curing transfer ---
+    // When M_lh < herb_curing_threshold, a fraction of the live herbaceous
+    // load is treated as 1-hr dead fuel (FARSITE curing model).
+    // Set to 0.0 to disable (default).  Typical FARSITE value: 0.30 (30%).
+    amrex::Real herb_curing_threshold; // M_lh fraction below which curing begins  default: 0.0 (disabled)
     // --- Unit conversions ---
     // Velocity field is in m/s; Rothermel needs ft/min
     amrex::Real wind_conv;    // ft/min per (sim velocity unit)            default: 196.85
@@ -751,6 +756,47 @@ struct InputParameters {
         amrex::Real M_lw_summer; // peak-season live woody moisture [fraction] (default: 1.50)
         amrex::Real M_lw_winter; // dormant-season live woody moisture [fraction] (default: 0.60)
     } live_fuel_seasonal;
+
+    // ---- Ground suppression lines (dozer / hand crew) ----
+    // CSV file defining time-scheduled suppression lines: polylines that become
+    // active firebreaks once their construction is complete.
+    // File format (whitespace or comma delimited; # or ! lines are comments):
+    //   LINE_START_S  LINE_END_S  LINE_TYPE  N_VERTICES
+    //   X1  Y1
+    //   X2  Y2
+    //   ...                   (polyline vertices, one per line)
+    //   [next line]
+    //
+    // LINE_TYPE: 0 = dozer line, 1 = hand crew line (currently both treated as total firebreak)
+    // Cells along the line become firebreaks once current_time >= LINE_END_S.
+    // (default: "" = disabled)
+    std::string suppression_file;          // path to suppression schedule CSV (default: "")
+
+    // ---- Post-fire fuel model replacement ----
+    // CSV file mapping original fuel model codes to post-fire replacement codes.
+    // After the fire front passes through a cell (phi flips negative) the
+    // fuel model code is replaced using this lookup table.
+    // File format: original_code  replacement_code
+    // (default: "" = disabled)
+    std::string post_fire_fuel_map_file;   // path to post-fire fuel map CSV (default: "")
+
+    // ---- CCFR (Crown fuel consumption rate) active crown fire criterion ----
+    // Scott & Reinhardt (2001): active crown fire requires
+    //   R_active >= R'_SA × CCFR   where CCFR = (CBD - CBD_min) / CBD_range
+    // This replaces the simpler R >= R'_SA criterion from Van Wagner (1977).
+    // Input prefix: "crown." (extends existing CrownInitiationParams).
+    // New fields:
+    amrex::Real ccfr_cbd_min;    // minimum CBD for full passivity [kg/m³] (default: 0.05)
+    amrex::Real ccfr_cbd_range;  // CBD range over which CCFR goes from 0 to 1 (default: 0.20)
+    int         use_ccfr;        // 1 to enable CCFR active-crown criterion (default: 0)
+
+    // ---- Conditional weather / ERC percentile lookup table ----
+    // When enabled, simulation conditions (ERC) are mapped to wind/moisture
+    // scenarios from a user-supplied percentile table.
+    // File format (CSV, header row): erc_percentile, wind_speed_ms, wind_dir_deg,
+    //                                M_d1_pct, M_d10_pct, M_d100_pct
+    // (default: "" = disabled)
+    std::string conditional_weather_file;  // path to percentile-weather CSV (default: "")
 
 };
 

@@ -11,6 +11,14 @@
 // 1. Wind Adjustment Factor (WAF): converts 20-ft (6.1 m) open wind speed
 //    to midflame height wind speed for use in the Rothermel model.
 //    Enabled via `rothermel.use_waf = 1`.
+//    Two sub-modes are available:
+//      a. Unsheltered (open fuel beds, default):
+//           WAF = 1.83 / ln((20 + 0.36*h) / (0.13*h))   where h = fuel depth [ft]
+//      b. Sheltered (closed-canopy fuel beds, FARSITE-style):
+//           WAF_sheltered = 0.555 / (sqrt(f_c × h_c) × ln((20 + 0.36*h_c)/(0.13*h_c)))
+//           where f_c = canopy cover fraction [0-1], h_c = canopy height [ft]
+//           Enabled automatically when canopy_cover > waf_shelter_threshold (default 0.5)
+//           and canopy height > 0.
 //
 // 2. Maximum Effective Wind Speed (MEWS): the wind factor φ_w is bounded
 //    above by 0.9 × I_R (Rothermel 1972); the corresponding maximum
@@ -103,6 +111,88 @@ amrex::Real compute_max_ews_ftmin(amrex::Real I_R,
     const Real phi_w_max = Real(0.9) * I_R;
     const Real U_max = std::pow(phi_w_max / (C * beta_ratio_E), Real(1.0) / B);
     return amrex::max(U_max, Real(0.0));
+}
+
+// ============================================================================
+// Wind Adjustment Factor (WAF) for sheltered (closed-canopy) fuel beds
+// ============================================================================
+// FARSITE / Albini & Baughman (1979) sheltered-canopy WAF formula:
+//
+//   WAF_sheltered = 0.555 / (sqrt(f_c × h_c) × ln((20 + 0.36*h_c) / (0.13*h_c)))
+//
+// where:
+//   f_c = canopy cover fraction [0, 1]  (0 = open, 1 = fully closed)
+//   h_c = canopy height [ft]
+//
+// This formula differs from the unsheltered version in that the numerator is
+// 0.555 (not 1.83) and the denominator includes the square root of the
+// fractional canopy cover, which dampens the midflame wind more strongly under
+// a closed canopy.  The formula degenerates gracefully:
+//   – When f_c → 0 the denominator → 0 → WAF → unsheltered (guarded below).
+//   – When h_c → delta (fuel depth) the two formulas converge.
+//
+// Returns the unsheltered WAF (based on delta_ft) when:
+//   • f_c ≤ 0  (no canopy),  OR
+//   • h_c ≤ delta_ft (canopy no taller than fuel bed),  OR
+//   • the log argument ≤ 1 (degenerate geometry).
+//
+// Parameters:
+//   f_c:       canopy cover fraction [0, 1]
+//   h_c_ft:    canopy height [ft]
+//   delta_ft:  fuel bed depth [ft] (used as fallback)
+//
+// Returns:
+//   WAF (dimensionless), clamped to [0.05, 1.0]
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_waf_sheltered(amrex::Real f_c,
+                                   amrex::Real h_c_ft,
+                                   amrex::Real delta_ft)
+{
+    using namespace amrex;
+
+    // Fall back to unsheltered when canopy is absent or shorter than fuel bed
+    if (f_c <= Real(0.0) || h_c_ft <= delta_ft) {
+        return compute_waf_unsheltered(delta_ft);
+    }
+
+    const Real log_arg = (Real(20.0) + Real(0.36) * h_c_ft)
+                       / (Real(0.13) * h_c_ft);
+    if (log_arg <= Real(1.0)) return compute_waf_unsheltered(delta_ft);
+
+    const Real denom = std::sqrt(f_c * h_c_ft) * std::log(log_arg);
+    if (denom <= Real(1.0e-6)) return compute_waf_unsheltered(delta_ft);
+
+    const Real waf = Real(0.555) / denom;
+    // Clamp: never below 0.05 (extremely dense canopy) nor above 1.0
+    return amrex::max(Real(0.05), amrex::min(waf, Real(1.0)));
+}
+
+// ============================================================================
+// Select the appropriate WAF (sheltered vs. unsheltered) per cell
+// ============================================================================
+// Chooses between compute_waf_sheltered and compute_waf_unsheltered based on
+// whether the local canopy cover fraction exceeds a threshold.
+//
+// Parameters:
+//   f_c:               canopy cover fraction [0, 1]
+//   h_c_ft:            canopy height [ft]
+//   delta_ft:          fuel bed depth [ft]
+//   shelter_threshold: minimum canopy cover to invoke sheltered WAF (default: 0.5)
+//
+// Returns:
+//   WAF (dimensionless)
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_waf_per_cell(amrex::Real f_c,
+                                  amrex::Real h_c_ft,
+                                  amrex::Real delta_ft,
+                                  amrex::Real shelter_threshold = amrex::Real(0.5))
+{
+    if (f_c >= shelter_threshold && h_c_ft > delta_ft) {
+        return compute_waf_sheltered(f_c, h_c_ft, delta_ft);
+    }
+    return compute_waf_unsheltered(delta_ft);
 }
 
 #endif // ANDREWS_MODEL_H

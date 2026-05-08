@@ -48,6 +48,70 @@ struct RothermelComputed {
 };
 
 // ============================================================================
+// Live Herbaceous Fuel Transfer to Dead Class (FARSITE curing model)
+// ============================================================================
+// FARSITE: when the live herbaceous fuel moisture M_lh falls below a curing
+// threshold (~30 %), the herbaceous material is considered fully or partially
+// cured (dead) and should be treated as 1-hr dead fuel for spread calculations.
+//
+// This function returns a *modified* copy of the RothermelParams where a
+// fraction of the live herbaceous load is moved into the 1-hr dead class.
+// The original RothermelParams are NOT modified (non-destructive).
+//
+// Transfer model (FARSITE / Rothermel 1983 / Andrews 2018):
+//   curing_frac = max(0, 1 - M_lh / curing_threshold)
+//   w_d1_eff   += curing_frac × w_lh     (transferred load)
+//   w_lh_eff    = (1 - curing_frac) × w_lh  (remaining green load)
+//
+// When M_lh >= curing_threshold: curing_frac = 0 → no transfer (default).
+// When M_lh = 0:                 curing_frac = 1 → 100% transferred.
+//
+// Parameters:
+//   rp:                 original Rothermel parameters
+//   curing_threshold:   M_lh fraction below which curing begins (default: 0.30)
+//
+// Returns:
+//   Modified RothermelParams with w_d1 augmented and w_lh reduced.
+//
+// References:
+//   Rothermel, R.C. (1983). GTR INT-143. USDA Forest Service.
+//   Andrews, P.L. (2018). RMRS-GTR-371. USDA Forest Service.
+//   Finney, M.A. (1998). FARSITE, RMRS-RP-4.
+// ============================================================================
+inline RothermelParams apply_herb_curing_transfer(const RothermelParams& rp,
+                                                   amrex::Real curing_threshold = amrex::Real(0.30))
+{
+    RothermelParams rp_out = rp;
+
+    // Only applies to multi-class path (w_lh must be non-zero)
+    if (rp.w_lh <= 0.0 || curing_threshold <= 0.0) return rp_out;
+
+    // Live herbaceous moisture [fraction]
+    const amrex::Real M_lh = rp.M_lh;
+
+    // No curing when moisture is at or above threshold
+    if (M_lh >= curing_threshold) return rp_out;
+
+    // Fraction of live herb load to transfer to 1-hr dead
+    const amrex::Real curing_frac = amrex::max(amrex::Real(0.0),
+                                    amrex::Real(1.0) - M_lh / curing_threshold);
+
+    const amrex::Real transferred = curing_frac * rp.w_lh;
+
+    // Add transferred load to 1-hr dead fuel
+    rp_out.w_d1  += transferred;
+
+    // Reduce live herbaceous load by the transferred amount
+    rp_out.w_lh   = amrex::max(amrex::Real(0.0), rp.w_lh - transferred);
+
+    // The transferred dead fuel inherits the fine-fuel SAV from 1-hr dead
+    // (sigma_d1 is already set; no change needed).
+    // Keep M_lh unchanged (it reflects the remaining green material).
+
+    return rp_out;
+}
+
+// ============================================================================
 // Compute Rothermel (1972) fire spread parameters
 // ============================================================================
 inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
