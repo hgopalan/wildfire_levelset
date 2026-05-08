@@ -63,6 +63,7 @@ using namespace amrex;
 #include "polygon_ignition.H"
 #include "fms_moisture.H"
 #include "wind_dir_schedule.H"
+#include "solar_radiation.H"
 
 
 // ======================= Main ================================================
@@ -224,6 +225,12 @@ int main(int argc, char* argv[])
     // Initialized from heat_flux.value (uniform) or heat_flux.file (spatially varying).
     MultiFab heat_flux_mf(ba, dm, 1, 0);
     heat_flux_mf.setVal(0.0);
+
+    // Per-cell shade fraction [-] (0 = fully insolated, 1 = fully shaded).
+    // Updated each timestep when solar_radiation.enable = 1.
+    // 0.0 default means no shading (no solar adjustment unless enabled).
+    MultiFab shade_fraction_mf(ba, dm, 1, 0);
+    shade_fraction_mf.setVal(0.0);
 
 
     // ---------------- Initialize ---------------------------
@@ -569,6 +576,52 @@ int main(int argc, char* argv[])
 
     // Apply FMD at t=0 so initial plotfile uses correct moisture
     apply_fmd_moisture(Real(0.0));
+
+    // ---- Solar radiation shading at t=0 (initial state) ----
+    // Apply shade-adjusted EMC to spatial_moisture_mf for the initial plotfile.
+    if (inputs.solar_radiation.enable == 1) {
+        int sol_year0  = inputs.solar_radiation.year;
+        int sol_month0 = inputs.solar_radiation.month;
+        int sol_day0   = inputs.solar_radiation.day;
+        // At t=0 no days have elapsed; hour_local = sim_start_hour
+        amrex::Real hour_local0 = inputs.solar_radiation.sim_start_hour;
+        SolarPosition sun0 = compute_solar_position(
+            inputs.solar_radiation.latitude,
+            inputs.solar_radiation.longitude,
+            sol_year0, sol_month0, sol_day0,
+            hour_local0,
+            inputs.solar_radiation.timezone_offset);
+        amrex::Print() << "Solar position at t=0: elevation="
+                       << sun0.elevation_rad * (180.0 / WildfireConst::PI) << " deg"
+                       << "  azimuth="
+                       << sun0.azimuth_rad   * (180.0 / WildfireConst::PI) << " deg\n";
+        const MultiFab* cc_for_shade0 = (inputs.solar_radiation.use_canopy_shading == 1
+                                         && has_spatial_crown) ? &cc_mf : nullptr;
+        compute_shade_fraction_mf(shade_fraction_mf,
+                                  slope_mf, aspect_mf,
+                                  cc_for_shade0,
+                                  sun0,
+                                  inputs.solar_radiation.use_canopy_shading);
+        if (inputs.diurnal_moisture.enable == 1) {
+            const double phase0 = WildfireConst::TWO_PI *
+                (inputs.diurnal_moisture.t_start_s - inputs.diurnal_moisture.t_T_peak_s)
+                / WildfireConst::DAY_S;
+            double T_mean0  = 0.5 * (inputs.diurnal_moisture.T_max + inputs.diurnal_moisture.T_min);
+            double A_T0     = 0.5 * (inputs.diurnal_moisture.T_max - inputs.diurnal_moisture.T_min);
+            double RH_mean0 = 0.5 * (inputs.diurnal_moisture.RH_max + inputs.diurnal_moisture.RH_min);
+            double A_RH0    = 0.5 * (inputs.diurnal_moisture.RH_max - inputs.diurnal_moisture.RH_min);
+            double T_C0  = T_mean0  + A_T0  * std::sin(phase0);
+            double RH_p0 = RH_mean0 - A_RH0 * std::sin(phase0);
+            T_C0  = std::max(-40.0, std::min(60.0,  T_C0));
+            RH_p0 = std::max(1.0,   std::min(100.0, RH_p0));
+            apply_solar_emc_to_spatial_moisture(
+                spatial_moisture_mf,
+                shade_fraction_mf,
+                static_cast<amrex::Real>(T_C0),
+                static_cast<amrex::Real>(RH_p0),
+                inputs.solar_radiation.solar_heating_C);
+        }
+    }
 
     // ---------------- FMC seasonal schedule --------------------------------
     FMCSchedule fmc_sched;
@@ -958,7 +1011,7 @@ int main(int argc, char* argv[])
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -975,10 +1028,10 @@ int main(int argc, char* argv[])
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1007,6 +1060,7 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
       MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
+	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -1084,6 +1138,69 @@ int main(int argc, char* argv[])
 
       // Update time-varying fuel moisture from FMD schedule
       apply_fmd_moisture(time);
+
+      // ---- Solar radiation shading → per-cell shade-adjusted EMC ----
+      // Computes the sun's position for the current simulation time, derives
+      // per-cell terrain and canopy shade fractions, then writes shade-adjusted
+      // dead fuel moistures into spatial_moisture_mf (components 0-2).
+      // Requires diurnal_moisture.enable = 1 to supply T_air and RH.
+      if (inputs.solar_radiation.enable == 1) {
+          // Advance calendar date by elapsed simulation time
+          int sol_year  = inputs.solar_radiation.year;
+          int sol_month = inputs.solar_radiation.month;
+          int sol_day   = inputs.solar_radiation.day;
+          amrex::Real hour_local = advance_solar_date(
+              sol_year, sol_month, sol_day,
+              inputs.solar_radiation.sim_start_hour,
+              static_cast<amrex::Real>(time));
+
+          // Compute solar position
+          SolarPosition sun = compute_solar_position(
+              inputs.solar_radiation.latitude,
+              inputs.solar_radiation.longitude,
+              sol_year, sol_month, sol_day,
+              hour_local,
+              inputs.solar_radiation.timezone_offset);
+
+          // Per-cell terrain + canopy shade fraction
+          const MultiFab* cc_for_shade = (inputs.solar_radiation.use_canopy_shading == 1
+                                          && has_spatial_crown) ? &cc_mf : nullptr;
+          compute_shade_fraction_mf(shade_fraction_mf,
+                                    slope_mf, aspect_mf,
+                                    cc_for_shade,
+                                    sun,
+                                    inputs.solar_radiation.use_canopy_shading);
+
+          // Per-cell shade-adjusted EMC (requires diurnal T_air / RH)
+          if (inputs.diurnal_moisture.enable == 1) {
+              // Compute diurnal T_air and RH at current time (same formulas as
+              // compute_diurnal_emc in fuel_moisture_scheduler.H)
+              const double phase = WildfireConst::TWO_PI *
+                  (inputs.diurnal_moisture.t_start_s +
+                   static_cast<double>(time) -
+                   inputs.diurnal_moisture.t_T_peak_s)
+                  / WildfireConst::DAY_S;
+              const double T_mean  = 0.5 * (inputs.diurnal_moisture.T_max +
+                                            inputs.diurnal_moisture.T_min);
+              const double A_T     = 0.5 * (inputs.diurnal_moisture.T_max -
+                                            inputs.diurnal_moisture.T_min);
+              const double RH_mean = 0.5 * (inputs.diurnal_moisture.RH_max +
+                                            inputs.diurnal_moisture.RH_min);
+              const double A_RH    = 0.5 * (inputs.diurnal_moisture.RH_max -
+                                            inputs.diurnal_moisture.RH_min);
+              double T_C  = T_mean  + A_T  * std::sin(phase);
+              double RH_p = RH_mean - A_RH * std::sin(phase);
+              T_C  = std::max(-40.0, std::min(60.0,  T_C));
+              RH_p = std::max(1.0,   std::min(100.0, RH_p));
+
+              apply_solar_emc_to_spatial_moisture(
+                  spatial_moisture_mf,
+                  shade_fraction_mf,
+                  static_cast<amrex::Real>(T_C),
+                  static_cast<amrex::Real>(RH_p),
+                  inputs.solar_radiation.solar_heating_C);
+          }
+      }
 
       // Update FMC seasonal schedule (updates crown.FMC used by Van Wagner model)
       if (inputs.fmc_schedule.enable == 1 && !fmc_sched.empty()) {
@@ -1467,7 +1584,7 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1484,10 +1601,10 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1516,6 +1633,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
 	MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
+	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
@@ -1595,7 +1713,7 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1612,10 +1730,10 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel"
+   "reaction_intensity", "residual_fuel", "shade_fraction"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1644,6 +1762,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, burnout_time_mf,  0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 7, 1, 0);
 	MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
+	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{

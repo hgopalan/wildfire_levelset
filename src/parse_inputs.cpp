@@ -891,4 +891,75 @@ void parse_inputs(InputParameters& p)
         Print() << "Compact wind direction schedule: " << p.wind_dir_schedule_file << "\n";
     }
 
+    // -------- Solar radiation shading and per-cell shade-adjusted EMC --------
+    // Implements FARSITE slope+aspect → solar incidence angle → shade fraction
+    // → shade-adjusted EMC per cell.  Requires diurnal_moisture.enable = 1 and
+    // a terrain or landscape file for slope/aspect data.
+    //
+    // Input prefix: "solar_radiation."
+    p.solar_radiation.enable              = 0;
+    p.solar_radiation.latitude            = 40.0;
+    p.solar_radiation.longitude           = -120.0;
+    p.solar_radiation.year                = 2024;
+    p.solar_radiation.month               = 7;
+    p.solar_radiation.day                 = 1;
+    p.solar_radiation.sim_start_hour      = 8.0;
+    p.solar_radiation.timezone_offset     = -8.0;
+    p.solar_radiation.solar_heating_C     = 17.0;
+    p.solar_radiation.use_canopy_shading  = 1;
+
+    pp.query("solar_radiation.enable",             p.solar_radiation.enable);
+    pp.query("solar_radiation.latitude",           p.solar_radiation.latitude);
+    pp.query("solar_radiation.longitude",          p.solar_radiation.longitude);
+    pp.query("solar_radiation.year",               p.solar_radiation.year);
+    pp.query("solar_radiation.month",              p.solar_radiation.month);
+    pp.query("solar_radiation.day",                p.solar_radiation.day);
+    pp.query("solar_radiation.sim_start_hour",     p.solar_radiation.sim_start_hour);
+    pp.query("solar_radiation.timezone_offset",    p.solar_radiation.timezone_offset);
+    pp.query("solar_radiation.solar_heating_C",    p.solar_radiation.solar_heating_C);
+    pp.query("solar_radiation.use_canopy_shading", p.solar_radiation.use_canopy_shading);
+
+    if (p.solar_radiation.enable == 1) {
+        if (p.solar_radiation.latitude < -90.0 || p.solar_radiation.latitude > 90.0)
+            amrex::Abort("solar_radiation.latitude must be in [-90, 90] degrees");
+        if (p.solar_radiation.longitude < -180.0 || p.solar_radiation.longitude > 180.0)
+            amrex::Abort("solar_radiation.longitude must be in [-180, 180] degrees");
+        if (p.solar_radiation.month < 1 || p.solar_radiation.month > 12)
+            amrex::Abort("solar_radiation.month must be in [1, 12]");
+        if (p.solar_radiation.day < 1 || p.solar_radiation.day > 31)
+            amrex::Abort("solar_radiation.day must be in [1, 31]");
+        if (p.solar_radiation.sim_start_hour < 0.0 || p.solar_radiation.sim_start_hour >= 24.0)
+            amrex::Abort("solar_radiation.sim_start_hour must be in [0, 24)");
+        if (p.solar_radiation.timezone_offset < -14.0 || p.solar_radiation.timezone_offset > 14.0)
+            amrex::Abort("solar_radiation.timezone_offset must be in [-14, 14] hours");
+        if (p.solar_radiation.solar_heating_C < 0.0)
+            amrex::Abort("solar_radiation.solar_heating_C must be >= 0");
+
+        // Warn when diurnal_moisture is off: shading will have no T/RH to work with.
+        if (p.diurnal_moisture.enable != 1) {
+            Print() << "WARNING: solar_radiation.enable=1 but diurnal_moisture.enable=0.\n"
+                    << "  Shade fractions will be computed, but per-cell EMC adjustment\n"
+                    << "  requires diurnal_moisture.enable=1 to supply T_air and RH.\n"
+                    << "  Consider adding diurnal_moisture.enable = 1 to your inputs.\n";
+        }
+        // Warn when no terrain/landscape file is present: flat domain → no terrain shading.
+        if (p.rothermel.terrain_file.empty() && p.rothermel.landscape_file.empty()) {
+            Print() << "WARNING: solar_radiation.enable=1 but no terrain_file or\n"
+                    << "  landscape_file is set.  Terrain shading will be zero everywhere\n"
+                    << "  (flat domain); only canopy shading (if enabled) will apply.\n";
+        }
+
+        Print() << "Solar radiation shading enabled:\n";
+        Print() << "  Lat=" << p.solar_radiation.latitude << " deg  "
+                << "Lon=" << p.solar_radiation.longitude << " deg\n";
+        Print() << "  Date: " << p.solar_radiation.year  << "-"
+                              << p.solar_radiation.month << "-"
+                              << p.solar_radiation.day   << "\n";
+        Print() << "  Start time: " << p.solar_radiation.sim_start_hour
+                << " h (local)  UTC offset=" << p.solar_radiation.timezone_offset << " h\n";
+        Print() << "  Solar heating: " << p.solar_radiation.solar_heating_C << " °C\n";
+        if (p.solar_radiation.use_canopy_shading == 1)
+            Print() << "  Canopy shading: enabled (uses canopy_cover from LCP if available)\n";
+    }
+
 }
