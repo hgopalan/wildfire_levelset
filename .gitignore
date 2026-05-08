@@ -20,5 +20,8 @@ __pycache__/
 env/
 venv/
 build_2d/
+# Ignore user-local solver input files at root / build level,
+# but NOT the committed inputs.i files inside regtest/
 inputs.i
+!regtest/**/inputs.i
 terrain.xyz
