@@ -115,7 +115,13 @@ inline void load_retardant_drops(const std::string& filename, RetardantDropList&
                 break;
             }
             std::istringstream viss(vline);
-            if (!(viss >> drop.vx[vi] >> drop.vy[vi])) { ok = false; break; }
+            if (!(viss >> drop.vx[vi] >> drop.vy[vi])) {
+                amrex::Print() << "RetardantDrop: failed to parse vertex " << vi
+                               << " of drop at t=" << t_drop
+                               << " s; skipping this drop.\n";
+                ok = false;
+                break;
+            }
         }
         if (ok) list.drops.push_back(std::move(drop));
     }

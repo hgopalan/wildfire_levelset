@@ -120,7 +120,11 @@ inline void load_wtr_weather(const std::string& filename,
     if (!f.is_open())
         amrex::Abort("WtrWeather: cannot open file: " + filename);
 
-    // Helper: day number (sufficient for ordering, not ISO epoch)
+    // Helper: day number relative to a fixed epoch (modified from Gregorian day count).
+    // Formula produces a monotone integer day counter; value 719591 aligns
+    // the reference to 1 Jan 1900 (common epoch for FARSITE date arithmetic).
+    // Algorithm: Adapted from the Gregorian proleptic calendar formula by
+    //   Richards (2013), in Explanatory Supplement to the Astronomical Almanac.
     auto days_since_epoch = [](int y, int m, int d) -> long {
         if (m < 3) { m += 12; --y; }
         return 365L * y + y/4 - y/100 + y/400
@@ -160,6 +164,9 @@ inline void load_wtr_weather(const std::string& filename,
                          + static_cast<long>(mm) * 60L;
 
         if (!ref_set) {
+            // First record defines simulation t = 0.  Year 2000 is used as the
+            // nominal calendar year since FARSITE .wtr files often omit the year;
+            // only the relative time differences matter for schedule interpolation.
             ref_s   = block_day_s;
             ref_set = true;
         }

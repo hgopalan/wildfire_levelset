@@ -764,8 +764,8 @@ int main(int argc, char* argv[])
             emc_cond.M_d1   = static_cast<float>(emc_pct / 100.0);
             emc_cond.M_d10  = static_cast<float>(emc_pct * 1.10 / 100.0);
             emc_cond.M_d100 = static_cast<float>(emc_pct * 1.30 / 100.0);
-            emc_cond.M_lh   = precip_state.M_d100;  // live fuels not updated here
-            emc_cond.M_lw   = precip_state.M_d100;
+            emc_cond.M_lh   = precip_state.M_d100;  // live fuel moisture: not conditioned; use current dead fuel as placeholder
+            emc_cond.M_lw   = precip_state.M_d100;  // (live fuel conditioning requires phenological data not available here)
             apply_precipitation_moisture(precip_state, emc_cond, rain_rate,
                                          static_cast<float>(cond_dt),
                                          static_cast<float>(inputs.precip_threshold_mm_hr),
@@ -1501,6 +1501,14 @@ int main(int argc, char* argv[])
       // and adjust T/RH before feeding into apply_solar_emc_to_spatial_moisture.
       // When use_elevation_lapse = 0 (default) this block is skipped.
       if (inputs.use_elevation_lapse == 1 && inputs.diurnal_moisture.enable == 1) {
+          // Magnus formula empirical constants (Murray 1967, J. Applied Meteorology 6:203):
+          //   a = 17.67  (dimensionless)
+          //   b = 243.5  [°C]
+          // Used in Clausius–Clapeyron RH approximation:
+          //   RH_cell ≈ RH_ref * exp(a * (T_cell - T_ref) / (T_ref + b))
+          constexpr amrex::Real MAGNUS_A = amrex::Real(17.67);
+          constexpr amrex::Real MAGNUS_B = amrex::Real(243.5);  // °C
+
           // Compute domain-mean T and RH at this timestep (same formulas as diurnal)
           const double phase_lr = WildfireConst::TWO_PI *
               (inputs.diurnal_moisture.t_start_s +
@@ -1534,14 +1542,13 @@ int main(int argc, char* argv[])
                   amrex::Real T_cell = T_ref_r - dT_lapse;
                   // Clausius–Clapeyron RH correction using the Magnus formula approximation:
                   //   RH_cell ≈ RH_ref * exp(a * dT / (T_ref + b))
-                  // where dT = T_cell - T_ref, a = 17.67 (dimensionless, Magnus empirical
-                  // constant), b = 243.5 °C (temperature offset, Magnus empirical constant).
-                  // Reference: Murray (1967), Journal of Applied Meteorology, 6(1), 203-204.
+                  // where dT = T_cell - T_ref, a = MAGNUS_A (17.67, dimensionless),
+                  // b = MAGNUS_B (243.5 °C).  Reference: Murray (1967).
                   // At higher elevations (dT < 0, T_cell < T_ref) RH increases.
                   const amrex::Real dT_cc  = -(dT_lapse);  // T_cell - T_ref
                   // Magnus formula constants (Murray 1967): a=17.67, b=243.5 °C
                   const amrex::Real RH_adj = RH_ref_r * std::exp(
-                      amrex::Real(17.67) * dT_cc / (T_ref_r + amrex::Real(243.5)));
+                      MAGNUS_A * dT_cc / (T_ref_r + MAGNUS_B));
                   amrex::Real RH_cell = amrex::max(amrex::Real(1.0),
                                                    amrex::min(amrex::Real(100.0), RH_adj));
                   // Apply solar heating to unshaded T

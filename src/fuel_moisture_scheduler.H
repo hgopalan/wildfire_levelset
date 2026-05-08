@@ -84,6 +84,9 @@ struct RothermelMoistures {
 // Empirical scaling factor used when approximating 1000-hr dead fuel moisture
 // as a multiple of the 100-hr value.  Based on the Rothermel (1983) time-lag
 // progressions where 1000-hr fuels equilibrate ~1.5× more slowly than 100-hr fuels.
+// Reference: Rothermel, R.C. (1983), How to Predict the Spread and Intensity of
+// Forest and Range Fires, Gen. Tech. Rep. INT-143, USDA Forest Service, Table 1
+// (timelag / stick moisture relationships for dead fuels).
 static constexpr float M_D1000_SCALE = 1.5f;
 
 // ============================================================================
