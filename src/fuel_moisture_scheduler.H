@@ -76,9 +76,18 @@ struct RothermelMoistures {
     float M_d1   = 0.08f;
     float M_d10  = 0.08f;
     float M_d100 = 0.08f;
+    float M_d1000 = 0.15f;  // 1000-hr dead moisture (Nelson 2000 / Rothermel 1983 ext.)
     float M_lh   = 0.90f;
     float M_lw   = 1.20f;
 };
+
+// Empirical scaling factor used when approximating 1000-hr dead fuel moisture
+// as a multiple of the 100-hr value.  Based on the Rothermel (1983) time-lag
+// progressions where 1000-hr fuels equilibrate ~1.5× more slowly than 100-hr fuels.
+// Reference: Rothermel, R.C. (1983), How to Predict the Spread and Intensity of
+// Forest and Range Fires, Gen. Tech. Rep. INT-143, USDA Forest Service, Table 1
+// (timelag / stick moisture relationships for dead fuels).
+static constexpr float M_D1000_SCALE = 1.5f;
 
 // ============================================================================
 // load_fuel_moisture_schedule
@@ -235,7 +244,14 @@ inline RothermelMoistures get_moisture_at_time(
 
     if (lo->time_s >= hi->time_s || lo == hi) {
         // Clamp / exact match
-        return {lo->M_d1, lo->M_d10, lo->M_d100, lo->M_lh, lo->M_lw};
+        RothermelMoistures r;
+        r.M_d1    = lo->M_d1;
+        r.M_d10   = lo->M_d10;
+        r.M_d100  = lo->M_d100;
+        r.M_d1000 = lo->M_d100 * M_D1000_SCALE;  // proxy: 1000-hr ≈ 1.5× 100-hr
+        r.M_lh    = lo->M_lh;
+        r.M_lw    = lo->M_lw;
+        return r;
     }
 
     // Linear interpolation
@@ -244,11 +260,12 @@ inline RothermelMoistures get_moisture_at_time(
     float a = static_cast<float>(alpha);
 
     RothermelMoistures m;
-    m.M_d1   = lo->M_d1   + a * (hi->M_d1   - lo->M_d1);
-    m.M_d10  = lo->M_d10  + a * (hi->M_d10  - lo->M_d10);
-    m.M_d100 = lo->M_d100 + a * (hi->M_d100 - lo->M_d100);
-    m.M_lh   = lo->M_lh   + a * (hi->M_lh   - lo->M_lh);
-    m.M_lw   = lo->M_lw   + a * (hi->M_lw   - lo->M_lw);
+    m.M_d1    = lo->M_d1   + a * (hi->M_d1   - lo->M_d1);
+    m.M_d10   = lo->M_d10  + a * (hi->M_d10  - lo->M_d10);
+    m.M_d100  = lo->M_d100 + a * (hi->M_d100 - lo->M_d100);
+    m.M_d1000 = m.M_d100 * M_D1000_SCALE;  // proxy: 1000-hr ≈ 1.5× 100-hr
+    m.M_lh    = lo->M_lh   + a * (hi->M_lh   - lo->M_lh);
+    m.M_lw    = lo->M_lw   + a * (hi->M_lw   - lo->M_lw);
     return m;
 }
 
@@ -323,9 +340,10 @@ inline RothermelMoistures compute_diurnal_emc(
     emc_pct = std::max(0.5, emc_pct);  // physical lower bound
 
     RothermelMoistures m;
-    m.M_d1   = static_cast<float>(emc_pct / 100.0);
-    m.M_d10  = static_cast<float>(emc_pct * 1.10 / 100.0);
-    m.M_d100 = static_cast<float>(emc_pct * 1.30 / 100.0);
+    m.M_d1    = static_cast<float>(emc_pct / 100.0);
+    m.M_d10   = static_cast<float>(emc_pct * 1.10 / 100.0);
+    m.M_d100  = static_cast<float>(emc_pct * 1.30 / 100.0);
+    m.M_d1000 = static_cast<float>(emc_pct * M_D1000_SCALE / 100.0);  // 1000-hr approx (Nelson 2000 ext.)
     // Live fuel moisture is not well-modelled by Nelson EMC; keep defaults
     m.M_lh   = defaults.M_lh;
     m.M_lw   = defaults.M_lw;

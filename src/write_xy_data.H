@@ -572,7 +572,8 @@ inline void write_fire_stats_header(const std::string& filename)
         return;
     }
     out << "step,time_s,burned_area_ha,perimeter_km,"
-           "active_front_cells,total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2\n";
+           "active_front_cells,head_ros_ms,"
+           "total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2\n";
     out.close();
 }
 
@@ -580,27 +581,35 @@ inline void write_fire_stats_header(const std::string& filename)
 // append_fire_stats
 //
 // Computes burned area [ha], perimeter length [km], active front cell count,
-// and domain-mean emission totals, then appends one row to the CSV file.
+// head ROS [m/s] (maximum ROS in perimeter cells), and domain-mean emission
+// totals, then appends one row to the CSV file.
 //
 // emissions_mf is optional (pass nullptr to skip emission stats).
+// R_mf is optional (pass nullptr to skip head ROS tracking).
 // ============================================================================
 inline void append_fire_stats(const MultiFab& phi,
                                const Geometry& geom,
                                const MultiFab* emissions_mf,
                                int step, Real time_s,
-                               const std::string& filename)
+                               const std::string& filename,
+                               const MultiFab* R_mf = nullptr)
 {
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
     amrex::Long n_burned = 0, n_perim = 0, n_active = 0;
     Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
+    Real head_ros = Real(0.0);  // maximum ROS in perimeter cells [m/s]
 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const p  = phi.const_array(mfi);
         const IntVect lo = bx.smallEnd();
         const IntVect hi = bx.bigEnd();
+
+        // Head ROS: optional per-cell R_mf array for this MFIter
+        Array4<const Real> R_arr;
+        if (R_mf) R_arr = R_mf->const_array(mfi);
 
         amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
             Real pv = p(i, j, k, 0);
@@ -611,7 +620,13 @@ inline void append_fire_stats(const MultiFab& phi,
                 if (i < hi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
                 if (j > lo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
                 if (j < hi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
-                if (on_perim) ++n_perim;
+                if (on_perim) {
+                    ++n_perim;
+                    if (R_mf) {
+                        Real r = R_arr(i, j, k, 0);
+                        if (r > head_ros) head_ros = r;
+                    }
+                }
             } else if (pv < Real(0.1)) {
                 ++n_active;  // cells within phi_thresh = 0.1 of the front
             }
@@ -630,6 +645,9 @@ inline void append_fire_stats(const MultiFab& phi,
     ParallelDescriptor::ReduceLongSum(n_burned);
     ParallelDescriptor::ReduceLongSum(n_perim);
     ParallelDescriptor::ReduceLongSum(n_active);
+    if (R_mf) {
+        ParallelDescriptor::ReduceRealMax(head_ros);
+    }
     if (emissions_mf) {
         ParallelDescriptor::ReduceRealSum(sum_co2);
         ParallelDescriptor::ReduceRealSum(sum_co);
@@ -656,6 +674,7 @@ inline void append_fire_stats(const MultiFab& phi,
         << burned_ha  << ","
         << perim_km   << ","
         << n_active   << ","
+        << head_ros   << ","
         << mean_co2   << ","
         << mean_co    << ","
         << mean_pm25  << "\n";
