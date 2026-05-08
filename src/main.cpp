@@ -522,6 +522,14 @@ int main(int argc, char* argv[])
     // Apply FMD at t=0 so initial plotfile uses correct moisture
     apply_fmd_moisture(Real(0.0));
 
+    // ---------------- Cruz crown pre-computed coefficients ------------------
+    // Pre-compute Cruz, Alexander & Wakimoto (2005) crown fire ROS coefficients
+    // once at startup.  These are used both in the FARSITE ellipse kernel and in
+    // the Cap-8 crown ROS override when crown.use_cruz_crown = 1.
+    CruzCrownComputed ccc_global = compute_cruz_crown_params(inputs.cruz_crown);
+    const CruzCrownComputed* ccc_ptr =
+        (inputs.crown.use_cruz_crown == 1) ? &ccc_global : nullptr;
+
     // ---------------- Balbi (2009) lookup table (if enabled) -------------
     Gpu::DeviceVector<BalbiComputed> d_balbi_table;
     const BalbiComputed* d_balbi_table_ptr = nullptr;
@@ -656,7 +664,8 @@ int main(int argc, char* argv[])
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size,
-                                 has_spatial_crown ? &cc_mf : nullptr);
+                                 has_spatial_crown ? &cc_mf : nullptr,
+                                 has_spatial_crown ? &canopy_height_mf : nullptr);
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
@@ -691,7 +700,8 @@ int main(int argc, char* argv[])
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size,
-                                 has_spatial_crown ? &cc_mf : nullptr);
+                                 has_spatial_crown ? &cc_mf : nullptr,
+                                 has_spatial_crown ? &canopy_height_mf : nullptr);
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "MTT: pre-computing arrival times (dt = " << dt << ") ...\n";
@@ -729,6 +739,13 @@ int main(int argc, char* argv[])
     compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                          inputs.rothermel, inputs.fire_ecology, inputs.crown);
 
+    // Ecology → propagation coupling (initial step):
+    //   (a) P_ignition scales R_mf when fire_ecology.couple_to_ros = 1
+    //   (b) Active crown fire (crown_activity == 2) overrides R_mf with the
+    //       Cruz et al. (2005) crown ROS (when crown.use_cruz_crown = 1) or
+    //       the Van Wagner 3/CBD proxy (when crown.use_cruz_crown = 0).
+    apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, inputs.fire_ecology);
+
     // Cap 8: Active crown fire ROS feedback (initial dt computation).
     // Apply the same crown-ROS override used in the time loop so the initial
     // CFL dt correctly accounts for any active crown fire cells.
@@ -738,29 +755,46 @@ int main(int argc, char* argv[])
         const Real mf_i = amrex::max(Real(0.3),
                               amrex::min(Real(1.0),
                               Real(1.0) - (FMC_global_i - Real(100.0)) / Real(200.0)));
-        // Compute global crown ROS in this scope for the dt guard below.
+        // Global crown ROS (Van Wagner proxy) for dt guard
         const Real R_crown_g_ms_init = (Real(3.0) / amrex::max(CBD_global_i, Real(0.01)))
                                        * mf_i / Real(60.0);
+        // Pre-compute Cruz crown coefficient for the GPU kernel when enabled
+        const bool use_cruz_init = (inputs.crown.use_cruz_crown == 1);
+        const CruzCrownComputed ccc_init = ccc_global;
+
         for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
             const Box& bx  = mfi.validbox();
             auto       R   = R_mf.array(mfi);
             auto const eco = ecology_mf.const_array(mfi);
+            auto const v   = vel.const_array(mfi);
             const bool use_sp_i = has_spatial_crown;
             Array4<const Real> cbd_arr_i;
             if (use_sp_i) {
                 cbd_arr_i = cbd_mf.const_array(mfi);
             }
-            const Real CBD_g_i = CBD_global_i;
+            const Real CBD_g_i  = CBD_global_i;
             const Real mf_val_i = mf_i;
+            const Real MC10_i   = Real(inputs.cruz_crown.MC10);
             ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                if (eco(i, j, k, 3) < Real(1.5)) return;
-                Real CBD_c = use_sp_i ? cbd_arr_i(i, j, k) : CBD_g_i;
-                CBD_c = amrex::max(CBD_c, Real(0.01));
-                Real R_crown_ms = (Real(3.0) / CBD_c) * mf_val_i / Real(60.0);
+                if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive crown
+                Real R_crown_ms;
+                if (use_cruz_init) {
+                    // Cruz, Alexander & Wakimoto (2005) active crown ROS
+                    Real ux = v(i,j,k,0);
+                    Real uy = v(i,j,k,1);
+                    Real wind_mag = std::sqrt(ux*ux + uy*uy);
+                    Real CBD_c = use_sp_i ? cbd_arr_i(i,j,k) : CBD_g_i;
+                    R_crown_ms = compute_crown_fire_spread_rate_cruz(wind_mag, CBD_c, MC10_i);
+                } else {
+                    // Van Wagner (1977) simplified proxy
+                    Real CBD_c = use_sp_i ? cbd_arr_i(i,j,k) : CBD_g_i;
+                    CBD_c = amrex::max(CBD_c, Real(0.01));
+                    R_crown_ms = (Real(3.0) / CBD_c) * mf_val_i / Real(60.0);
+                }
                 R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
             });
         }
-        // Only recompute dt when the crown ROS is positive and could tighten the CFL.
+        // Recompute dt when crown ROS is positive and could tighten the CFL.
         if (R_crown_g_ms_init > Real(0.0)) {
             dt = compute_dt(R_mf, geom, inputs.cfl);
         }
@@ -971,7 +1005,8 @@ int main(int argc, char* argv[])
                                terrain_slopes.get(),
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                d_fuel_table_ptr, fuel_table_size,
-                               has_spatial_crown ? &cc_mf : nullptr);
+                               has_spatial_crown ? &cc_mf : nullptr,
+                               has_spatial_crown ? &canopy_height_mf : nullptr);
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       if (inputs.weise_biging.enable == 1) {
@@ -997,50 +1032,58 @@ int main(int argc, char* argv[])
       compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                            inputs.rothermel, inputs.fire_ecology, inputs.crown);
 
+      // Ecology → propagation coupling:
+      //   (a) P_ignition scales R_mf in unburned cells when couple_to_ros = 1
+      apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, inputs.fire_ecology);
+
       // Cap 8: Active crown fire ROS feedback into the level-set ROS field.
       // When crown.enable = 1 and a cell is classified as active crown fire
-      // (crown_activity == 2), replace R_mf with the Van Wagner active crown
-      // ROS (m/s) so the level-set front propagates at the faster crown speed.
-      // The crown ROS [m/min] = 3.0 / CBD * moisture_factor; convert to m/s.
-      // Spatial CBD is used when available (has_spatial_crown); otherwise the
-      // global scalar crown.CBD is used.
+      // (crown_activity == 2), override R_mf with the active crown fire ROS so
+      // the level-set front propagates at the faster crown speed.
+      // Route: Cruz, Alexander & Wakimoto (2005) when use_cruz_crown = 1;
+      //        Van Wagner (1977) 3/CBD proxy otherwise.
       if (inputs.crown.enable == 1 && use_levelset) {
           const Real CBD_global   = Real(inputs.crown.CBD);
           const Real FMC_global   = Real(inputs.crown.FMC);
           const Real m_factor_g   = amrex::max(Real(0.3),
                                         amrex::min(Real(1.0),
                                         Real(1.0) - (FMC_global - Real(100.0)) / Real(200.0)));
-          const Real R_crown_g_ms = (Real(3.0) / amrex::max(CBD_global, Real(0.01)))
-                                    * m_factor_g / Real(60.0); // m/min → m/s
+          const bool use_cruz_tl = (inputs.crown.use_cruz_crown == 1);
+          const CruzCrownComputed ccc_tl = ccc_global;
+          const Real MC10_tl = Real(inputs.cruz_crown.MC10);
 
           for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
               const Box& bx   = mfi.validbox();
               auto       R    = R_mf.array(mfi);
               auto const eco  = ecology_mf.const_array(mfi);
-              // Get per-cell CBD if spatial crown layers were loaded
+              auto const v    = vel.const_array(mfi);
               const bool use_sp = has_spatial_crown;
               Array4<const Real> cbd_arr;
               if (use_sp) {
                   cbd_arr = cbd_mf.const_array(mfi);
               }
-              const Real FMC_val = FMC_global;
+              const Real CBD_g   = CBD_global;
+              const Real mf_val  = m_factor_g;
 
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                  // Crown activity component is stored in ecology_mf component 3
-                  if (eco(i, j, k, 3) < Real(1.5)) {
-                      return; // surface or passive – no crown ROS override
+                  if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive
+                  Real R_crown_ms;
+                  if (use_cruz_tl) {
+                      Real ux = v(i,j,k,0);
+                      Real uy = v(i,j,k,1);
+                      Real wind_mag = std::sqrt(ux*ux + uy*uy);
+                      Real CBD_c = use_sp ? cbd_arr(i,j,k) : CBD_g;
+                      R_crown_ms = compute_crown_fire_spread_rate_cruz(wind_mag, CBD_c, MC10_tl);
+                  } else {
+                      Real CBD_c = use_sp ? cbd_arr(i,j,k) : CBD_g;
+                      CBD_c = amrex::max(CBD_c, Real(0.01));
+                      R_crown_ms = (Real(3.0) / CBD_c) * mf_val / Real(60.0);
                   }
-                  Real CBD_c = use_sp ? cbd_arr(i, j, k) : CBD_global;
-                  CBD_c = amrex::max(CBD_c, Real(0.01));
-                  Real mf  = amrex::max(Real(0.3),
-                                 amrex::min(Real(1.0),
-                                 Real(1.0) - (FMC_val - Real(100.0)) / Real(200.0)));
-                  Real R_crown_ms = (Real(3.0) / CBD_c) * mf / Real(60.0); // m/s
-                  // Use the maximum of surface and crown ROS (crown typically dominates)
                   R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
               });
           }
-          amrex::Print() << "  Crown ROS override applied (crown.enable=1, active crown cells).\n";
+          amrex::Print() << "  Crown ROS override applied (crown.enable=1"
+                         << (use_cruz_tl ? ", Cruz 2005" : ", Van Wagner 1977") << ").\n";
       }
 
       // Fire emissions (CO₂, CO, PM₂.₅)
@@ -1066,7 +1109,7 @@ int main(int argc, char* argv[])
 	// --- Step 4: Merge to new perimeter
 	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr);
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {

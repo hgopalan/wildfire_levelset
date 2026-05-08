@@ -206,4 +206,55 @@ inline void compute_fire_ecology(
     }
 }
 
+// ============================================================================
+// apply_ecology_p_ignition_feedback
+//
+// Scales the rate-of-spread field R_mf by the local probability of ignition
+// (ecology component 1) when fire_ecology.couple_to_ros == 1.
+//
+// Physical motivation:
+//   P_ignition (Anderson 1970) gives the probability that a firebrand or
+//   advancing flame tip successfully initiates sustained combustion at a given
+//   point.  Multiplying the ROS by this probability captures the observation
+//   that fire spreads more slowly through wet or cold fuel where ignition is
+//   uncertain.  A floor value (p_ignition_floor) prevents complete quenching
+//   of the fire front in marginally-burnable fuels.
+//
+// Only cells that have not yet burned (phi >= 0) are modified; already-burned
+// cells (phi < 0) retain their pre-computed R value unchanged.
+//
+// Parameters:
+//   R_mf        – rate of spread [m/s], modified in-place
+//   ecology_mf  – ECOLOGY_NCOMP ecology fields (component 1 = P_ignition)
+//   phi         – level-set field (phi < 0 = burned)
+//   fep         – fire ecology parameters (couple_to_ros, p_ignition_floor)
+// ============================================================================
+inline void apply_ecology_p_ignition_feedback(
+    MultiFab&                                    R_mf,
+    const MultiFab&                              ecology_mf,
+    const MultiFab&                              phi,
+    const InputParameters::FireEcologyParams&    fep)
+{
+    if (fep.couple_to_ros != 1) return;
+
+    const Real p_floor = amrex::max(Real(fep.p_ignition_floor), Real(0.0));
+
+    for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
+        const Box& bx  = mfi.validbox();
+        auto       R   = R_mf.array(mfi);
+        auto const eco = ecology_mf.const_array(mfi);
+        auto const p   = phi.const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            // Do not scale ROS in already-burned cells
+            if (p(i, j, k) < Real(0.0)) return;
+
+            // Component 1 of ecology_mf is P_ignition ∈ [0, 1]
+            const Real P_i = eco(i, j, k, 1);
+            const Real scale = amrex::max(P_i, p_floor);
+            R(i, j, k) *= scale;
+        });
+    }
+}
+
 #endif // FIRE_ECOLOGY_MODEL_H
