@@ -22,10 +22,12 @@ cfl = 0.5
 plot_int = 10
 reinit_int = -1
 
-# Time-dependent wind: wind field switches at t=60 s
+# Time-dependent wind: snapshots at t=0 (time_wind.csv) and t=3600 s (time_wind_1.csv).
+# wind_time_spacing must match the time separation between the two files so
+# that both snapshots bracket the entire final_time = 120 s run.
 velocity_file = time_wind.csv
 use_time_dependent_wind = 1
-wind_time_spacing = 60.0
+wind_time_spacing = 3600.0
 
 # Spherical ignition at domain centre
 source_type = sphere

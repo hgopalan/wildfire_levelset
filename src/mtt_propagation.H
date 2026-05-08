@@ -96,10 +96,18 @@ inline void compute_mtt_arrival_times(MultiFab& arrival_time_mf,
     const long ncells = static_cast<long>(nx) * ny * nz;
 
     // Helper: flat index from (i,j,k) relative to lo
+    // In 2-D builds AMREX_SPACEDIM == 2 so lo/hi are 2-element IntVects;
+    // accessing lo[2] would trigger an assertion.  Use #if to guard.
     auto idx = [&](int i, int j, int k) -> long {
+#if (AMREX_SPACEDIM == 3)
         return static_cast<long>(i - lo[0]) +
                static_cast<long>(nx) * (j - lo[1]) +
                static_cast<long>(nx) * static_cast<long>(ny) * (k - lo[2]);
+#else
+        amrex::ignore_unused(k);
+        return static_cast<long>(i - lo[0]) +
+               static_cast<long>(nx) * (j - lo[1]);
+#endif
     };
 
     std::vector<Real> h_phi(ncells, Real(1.0));
