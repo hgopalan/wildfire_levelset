@@ -435,3 +435,63 @@ and :math:`V_i` is the wind component at station :math:`i` at the current time.
 
 When ``multi_wtr_file`` is set, the diurnal moisture model is automatically
 enabled and the domain-mean T/RH tracks the station-averaged IDW centroid.
+
+Burn-Period Controls (Diurnal Active-Spread Window)
+----------------------------------------------------
+
+**Header**: ``src/parse_inputs.H`` / ``src/main.cpp``
+
+In operational fire modelling, fire spread is often restricted to a daily
+*burn period* when weather conditions (low humidity, warm temperatures) are
+most conducive.  This mirrors the FARSITE / FSPro burn-period concept used in
+operational forecasting.
+
+When ``burn_period.enable = 1``, the computed rate-of-spread field (``R_mf``)
+is zeroed to zero outside the specified local clock window
+[``start_hour``, ``end_hour``), preventing any level-set, FARSITE, or MTT
+advance during the inactive hours.  All other processes (moisture evolution,
+spotting diagnostics, ecology metrics) continue normally.
+
+The current local clock hour is computed as::
+
+    clock_hour = (sim_start_hour + time_s / 3600) mod 24
+
+where ``sim_start_hour`` defaults to ``solar_radiation.sim_start_hour`` when
+solar radiation is enabled, or to ``burn_period.sim_start_hour`` otherwise.
+
+Midnight-crossing windows (e.g. ``start_hour = 22``, ``end_hour = 6``)
+are handled correctly: fire is active when ``clock_hour >= 22`` **or**
+``clock_hour < 6``.
+
+**Parameters**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 50
+
+   * - Parameter
+     - Description
+   * - ``burn_period.enable``
+     - 1 to enable burn-period gating (default: 0)
+   * - ``burn_period.start_hour``
+     - Local hour (decimal) when fire becomes active (default: 10.0 = 10:00 AM)
+   * - ``burn_period.end_hour``
+     - Local hour (decimal) when fire becomes inactive (default: 20.0 = 8:00 PM)
+   * - ``burn_period.sim_start_hour``
+     - Local clock hour at simulation t=0 (default: inherited from
+       ``solar_radiation.sim_start_hour`` when solar is enabled, else 0.0)
+
+**Example** – active spread 10:00 AM to 8:00 PM::
+
+    burn_period.enable     = 1
+    burn_period.start_hour = 10.0
+    burn_period.end_hour   = 20.0
+    burn_period.sim_start_hour = 8.0   # simulation starts at 8 AM
+
+**Example** – overnight window (active 9 PM to 7 AM)::
+
+    burn_period.enable     = 1
+    burn_period.start_hour = 21.0
+    burn_period.end_hour   = 7.0
+    burn_period.sim_start_hour = 0.0
+

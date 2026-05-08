@@ -798,6 +798,33 @@ struct InputParameters {
     // (default: "" = disabled)
     std::string conditional_weather_file;  // path to percentile-weather CSV (default: "")
 
+    // ---- Burn-period controls (diurnal active-spread window) ----
+    // When enabled, fire spread (R_mf) is gated to a daily active-burn time
+    // window [start_hour, end_hour) in local clock hours.  Outside this window
+    // R_mf is zeroed so the level-set front does not advance; moisture and all
+    // other diagnostics continue to evolve normally.
+    //
+    // This mimics FARSITE's and FSPro's operational "burn period" concept and
+    // is particularly useful for multi-day simulations where overnight moisture
+    // recovery dramatically slows or halts spread.
+    //
+    // The local clock time is computed as:
+    //   clock_hour = fmod(sim_start_hour + time_s / 3600.0, 24.0)
+    // where sim_start_hour comes from solar_radiation.sim_start_hour (default 8.0)
+    // or from the standalone burn_period.sim_start_hour override.
+    //
+    // Wrapping is handled correctly when the window crosses midnight
+    // (e.g., start_hour = 22.0, end_hour = 6.0 = active 22:00–06:00).
+    //
+    // Input prefix: "burn_period."
+    struct BurnPeriodParams {
+        int         enable;          // 1 to enable burn-period gating (default: 0)
+        amrex::Real start_hour;      // local hour when fire becomes active (default: 10.0 = 10:00 AM)
+        amrex::Real end_hour;        // local hour when fire becomes inactive (default: 20.0 = 8:00 PM)
+        amrex::Real sim_start_hour;  // local clock hour at simulation t=0 (default: inherit from
+                                     //   solar_radiation.sim_start_hour if set, else 0.0)
+    } burn_period;
+
 };
 
 void parse_inputs(InputParameters& inputs);

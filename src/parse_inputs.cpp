@@ -1226,4 +1226,36 @@ void parse_inputs(InputParameters& p)
                 << p.conditional_weather_file << "\n";
     }
 
+    // -------- Burn-period controls --------
+    p.burn_period.enable          = 0;
+    p.burn_period.start_hour      = 10.0;
+    p.burn_period.end_hour        = 20.0;
+    // Default sim_start_hour: inherit from solar_radiation.sim_start_hour if set,
+    // otherwise fall back to 0.0 (midnight).
+    p.burn_period.sim_start_hour  = p.solar_radiation.enable == 1
+                                    ? p.solar_radiation.sim_start_hour
+                                    : 0.0;
+
+    pp.query("burn_period.enable",         p.burn_period.enable);
+    pp.query("burn_period.start_hour",     p.burn_period.start_hour);
+    pp.query("burn_period.end_hour",       p.burn_period.end_hour);
+    pp.query("burn_period.sim_start_hour", p.burn_period.sim_start_hour);
+
+    if (p.burn_period.enable == 1) {
+        // Valid range: [0.0, 24.0).  Exactly 0.0 means midnight (permitted);
+        // 24.0 is NOT accepted because it is identical to 0.0 after wrapping.
+        if (p.burn_period.start_hour < 0.0 || p.burn_period.start_hour >= 24.0)
+            amrex::Abort("burn_period.start_hour must be in [0, 24) (e.g. 10.0 = 10:00 AM)");
+        if (p.burn_period.end_hour < 0.0 || p.burn_period.end_hour >= 24.0)
+            amrex::Abort("burn_period.end_hour must be in [0, 24) (e.g. 20.0 = 8:00 PM)");
+        if (p.burn_period.start_hour == p.burn_period.end_hour)
+            amrex::Abort("burn_period.start_hour must differ from burn_period.end_hour");
+        Print() << "Burn-period gating enabled: active "
+                << p.burn_period.start_hour << ":00 – "
+                << p.burn_period.end_hour   << ":00 local time\n";
+        if (p.burn_period.start_hour > p.burn_period.end_hour)
+            Print() << "  (window crosses midnight)\n";
+        Print() << "  Simulation start hour: " << p.burn_period.sim_start_hour << ":00\n";
+    }
+
 }

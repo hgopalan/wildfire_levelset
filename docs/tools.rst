@@ -38,6 +38,24 @@ Overview
      - Bidirectional lat/lon ↔ UTM coordinate conversion (pure-Python or pyproj)
    * - ``ensemble_burn_probability.py``
      - FSPro-style ensemble burn probability driver (Latin hypercube sampling, MPI)
+   * - ``plot_burn_probability.py``
+     - Visualise ensemble burn probability maps (heatmaps, contours, difference maps)
+   * - ``fire_size_summary.py``
+     - Tabulate and plot fire size statistics over time from ``fire_stats.csv``
+   * - ``surface_fire_worksheet.py``
+     - BehavePlus-style comprehensive single-point surface fire behavior worksheet
+       (Rothermel 1972): reaction intensity, ROS, flame length, fire size, spotting,
+       probability of ignition, crown fire assessment; batch CSV mode supported.
+   * - ``values_at_risk.py``
+     - FSPro-style values-at-risk (VAR) overlay: match asset inventory to burn
+       probability map, compute expected loss per asset and category, produce
+       prioritised at-risk list and optional Monte-Carlo exceedance curve.
+   * - ``behavior_matrix.py``
+     - Generate Rothermel fire behavior matrices across moisture / wind ranges
+   * - ``crown_fire_worksheet.py``
+     - Van Wagner (1977) crown fire initiation and active-crown ROS worksheet
+   * - ``ignition_probability_table.py``
+     - Anderson (1970) probability of ignition lookup tables
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.

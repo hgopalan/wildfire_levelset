@@ -1877,6 +1877,51 @@ int main(int argc, char* argv[])
           apply_retardant_to_spotting_probability(spotting_data, retardant_drops, geom, time);
       }
 
+      // ---- Burn-period gate: zero R_mf outside the active daily spread window ----
+      // When burn_period.enable = 1, fire spread is suppressed to zero outside
+      // the [start_hour, end_hour) local clock window.  Moisture evolution and all
+      // other diagnostics continue normally.  The FARSITE propagation and level-set
+      // advection each read R_mf, so zeroing it here silences all spread paths.
+      bool burn_period_active = true;
+      if (inputs.burn_period.enable == 1) {
+          // Compute current local clock hour (wraps at 24)
+          const double clock_hour = std::fmod(
+              inputs.burn_period.sim_start_hour +
+              static_cast<double>(time) / 3600.0,
+              24.0);
+          const double sh = static_cast<double>(inputs.burn_period.start_hour);
+          const double eh = static_cast<double>(inputs.burn_period.end_hour);
+
+          // Normal window (no midnight crossing): active when sh <= clock < eh
+          // Overnight window (midnight crossing):  active when clock >= sh OR clock < eh
+          if (sh < eh) {
+              burn_period_active = (clock_hour >= sh && clock_hour < eh);
+          } else {
+              // Window crosses midnight (e.g. 22:00–06:00)
+              burn_period_active = (clock_hour >= sh || clock_hour < eh);
+          }
+
+          if (!burn_period_active) {
+              R_mf.setVal(amrex::Real(0.0));
+              // Print only on transitions from active to inactive (first inactive step
+              // per inactive block) to avoid flooding the log every time step.
+              static bool s_prev_bp_active = true;
+              if (s_prev_bp_active) {
+                  amrex::Print() << "  Burn period inactive at hour " << clock_hour
+                                 << " (window " << sh << ":00-" << eh
+                                 << ":00) – spread suppressed.\n";
+              }
+              s_prev_bp_active = false;
+          } else {
+              static bool s_prev_bp_active = true;
+              if (!s_prev_bp_active) {
+                  amrex::Print() << "  Burn period active at hour " << clock_hour
+                                 << " – spread resumed.\n";
+              }
+              s_prev_bp_active = true;
+          }
+      }
+
       if (use_levelset) {
 	// Traditional level set advection.
 	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
