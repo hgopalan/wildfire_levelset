@@ -107,10 +107,6 @@ using namespace amrex;
 #include "wtr_weather.H"
 #include "multi_wtr_weather.H"
 
-// ---- Project headers: output ----
-#include "write_xy_data.H"
-#include "plot_results.H"
-
 // ---- Project headers: field setup ----
 #include "multifab_setup.H"
 
@@ -119,5 +115,9 @@ using namespace amrex;
 #include "terrain_setup.H"
 #include "fuel_table_setup.H"
 #include "schedule_setup.H"
+
+// ---- Project headers: output ----
+#include "write_xy_data.H"
+#include "plot_results.H"
 
 #endif // WILDFIRE_INCLUDES_H
