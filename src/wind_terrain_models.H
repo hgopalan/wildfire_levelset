@@ -46,7 +46,23 @@
 
 using namespace amrex;
 
-
+// ============================================================================
+// wind_terrain_modifies_velocity
+//
+// Returns true when the selected wind-terrain model (Options 3-7) produces a
+// terrain-modified velocity field in vel_effective that differs from the
+// ambient vel.  For "none" (Option 1) and "viegas_ros" (Option 2) the
+// ambient vel is used directly and this returns false.
+// ============================================================================
+inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
+{
+    const std::string& m = inputs.wind_terrain.model;
+    return (m == "viegas_wind" ||
+            m == "canyon_wind" ||
+            m == "viegas_neto" ||
+            m == "pimont"      ||
+            m == "windninja_ridge_canyon");
+}
 
 // ============================================================================
 // apply_wind_terrain_velocity
@@ -239,6 +255,27 @@ inline void apply_wind_terrain_velocity(
             ve(i, j, k, 1) = uy_eff;
             ve(i, j, k, 2) = v(i, j, k, 2);
         });
+    }
+}
+
+// ============================================================================
+// apply_wind_terrain_effective_velocity
+//
+// Convenience wrapper: when the selected wind-terrain model modifies velocity
+// (Options 3-7), calls apply_wind_terrain_velocity to fill vel_eff with the
+// terrain-corrected wind.  Otherwise, copies the ambient vel into vel_eff so
+// that downstream code can always read from vel_eff uniformly.
+// ============================================================================
+inline void apply_wind_terrain_effective_velocity(
+    MultiFab&              vel_eff,
+    const MultiFab&        vel,
+    const MultiFab*        terrain_slopes,
+    const InputParameters& inputs)
+{
+    if (wind_terrain_modifies_velocity(inputs)) {
+        apply_wind_terrain_velocity(vel_eff, vel, terrain_slopes, inputs);
+    } else {
+        MultiFab::Copy(vel_eff, vel, 0, 0, 3, 0);
     }
 }
 
