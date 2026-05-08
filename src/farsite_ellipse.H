@@ -160,7 +160,17 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const Real FMC = cp.FMC;
   const Real crown_fraction_weight = cp.crown_fraction_weight;
   const int use_metric_units = cp.use_metric_units;
-  
+
+  // Feature 11: critical active crown ROS [m/s] (Van Wagner 1977)
+  // R'_SA = 3.0/CBD [m/min] → [m/s] = 3.0/CBD/60
+  // Crown fire is ACTIVE only when R_surface >= R_SA_crit;
+  // when I_B >= I_o but R < R_SA_crit it is PASSIVE (surface ROS only).
+  const Real R_SA_crit = Real(3.0) / amrex::max(Real(CBD), Real(0.01)) / Real(60.0);
+
+  // Feature 12: ellipse scaling for active crown fire (backward compatible; default off)
+  const int scale_ellipse_crown_flag = fp.scale_ellipse_with_crown;
+  const Real crown_lw_scale_val      = fp.crown_lw_scale;
+
   // Compute critical surface intensity for crown initiation (if enabled)
   Real I_o = 0.0;
   if (use_crown_initiation == 1) {
@@ -323,41 +333,45 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       // Apply Van Wagner crown fire initiation if enabled
       Real R_head = R_surface;  // Default: surface fire rate
       Real local_crown_fraction = 0.0;
-      
+      bool crown_is_active = false;  // Feature 11/12: track active crown state
+
       if (use_crown_initiation == 1) {
         // Compute fireline intensity from Rothermel reaction intensity
-        // Assuming w_consumed ≈ w0 * (1 - S_T) from Rothermel params
-        // I_B [BTU/ft/s] = h_heat * w_consumed * R_surface_ftmin / 60
+        // I_B [BTU/ft/s] = I_R * R_surface_ftmin / 60
         Real I_B_imperial = I_R * R_surface_ftmin / Real(60.0);
-        
+
         // Convert to metric if needed for Van Wagner model
         Real I_B = use_metric_units ? convert_intensity_to_metric(I_B_imperial) : I_B_imperial;
-        
-        // Check if crown fire initiates
+
+        // Check if crown fire initiates (I_B >= I_o)
         bool crown_initiated = will_crown_initiate(I_B, I_o);
-        
+
         if (crown_initiated) {
-          // Compute active crown fire spread rate [m/s].
-          // Route to Cruz et al. (2005) when use_cruz_crown = 1; otherwise
-          // use the Van Wagner 3/CBD proxy.
-          Real R_crown;
-          if (have_cruz) {
-            // Cruz, Alexander & Wakimoto (2005): R = 11.02 * U10^0.90 * CBD^0.19 * exp(-0.17*MC10)
-            // wind_mag here is in simulation units (m/s)
-            R_crown = cruz_crown_ros(ccc_local, wind_mag);  // already in m/s
-          } else {
-            // Van Wagner (1977) simplified proxy: R_crown [m/min] = 3.0 / CBD * moisture_factor
-            Real R_crown_mmin = compute_crown_fire_spread_rate(CBD, FMC);
-            // Convert to simulation units (assuming ros_conv is for ft/min → sim units)
-            Real R_crown_ftmin = R_crown_mmin * Real(3.28084);
-            R_crown = R_crown_ftmin * ros_conv;
+          // Feature 11: Distinguish passive crown (I_B >= I_o but R < R'_SA)
+          // from active crown (I_B >= I_o AND R >= R'_SA).
+          // Passive crown fire uses surface ROS — no crown-spread enhancement.
+          crown_is_active = (R_surface >= R_SA_crit);
+
+          if (crown_is_active) {
+            // Active crown fire: compute enhanced crown ROS [m/s]
+            Real R_crown;
+            if (have_cruz) {
+              // Cruz, Alexander & Wakimoto (2005)
+              R_crown = cruz_crown_ros(ccc_local, wind_mag);  // already in m/s
+            } else {
+              // Van Wagner (1977) simplified proxy
+              Real R_crown_mmin = compute_crown_fire_spread_rate(CBD, FMC);
+              Real R_crown_ftmin = R_crown_mmin * Real(3.28084);
+              R_crown = R_crown_ftmin * ros_conv;
+            }
+
+            // Compute combined rate (crown fire dominates)
+            R_head = compute_total_spread_rate(R_surface, R_crown, true, crown_fraction_weight);
+
+            // Compute crown fire fraction for output
+            local_crown_fraction = compute_crown_fraction(R_crown, R_surface, true);
           }
-          
-          // Compute combined rate (crown fire dominates)
-          R_head = compute_total_spread_rate(R_surface, R_crown, crown_initiated, crown_fraction_weight);
-          
-          // Compute crown fire fraction for output
-          local_crown_fraction = compute_crown_fraction(R_crown, R_surface, crown_initiated);
+          // Passive crown: R_head = R_surface, local_crown_fraction = 0
         }
       }
 
@@ -370,7 +384,19 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
         // ft/min to mph: multiply by 60/5280 = 0.01136364
         Real U_mph = U_ftmin * Real(0.01136364);
         Real LW_ratio = anderson_LW_ratio(U_mph);
+        // Feature 12: scale L/W ratio for active crown fire (backward compat; off by default)
+        if (scale_ellipse_crown_flag == 1 && crown_is_active) {
+          LW_ratio *= crown_lw_scale_val;
+        }
         LW_ratio_to_richards_coefficients(LW_ratio, local_coeff_a,
+                                          local_coeff_b, local_coeff_c);
+      } else if (scale_ellipse_crown_flag == 1 && crown_is_active) {
+        // Feature 12: also scale fixed coefficients for active crown.
+        // Use head/backing ratio as a proxy for L/W, then reconstruct a/b/c.
+        const Real LW_approx = (local_coeff_c > Real(1.0e-10))
+                                ? local_coeff_a / local_coeff_c : Real(3.0);
+        const Real LW_crown = LW_approx * crown_lw_scale_val;
+        LW_ratio_to_richards_coefficients(LW_crown, local_coeff_a,
                                           local_coeff_b, local_coeff_c);
       }
 

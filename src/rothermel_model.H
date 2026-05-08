@@ -130,23 +130,34 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 
         // Dead-class composite moisture ratio and damping coefficient
         Real eta_M_dead = 0.0;
+        Real rm_dead_val = 0.0;  // saved for Eq. 88 live M'_x calculation
         if (A_dead > 0.0) {
             Real rm_dead = (A_d1 * rp.M_d1 + A_d10 * rp.M_d10 + A_d100 * rp.M_d100)
                            / (A_dead * rp.M_x);
             rm_dead = std::min(rm_dead, 1.0);
+            rm_dead_val = rm_dead;
             eta_M_dead = std::max(1.0 - 2.59*rm_dead
                                       + 5.11*rm_dead*rm_dead
                                       - 3.52*rm_dead*rm_dead*rm_dead, 0.0); // Eq. 29
         }
 
-        // Live-class moisture of extinction (Rothermel 1972, Eq. 88 approximation)
-        // depends on the ratio of dead to live fine-fuel loading.
+        // Live-class moisture of extinction: Rothermel (1972) Eq. 88
+        //   M'_x = 2.9 * (W'_nd / W'_nl) * (1 - M'_f / M'_x) - 0.226
+        // where W'_nd and W'_nl are the dead and live net fuel loads [lb/ft²],
+        // and M'_f / M'_x is the dead weighted-mean moisture ratio (= rm_dead_val).
+        // Net loads are computed once here and reused below for I_R.
+        const Real w_n_dead = (rp.w_d1 + rp.w_d10 + rp.w_d100) * (1.0 - rp.S_T);
+        const Real w_n_live = (rp.w_lh + rp.w_lw)               * (1.0 - rp.S_T);
+
         Real eta_M_live = 0.0;
         if (A_live > 0.0) {
-            Real M_x_live = 0.30; // minimum live moisture of extinction
-            if (A_dead > 0.0) {
-                const Real mx_live_calc = 2.9 * (A_dead / A_live)
-                                        * (1.0 - eta_M_dead / 0.3) - 0.226;
+            Real M_x_live = 0.30; // minimum live moisture of extinction (Rothermel 1972)
+            // Guard against near-zero live net fuel load (prevents divide-by-zero)
+            constexpr Real MIN_NET_LIVE_FUEL_LOAD = 1.0e-10;
+            if (A_dead > 0.0 && w_n_live > MIN_NET_LIVE_FUEL_LOAD) {
+                // Eq. 88: correct dead/live ratio uses net fuel loads, not A-factors
+                const Real mx_live_calc = 2.9 * (w_n_dead / w_n_live)
+                                        * (1.0 - rm_dead_val) - 0.226;
                 M_x_live = std::max(mx_live_calc, 0.30);
             }
             Real rm_live = (A_lh * rp.M_lh + A_lw * rp.M_lw)
@@ -160,11 +171,8 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         // Mineral damping (Eq. 30) — same for all classes
         const Real eta_s = 0.174 * std::pow(rp.S_e, -0.19);
 
-        // Net fuel loads (Eq. 24)
-        const Real w_n_dead = (rp.w_d1 + rp.w_d10 + rp.w_d100) * (1.0 - rp.S_T);
-        const Real w_n_live = (rp.w_lh + rp.w_lw)               * (1.0 - rp.S_T);
-
         // Reaction intensity: sum of dead and live contributions (Eq. 27)
+        // w_n_dead and w_n_live were already computed above for Eq. 88
         I_R = Gamma_prime * (w_n_dead * rp.h_heat * eta_M_dead
                            + w_n_live * rp.h_heat * eta_M_live) * eta_s;
 

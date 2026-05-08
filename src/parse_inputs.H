@@ -108,6 +108,12 @@ struct InputParameters {
         amrex::Real tau_residence;           // Residence time for fuel consumption in seconds (default: 60.0)
         amrex::Real f_consumed_max;          // Maximum fuel consumption fraction (0.0-1.0) (default: 0.9)
         amrex::Real f_consumed_min;          // Minimum fuel consumption fraction (0.0-1.0) (default: 0.5)
+        // Feature 12: ellipse shape scaling for active crown fire (backward compatible; default off)
+        // When enabled (=1) and active crown fire is detected, the L/W ratio is multiplied by
+        // crown_lw_scale producing a more elongated (wind-driven) ellipse consistent with
+        // active crown fire behaviour (Finney 1998 / Van Wagner 1977 active-crown criteria).
+        int scale_ellipse_with_crown;        // 1 to scale L/W for active crown fire (default: 0)
+        amrex::Real crown_lw_scale;         // L/W multiplier for active crown fire (default: 1.5)
     } farsite;
     
     // Firebrand spotting model parameters
@@ -465,6 +471,45 @@ struct InputParameters {
         amrex::Real S_e;         // effective mineral content [fraction]      (-1 = inherit)
         amrex::Real rho_p;       // particle density [lb/ft³]                 (-1 = inherit)
     } custom_fuel;
+
+    // ---- Feature 8: Albini (1979) torching-tree spotting model ----
+    // Triggered by passive or active crown fire (crown_activity >= min_crown_activity).
+    // Uses flame length from Byram's formula and canopy height to estimate lofting
+    // height, then places spot fires at a wind-driven distance.
+    // Input prefix: "torching_spotting."
+    struct TorchingSpottingParams {
+        int enable;              // 1 to enable torching-tree spotting (default: 0)
+        amrex::Real k_torch;    // spotting distance constant [m^0.5 / (m/s)]; d = k*U*sqrt(H_eff) (default: 4.24)
+        amrex::Real I_B_min;    // minimum Byram fireline intensity [kW/m] for torching (default: 100.0)
+        amrex::Real spot_radius;// radius of new spot-fire ignition zone [m] (default: 5.0)
+        amrex::Real P_base;     // probability of spot fire per torching cell per check (default: 0.05)
+        int random_seed;        // RNG seed (0 = system time, default: 0)
+        int check_interval;     // run check every N steps (default: 5)
+        int min_crown_activity; // minimum crown_activity to trigger: 1=passive+active, 2=active-only (default: 1)
+    } torching_spotting;
+
+    // ---- Feature 9: Persistent per-cell fuel load depletion ----
+    // Tracks residual (unconsumed) fuel fraction as a per-cell MultiFab that
+    // decays exponentially after the fire front passes.  Written to every
+    // plotfile as "residual_fuel".  Optionally feeds back into ROS.
+    // Input prefix: "fuel_depletion."
+    struct FuelDepletionParams {
+        int enable;              // 1 to track per-cell fuel depletion (default: 0)
+        amrex::Real tau_burnout; // fine-fuel burnout time constant [s] (default: 3600.0)
+        int couple_to_ros;       // 1 to scale ROS by residual fuel in re-entry cells (default: 0)
+    } fuel_depletion;
+
+    // ---- Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992) ----
+    // When a fire is small it spreads slower than the quasi-steady-state ROS.
+    // The acceleration factor alpha = 1 - exp(-r_fire / L_acc) where r_fire is
+    // the effective fire radius (from burned area) and L_acc is the minimum
+    // characteristic fire dimension for full ROS.  When fire is large
+    // (r_fire >> L_acc) alpha → 1 and there is no modification.
+    // Input prefix: "acceleration."
+    struct AccelerationParams {
+        int enable;              // 1 to enable fire acceleration model (default: 0)
+        amrex::Real L_acc;      // acceleration length scale [m]; fire reaches full ROS when r ≈ L_acc (default: 50.0)
+    } acceleration;
 
 };
 

@@ -184,60 +184,6 @@ See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/t
 
 6. **Validation** — Limited validation against real wildfire events; parameters calibrated to standard fuel models.
 
-## New Physics-Coupling Parameters (v2.x)
-
-The following new input keys were added to couple fire ecology diagnostics and crown fire ROS to the propagation field:
-
-### Cruz Crown ROS (Van Wagner + Cruz coupling)
-```
-crown.enable        = 1      # enable crown fire initiation (Van Wagner 1977)
-crown.CBH           = 4.0    # canopy base height [m]
-crown.CBD           = 0.15   # canopy bulk density [kg/m³]
-crown.FMC           = 100.0  # foliar moisture content [%]
-crown.use_cruz_crown = 1     # 0 = Van Wagner 3/CBD proxy (default)
-                              # 1 = Cruz, Alexander & Wakimoto (2005)
-                              #     R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17×MC10)
-                              # Requires: cruz_crown.CBD and cruz_crown.MC10
-cruz_crown.CBD      = 0.10   # canopy bulk density for Cruz formula [kg/m³]
-cruz_crown.MC10     = 10.0   # 10-h dead fuel moisture for Cruz formula [%]
-```
-
-### Fire Ecology → Propagation Coupling
-```
-fire_ecology.couple_to_ros    = 1     # 1 = scale R by P_ignition in unburned cells
-fire_ecology.p_ignition_floor = 0.05  # minimum P_i used as ROS scale floor (prevents quenching)
-fire_ecology.T_a_C            = 25.0  # ambient temperature [°C] for P_ignition
-fire_ecology.solar_heating_F  = 25.0  # solar temperature increment [°F]
-fire_ecology.tree_height      = 10.0  # mean stand height [m] for tree mortality
-```
-
-### Per-Class Fuel Burnout
-The `farsite.use_bulk_fuel_consumption = 1` option now uses the Albini (1976)
-exponential per-class burnout model instead of the old tanh sigmoid:
-
-```
-farsite.use_bulk_fuel_consumption = 1  # enable per-class burnout
-farsite.tau_residence             = 60.0  # flame residence time [s]
-farsite.f_consumed_min            = 0.0   # clamped lower bound
-farsite.f_consumed_max            = 1.0   # clamped upper bound
-```
-
-Burnout time constants: `τᵢ = 3600 × ρₚ / σᵢ`
-- 1-hr (σ ≈ 1739 ft⁻¹): τ ≈ 66 s → ~59% consumed in 60 s
-- 10-hr (σ = 109 ft⁻¹): τ ≈ 1056 s → ~6% consumed in 60 s
-- 100-hr (σ = 30 ft⁻¹): τ ≈ 3840 s → ~2% consumed in 60 s
-
-### Per-Cell Canopy-Height WAF
-When a binary LCP provides canopy height (`use_spatial_crown = 1`) and
-`rothermel.use_waf = 1`, the Wind Adjustment Factor is computed per-cell
-from a blended effective height rather than the global fuel-bed depth:
-```
-h_eff [ft] = (1 − cc) × δ_fuel + cc × h_canopy
-WAF_cell   = 1.83 / ln((20 + 0.36 × h_eff) / (0.13 × h_eff))
-```
-No extra input keys are needed — it activates automatically when both
-`use_spatial_crown = 1` and `rothermel.use_waf = 1` are set.
-
 ## Comparison with Other Wildfire Simulation Tools
 
 A detailed comparison of `wildfire_levelset` with FARSITE, WRF-SFIRE, FlamMap,
