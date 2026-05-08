@@ -591,7 +591,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fuel-system", choices=["13", "40"], default="13",
                    help="Fuel model system: '13' (Anderson) or '40' (Scott&Burgan) (default: 13)")
     p.add_argument("--moisture",    type=float, default=0.08,    metavar="FRAC",
-                   help="Dead fuel moisture fraction (default: 0.08 = 8%%)")
+                   help="Dead fuel moisture fraction (default: 0.08 = 8%)")
     p.add_argument("--wind",        type=float, default=5.0,     metavar="M/S",
                    help="Midflame wind speed [m/s] (default: 5.0)")
     p.add_argument("--slope",       type=float, default=0.0,     metavar="TAN",
@@ -613,7 +613,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cbd",         type=float, default=0.15,
                    help="Canopy bulk density [kg/m³] for crown assessment (default: 0.15)")
     p.add_argument("--fmc",         type=float, default=100.0,
-                   help="Foliar moisture content [%%] for crown assessment (default: 100)")
+                   help="Foliar moisture content [%] for crown assessment (default: 100)")
     p.add_argument("--batch",       default=None, metavar="CSV",
                    help="Batch mode: CSV file of conditions (header required)")
     p.add_argument("--out",         default=None, metavar="FILE",

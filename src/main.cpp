@@ -1903,9 +1903,22 @@ int main(int argc, char* argv[])
 
           if (!burn_period_active) {
               R_mf.setVal(amrex::Real(0.0));
-              amrex::Print() << "  Burn period inactive at hour " << clock_hour
-                             << " (window " << sh << ":00-" << eh
-                             << ":00) – spread suppressed.\n";
+              // Print only on transitions from active to inactive (first inactive step
+              // per inactive block) to avoid flooding the log every time step.
+              static bool s_prev_bp_active = true;
+              if (s_prev_bp_active) {
+                  amrex::Print() << "  Burn period inactive at hour " << clock_hour
+                                 << " (window " << sh << ":00-" << eh
+                                 << ":00) – spread suppressed.\n";
+              }
+              s_prev_bp_active = false;
+          } else {
+              static bool s_prev_bp_active = true;
+              if (!s_prev_bp_active) {
+                  amrex::Print() << "  Burn period active at hour " << clock_hour
+                                 << " – spread resumed.\n";
+              }
+              s_prev_bp_active = true;
           }
       }
 
