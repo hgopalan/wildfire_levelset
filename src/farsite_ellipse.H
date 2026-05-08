@@ -130,8 +130,10 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   // Cruz crown ROS: enabled when ccc pointer is non-null and crown.use_cruz_crown = 1
   const int use_cruz_crown_flag = cp.use_cruz_crown;
   const bool have_cruz = (ccc != nullptr && use_cruz_crown_flag == 1);
+  // Copy CruzCrownComputed scalars by value only when Cruz model is active,
+  // so the GPU kernel captures a plain struct (no host pointer indirection).
   CruzCrownComputed ccc_local;
-  if (have_cruz) { ccc_local = *ccc; }  // copy to avoid GPU pointer indirection
+  if (have_cruz) { ccc_local = *ccc; }
   
   // Bulk fuel consumption model parameters
   const int use_fuel_consumption = fp.use_bulk_fuel_consumption;
@@ -195,7 +197,11 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       cff = crown_fire_fraction->array(mfi);
     }
 
-    // Get canopy cover and height arrays for per-cell WAF (if provided)
+    // Get canopy cover and height arrays for per-cell WAF (if provided).
+    // Safety invariant: cht_arr is only dereferenced in the GPU kernel when
+    // use_canopy_ht_waf is true (a const bool captured by value).  That same
+    // bool gates the initialization below, so cht_arr is never read in a
+    // default-constructed (null-pointer) state.
     Array4<const Real> cc_arr;
     if (use_cc_waf || use_canopy_ht_waf) {
       cc_arr = canopy_cover_mf->const_array(mfi);

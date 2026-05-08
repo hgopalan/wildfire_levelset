@@ -237,7 +237,7 @@ inline void apply_ecology_p_ignition_feedback(
 {
     if (fep.couple_to_ros != 1) return;
 
-    const Real p_floor = amrex::max(Real(fep.p_ignition_floor), Real(0.0));
+    const Real p_floor = Real(fep.p_ignition_floor);
 
     for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
         const Box& bx  = mfi.validbox();

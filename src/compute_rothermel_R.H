@@ -99,6 +99,13 @@ inline void compute_rothermel_R(MultiFab& R_mf,
         }
 
         // Get per-cell canopy cover and height arrays for per-cell WAF
+        // Safety invariant: cht_arr (and cc_arr) are accessed in the GPU kernel
+        // only when use_canopy_ht_waf (or use_cc_waf) is true.  These booleans
+        // are evaluated before the MFIter loop and captured by value in the
+        // ParallelFor lambda; when true, the Array4 is always initialized here
+        // before the kernel is launched.  Default-constructed Array4 (null-pointer
+        // state) is never dereferenced because the same boolean guards both the
+        // host assignment and the device access path.
         Array4<const Real> cc_arr;
         if (use_cc_waf || use_canopy_ht_waf) {
             cc_arr = canopy_cover_mf->const_array(mfi);

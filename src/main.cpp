@@ -758,9 +758,10 @@ int main(int argc, char* argv[])
         // Global crown ROS (Van Wagner proxy) for dt guard
         const Real R_crown_g_ms_init = (Real(3.0) / amrex::max(CBD_global_i, Real(0.01)))
                                        * mf_i / Real(60.0);
-        // Pre-compute Cruz crown coefficient for the GPU kernel when enabled
         const bool use_cruz_init = (inputs.crown.use_cruz_crown == 1);
-        const CruzCrownComputed ccc_init = ccc_global;
+        // Copy CruzCrownComputed scalars only when the Cruz model is active
+        CruzCrownComputed ccc_init;
+        if (use_cruz_init) { ccc_init = ccc_global; }
 
         for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
             const Box& bx  = mfi.validbox();
@@ -1049,7 +1050,9 @@ int main(int argc, char* argv[])
                                         amrex::min(Real(1.0),
                                         Real(1.0) - (FMC_global - Real(100.0)) / Real(200.0)));
           const bool use_cruz_tl = (inputs.crown.use_cruz_crown == 1);
-          const CruzCrownComputed ccc_tl = ccc_global;
+          // Copy CruzCrownComputed scalars only when the Cruz model is active
+          CruzCrownComputed ccc_tl;
+          if (use_cruz_tl) { ccc_tl = ccc_global; }
           const Real MC10_tl = Real(inputs.cruz_crown.MC10);
 
           for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
