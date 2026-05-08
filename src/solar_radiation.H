@@ -111,7 +111,6 @@ inline SolarPosition compute_solar_position(
     // ---- Day of year ----
     // Follows the formula of Spencer (1971) / ASHRAE via days in each month.
     int doy = day;
-    const int days_in_month[] = {31,28,31,30,31,30,31,31,30,31,30,31};
     // Leap year check (Gregorian)
     int days_feb = ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) ? 29 : 28;
     const int dim[] = {31, days_feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -364,9 +363,15 @@ inline amrex::Real advance_solar_date(
     double total_h = static_cast<double>(sim_start_hour)
                    + static_cast<double>(elapsed_s) / 3600.0;
 
-    // Number of whole days elapsed
-    int extra_days = static_cast<int>(total_h / 24.0);
+    // Number of whole days elapsed — use floor() to correctly handle
+    // negative total_h (which can occur due to floating-point precision
+    // when elapsed_s is very small and sim_start_hour rounds down).
+    int extra_days = (total_h >= 0.0) ? static_cast<int>(total_h / 24.0)
+                                      : 0;
     double hour_of_day = total_h - extra_days * 24.0;
+    // Clamp to [0, 24) for robustness against floating-point edge cases
+    if (hour_of_day < 0.0)  hour_of_day = 0.0;
+    if (hour_of_day >= 24.0) hour_of_day = 0.0;
 
     // Advance calendar by extra_days using per-month day counts
     for (int d = 0; d < extra_days; ++d) {
