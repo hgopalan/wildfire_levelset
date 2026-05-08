@@ -113,4 +113,10 @@ using namespace amrex;
 // ---- Project headers: field setup ----
 #include "multifab_setup.H"
 
+// ---- Project headers: extracted initialisation helpers ----
+#include "init_phi_source.H"
+#include "terrain_setup.H"
+#include "fuel_table_setup.H"
+#include "schedule_setup.H"
+
 #endif // WILDFIRE_INCLUDES_H

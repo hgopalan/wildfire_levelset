@@ -41,7 +41,7 @@ inline Real apply_crown_ros_override(
     const MultiFab& fireline_intensity_mf,
     bool has_spatial_crown,
     const MultiFab& cbd_mf,
-    const InputParameters::CrownParams& crown,
+    const InputParameters::CrownInitiationParams& crown,
     const InputParameters::CruzCrownParams& cruz_crown,
     const CruzCrownComputed& ccc_global)
 {
