@@ -63,6 +63,10 @@ using namespace amrex;
 #include "polygon_ignition.H"
 #include "fms_moisture.H"
 #include "wind_dir_schedule.H"
+#include "fbp_model.H"
+#include "compute_fbp_R.H"
+#include "lautenberger_model.H"
+#include "compute_lautenberger_R.H"
 #include "solar_radiation.H"
 
 
@@ -193,6 +197,13 @@ int main(int argc, char* argv[])
     // Recomputed from the current velocity field before each plotfile write.
     MultiFab vorticity_mf(ba, dm, 1, 0);
     vorticity_mf.setVal(0.0);
+
+    // Scott & Reinhardt (2001) full TI and CI [km/h]
+    // Computed once at initialization (fuel-property-based, not fire-state-based).
+    MultiFab ti_full_mf(ba, dm, 1, 0);
+    MultiFab ci_full_mf(ba, dm, 1, 0);
+    ti_full_mf.setVal(Real(-1.0));  // -1 = not computed / disabled
+    ci_full_mf.setVal(Real(-1.0));
 
     // Reaction intensity I_R [kW/m²] (Rothermel 1972).
     // Per-cell when a landscape fuel table is active; uniform otherwise.
@@ -781,7 +792,13 @@ int main(int argc, char* argv[])
          inputs.wind_terrain.model == "viegas_ros"    ||
          inputs.fire_spread_model  == "balbi"         ||
          inputs.fire_spread_model  == "cheney_gould"  ||
-         inputs.fire_spread_model  == "cruz_crown");
+         inputs.fire_spread_model  == "cruz_crown"    ||
+         inputs.fire_spread_model  == "fbp_o1a"       ||
+         inputs.fire_spread_model  == "fbp_o1b"       ||
+         inputs.fire_spread_model  == "fbp_s1"        ||
+         inputs.fire_spread_model  == "fbp_s2"        ||
+         inputs.fire_spread_model  == "fbp_s3"        ||
+         inputs.fire_spread_model  == "lautenberger");
 
     // Helper flag for Viegas+Balbi coupling
     const bool use_balbi_for_viegas = (inputs.fire_spread_model == "balbi");
@@ -820,6 +837,15 @@ int main(int argc, char* argv[])
             compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
         } else if (inputs.fire_spread_model == "cruz_crown") {
             compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
+        } else if (inputs.fire_spread_model == "fbp_o1a" ||
+                   inputs.fire_spread_model == "fbp_o1b" ||
+                   inputs.fire_spread_model == "fbp_s1"  ||
+                   inputs.fire_spread_model == "fbp_s2"  ||
+                   inputs.fire_spread_model == "fbp_s3") {
+            compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
+        } else if (inputs.fire_spread_model == "lautenberger") {
+            compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
+                                    terrain_slopes.get());
         } else {
             // Compute Rothermel wind speed R
             compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
@@ -857,6 +883,15 @@ int main(int argc, char* argv[])
             compute_cheney_gould_R(R_mf, vel_for_mtt, inputs.cheney_gould);
         } else if (inputs.fire_spread_model == "cruz_crown") {
             compute_cruz_crown_R(R_mf, vel_for_mtt, inputs.cruz_crown);
+        } else if (inputs.fire_spread_model == "fbp_o1a" ||
+                   inputs.fire_spread_model == "fbp_o1b" ||
+                   inputs.fire_spread_model == "fbp_s1"  ||
+                   inputs.fire_spread_model == "fbp_s2"  ||
+                   inputs.fire_spread_model == "fbp_s3") {
+            compute_fbp_R(R_mf, vel_for_mtt, inputs.fbp);
+        } else if (inputs.fire_spread_model == "lautenberger") {
+            compute_lautenberger_R(R_mf, vel_for_mtt, inputs.rothermel, inputs.lautenberger,
+                                    terrain_slopes.get());
         } else {
             compute_rothermel_R(R_mf, vel_for_mtt, geom, inputs.rothermel,
                                  terrain_slopes.get(),
@@ -920,8 +955,12 @@ int main(int argc, char* argv[])
         // Global crown ROS (Van Wagner proxy) for dt guard
         const Real R_crown_g_ms_init = (Real(3.0) / amrex::max(CBD_global_i, Real(0.01)))
                                        * mf_i / Real(60.0);
-        const bool use_cruz_init = (inputs.crown.use_cruz_crown == 1);
-        // Copy CruzCrownComputed scalars only when the Cruz model is active
+        const bool use_cruz_init          = (inputs.crown.use_cruz_crown == 1);
+        const bool use_roth1991_init      = (inputs.crown.use_rothermel1991_crown == 1);
+        const bool use_passive_blend_init = (inputs.crown.use_passive_blend == 1);
+        const Real CBH_init = Real(inputs.crown.CBH);
+        const Real FMC_init = FMC_global_i;
+        const Real I_o_init = Real(0.010) * CBH_init * (Real(460.0) + Real(25.9) * FMC_init);
         CruzCrownComputed ccc_init;
         if (use_cruz_init) { ccc_init = ccc_global; }
 
@@ -930,6 +969,7 @@ int main(int argc, char* argv[])
             auto       R   = R_mf.array(mfi);
             auto const eco = ecology_mf.const_array(mfi);
             auto const v   = vel.const_array(mfi);
+            auto const fi  = fireline_intensity_mf.const_array(mfi);
             const bool use_sp_i = has_spatial_crown;
             Array4<const Real> cbd_arr_i;
             if (use_sp_i) {
@@ -938,10 +978,18 @@ int main(int argc, char* argv[])
             const Real CBD_g_i  = CBD_global_i;
             const Real mf_val_i = mf_i;
             const Real MC10_i   = Real(inputs.cruz_crown.MC10);
+            const bool use_cruz_i    = use_cruz_init;
+            const bool use_roth91_i  = use_roth1991_init;
+            const bool use_passive_i = use_passive_blend_init;
+            const Real I_o_i = I_o_init;
             ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive crown
+                Real R_surface = R(i, j, k);
                 Real R_crown_ms;
-                if (use_cruz_init) {
+                if (use_roth91_i) {
+                    // Rothermel (1991): R_crown = 3.34 x R_surface
+                    R_crown_ms = compute_rothermel_1991_crown_ros(R_surface);
+                } else if (use_cruz_i) {
                     // Cruz, Alexander & Wakimoto (2005) active crown ROS
                     Real ux = v(i,j,k,0);
                     Real uy = v(i,j,k,1);
@@ -954,7 +1002,13 @@ int main(int argc, char* argv[])
                     CBD_c = amrex::max(CBD_c, Real(0.01));
                     R_crown_ms = (Real(3.0) / CBD_c) * mf_val_i / Real(60.0);
                 }
-                R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
+                if (use_passive_i) {
+                    const Real I_B_kwm = fi(i, j, k);
+                    R(i, j, k) = compute_van_wagner_passive_blend(
+                        R_surface, R_crown_ms, I_B_kwm, I_o_i);
+                } else {
+                    R(i, j, k) = amrex::max(R_surface, R_crown_ms);
+                }
             });
         }
         // Recompute dt when crown ROS is positive and could tighten the CFL.
@@ -966,6 +1020,15 @@ int main(int argc, char* argv[])
     // Fire emissions (CO₂, CO, PM₂.₅) from fuel load × consumption fraction
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
+
+    // Scott & Reinhardt (2001) full bisection-based TI/CI (optional, host-only)
+    if (inputs.scott_reinhardt_full.enable == 1) {
+        compute_full_scott_reinhardt(
+            ti_full_mf, ci_full_mf,
+            inputs.rothermel, inputs.crown,
+            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+            nullptr, 0);
+    }
 
 
     // ---------------- Barrier polygon cells (firebreaks) ------------------
@@ -1011,7 +1074,8 @@ int main(int argc, char* argv[])
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1028,10 +1092,11 @@ int main(int argc, char* argv[])
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1061,6 +1126,8 @@ int main(int argc, char* argv[])
       MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
+	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
+	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -1301,6 +1368,15 @@ int main(int argc, char* argv[])
           compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
       } else if (inputs.fire_spread_model == "cruz_crown") {
           compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
+      } else if (inputs.fire_spread_model == "fbp_o1a" ||
+                 inputs.fire_spread_model == "fbp_o1b" ||
+                 inputs.fire_spread_model == "fbp_s1"  ||
+                 inputs.fire_spread_model == "fbp_s2"  ||
+                 inputs.fire_spread_model == "fbp_s3") {
+          compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
+      } else if (inputs.fire_spread_model == "lautenberger") {
+          compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
+                                  terrain_slopes.get());
       } else {
           compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                terrain_slopes.get(),
@@ -1333,6 +1409,15 @@ int main(int argc, char* argv[])
       compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                            inputs.rothermel, inputs.fire_ecology, inputs.crown);
 
+      // Scott & Reinhardt (2001) full bisection-based TI/CI (optional, host-only)
+      if (inputs.scott_reinhardt_full.enable == 1) {
+          compute_full_scott_reinhardt(
+              ti_full_mf, ci_full_mf,
+              inputs.rothermel, inputs.crown,
+              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+              nullptr, 0);
+      }
+
       // Ecology → propagation coupling:
       //   (a) P_ignition scales R_mf in unburned cells when couple_to_ros = 1
       apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, inputs.fire_ecology);
@@ -1349,8 +1434,11 @@ int main(int argc, char* argv[])
           const Real m_factor_g   = amrex::max(Real(0.3),
                                         amrex::min(Real(1.0),
                                         Real(1.0) - (FMC_global - Real(100.0)) / Real(200.0)));
-          const bool use_cruz_tl = (inputs.crown.use_cruz_crown == 1);
-          // Copy CruzCrownComputed scalars only when the Cruz model is active
+          const bool use_cruz_tl          = (inputs.crown.use_cruz_crown == 1);
+          const bool use_roth1991_tl      = (inputs.crown.use_rothermel1991_crown == 1);
+          const bool use_passive_blend_tl = (inputs.crown.use_passive_blend == 1);
+          const Real CBH_tl = Real(inputs.crown.CBH);
+          const Real I_o_tl = Real(0.010) * CBH_tl * (Real(460.0) + Real(25.9) * FMC_global);
           CruzCrownComputed ccc_tl;
           if (use_cruz_tl) { ccc_tl = ccc_global; }
           const Real MC10_tl = Real(inputs.cruz_crown.MC10);
@@ -1360,6 +1448,7 @@ int main(int argc, char* argv[])
               auto       R    = R_mf.array(mfi);
               auto const eco  = ecology_mf.const_array(mfi);
               auto const v    = vel.const_array(mfi);
+              auto const fi   = fireline_intensity_mf.const_array(mfi);
               const bool use_sp = has_spatial_crown;
               Array4<const Real> cbd_arr;
               if (use_sp) {
@@ -1367,11 +1456,17 @@ int main(int argc, char* argv[])
               }
               const Real CBD_g   = CBD_global;
               const Real mf_val  = m_factor_g;
+              const bool use_roth91_tl = use_roth1991_tl;
+              const bool use_passive_tl = use_passive_blend_tl;
+              const Real I_o_tl_k = I_o_tl;
 
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive
+                  Real R_surface = R(i, j, k);
                   Real R_crown_ms;
-                  if (use_cruz_tl) {
+                  if (use_roth91_tl) {
+                      R_crown_ms = compute_rothermel_1991_crown_ros(R_surface);
+                  } else if (use_cruz_tl) {
                       Real ux = v(i,j,k,0);
                       Real uy = v(i,j,k,1);
                       Real wind_mag = std::sqrt(ux*ux + uy*uy);
@@ -1382,11 +1477,19 @@ int main(int argc, char* argv[])
                       CBD_c = amrex::max(CBD_c, Real(0.01));
                       R_crown_ms = (Real(3.0) / CBD_c) * mf_val / Real(60.0);
                   }
-                  R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
+                  if (use_passive_tl) {
+                      const Real I_B_kwm = fi(i, j, k);
+                      R(i, j, k) = compute_van_wagner_passive_blend(
+                          R_surface, R_crown_ms, I_B_kwm, I_o_tl_k);
+                  } else {
+                      R(i, j, k) = amrex::max(R_surface, R_crown_ms);
+                  }
               });
           }
           amrex::Print() << "  Crown ROS override applied (crown.enable=1"
-                         << (use_cruz_tl ? ", Cruz 2005" : ", Van Wagner 1977") << ").\n";
+                         << (use_roth1991_tl ? ", Rothermel1991"
+                             : use_cruz_tl   ? ", Cruz 2005"
+                                             : ", Van Wagner 1977") << ").\n";
       }
 
       // Fire emissions (CO₂, CO, PM₂.₅)
@@ -1584,7 +1687,8 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1601,10 +1705,11 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1634,6 +1739,8 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
+	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
+	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
@@ -1713,7 +1820,8 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1730,10 +1838,11 @@ int main(int argc, char* argv[])
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
-   "reaction_intensity", "residual_fuel", "shade_fraction"
+   "reaction_intensity", "residual_fuel", "shade_fraction",
+   "torching_index_kmh", "crowning_index_kmh"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1763,6 +1872,8 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, reaction_intensity_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 8, 1, 0);
 	MultiFab::Copy(plotmf, residual_fuel_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 9, 1, 0);
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
+	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
+	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{

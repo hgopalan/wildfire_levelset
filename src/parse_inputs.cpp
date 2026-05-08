@@ -262,7 +262,9 @@ void parse_inputs(InputParameters& p)
     p.crown.crown_fraction_weight = 1.0;         pp.query("crown.crown_fraction_weight", p.crown.crown_fraction_weight);
     p.crown.use_metric_units = 1;                pp.query("crown.use_metric_units", p.crown.use_metric_units);
     p.crown.use_cruz_crown = 0;                  pp.query("crown.use_cruz_crown", p.crown.use_cruz_crown);
-    
+    p.crown.use_rothermel1991_crown = 0;         pp.query("crown.use_rothermel1991_crown", p.crown.use_rothermel1991_crown);
+    p.crown.use_passive_blend = 0;               pp.query("crown.use_passive_blend", p.crown.use_passive_blend);
+
     // Validate crown fire parameters
     if (p.crown.enable == 1) {
         if (p.crown.CBH <= 0.0) {
@@ -279,6 +281,12 @@ void parse_inputs(InputParameters& p)
         }
         if (p.crown.use_cruz_crown == 1) {
             Print() << "Crown fire: active ROS model = Cruz, Alexander & Wakimoto (2005)\n";
+        }
+        if (p.crown.use_rothermel1991_crown == 1) {
+            Print() << "Crown fire: active ROS model = Rothermel (1991): R_crown = 3.34 x R_surface\n";
+        }
+        if (p.crown.use_passive_blend == 1) {
+            Print() << "Crown fire: passive blending = Van Wagner (1977) CF = (I_B/I_o)^(2/3)\n";
         }
     }
 
@@ -297,8 +305,16 @@ void parse_inputs(InputParameters& p)
     }
     if (p.fire_spread_model != "rothermel" && p.fire_spread_model != "balbi"
         && p.fire_spread_model != "cheney_gould"
-        && p.fire_spread_model != "cruz_crown") {
-        amrex::Abort("fire_spread_model must be 'rothermel', 'balbi', 'cheney_gould', or 'cruz_crown'");
+        && p.fire_spread_model != "cruz_crown"
+        && p.fire_spread_model != "fbp_o1a"
+        && p.fire_spread_model != "fbp_o1b"
+        && p.fire_spread_model != "fbp_s1"
+        && p.fire_spread_model != "fbp_s2"
+        && p.fire_spread_model != "fbp_s3"
+        && p.fire_spread_model != "lautenberger") {
+        amrex::Abort("fire_spread_model must be 'rothermel', 'balbi', 'cheney_gould', "
+                     "'cruz_crown', 'fbp_o1a', 'fbp_o1b', 'fbp_s1', 'fbp_s2', 'fbp_s3', "
+                     "or 'lautenberger'");
     }
 
     // -------- Propagation method selection --------
@@ -377,6 +393,45 @@ void parse_inputs(InputParameters& p)
                 << " %  curing=" << p.cheney_gould.curing << "\n";
     } else {
         Print() << "Fire spread model: Rothermel (1972)\n";
+    }
+
+    // -------- Canadian FBP System parameters --------
+    p.fbp.fuel_type = "o1a";  pp.query("fbp.fuel_type", p.fbp.fuel_type);
+    p.fbp.moisture  = 10.0;   pp.query("fbp.moisture",  p.fbp.moisture);
+    p.fbp.curing    = 80.0;   pp.query("fbp.curing",    p.fbp.curing);
+    if (p.fire_spread_model == "fbp_o1a" || p.fire_spread_model == "fbp_o1b" ||
+        p.fire_spread_model == "fbp_s1"  || p.fire_spread_model == "fbp_s2"  ||
+        p.fire_spread_model == "fbp_s3") {
+        // Sync fuel_type with fire_spread_model
+        if      (p.fire_spread_model == "fbp_o1a") p.fbp.fuel_type = "o1a";
+        else if (p.fire_spread_model == "fbp_o1b") p.fbp.fuel_type = "o1b";
+        else if (p.fire_spread_model == "fbp_s1")  p.fbp.fuel_type = "s1";
+        else if (p.fire_spread_model == "fbp_s2")  p.fbp.fuel_type = "s2";
+        else if (p.fire_spread_model == "fbp_s3")  p.fbp.fuel_type = "s3";
+        Print() << "Fire spread model: FBP System " << p.fbp.fuel_type
+                << "  moisture=" << p.fbp.moisture << " %"
+                << "  curing=" << p.fbp.curing << " %\n";
+    }
+
+    // -------- Lautenberger (2013) parameters --------
+    p.lautenberger.A_L = 1.05e-5;  pp.query("lautenberger.A_L", p.lautenberger.A_L);
+    p.lautenberger.B_L = 2.5;      pp.query("lautenberger.B_L", p.lautenberger.B_L);
+    p.lautenberger.C_L = 0.40;     pp.query("lautenberger.C_L", p.lautenberger.C_L);
+    p.lautenberger.D_L = 0.50;     pp.query("lautenberger.D_L", p.lautenberger.D_L);
+    if (p.fire_spread_model == "lautenberger") {
+        Print() << "Fire spread model: Lautenberger (2013) physics-based\n";
+        Print() << "  A_L=" << p.lautenberger.A_L << " m2/s"
+                << "  B_L=" << p.lautenberger.B_L
+                << "  C_L=" << p.lautenberger.C_L << " (m/s)-1"
+                << "  D_L=" << p.lautenberger.D_L << "\n";
+    }
+
+    // -------- Scott & Reinhardt (2001) full TI/CI --------
+    p.scott_reinhardt_full.enable    = 0;     pp.query("scott_reinhardt_full.enable",    p.scott_reinhardt_full.enable);
+    p.scott_reinhardt_full.U_max_kmh = 200.0; pp.query("scott_reinhardt_full.U_max_kmh", p.scott_reinhardt_full.U_max_kmh);
+    if (p.scott_reinhardt_full.enable == 1) {
+        Print() << "Scott & Reinhardt (2001) full TI/CI enabled (bisection, U_max="
+                << p.scott_reinhardt_full.U_max_kmh << " km/h)\n";
     }
 
     // Print Andrews (2018) wind adjustment settings

@@ -2129,3 +2129,181 @@ Parameters:
 Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
 in Fire Spread Prediction.* Colorado State University MS thesis.
 
+
+Canadian Forest Fire Behaviour Prediction (FBP) System
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Canadian FBP system provides empirical rate-of-spread equations calibrated for
+specific fuel types.  The solver implements five fuel types: O1a (matted grass),
+O1b (standing grass), S1 (Jack/Lodgepole Pine slash), S2 (White Spruce/Balsam slash),
+and S3 (Coastal Cedar/Hemlock/Douglas Fir slash).
+
+Select with ``fire_spread_model = fbp_o1a`` (or ``fbp_o1b``, ``fbp_s1``, ``fbp_s2``, ``fbp_s3``).
+
+**Grass fuel types (O1a / O1b)**
+
+The Initial Spread Index (ISI) is computed from wind speed :math:`U_{10}` (km/h):
+
+.. math::
+
+   f_W = \exp(0.05039\,U_{10})
+
+   \text{ISI} = 0.208 \, f_W \exp\!\bigl(-0.050989 \, M_f\bigr)
+
+where :math:`M_f` is the fine fuel moisture content (%).
+The curing factor (CF) accounts for the fraction of dead fuel:
+
+.. math::
+
+   \mathrm{CF} = \Bigl(1 - \exp\!\bigl(-2.1\,\mathrm{PC}/100\bigr)\Bigr)^2
+
+Rate of spread (m/min):
+
+.. math::
+
+   R = \begin{cases}
+     0 & \text{if } \mathrm{PC} < 20 \\
+     \alpha_c \,(1 - \exp(-\beta_c\,\text{ISI}))^{a_c} \times \mathrm{CF} \times \mathrm{GFL}/0.3 & \text{otherwise}
+   \end{cases}
+
+where the coefficients :math:`(\alpha_c, \beta_c, a_c)` differ between O1a and O1b:
+
+* **O1a** (matted): :math:`\alpha=190,\;\beta=0.0310,\;a=1.40`
+* **O1b** (standing): :math:`\alpha=250,\;\beta=0.0350,\;a=1.50`
+
+**Slash fuel types (S1 / S2 / S3)**
+
+Rate of spread (m/min):
+
+.. math::
+
+   R = \alpha_s \,(1 - \exp(-\beta_s\,\text{ISI}))^{a_s}
+
+Coefficients:
+
+* **S1**: :math:`\alpha=75.0,\;\beta=0.0297,\;a=1.30`
+* **S2**: :math:`\alpha=40.0,\;\beta=0.0438,\;a=1.70`
+* **S3**: :math:`\alpha=55.0,\;\beta=0.0829,\;a=3.00`
+
+Parameters: ``fbp.fuel_type``, ``fbp.PC`` (curing [%], O1a/O1b only), ``fbp.GFL`` (grass fuel load [kg/m²], O1a/O1b only).
+
+Reference: Forestry Canada Fire Danger Group (1992). *Development and Structure of
+the Canadian Forest Fire Behavior Prediction System.*  Information Report ST-X-3.
+
+
+Lautenberger (2013) Physics-Based Fire Spread Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Lautenberger model derives rate of spread from fundamental combustion physics
+rather than empirical regression.
+
+Select with ``fire_spread_model = lautenberger``.
+
+The flame spread velocity (m/s) is:
+
+.. math::
+
+   R = \frac{q_{\text{rad}} - q_{\text{crit}}}{\rho_b c_p (T_{\text{ig}} - T_\infty)}
+       \cdot \frac{1}{\sigma \delta}
+
+where:
+
+* :math:`q_{\text{rad}}` – radiative heat flux from the flame front (kW/m²)
+* :math:`q_{\text{crit}}` – critical heat flux for ignition (kW/m²)
+* :math:`\rho_b` – bulk density of the fuel bed (kg/m³)
+* :math:`c_p` – specific heat capacity of fuel (kJ/kg·K)
+* :math:`T_{\text{ig}}` – ignition temperature (K)
+* :math:`T_\infty` – ambient temperature (K)
+* :math:`\sigma` – surface-area-to-volume ratio of fuel particles (m⁻¹)
+* :math:`\delta` – fuel depth (m), estimated from :math:`\rho_b` and :math:`\sigma`
+
+The wind enhancement multiplier follows:
+
+.. math::
+
+   \phi_W = \exp\!\bigl(k_W \, U_{10}\bigr)
+
+Parameters: ``lautenberger.rho_b``, ``lautenberger.sigma``, ``lautenberger.M_x``,
+``lautenberger.h``.
+
+Reference: Lautenberger, C. (2013). *Wildland fire modeling with an Eulerian level
+set method and automated calibration.* Fire Safety Journal, 62, 289–298.
+
+
+Rothermel (1991) Active Crown Fire ROS
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``crown.use_rothermel1991_crown = 1``, active-crown-fire cells use a simple
+multiplicative relationship derived by Rothermel (1991):
+
+.. math::
+
+   R_{\text{crown}} = 3.34 \; R_{\text{surface}}
+
+This is applied only in cells where ``crown_activity == 2`` (active crown fire),
+and replaces (or is blended with) the surface ROS.
+
+Parameters: ``crown.use_rothermel1991_crown = 1``.
+
+Reference: Rothermel, R.C. (1991). *Predicting Behavior and Size of Crown Fires
+in the Northern Rocky Mountains.* USDA Forest Service Research Paper INT-438.
+
+
+Van Wagner (1977) Passive-Crown Blending
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``crown.use_passive_blend = 1`` the transition from surface to active crown
+fire is smoothed via Van Wagner's (1977) passive crown-fire factor:
+
+.. math::
+
+   \mathrm{CF} = \left(\frac{I_B}{I_o}\right)^{2/3}
+
+The blended ROS is:
+
+.. math::
+
+   R = (1 - \mathrm{CF})\,R_{\text{surface}} + \mathrm{CF}\,R_{\text{crown}}
+
+where :math:`I_B` is the Byram fireline intensity (kW/m) and :math:`I_o` is the
+Van Wagner crown fire initiation threshold (kW/m):
+
+.. math::
+
+   I_o = 0.010\,h_{\text{CBH}}\,(460 + 25.9\,\mathrm{FMC})^{1.5}
+
+Parameters: ``crown.use_passive_blend = 1``, ``crown.CBH``, ``crown.FMC``.
+
+Reference: Van Wagner, C.E. (1977). *Conditions for the start and spread of crown
+fire.* Canadian Journal of Forest Research, 7(1), 23–34.
+
+
+Scott & Reinhardt (2001) Bisection-Based TI and CI
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The full Scott & Reinhardt (2001) Torching Index (TI) and Crowning Index (CI) are
+defined as the minimum 10-m open-wind speed (km/h) at which passive torching or
+active crowning can occur.  These are output as the plotfile fields
+``torching_index_kmh`` and ``crowning_index_kmh``.
+
+Enable with ``scott_reinhardt_full.enable = 1``.
+
+**Torching Index** is found by bisection on the wind speed :math:`U` that satisfies:
+
+.. math::
+
+   I_B(U) = I_o
+
+where :math:`I_B(U) = H_l \, w_n \, R(U) / 60` is the Byram fireline intensity
+(kW/m) computed from the Rothermel surface ROS :math:`R(U)` [m/min], net fuel
+load :math:`w_n` [kg/m²], and heat of combustion :math:`H_l` [kJ/kg].
+
+**Crowning Index** is found by bisection on the wind speed :math:`U` that satisfies:
+
+.. math::
+
+   R(U) = R'_{SA} = \frac{3.0}{\mathrm{CBD}} \; \text{[m/min]}
+
+Reference: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing Crown Fire Potential
+by Linking Models of Surface and Crown Fire Behavior.* USDA Forest Service
+Research Paper RMRS-RP-29.

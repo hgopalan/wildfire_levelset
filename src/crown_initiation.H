@@ -388,4 +388,71 @@ amrex::Real convert_intensity_to_imperial(amrex::Real I_B_metric)
     return I_B_metric * conversion;
 }
 
+// ============================================================================
+// Rothermel (1991) active crown fire rate of spread
+// ============================================================================
+// Formula: R_crown = 3.34 x R_surface
+//
+// Reference:
+//   Rothermel, R.C. (1991). "Predicting behavior and size of crown fires in
+//   the northern Rocky Mountain conifers." USDA Forest Service INT-RP-438.
+//
+// This is the FARSITE-compatible formula where the active crown fire ROS is
+// a fixed multiple of the surface ROS.  Calibrated for northern Rocky Mountain
+// conifer forests (MT, ID, WY, CO) - applicable across the continental US.
+//
+// Parameters:
+//   R_surface_ms: surface fire rate of spread [m/s]
+//
+// Returns:
+//   R_crown: active crown fire rate of spread [m/s]
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_rothermel_1991_crown_ros(amrex::Real R_surface_ms) noexcept
+{
+    return amrex::max(WildfireConst::ROTHERMEL1991_CROWN_MULT * R_surface_ms,
+                      amrex::Real(0.0));
+}
+
+// ============================================================================
+// Van Wagner (1977) passive crown fire interpolation (crowning fraction blend)
+// ============================================================================
+// When I_B > I_o, a continuous crowning fraction CF blends between surface and
+// active crown ROS:
+//
+//   CF = min((I_B / I_o)^(2/3), 1.0)
+//   R_total = R_surface * (1 - CF) + R_crown_active * CF
+//
+// Reference:
+//   Van Wagner, C.E. (1977). "Conditions for the start and spread of crown
+//   fire." Canadian Journal of Forest Research, 7(1), 23-34.
+//
+// Parameters:
+//   R_surface_ms:      surface fire ROS [m/s]
+//   R_crown_active_ms: active crown fire ROS [m/s]
+//   I_B_kwm:           Byram fireline intensity [kW/m]
+//   I_o_kwm:           Van Wagner critical surface intensity [kW/m]
+//
+// Returns:
+//   Blended ROS [m/s]; equals R_surface when I_B < I_o,
+//   equals R_crown_active when CF = 1 (active crown).
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_van_wagner_passive_blend(
+    amrex::Real R_surface_ms,
+    amrex::Real R_crown_active_ms,
+    amrex::Real I_B_kwm,
+    amrex::Real I_o_kwm) noexcept
+{
+    using namespace amrex;
+    if (I_o_kwm < Real(1.0e-6)) return R_surface_ms;
+    if (I_B_kwm < I_o_kwm)      return R_surface_ms;
+
+    const Real ratio = I_B_kwm / I_o_kwm;
+    const Real CF = amrex::min(std::pow(ratio, Real(2.0 / 3.0)), Real(1.0));
+
+    return R_surface_ms * (Real(1.0) - CF)
+         + amrex::max(R_crown_active_ms, R_surface_ms) * CF;
+}
+
 #endif // CROWN_INITIATION_H

@@ -107,6 +107,8 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
+#include "rothermel_model.H"
+#include "constants.H"
 #include <cmath>
 
 using namespace amrex;
@@ -303,6 +305,160 @@ inline void apply_ecology_p_ignition_feedback(
             R(i, j, k) *= scale;
         });
     }
+}
+
+// ============================================================================
+// Scott & Reinhardt (2001) full Torching Index (TI) and Crowning Index (CI)
+// ============================================================================
+// The Torching Index is the minimum 20-ft open wind speed [km/h] at which
+// the surface fire intensity equals the Van Wagner (1977) crown initiation
+// threshold I_o.  The Crowning Index is the minimum 20-ft wind speed at
+// which the surface ROS equals the Van Wagner (1977) critical active-crown
+// ROS R'_SA.
+//
+// Both are computed by bisecting over U_20 using the Rothermel formula.
+//
+// Reference:
+//   Scott, J.H. & Reinhardt, E.D. (2001). "Assessing Crown Fire Potential by
+//   Linking Models of Surface and Crown Fire Behavior." USDA Forest Service
+//   Research Paper RMRS-RP-29.
+// ============================================================================
+
+// Returns the minimum 20-ft wind speed [km/h] at which I_B = I_o
+// Returns -1.0 if I_o is never reached within [0, U_max_kmh]
+inline amrex::Real compute_torching_index_kmh(
+    const RothermelComputed& rc,
+    const RothermelParams& rp,
+    amrex::Real I_o_kwm,
+    amrex::Real h_kJ_kg,
+    amrex::Real w_net_kg_m2,
+    amrex::Real U_max_kmh = 160.0,
+    int max_iter = 50)
+{
+    using namespace amrex;
+    if (I_o_kwm <= Real(0.0)) return Real(0.0);
+
+    // Convert max wind to ft/min for Rothermel
+    // U [km/h] -> [ft/min]: * 3.28084 * 1000 / 60 = * 54.6807
+    const Real U_conv = Real(54.6807);
+    const Real waf_val = rc.waf;
+
+    // Bisection over U_20 [km/h]
+    Real lo = Real(0.0);
+    Real hi = U_max_kmh;
+
+    // Evaluate I_B at hi
+    auto eval_IB = [&](Real U_kmh) -> Real {
+        Real U_ftmin = U_kmh * U_conv * waf_val;
+        U_ftmin = amrex::max(U_ftmin, Real(0.0));
+        if (rc.U_max_ftmin > Real(0.0))
+            U_ftmin = amrex::min(U_ftmin, rc.U_max_ftmin);
+        const Real phi_w = rc.C * std::pow(U_ftmin, rc.B) * rc.beta_ratio_E;
+        const Real R_ftmin = rc.R0 * (Real(1.0) + phi_w + rc.phi_s);
+        const Real R_ms = amrex::max(R_ftmin * rp.ros_conv, Real(0.0));
+        return h_kJ_kg * w_net_kg_m2 * R_ms;  // kW/m
+    };
+
+    const Real IB_hi = eval_IB(hi);
+    if (IB_hi < I_o_kwm) return Real(-1.0);  // never reached
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        const Real mid = Real(0.5) * (lo + hi);
+        const Real IB_mid = eval_IB(mid);
+        if (IB_mid < I_o_kwm) lo = mid;
+        else                   hi = mid;
+        if (hi - lo < Real(0.01)) break;
+    }
+    return Real(0.5) * (lo + hi);
+}
+
+// Returns the minimum 20-ft wind speed [km/h] at which R(U) >= R_SA_ms
+// Returns -1.0 if never reached
+inline amrex::Real compute_crowning_index_kmh(
+    const RothermelComputed& rc,
+    const RothermelParams& rp,
+    amrex::Real R_SA_ms,
+    amrex::Real U_max_kmh = 160.0,
+    int max_iter = 50)
+{
+    using namespace amrex;
+    if (R_SA_ms <= Real(0.0)) return Real(0.0);
+
+    const Real U_conv  = Real(54.6807);
+    const Real waf_val = rc.waf;
+
+    auto eval_R = [&](Real U_kmh) -> Real {
+        Real U_ftmin = U_kmh * U_conv * waf_val;
+        U_ftmin = amrex::max(U_ftmin, Real(0.0));
+        if (rc.U_max_ftmin > Real(0.0))
+            U_ftmin = amrex::min(U_ftmin, rc.U_max_ftmin);
+        const Real phi_w = rc.C * std::pow(U_ftmin, rc.B) * rc.beta_ratio_E;
+        const Real R_ftmin = rc.R0 * (Real(1.0) + phi_w + rc.phi_s);
+        return amrex::max(R_ftmin * rp.ros_conv, Real(0.0));
+    };
+
+    const Real R_hi = eval_R(U_max_kmh);
+    if (R_hi < R_SA_ms) return Real(-1.0);
+
+    Real lo = Real(0.0);
+    Real hi = U_max_kmh;
+    for (int iter = 0; iter < max_iter; ++iter) {
+        const Real mid = Real(0.5) * (lo + hi);
+        const Real R_mid = eval_R(mid);
+        if (R_mid < R_SA_ms) lo = mid;
+        else                  hi = mid;
+        if (hi - lo < Real(0.01)) break;
+    }
+    return Real(0.5) * (lo + hi);
+}
+
+// ============================================================================
+// compute_full_scott_reinhardt
+//
+// Fills ti_mf and ci_mf with the full TI/CI values [km/h] for each cell.
+// For uniform fuel runs (no landscape file): constant values everywhere.
+// For per-cell fuel tables: evaluate per fuel code (not yet implemented;
+// fills uniform value using global RothermelParams).
+// ============================================================================
+inline void compute_full_scott_reinhardt(
+    MultiFab& ti_mf,
+    MultiFab& ci_mf,
+    const RothermelParams& rp,
+    const InputParameters::CrownInitiationParams& cp,
+    const MultiFab* /*fuel_model_mf*/ = nullptr,
+    const void*     /*fuel_table*/     = nullptr,
+    int             /*fuel_table_size*/= 0)
+{
+    using namespace amrex;
+
+    // Compute Rothermel params for global fuel
+    const RothermelComputed rc = compute_rothermel_params(rp);
+
+    // Crown initiation threshold
+    const Real CBH = Real(cp.CBH);
+    const Real CBD = Real(cp.CBD);
+    const Real FMC = Real(cp.FMC);
+    const Real I_o = Real(0.010) * CBH * (Real(460.0) + Real(25.9) * FMC);
+
+    // Critical active crown ROS [m/s]
+    const Real R_SA = Real(3.0) / amrex::max(CBD, Real(0.01)) / Real(60.0);
+
+    // Heat content and net fuel load for Byram intensity
+    const Real h_kJ_kg    = Real(rp.h_heat) * WildfireConst::BTU_LB_TO_KJ_KG;
+    const Real total_pc   = rp.w_d1 + rp.w_d10 + rp.w_d100 + rp.w_lh + rp.w_lw;
+    const Real w_eff      = (total_pc > 0.0) ? total_pc : rp.w0;
+    const Real w_net_kg_m2 = w_eff * (Real(1.0) - Real(rp.S_T))
+                            * WildfireConst::LB_FT2_TO_KG_M2;
+
+    const Real U_max = Real(200.0);
+
+    // Compute scalar TI/CI using bisection
+    const Real TI_val = compute_torching_index_kmh(rc, rp, I_o, h_kJ_kg, w_net_kg_m2, U_max);
+    const Real CI_val = compute_crowning_index_kmh(rc, rp, R_SA, U_max);
+
+    // Fill MultiFabs with constant value
+    ti_mf.setVal(TI_val);
+    ci_mf.setVal(CI_val);
 }
 
 #endif // FIRE_ECOLOGY_MODEL_H
