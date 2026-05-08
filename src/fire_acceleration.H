@@ -89,7 +89,7 @@ inline void apply_fire_acceleration(MultiFab&       R_mf,
     // Burned area and effective fire radius
     const Real A_fire  = static_cast<Real>(n_burned) * dx[0] * dx[1];
     const Real r_fire  = std::sqrt(A_fire / WildfireConst::PI);
-    const Real L_acc   = amrex::max(static_cast<Real>(params.L_acc), Real(1.0));
+    const Real L_acc   = amrex::max(static_cast<Real>(params.L_acc), Real(1.0));  // floor prevents divide-by-zero
     const Real alpha   = Real(1.0) - std::exp(-r_fire / L_acc);
 
     // Nothing to do when essentially at full speed (saves a kernel launch)

@@ -99,7 +99,10 @@ inline void compute_albini_torching_spots(
     const Real P_base       = tp.P_base;
     const int  min_ca       = tp.min_crown_activity;
 
-    // RNG: seed from step + torching seed to decorrelate from other spotting models
+    // RNG: seed from step + torching seed.
+    // Multipliers (1000, 31, 7) spread seeds across different Lehmer multiplier
+    // sub-sequences so this model does not produce correlated draws with the
+    // Albini 1983 and stochastic spotting models that use step-seeded RNGs.
     std::mt19937 rng(static_cast<unsigned>(tp.random_seed * 1000 + step * 31 + 7));
     std::uniform_real_distribution<Real> uniform_01(Real(0.0), Real(1.0));
     std::uniform_real_distribution<Real> lateral_angle(-Real(0.785398), Real(0.785398)); // ±45°

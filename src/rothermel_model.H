@@ -151,8 +151,10 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
 
         Real eta_M_live = 0.0;
         if (A_live > 0.0) {
-            Real M_x_live = 0.30; // minimum live moisture of extinction
-            if (A_dead > 0.0 && w_n_live > 1.0e-10) {
+            Real M_x_live = 0.30; // minimum live moisture of extinction (Rothermel 1972)
+            // Guard against near-zero live net fuel load (prevents divide-by-zero)
+            constexpr Real MIN_NET_LIVE_FUEL_LOAD = 1.0e-10;
+            if (A_dead > 0.0 && w_n_live > MIN_NET_LIVE_FUEL_LOAD) {
                 // Eq. 88: correct dead/live ratio uses net fuel loads, not A-factors
                 const Real mx_live_calc = 2.9 * (w_n_dead / w_n_live)
                                         * (1.0 - rm_dead_val) - 0.226;
