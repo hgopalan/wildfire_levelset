@@ -155,7 +155,7 @@ inline void build_herb_curing_curve(HerbMoistureSchedule& sched,
     }
     sched.records.push_back({365.0, m_lh_min});
 
-    amrex::Print() << "Herb moisture schedule: built parametric curing curve"
+    amrex::Print() << "Herb moisture schedule: built parametric curing curve\n"
                    << "  spring_start=" << spring_start
                    << "  summer_peak=" << summer_peak
                    << "  fall_start=" << fall_start

@@ -965,7 +965,7 @@ void parse_inputs(InputParameters& p)
         if (!p.herb_moisture_schedule.file.empty())
             Print() << "  File: " << p.herb_moisture_schedule.file << "\n";
         else
-            Print() << "  Using built-in parametric curing curve"
+            Print() << "  Using built-in parametric curing curve\n"
                     << "  M_lh=[" << p.herb_moisture_schedule.m_lh_min
                     << "," << p.herb_moisture_schedule.m_lh_max << "]%\n";
     }
