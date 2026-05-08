@@ -565,6 +565,33 @@ struct InputParameters {
     // This overrides the constant ux/uy and use_time_dependent_wind modes.
     std::string wind_dir_schedule_file;    // path to compact wind schedule CSV (default: "")
 
+    // ---- Solar radiation shading and per-cell shade-adjusted EMC ----
+    // Computes per-cell terrain and canopy shading from the solar position
+    // (derived from date/time/lat/lon) and the terrain slope/aspect fields.
+    // The shade fraction reduces the solar heating of fine fuels, yielding
+    // higher EMC in shaded cells and lower EMC in insolated cells.
+    //
+    // Requires: diurnal_moisture.enable = 1 to supply T_air and RH for the
+    //           Simard (1968) EMC equations.  When diurnal_moisture is off,
+    //           a warning is issued and the model is disabled.
+    //
+    // Slope and aspect must come from terrain_file or landscape_file.
+    // Canopy shading optionally uses the canopy_cover layer from LCP.
+    //
+    // Input prefix: "solar_radiation."
+    struct SolarRadiationParams {
+        int enable;                  // 1 to enable solar shading (default: 0)
+        amrex::Real latitude;        // site latitude [deg N; negative = S] (default: 40.0)
+        amrex::Real longitude;       // site longitude [deg E; negative = W] (default: -120.0)
+        int year;                    // calendar year at simulation t=0 (default: 2024)
+        int month;                   // calendar month at t=0 (1-12, default: 7)
+        int day;                     // calendar day at t=0 (1-31, default: 1)
+        amrex::Real sim_start_hour;  // local clock time [decimal hours] at t=0 (default: 8.0)
+        amrex::Real timezone_offset; // UTC offset [hours] (e.g., -8 = PST; default: -8.0)
+        amrex::Real solar_heating_C; // max solar heating of fuel above air temp [°C] (default: 17.0)
+        int use_canopy_shading;      // 1 to include canopy cover in shade fraction (default: 1)
+    } solar_radiation;
+
 };
 
 void parse_inputs(InputParameters& inputs);
