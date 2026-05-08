@@ -110,10 +110,14 @@ inline void apply_precipitation_moisture(
                           TAU_WET_10HR,  TAU_DRY_10HR);
     state.M_d100 = update(state.M_d100, m_emc.M_d100,
                           TAU_WET_100HR, TAU_DRY_100HR);
-    // 1000-hr fuel: use M_d100 * 1.50 as saturation proxy when M_emc is not
-    // available for very large fuels; drying target is M_emc * 1.50 following
-    // Rothermel (1983) large-log time-lag guidelines.
-    const float M_emc_1000 = m_emc.M_d100 * 1.50f;
+    // 1000-hr fuel: use m_emc.M_d1000 (already scaled ≈1.5×M_d100) as the
+    // equilibrium target.  When the EMC model has not set M_d1000 explicitly,
+    // it is populated by compute_diurnal_emc / get_moisture_at_time using the
+    // M_D1000_SCALE empirical factor from fuel_moisture_scheduler.H.
+    // This is an approximation; actual 1000-hr EMC equations are not yet
+    // standardised in FARSITE but the time-lag approach is consistent with
+    // Rothermel (1983) large-log wetting guidelines.
+    const float M_emc_1000 = m_emc.M_d1000;
     state.M_d1000 = update(state.M_d1000, M_emc_1000,
                            TAU_WET_1000HR, TAU_DRY_1000HR);
 }

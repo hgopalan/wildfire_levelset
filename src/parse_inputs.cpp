@@ -169,7 +169,12 @@ void parse_inputs(InputParameters& p)
     p.rothermel.M_d1    = p.rothermel.M_f;
     p.rothermel.M_d10   = p.rothermel.M_f;
     p.rothermel.M_d100  = p.rothermel.M_f;
-    p.rothermel.M_d1000 = p.rothermel.M_f * 1.5; // 1000-hr typically ~1.5× the 100-hr value
+    // 1000-hr dead moisture: approximated as 1.5× the 100-hr value at startup.
+    // This follows the time-lag progression in Rothermel (1983) where larger-diameter
+    // fuels equilibrate more slowly and retain more moisture.  Since M_d100 equals
+    // M_f at this point (before any individual overrides), scaling from M_d100 rather
+    // than M_f is equivalent here but semantically clearer.
+    p.rothermel.M_d1000 = p.rothermel.M_d100 * 1.5;
     p.rothermel.M_lh    = 0.90;   // live herbaceous moisture default
     p.rothermel.M_lw    = 1.20;   // live woody moisture default
     pp.query("rothermel.M_d1",    p.rothermel.M_d1);

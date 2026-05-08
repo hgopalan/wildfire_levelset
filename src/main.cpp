@@ -1532,10 +1532,14 @@ int main(int argc, char* argv[])
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   const amrex::Real dT_lapse = lapse * (elev(i,j,k) - elev0);
                   amrex::Real T_cell = T_ref_r - dT_lapse;
-                  // Clausius–Clapeyron: RH ∝ exp(-L/Rv * (1/T_cell_K - 1/T_ref_K))
-                  // Simplified approximation: RH_cell ≈ RH_ref * exp(17.67 * dT / (T_ref + 243.5))
-                  // where dT = T_cell - T_ref (negative at higher elevations → higher RH)
+                  // Clausius–Clapeyron RH correction using the Magnus formula approximation:
+                  //   RH_cell ≈ RH_ref * exp(a * dT / (T_ref + b))
+                  // where dT = T_cell - T_ref, a = 17.67 (dimensionless, Magnus empirical
+                  // constant), b = 243.5 °C (temperature offset, Magnus empirical constant).
+                  // Reference: Murray (1967), Journal of Applied Meteorology, 6(1), 203-204.
+                  // At higher elevations (dT < 0, T_cell < T_ref) RH increases.
                   const amrex::Real dT_cc  = -(dT_lapse);  // T_cell - T_ref
+                  // Magnus formula constants (Murray 1967): a=17.67, b=243.5 °C
                   const amrex::Real RH_adj = RH_ref_r * std::exp(
                       amrex::Real(17.67) * dT_cc / (T_ref_r + amrex::Real(243.5)));
                   amrex::Real RH_cell = amrex::max(amrex::Real(1.0),
