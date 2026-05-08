@@ -123,7 +123,9 @@ inline void load_fms_spatial_moisture(
     // -----------------------------------------------------------------------
     // Build device-accessible lookup arrays
     // -----------------------------------------------------------------------
-    // Use flat arrays: index by (code - 1), code range typically [1..260]
+    // MAX_CODE = 261 covers the full FBFM40 range (codes 1-260; Scott & Burgan 2005)
+    // plus code 0 as an unused sentinel.  Non-burnable codes (91-99) fall within the
+    // range and retain the global RothermelParams fallback values set at init.
     constexpr int MAX_CODE = 261;
     std::vector<float> h_m1(MAX_CODE, static_cast<float>(rp.M_d1));
     std::vector<float> h_m10(MAX_CODE, static_cast<float>(rp.M_d10));

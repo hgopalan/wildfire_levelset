@@ -51,7 +51,7 @@ struct PrecipState {
     float M_d1   = 0.08f;   // current 1-hr   dead moisture [fraction]
     float M_d10  = 0.08f;   // current 10-hr  dead moisture [fraction]
     float M_d100 = 0.08f;   // current 100-hr dead moisture [fraction]
-    bool  initialised = false;
+    bool  initialized = false;
 };
 
 // ============================================================================

@@ -181,12 +181,14 @@ inline double get_fmc_at_time(const FMCSchedule& sched, double t_s)
 {
     if (sched.empty()) return 100.0;  // sensible default if schedule not loaded
 
-    // Convert simulation seconds to a day of year (wrapping annually)
+    // Convert simulation seconds to a day of year (wrapping annually).
+    // Use modulo arithmetic for O(1) wrapping regardless of elapsed time.
     const double seconds_per_day = 86400.0;
     double doy = sched.start_doy + t_s / seconds_per_day;
-    // Wrap into [1, 365]
-    while (doy > 365.0) doy -= 365.0;
-    while (doy <   1.0) doy += 365.0;
+    // Wrap into [1, 365] with a single modulo operation
+    doy = std::fmod(doy - 1.0, 365.0);
+    if (doy < 0.0) doy += 365.0;
+    doy += 1.0;  // restore to [1, 365] range
 
     const auto& recs = sched.records;
     if (doy <= recs.front().doy) return recs.front().fmc_pct;

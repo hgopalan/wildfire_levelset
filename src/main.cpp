@@ -8,6 +8,7 @@
 #include <AMReX_DistributionMapping.H>
 #include <AMReX_BoxArray.H>
 #include <AMReX_VisMF.H>
+#include <algorithm>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -609,7 +610,7 @@ int main(int argc, char* argv[])
     precip_state.M_d1   = static_cast<float>(inputs.rothermel.M_d1);
     precip_state.M_d10  = static_cast<float>(inputs.rothermel.M_d10);
     precip_state.M_d100 = static_cast<float>(inputs.rothermel.M_d100);
-    precip_state.initialised = true;
+    precip_state.initialized = true;
 
     // Load precipitation time series if provided
     std::vector<std::pair<double,double>> precip_schedule;  // (time_s, rain_mm_hr)
@@ -1101,29 +1102,25 @@ int main(int argc, char* argv[])
       }
 
       // Apply precipitation wetting to dead fuel moisture (extends diurnal model)
-      if (inputs.diurnal_moisture.enable == 1 && precip_state.initialised) {
+      if (inputs.diurnal_moisture.enable == 1 && precip_state.initialized) {
           // Determine current rain rate
           float rain_rate = static_cast<float>(inputs.precip_rain_rate_mm_hr);
           if (!precip_schedule.empty()) {
-              // Linearly interpolate from schedule
+              // Linearly interpolate from schedule using binary search (O(log n))
               double t_d = static_cast<double>(time);
               if (t_d <= precip_schedule.front().first) {
                   rain_rate = static_cast<float>(precip_schedule.front().second);
               } else if (t_d >= precip_schedule.back().first) {
                   rain_rate = static_cast<float>(precip_schedule.back().second);
               } else {
-                  for (size_t pi = 0; pi + 1 < precip_schedule.size(); ++pi) {
-                      if (t_d >= precip_schedule[pi].first &&
-                          t_d <  precip_schedule[pi+1].first) {
-                          double alpha = (t_d - precip_schedule[pi].first) /
-                              (precip_schedule[pi+1].first - precip_schedule[pi].first);
-                          rain_rate = static_cast<float>(
-                              precip_schedule[pi].second +
-                              alpha * (precip_schedule[pi+1].second -
-                                       precip_schedule[pi].second));
-                          break;
-                      }
-                  }
+                  auto it = std::upper_bound(precip_schedule.begin(), precip_schedule.end(),
+                                             t_d,
+                                             [](double t, const std::pair<double,double>& r){
+                                                 return t < r.first; });
+                  auto prev = std::prev(it);
+                  const double alpha = (t_d - prev->first) / (it->first - prev->first);
+                  rain_rate = static_cast<float>(prev->second +
+                                                  alpha * (it->second - prev->second));
               }
           }
           // Build EMC from diurnal model as drying target

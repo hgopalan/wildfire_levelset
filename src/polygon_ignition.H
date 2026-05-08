@@ -135,7 +135,8 @@ Real segment_dist_sq(Real px, Real py,
 {
     const Real dx = bx - ax, dy = by - ay;
     const Real len2 = dx*dx + dy*dy;
-    if (len2 < Real(1.0e-20)) {
+    // Use epsilon appropriate for metre-scale UTM coordinates
+    if (len2 < Real(1.0e-10)) {
         const Real ex = px-ax, ey = py-ay;
         return ex*ex + ey*ey;
     }

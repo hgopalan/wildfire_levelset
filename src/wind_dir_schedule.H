@@ -43,6 +43,7 @@
 #define WIND_DIR_SCHEDULE_H
 
 #include <AMReX.H>
+#include <AMReX_Math.H>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -51,10 +52,8 @@
 #include <utility>
 #include <vector>
 
-// Portable pi constant (avoids relying on M_PI which is not in the C++ standard)
-#ifndef WDSC_PI
-#  define WDSC_PI 3.14159265358979323846
-#endif
+// Portable pi constant via AMReX (avoids relying on non-standard M_PI)
+static constexpr double WDSC_PI = amrex::Math::pi<double>();
 
 // One entry in the wind direction schedule
 struct WindDirRecord {
