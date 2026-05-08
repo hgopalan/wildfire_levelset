@@ -68,6 +68,9 @@ using namespace amrex;
 #include "lautenberger_model.H"
 #include "compute_lautenberger_R.H"
 #include "solar_radiation.H"
+#include "ignition_schedule.H"
+#include "wtr_weather.H"
+#include "retardant_drop.H"
 
 
 // ======================= Main ================================================
@@ -544,6 +547,7 @@ int main(int argc, char* argv[])
                 {static_cast<float>(inputs.rothermel.M_d1),
                  static_cast<float>(inputs.rothermel.M_d10),
                  static_cast<float>(inputs.rothermel.M_d100),
+                 static_cast<float>(inputs.rothermel.M_d1000),
                  static_cast<float>(inputs.rothermel.M_lh),
                  static_cast<float>(inputs.rothermel.M_lw)});
             moisture_updated = true;
@@ -555,6 +559,7 @@ int main(int argc, char* argv[])
                 {static_cast<float>(inputs.rothermel.M_d1),
                  static_cast<float>(inputs.rothermel.M_d10),
                  static_cast<float>(inputs.rothermel.M_d100),
+                 static_cast<float>(inputs.rothermel.M_d1000),
                  static_cast<float>(inputs.rothermel.M_lh),
                  static_cast<float>(inputs.rothermel.M_lw)});
             moisture_updated = true;
@@ -562,11 +567,12 @@ int main(int argc, char* argv[])
 
         if (!moisture_updated) return;
 
-        inputs.rothermel.M_d1   = static_cast<amrex::Real>(m.M_d1);
-        inputs.rothermel.M_d10  = static_cast<amrex::Real>(m.M_d10);
-        inputs.rothermel.M_d100 = static_cast<amrex::Real>(m.M_d100);
-        inputs.rothermel.M_lh   = static_cast<amrex::Real>(m.M_lh);
-        inputs.rothermel.M_lw   = static_cast<amrex::Real>(m.M_lw);
+        inputs.rothermel.M_d1    = static_cast<amrex::Real>(m.M_d1);
+        inputs.rothermel.M_d10   = static_cast<amrex::Real>(m.M_d10);
+        inputs.rothermel.M_d100  = static_cast<amrex::Real>(m.M_d100);
+        inputs.rothermel.M_d1000 = static_cast<amrex::Real>(m.M_d1000);
+        inputs.rothermel.M_lh    = static_cast<amrex::Real>(m.M_lh);
+        inputs.rothermel.M_lw    = static_cast<amrex::Real>(m.M_lw);
         // Also keep the single-class M_f in sync with the 1-hr dead value
         inputs.rothermel.M_f    = static_cast<amrex::Real>(m.M_d1);
 
@@ -669,11 +675,120 @@ int main(int argc, char* argv[])
         init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
     }
 
+    // ---------------- FARSITE .wtr single-file hourly weather ---------------
+    // When wtr_file is provided, parse it once and populate the wind schedule
+    // and a WtrWeatherData structure.  At each timestep, T/RH/precip from the
+    // .wtr data override the diurnal_moisture parameters.
+    WtrWeatherData wtr_data;
+    const bool wtr_active = !inputs.wtr_file.empty();
+    if (wtr_active) {
+        load_wtr_weather(inputs.wtr_file, wtr_data,
+                         inputs.wtr_start_year, inputs.wtr_start_month,
+                         inputs.wtr_start_day,  inputs.wtr_start_hour);
+        // Use the .wtr wind schedule as the wind direction schedule (overrides
+        // wind_dir_schedule_file if both are set, with a warning).
+        if (!wind_dir_sched.empty()) {
+            amrex::Print() << "WARNING: both wind_dir_schedule_file and wtr_file set; "
+                              "wtr_file wind schedule takes precedence.\n";
+        }
+        wind_dir_sched = wtr_data.wind_sched;
+        auto [ux_wtr0, uy_wtr0] = get_wind_at_time(wind_dir_sched, 0.0);
+        inputs.ux = static_cast<amrex::Real>(ux_wtr0);
+        inputs.uy = static_cast<amrex::Real>(uy_wtr0);
+        init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+    }
+
+    // ---------------- Aerial retardant drop zones ---------------------------
+    RetardantDropList retardant_drops;
+    if (!inputs.retardant_file.empty()) {
+        load_retardant_drops(inputs.retardant_file, retardant_drops);
+    }
+
+    // ---------------- Multiple scheduled ignitions -------------------------
+    IgnitionSchedule ignition_sched;
+    if (!inputs.ignition_schedule_file.empty()) {
+        load_ignition_schedule(inputs.ignition_schedule_file, ignition_sched);
+        // Apply any t=0 events (time_s = 0)
+        apply_scheduled_ignitions(phi, geom, ignition_sched,
+                                  Real(0.0), Real(0.0), use_indicator);
+        fill_boundary_extrap(phi, geom);
+    }
+
+    // ---------------- Fuel moisture conditioning period --------------------
+    // Pre-run the Nelson (2000) diurnal EMC model for conditioning.n_days of
+    // synthetic hourly weather to arrive at realistic starting moisture values.
+    if (inputs.conditioning.n_days > 0 && inputs.diurnal_moisture.enable == 1) {
+        amrex::Print() << "Fuel moisture conditioning: spinning up "
+                       << inputs.conditioning.n_days << " day(s)...\n";
+        const double cond_dt = 3600.0;  // 1-hour steps
+        const int    n_steps_cond = inputs.conditioning.n_days * 24;
+
+        // Use conditioning.wtr_file if provided, otherwise inputs.wtr_file,
+        // otherwise fall back to diurnal_moisture parameters already loaded.
+        WtrWeatherData cond_wtr;
+        const bool cond_wtr_active =
+            (!inputs.conditioning.wtr_file.empty()) ||
+            (!inputs.wtr_file.empty() && wtr_active);
+        if (!inputs.conditioning.wtr_file.empty()) {
+            load_wtr_weather(inputs.conditioning.wtr_file, cond_wtr,
+                             inputs.wtr_start_year, inputs.wtr_start_month,
+                             inputs.wtr_start_day,  inputs.wtr_start_hour);
+        } else if (wtr_active) {
+            cond_wtr = wtr_data;
+        }
+
+        for (int ci = 0; ci < n_steps_cond; ++ci) {
+            const double ct = static_cast<double>(ci) * cond_dt;
+            float rain_rate = static_cast<float>(inputs.precip_rain_rate_mm_hr);
+            double T_cond = 0.5 * (inputs.diurnal_moisture.T_max + inputs.diurnal_moisture.T_min);
+            double RH_cond = 0.5 * (inputs.diurnal_moisture.RH_max + inputs.diurnal_moisture.RH_min);
+
+            if (cond_wtr_active && !cond_wtr.empty()) {
+                auto [T_wtr, RH_wtr] = cond_wtr.get_TRH_at_time(ct);
+                T_cond  = T_wtr;
+                RH_cond = RH_wtr;
+                rain_rate = static_cast<float>(cond_wtr.get_precip_at_time(ct));
+            }
+            // Use Nelson EMC formula inline (Simard 1968)
+            double rh_f = std::max(1.0, std::min(100.0, RH_cond)) / 100.0;
+            double T_C  = std::max(-40.0, std::min(60.0, T_cond));
+            double emc_pct;
+            if (RH_cond < 10.0)
+                emc_pct = 0.03229 + 0.281073*rh_f - 0.000578*T_C*rh_f;
+            else if (RH_cond < 50.0)
+                emc_pct = 2.22749 + 0.160107*rh_f - 0.014784*T_C;
+            else
+                emc_pct = 21.0606 + 0.005565*rh_f*rh_f - 0.00035*T_C*rh_f - 0.483199*rh_f;
+            emc_pct = std::max(0.5, emc_pct);
+            RothermelMoistures emc_cond;
+            emc_cond.M_d1   = static_cast<float>(emc_pct / 100.0);
+            emc_cond.M_d10  = static_cast<float>(emc_pct * 1.10 / 100.0);
+            emc_cond.M_d100 = static_cast<float>(emc_pct * 1.30 / 100.0);
+            emc_cond.M_lh   = precip_state.M_d100;  // live fuels not updated here
+            emc_cond.M_lw   = precip_state.M_d100;
+            apply_precipitation_moisture(precip_state, emc_cond, rain_rate,
+                                         static_cast<float>(cond_dt),
+                                         static_cast<float>(inputs.precip_threshold_mm_hr),
+                                         static_cast<float>(inputs.M_sat));
+        }
+        // Apply conditioned moisture to Rothermel params
+        inputs.rothermel.M_d1   = static_cast<amrex::Real>(precip_state.M_d1);
+        inputs.rothermel.M_d10  = static_cast<amrex::Real>(precip_state.M_d10);
+        inputs.rothermel.M_d100 = static_cast<amrex::Real>(precip_state.M_d100);
+        inputs.rothermel.M_d1000 = static_cast<amrex::Real>(precip_state.M_d1000);
+        inputs.rothermel.M_f    = static_cast<amrex::Real>(precip_state.M_d1);
+        amrex::Print() << "Conditioning complete: M_d1=" << precip_state.M_d1
+                       << " M_d10=" << precip_state.M_d10
+                       << " M_d100=" << precip_state.M_d100
+                       << " M_d1000=" << precip_state.M_d1000 << "\n";
+    }
+
     // ---------------- Precipitation wetting state --------------------------
     PrecipState precip_state;
     precip_state.M_d1   = static_cast<float>(inputs.rothermel.M_d1);
     precip_state.M_d10  = static_cast<float>(inputs.rothermel.M_d10);
     precip_state.M_d100 = static_cast<float>(inputs.rothermel.M_d100);
+    precip_state.M_d1000 = static_cast<float>(inputs.rothermel.M_d1000);
     precip_state.initialized = true;
 
     // Load precipitation time series if provided
@@ -1288,9 +1403,12 @@ int main(int argc, char* argv[])
 
       // Apply precipitation wetting to dead fuel moisture (extends diurnal model)
       if (inputs.diurnal_moisture.enable == 1 && precip_state.initialized) {
-          // Determine current rain rate
+          // Determine current rain rate (wtr_file overrides precip_schedule)
           float rain_rate = static_cast<float>(inputs.precip_rain_rate_mm_hr);
-          if (!precip_schedule.empty()) {
+          if (wtr_active && !wtr_data.empty()) {
+              rain_rate = static_cast<float>(wtr_data.get_precip_at_time(
+                  static_cast<double>(time)));
+          } else if (!precip_schedule.empty()) {
               // Linearly interpolate from schedule using binary search (O(log n))
               double t_d = static_cast<double>(time);
               if (t_d <= precip_schedule.front().first) {
@@ -1308,6 +1426,17 @@ int main(int argc, char* argv[])
                                                   alpha * (it->second - prev->second));
               }
           }
+          // If wtr_file is active, override diurnal T/RH from .wtr data
+          if (wtr_active && !wtr_data.empty()) {
+              auto [T_wtr, RH_wtr] = wtr_data.get_TRH_at_time(static_cast<double>(time));
+              // Update diurnal params in-place for this timestep (T_min=T_max and
+              // RH_min=RH_max collapses the sinusoid to a constant – i.e. the .wtr
+              // hourly value is used directly without a diurnal cycle on top).
+              inputs.diurnal_moisture.T_min  = static_cast<amrex::Real>(T_wtr);
+              inputs.diurnal_moisture.T_max  = static_cast<amrex::Real>(T_wtr);
+              inputs.diurnal_moisture.RH_min = static_cast<amrex::Real>(RH_wtr);
+              inputs.diurnal_moisture.RH_max = static_cast<amrex::Real>(RH_wtr);
+          }
           // Build EMC from diurnal model as drying target
           RothermelMoistures emc_target = compute_diurnal_emc(
               inputs.diurnal_moisture,
@@ -1315,6 +1444,7 @@ int main(int argc, char* argv[])
               {static_cast<float>(inputs.rothermel.M_d1),
                static_cast<float>(inputs.rothermel.M_d10),
                static_cast<float>(inputs.rothermel.M_d100),
+               static_cast<float>(inputs.rothermel.M_d1000),
                static_cast<float>(inputs.rothermel.M_lh),
                static_cast<float>(inputs.rothermel.M_lw)});
           apply_precipitation_moisture(precip_state, emc_target, rain_rate,
@@ -1322,10 +1452,11 @@ int main(int argc, char* argv[])
                                        static_cast<float>(inputs.precip_threshold_mm_hr),
                                        static_cast<float>(inputs.M_sat));
           // Apply wetting result to Rothermel params (dead fuels only)
-          inputs.rothermel.M_d1   = static_cast<amrex::Real>(precip_state.M_d1);
-          inputs.rothermel.M_d10  = static_cast<amrex::Real>(precip_state.M_d10);
-          inputs.rothermel.M_d100 = static_cast<amrex::Real>(precip_state.M_d100);
-          inputs.rothermel.M_f    = static_cast<amrex::Real>(precip_state.M_d1);
+          inputs.rothermel.M_d1    = static_cast<amrex::Real>(precip_state.M_d1);
+          inputs.rothermel.M_d10   = static_cast<amrex::Real>(precip_state.M_d10);
+          inputs.rothermel.M_d100  = static_cast<amrex::Real>(precip_state.M_d100);
+          inputs.rothermel.M_d1000 = static_cast<amrex::Real>(precip_state.M_d1000);
+          inputs.rothermel.M_f     = static_cast<amrex::Real>(precip_state.M_d1);
           // Rebuild fuel table with updated moisture
           if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
               std::vector<RothermelComputed> h_table =
@@ -1338,6 +1469,98 @@ int main(int argc, char* argv[])
               Gpu::copy(Gpu::hostToDevice,
                         h_table.begin(), h_table.end(),
                         d_fuel_table.begin());
+          }
+      }
+
+      // ---- Live fuel moisture FMC seasonal link ----
+      // When live_fuel_seasonal.enable = 1 and fmc_schedule is active, scale
+      // M_lh and M_lw between their winter and summer values in proportion to
+      // the current FMC fraction (0 = dormant FMC_min, 1 = peak FMC_max).
+      if (inputs.live_fuel_seasonal.enable == 1 &&
+          inputs.fmc_schedule.enable == 1 && !fmc_sched.empty()) {
+          const amrex::Real fmc_now = inputs.crown.FMC;  // already updated above
+          const amrex::Real fmc_min = static_cast<amrex::Real>(inputs.fmc_schedule.fmc_min);
+          const amrex::Real fmc_max = static_cast<amrex::Real>(inputs.fmc_schedule.fmc_max);
+          const amrex::Real frac = (fmc_max > fmc_min)
+              ? std::max(amrex::Real(0.0), std::min(amrex::Real(1.0),
+                          (fmc_now - fmc_min) / (fmc_max - fmc_min)))
+              : amrex::Real(0.5);
+          inputs.rothermel.M_lh = static_cast<amrex::Real>(
+              inputs.live_fuel_seasonal.M_lh_winter +
+              frac * (inputs.live_fuel_seasonal.M_lh_summer -
+                      inputs.live_fuel_seasonal.M_lh_winter));
+          inputs.rothermel.M_lw = static_cast<amrex::Real>(
+              inputs.live_fuel_seasonal.M_lw_winter +
+              frac * (inputs.live_fuel_seasonal.M_lw_summer -
+                      inputs.live_fuel_seasonal.M_lw_winter));
+      }
+
+      // ---- Elevation lapse-rate T/RH correction for per-cell solar EMC ----
+      // Apply lapse-rate T/RH adjustment to spatial_moisture_mf before
+      // the solar EMC pass.  This pass is inline: for each cell read elevation
+      // and adjust T/RH before feeding into apply_solar_emc_to_spatial_moisture.
+      // When use_elevation_lapse = 0 (default) this block is skipped.
+      if (inputs.use_elevation_lapse == 1 && inputs.diurnal_moisture.enable == 1) {
+          // Compute domain-mean T and RH at this timestep (same formulas as diurnal)
+          const double phase_lr = WildfireConst::TWO_PI *
+              (inputs.diurnal_moisture.t_start_s +
+               static_cast<double>(time) -
+               inputs.diurnal_moisture.t_T_peak_s)
+              / WildfireConst::DAY_S;
+          const double T_mean_lr  = 0.5 * (inputs.diurnal_moisture.T_max + inputs.diurnal_moisture.T_min);
+          const double A_T_lr     = 0.5 * (inputs.diurnal_moisture.T_max - inputs.diurnal_moisture.T_min);
+          const double RH_mean_lr = 0.5 * (inputs.diurnal_moisture.RH_max + inputs.diurnal_moisture.RH_min);
+          const double A_RH_lr    = 0.5 * (inputs.diurnal_moisture.RH_max - inputs.diurnal_moisture.RH_min);
+          double T_ref_lr  = T_mean_lr  + A_T_lr  * std::sin(phase_lr);
+          double RH_ref_lr = RH_mean_lr - A_RH_lr * std::sin(phase_lr);
+          T_ref_lr  = std::max(-40.0, std::min(60.0,  T_ref_lr));
+          RH_ref_lr = std::max(1.0,   std::min(100.0, RH_ref_lr));
+
+          const amrex::Real lapse   = static_cast<amrex::Real>(inputs.lapse_rate_C_per_m);
+          const amrex::Real elev0   = static_cast<amrex::Real>(inputs.lapse_ref_elevation_m);
+          const amrex::Real T_ref_r = static_cast<amrex::Real>(T_ref_lr);
+          const amrex::Real RH_ref_r= static_cast<amrex::Real>(RH_ref_lr);
+          const amrex::Real sol_C   = static_cast<amrex::Real>(inputs.solar_radiation.solar_heating_C);
+
+          // Per-cell: apply lapse-rate correction to T, then Clausius-Clapeyron to RH,
+          // then Nelson EMC, then update spatial_moisture_mf components 0-2.
+          for (MFIter mfi(spatial_moisture_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto sm = spatial_moisture_mf.array(mfi);
+              auto const elev = elevation_mf.const_array(mfi);
+              auto const shade = shade_fraction_mf.const_array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  const amrex::Real dT_lapse = lapse * (elev(i,j,k) - elev0);
+                  amrex::Real T_cell = T_ref_r - dT_lapse;
+                  // Clausius–Clapeyron: RH ∝ exp(-L/Rv * (1/T_cell_K - 1/T_ref_K))
+                  // Simplified approximation: RH_cell ≈ RH_ref * exp(17.67 * dT / (T_ref + 243.5))
+                  // where dT = T_cell - T_ref (negative at higher elevations → higher RH)
+                  const amrex::Real dT_cc  = -(dT_lapse);  // T_cell - T_ref
+                  const amrex::Real RH_adj = RH_ref_r * std::exp(
+                      amrex::Real(17.67) * dT_cc / (T_ref_r + amrex::Real(243.5)));
+                  amrex::Real RH_cell = amrex::max(amrex::Real(1.0),
+                                                   amrex::min(amrex::Real(100.0), RH_adj));
+                  // Apply solar heating to unshaded T
+                  amrex::Real T_fuel = T_cell + sol_C * (amrex::Real(1.0) - shade(i,j,k));
+                  T_fuel = amrex::max(amrex::Real(-40.0), amrex::min(amrex::Real(60.0), T_fuel));
+                  // Nelson / Simard EMC
+                  amrex::Real rh_f = RH_cell / amrex::Real(100.0);
+                  amrex::Real emc_pct;
+                  if (RH_cell < amrex::Real(10.0)) {
+                      emc_pct = amrex::Real(0.03229) + amrex::Real(0.281073)*rh_f
+                                - amrex::Real(0.000578)*T_fuel*rh_f;
+                  } else if (RH_cell < amrex::Real(50.0)) {
+                      emc_pct = amrex::Real(2.22749) + amrex::Real(0.160107)*rh_f
+                                - amrex::Real(0.014784)*T_fuel;
+                  } else {
+                      emc_pct = amrex::Real(21.0606) + amrex::Real(0.005565)*rh_f*rh_f
+                                - amrex::Real(0.00035)*T_fuel*rh_f - amrex::Real(0.483199)*rh_f;
+                  }
+                  emc_pct = amrex::max(amrex::Real(0.005), emc_pct);
+                  sm(i,j,k,0) = emc_pct / amrex::Real(100.0);            // M_d1
+                  sm(i,j,k,1) = emc_pct * amrex::Real(1.10) / amrex::Real(100.0);  // M_d10
+                  sm(i,j,k,2) = emc_pct * amrex::Real(1.30) / amrex::Real(100.0);  // M_d100
+              });
           }
       }
 
@@ -1503,6 +1726,11 @@ int main(int argc, char* argv[])
       // When disabled (default) or fire is large, this is a no-op.
       apply_fire_acceleration(R_mf, phi, geom, inputs.acceleration);
 
+      // ---- Aerial retardant suppression: scale R_mf in active drop zones ----
+      if (!retardant_drops.empty()) {
+          apply_retardant_to_ros(R_mf, retardant_drops, geom, time);
+      }
+
       if (use_levelset) {
 	// Traditional level set advection.
 	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
@@ -1649,6 +1877,13 @@ int main(int argc, char* argv[])
                                   inputs.fire_gaussian_sigma);
       }
 
+      // ---- Multiple scheduled ignitions: fire any events due this timestep ----
+      if (!ignition_sched.empty()) {
+          apply_scheduled_ignitions(phi, geom, ignition_sched,
+                                    time, time - dt_step, use_indicator);
+          fill_boundary_extrap(phi, geom);
+      }
+
       // --- Write checkpoint if requested
       if (inputs.chk_int > 0 && ((step - restart_step) % inputs.chk_int == 0)) {
         char chk_buf[64];
@@ -1777,7 +2012,7 @@ int main(int argc, char* argv[])
 	
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", step);
 	write_negative_phi_convex_hull(phi, geom, xy_buf);
-	if (!inputs.fire_stats_file.empty()) append_fire_stats(phi, geom, &emissions_mf, step, time, inputs.fire_stats_file);
+	if (!inputs.fire_stats_file.empty()) append_fire_stats(phi, geom, &emissions_mf, step, time, inputs.fire_stats_file, &R_mf);
 	if (inputs.write_perimeter_csv == 1) { char csv_buf[64]; std::snprintf(csv_buf, sizeof(csv_buf), "perimeter_%04d.csv", step); write_fire_perimeter_csv(phi, geom, csv_buf); }
 	if (inputs.write_perimeter_geojson == 1) { char gjson_buf[64]; std::snprintf(gjson_buf, sizeof(gjson_buf), "perimeter_%04d.geojson", step); write_fire_perimeter_geojson(phi, geom, gjson_buf, step, time); }
       }
@@ -1910,7 +2145,7 @@ int main(int argc, char* argv[])
 	
 	std::snprintf(xy_buf, sizeof(xy_buf), "phi_envelope_%04d.dat", final_step);
 	write_negative_phi_convex_hull(phi, geom, xy_buf);
-	if (!inputs.fire_stats_file.empty()) append_fire_stats(phi, geom, &emissions_mf, final_step, time, inputs.fire_stats_file);
+	if (!inputs.fire_stats_file.empty()) append_fire_stats(phi, geom, &emissions_mf, final_step, time, inputs.fire_stats_file, &R_mf);
 	if (inputs.write_perimeter_csv == 1) { char csv_buf[64]; std::snprintf(csv_buf, sizeof(csv_buf), "perimeter_%04d.csv", final_step); write_fire_perimeter_csv(phi, geom, csv_buf); }
 	if (inputs.write_perimeter_geojson == 1) { char gjson_buf[64]; std::snprintf(gjson_buf, sizeof(gjson_buf), "perimeter_%04d.geojson", final_step); write_fire_perimeter_geojson(phi, geom, gjson_buf, final_step, time); }
       }

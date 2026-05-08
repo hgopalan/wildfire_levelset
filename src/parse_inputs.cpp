@@ -166,16 +166,18 @@ void parse_inputs(InputParameters& p)
     // Per-class fuel moistures — defaults derived from M_f (which now has its
     // final value) so that the multi-class path degrades gracefully to the
     // single-class result when only rothermel.M_f is specified.
-    p.rothermel.M_d1   = p.rothermel.M_f;
-    p.rothermel.M_d10  = p.rothermel.M_f;
-    p.rothermel.M_d100 = p.rothermel.M_f;
-    p.rothermel.M_lh   = 0.90;   // live herbaceous moisture default
-    p.rothermel.M_lw   = 1.20;   // live woody moisture default
-    pp.query("rothermel.M_d1",   p.rothermel.M_d1);
-    pp.query("rothermel.M_d10",  p.rothermel.M_d10);
-    pp.query("rothermel.M_d100", p.rothermel.M_d100);
-    pp.query("rothermel.M_lh",   p.rothermel.M_lh);
-    pp.query("rothermel.M_lw",   p.rothermel.M_lw);
+    p.rothermel.M_d1    = p.rothermel.M_f;
+    p.rothermel.M_d10   = p.rothermel.M_f;
+    p.rothermel.M_d100  = p.rothermel.M_f;
+    p.rothermel.M_d1000 = p.rothermel.M_f * 1.5; // 1000-hr typically ~1.5× the 100-hr value
+    p.rothermel.M_lh    = 0.90;   // live herbaceous moisture default
+    p.rothermel.M_lw    = 1.20;   // live woody moisture default
+    pp.query("rothermel.M_d1",    p.rothermel.M_d1);
+    pp.query("rothermel.M_d10",   p.rothermel.M_d10);
+    pp.query("rothermel.M_d100",  p.rothermel.M_d100);
+    pp.query("rothermel.M_d1000", p.rothermel.M_d1000);
+    pp.query("rothermel.M_lh",    p.rothermel.M_lh);
+    pp.query("rothermel.M_lw",    p.rothermel.M_lw);
 
     // -------- FARSITE ellipse model parameters (Richards 1990) --------
     p.farsite.use_anderson_LW = 0;               pp.query("farsite.use_anderson_LW", p.farsite.use_anderson_LW);
@@ -264,6 +266,10 @@ void parse_inputs(InputParameters& p)
     p.crown.use_cruz_crown = 0;                  pp.query("crown.use_cruz_crown", p.crown.use_cruz_crown);
     p.crown.use_rothermel1991_crown = 0;         pp.query("crown.use_rothermel1991_crown", p.crown.use_rothermel1991_crown);
     p.crown.use_passive_blend = 0;               pp.query("crown.use_passive_blend", p.crown.use_passive_blend);
+    // Crown fire ellipse coefficients (passive/active crown spread shape)
+    p.crown.a_crown = 1.5;  pp.query("crown.a_crown", p.crown.a_crown);
+    p.crown.b_crown = 0.4;  pp.query("crown.b_crown", p.crown.b_crown);
+    p.crown.c_crown = 0.1;  pp.query("crown.c_crown", p.crown.c_crown);
 
     // Validate crown fire parameters
     if (p.crown.enable == 1) {
@@ -1018,6 +1024,82 @@ void parse_inputs(InputParameters& p)
         Print() << "  Solar heating: " << p.solar_radiation.solar_heating_C << " °C\n";
         if (p.solar_radiation.use_canopy_shading == 1)
             Print() << "  Canopy shading: enabled (uses canopy_cover from LCP if available)\n";
+    }
+
+    // -------- Multiple scheduled ignitions --------
+    p.ignition_schedule_file = "";
+    pp.query("ignition_schedule_file", p.ignition_schedule_file);
+    if (!p.ignition_schedule_file.empty()) {
+        Print() << "Multiple scheduled ignitions: loading from "
+                << p.ignition_schedule_file << "\n";
+    }
+
+    // -------- FARSITE .wtr single-file hourly weather --------
+    p.wtr_file         = "";   pp.query("wtr_file",          p.wtr_file);
+    p.wtr_start_year   = 0;    pp.query("wtr_start_year",    p.wtr_start_year);
+    p.wtr_start_month  = 0;    pp.query("wtr_start_month",   p.wtr_start_month);
+    p.wtr_start_day    = 0;    pp.query("wtr_start_day",     p.wtr_start_day);
+    p.wtr_start_hour   = 0;    pp.query("wtr_start_hour",    p.wtr_start_hour);
+    if (!p.wtr_file.empty()) {
+        Print() << "FARSITE .wtr weather file: " << p.wtr_file << "\n";
+        // .wtr implicitly enables diurnal moisture (provides T and RH)
+        if (p.diurnal_moisture.enable != 1) {
+            Print() << "  NOTE: wtr_file enables diurnal moisture model automatically.\n";
+            p.diurnal_moisture.enable = 1;
+        }
+    }
+
+    // -------- Aerial retardant suppression --------
+    p.retardant_file = "";    pp.query("retardant_file", p.retardant_file);
+    if (!p.retardant_file.empty()) {
+        Print() << "Aerial retardant suppression: loading from " << p.retardant_file << "\n";
+    }
+
+    // -------- Fuel moisture conditioning period --------
+    p.conditioning.n_days  = 0;    pp.query("conditioning.n_days",   p.conditioning.n_days);
+    p.conditioning.wtr_file = "";  pp.query("conditioning.wtr_file", p.conditioning.wtr_file);
+    if (p.conditioning.n_days > 0) {
+        Print() << "Fuel moisture conditioning: " << p.conditioning.n_days
+                << " days of pre-run moisture spin-up\n";
+        if (!p.conditioning.wtr_file.empty())
+            Print() << "  Conditioning weather: " << p.conditioning.wtr_file << "\n";
+        else if (!p.wtr_file.empty())
+            Print() << "  Conditioning weather: using wtr_file\n";
+        else
+            Print() << "  Conditioning weather: using diurnal_moisture parameters\n";
+    }
+
+    // -------- Elevation lapse-rate T/RH correction --------
+    p.use_elevation_lapse     = 0;       pp.query("use_elevation_lapse",     p.use_elevation_lapse);
+    p.lapse_rate_C_per_m      = 0.0065;  pp.query("lapse_rate_C_per_m",      p.lapse_rate_C_per_m);
+    p.lapse_ref_elevation_m   = 0.0;     pp.query("lapse_ref_elevation_m",   p.lapse_ref_elevation_m);
+    if (p.use_elevation_lapse == 1) {
+        Print() << "Elevation lapse-rate T/RH correction enabled: "
+                << p.lapse_rate_C_per_m << " °C/m  ref_elev="
+                << p.lapse_ref_elevation_m << " m\n";
+        if (p.rothermel.terrain_file.empty() && p.rothermel.landscape_file.empty()) {
+            Print() << "WARNING: use_elevation_lapse=1 but no terrain/landscape file; "
+                       "lapse correction will have no effect (flat domain).\n";
+        }
+    }
+
+    // -------- Live fuel moisture FMC seasonal link --------
+    p.live_fuel_seasonal.enable       = 0;      pp.query("live_fuel_seasonal.enable",       p.live_fuel_seasonal.enable);
+    p.live_fuel_seasonal.M_lh_summer  = 1.20;   pp.query("live_fuel_seasonal.M_lh_summer",  p.live_fuel_seasonal.M_lh_summer);
+    p.live_fuel_seasonal.M_lh_winter  = 0.30;   pp.query("live_fuel_seasonal.M_lh_winter",  p.live_fuel_seasonal.M_lh_winter);
+    p.live_fuel_seasonal.M_lw_summer  = 1.50;   pp.query("live_fuel_seasonal.M_lw_summer",  p.live_fuel_seasonal.M_lw_summer);
+    p.live_fuel_seasonal.M_lw_winter  = 0.60;   pp.query("live_fuel_seasonal.M_lw_winter",  p.live_fuel_seasonal.M_lw_winter);
+    if (p.live_fuel_seasonal.enable == 1) {
+        if (p.fmc_schedule.enable != 1) {
+            Print() << "WARNING: live_fuel_seasonal.enable=1 requires fmc_schedule.enable=1; "
+                       "live fuel seasonal link will have no effect.\n";
+        } else {
+            Print() << "Live fuel seasonal moisture enabled: "
+                    << "M_lh=[" << p.live_fuel_seasonal.M_lh_winter
+                    << "," << p.live_fuel_seasonal.M_lh_summer << "]  "
+                    << "M_lw=[" << p.live_fuel_seasonal.M_lw_winter
+                    << "," << p.live_fuel_seasonal.M_lw_summer << "]\n";
+        }
     }
 
 }

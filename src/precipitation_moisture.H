@@ -51,6 +51,7 @@ struct PrecipState {
     float M_d1   = 0.08f;   // current 1-hr   dead moisture [fraction]
     float M_d10  = 0.08f;   // current 10-hr  dead moisture [fraction]
     float M_d100 = 0.08f;   // current 100-hr dead moisture [fraction]
+    float M_d1000 = 0.15f;  // current 1000-hr dead moisture [fraction]
     bool  initialized = false;
 };
 
@@ -77,12 +78,16 @@ inline void apply_precipitation_moisture(
     float                      M_sat                  = 1.20f)
 {
     // Per size-class wetting / drying time constants [s]
-    constexpr float TAU_WET_1HR   =  3600.0f;
-    constexpr float TAU_DRY_1HR   = 14400.0f;
-    constexpr float TAU_WET_10HR  =  7200.0f;
-    constexpr float TAU_DRY_10HR  = 86400.0f;
-    constexpr float TAU_WET_100HR = 14400.0f;
-    constexpr float TAU_DRY_100HR = 864000.0f;
+    constexpr float TAU_WET_1HR    =  3600.0f;
+    constexpr float TAU_DRY_1HR    = 14400.0f;
+    constexpr float TAU_WET_10HR   =  7200.0f;
+    constexpr float TAU_DRY_10HR   = 86400.0f;
+    constexpr float TAU_WET_100HR  = 14400.0f;
+    constexpr float TAU_DRY_100HR  = 864000.0f;
+    // 1000-hr fuel: very slow wetting (8 hr) and very slow drying (25 days)
+    // Following Nelson (2000) extension of the Rothermel (1983) time-lag approach
+    constexpr float TAU_WET_1000HR = 28800.0f;
+    constexpr float TAU_DRY_1000HR = 2160000.0f;
 
     const bool raining = (rain_rate_mm_hr > precip_threshold_mm_hr);
 
@@ -105,6 +110,12 @@ inline void apply_precipitation_moisture(
                           TAU_WET_10HR,  TAU_DRY_10HR);
     state.M_d100 = update(state.M_d100, m_emc.M_d100,
                           TAU_WET_100HR, TAU_DRY_100HR);
+    // 1000-hr fuel: use M_d100 * 1.50 as saturation proxy when M_emc is not
+    // available for very large fuels; drying target is M_emc * 1.50 following
+    // Rothermel (1983) large-log time-lag guidelines.
+    const float M_emc_1000 = m_emc.M_d100 * 1.50f;
+    state.M_d1000 = update(state.M_d1000, M_emc_1000,
+                           TAU_WET_1000HR, TAU_DRY_1000HR);
 }
 
 #endif // PRECIPITATION_MOISTURE_H

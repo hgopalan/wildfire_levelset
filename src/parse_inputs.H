@@ -21,6 +21,7 @@ struct RothermelParams {
     amrex::Real M_d1;         // 1-hr  dead moisture (fraction)            default: M_f
     amrex::Real M_d10;        // 10-hr dead moisture (fraction)            default: M_f
     amrex::Real M_d100;       // 100-hr dead moisture (fraction)           default: M_f
+    amrex::Real M_d1000;      // 1000-hr dead moisture (fraction)          default: M_f
     amrex::Real M_lh;         // live herbaceous moisture (fraction)       default: 0.90
     amrex::Real M_lw;         // live woody moisture (fraction)            default: 1.20
     // --- Per-class fuel loads and SAVs (populated from FuelModel database) ---
@@ -153,6 +154,13 @@ struct InputParameters {
         //   0 – abrupt max(R_surface, R_crown)  [current behaviour, default]
         //   1 – smooth blend via CF = (I_B/I_o)^(2/3) following Van Wagner (1977)
         int use_passive_blend;               // 1 = Van Wagner passive blend (default: 0)
+        // Passive crown fire ellipse coefficients (used when crown fire is detected
+        // and farsite.scale_ellipse_with_crown = 1). These produce a more elongated
+        // fire shape consistent with active crown fire.  Blended against surface
+        // coefficients proportional to the crowning fraction CF.
+        amrex::Real a_crown;                 // head fire ellipse coefficient for crown fire (default: 1.5)
+        amrex::Real b_crown;                 // flank fire ellipse coefficient for crown fire (default: 0.4)
+        amrex::Real c_crown;                 // backing fire ellipse coefficient for crown fire (default: 0.1)
     } crown;
     
     // Cheney & Gould (1995) / Cheney, Gould & Catchpole (1998) grassland fire
@@ -372,6 +380,57 @@ struct InputParameters {
     std::string dynamic_fire_points_file;    // Path to a CSV file polled each step; when the file is present its
                                              // ignition points are merged into phi and the file is deleted/ignored
                                              // until it reappears (default: "" = disabled)
+
+    // ---- Multiple scheduled ignitions ----
+    // CSV file of (time_s, cx, cy, radius [, source_type]) rows.
+    // Each row schedules one ignition event that fires when the simulation
+    // time enters (time_s - dt, time_s].  Allows multi-start scenarios such
+    // as lightning strikes, spotfire confirmations, or drip-torch runs.
+    // (default: "" = disabled)
+    std::string ignition_schedule_file;      // path to ignition schedule CSV (default: "")
+
+    // ---- FARSITE .wtr single-file hourly weather ----
+    // When non-empty, a FARSITE .wtr file is parsed and its wind, temperature,
+    // RH, and precipitation records populate the WindDirSchedule and override
+    // the diurnal_moisture parameters, replacing wind_dir_schedule_file and
+    // manual diurnal_moisture.T_min/T_max/RH_min/RH_max settings.
+    // (default: "" = disabled)
+    std::string wtr_file;                    // path to FARSITE .wtr weather file (default: "")
+    int         wtr_start_year;              // calendar year  of first .wtr record (0=auto)
+    int         wtr_start_month;             // calendar month of first .wtr record (0=auto)
+    int         wtr_start_day;              // calendar day   of first .wtr record (0=auto)
+    int         wtr_start_hour;             // HHMM hour      of first .wtr record (0=auto)
+
+    // ---- Aerial retardant suppression model ----
+    // CSV file of drop zones: (drop_time_s, effectiveness, tau_decay_s, n_vertices)
+    // followed by n_vertices rows of (x y) polygon vertices.
+    // At each timestep, active drops scale R_mf by
+    //   f = 1 - effectiveness * exp(-(t - drop_time) / tau_decay).
+    // (default: "" = disabled)
+    std::string retardant_file;              // path to retardant schedule CSV (default: "")
+
+    // ---- Fuel moisture conditioning period ----
+    // Before the main time loop, run the Nelson (2000) diurnal EMC model for
+    // N days of weather to arrive at realistic starting moisture values.
+    // When conditioning.wtr_file is non-empty, the .wtr weather data provides
+    // the conditioning T/RH/precipitation.  Otherwise, diurnal_moisture.* are used.
+    // conditioning.n_days = 0 (default) disables conditioning.
+    struct ConditioningParams {
+        int         n_days;      // number of conditioning days (default: 0 = disabled)
+        std::string wtr_file;    // optional separate .wtr file for conditioning weather
+    } conditioning;
+
+    // ---- Elevation lapse-rate T/RH correction ----
+    // When enabled (= 1), the diurnal temperature and relative humidity used to
+    // compute per-cell EMC are adjusted for cell elevation via a standard
+    // atmospheric lapse rate before feeding into apply_solar_emc_to_spatial_moisture.
+    //   T_cell  = T_air - lapse_rate_C_per_m * (elev_cell - elev_ref_m)
+    //   RH_cell corrected via Clausius–Clapeyron approximation.
+    // Requires: a landscape or terrain file providing elevation data.
+    // (default: disabled)
+    int    use_elevation_lapse;              // 1 to enable lapse-rate correction (default: 0)
+    amrex::Real lapse_rate_C_per_m;         // temperature lapse rate [°C/m] (default: 0.0065)
+    amrex::Real lapse_ref_elevation_m;      // reference elevation for lapse [m] (default: 0.0)
 
     // Checkpoint / restart options
     int chk_int;                             // Write a checkpoint file every chk_int steps; <=0 disables (default: -1)
@@ -636,6 +695,20 @@ struct InputParameters {
         int enable;              // 1 to enable bisection-based TI/CI (default: 0)
         amrex::Real U_max_kmh;  // maximum wind speed for bisection [km/h] (default: 200.0)
     } scott_reinhardt_full;
+
+    // ---- Live fuel moisture FMC seasonal link ----
+    // When fmc_schedule is enabled, live herbaceous and woody moistures are
+    // linearly scaled between their summer-peak and winter-dormant values in
+    // proportion to the seasonal FMC fraction.  This links the same phenological
+    // cycle used for crown fire initiation to live fuel loading in Rothermel.
+    // Input prefix: "live_fuel_seasonal."
+    struct LiveFuelSeasonalParams {
+        int enable;              // 1 to enable seasonal live fuel moisture (default: 0)
+        amrex::Real M_lh_summer; // peak-season live herbaceous moisture [fraction] (default: 1.20)
+        amrex::Real M_lh_winter; // dormant-season live herbaceous moisture [fraction] (default: 0.30)
+        amrex::Real M_lw_summer; // peak-season live woody moisture [fraction] (default: 1.50)
+        amrex::Real M_lw_winter; // dormant-season live woody moisture [fraction] (default: 0.60)
+    } live_fuel_seasonal;
 
 };
 

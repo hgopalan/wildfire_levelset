@@ -171,6 +171,14 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const int scale_ellipse_crown_flag = fp.scale_ellipse_with_crown;
   const Real crown_lw_scale_val      = fp.crown_lw_scale;
 
+  // Passive crown fire ellipse coefficients (Feature 9 in the FARSITE audit).
+  // When crown fire is detected (crowning fraction CF > 0), blend the ellipse
+  // a/b/c coefficients between surface and crown values proportionally to CF.
+  // Use cp.a_crown / b_crown / c_crown when scale_ellipse_crown_flag = 1.
+  const Real crown_coeff_a = cp.a_crown;
+  const Real crown_coeff_b = cp.b_crown;
+  const Real crown_coeff_c = cp.c_crown;
+
   // Compute critical surface intensity for crown initiation (if enabled)
   Real I_o = 0.0;
   if (use_crown_initiation == 1) {
@@ -390,14 +398,23 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
         }
         LW_ratio_to_richards_coefficients(LW_ratio, local_coeff_a,
                                           local_coeff_b, local_coeff_c);
-      } else if (scale_ellipse_crown_flag == 1 && crown_is_active) {
-        // Feature 12: also scale fixed coefficients for active crown.
-        // Use head/backing ratio as a proxy for L/W, then reconstruct a/b/c.
-        const Real LW_approx = (local_coeff_c > Real(1.0e-10))
-                                ? local_coeff_a / local_coeff_c : Real(3.0);
-        const Real LW_crown = LW_approx * crown_lw_scale_val;
-        LW_ratio_to_richards_coefficients(LW_crown, local_coeff_a,
-                                          local_coeff_b, local_coeff_c);
+      } else if (scale_ellipse_crown_flag == 1) {
+        if (crown_is_active) {
+          // Feature 12: scale fixed coefficients for active crown.
+          // Use head/backing ratio as a proxy for L/W, then reconstruct a/b/c.
+          const Real LW_approx = (local_coeff_c > Real(1.0e-10))
+                                  ? local_coeff_a / local_coeff_c : Real(3.0);
+          const Real LW_crown = LW_approx * crown_lw_scale_val;
+          LW_ratio_to_richards_coefficients(LW_crown, local_coeff_a,
+                                            local_coeff_b, local_coeff_c);
+        } else if (local_crown_fraction > Real(0.0)) {
+          // Feature 9 (passive crown fire ellipse): blend a/b/c between surface
+          // and crown coefficients proportionally to the crowning fraction CF.
+          const Real CF = amrex::min(local_crown_fraction, Real(1.0));
+          local_coeff_a = coeff_a + CF * (crown_coeff_a - coeff_a);
+          local_coeff_b = coeff_b + CF * (crown_coeff_b - coeff_b);
+          local_coeff_c = coeff_c + CF * (crown_coeff_c - coeff_c);
+        }
       }
 
       // Wind unit vector
