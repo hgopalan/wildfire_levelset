@@ -145,6 +145,14 @@ struct InputParameters {
         //   1 – Cruz, Alexander & Wakimoto (2005): R = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(-0.17 × MC₁₀)
         //       Uses cruz_crown.CBD and cruz_crown.MC10 for canopy/moisture inputs.
         int use_cruz_crown;                  // 1 = Cruz et al. (2005) active crown ROS (default: 0)
+        // Rothermel (1991) active crown fire ROS option:
+        //   0 - do not use (keep existing crown model selection)  [default]
+        //   1 - use Rothermel (1991): R_crown = 3.34 x R_surface
+        int use_rothermel1991_crown;         // 1 = Rothermel (1991) (default: 0)
+        // Van Wagner (1977) passive crown fire interpolation blending:
+        //   0 – abrupt max(R_surface, R_crown)  [current behaviour, default]
+        //   1 – smooth blend via CF = (I_B/I_o)^(2/3) following Van Wagner (1977)
+        int use_passive_blend;               // 1 = Van Wagner passive blend (default: 0)
     } crown;
     
     // Cheney & Gould (1995) / Cheney, Gould & Catchpole (1998) grassland fire
@@ -591,6 +599,43 @@ struct InputParameters {
         amrex::Real solar_heating_C; // max solar heating of fuel above air temp [°C] (default: 17.0)
         int use_canopy_shading;      // 1 to include canopy cover in shade fraction (default: 1)
     } solar_radiation;
+
+    // ---- Canadian FBP System fire spread model parameters ----
+    // Used when fire_spread_model = "fbp_o1a", "fbp_o1b", "fbp_s1", "fbp_s2", or "fbp_s3"
+    // Reference: Forestry Canada (1992). FCFDG Information Report ST-X-3.
+    //
+    // fuel_type : one of "o1a", "o1b", "s1", "s2", "s3"
+    // moisture  : dead fine fuel moisture content [%]  (default: 10.0)
+    // curing    : degree of curing [0-100 %] for O1a/O1b only  (default: 80.0)
+    struct FBPParams {
+        std::string fuel_type;  // "o1a", "o1b", "s1", "s2", "s3"  (default: "o1a")
+        amrex::Real moisture;   // dead fine fuel moisture [%]   (default: 10.0)
+        amrex::Real curing;     // curing percentage [0-100]     (default: 80.0)
+    } fbp;
+
+    // ---- Lautenberger (2013) physics-based cellular spread model parameters ----
+    // Used when fire_spread_model = "lautenberger"
+    // Reference: Lautenberger, C. (2013). Fire Safety Journal 62:289-298.
+    //
+    // A_L : pre-factor [m^2/s]        (default: 1.05e-5)
+    // B_L : moisture sensitivity [-] (default: 2.5)
+    // C_L : wind correction [(m/s)^-1] (default: 0.40)
+    // D_L : slope correction [-]     (default: 0.50)
+    struct LautenbergerParams {
+        amrex::Real A_L;   // pre-factor [m^2/s]         (default: 1.05e-5)
+        amrex::Real B_L;   // moisture sensitivity [-]   (default: 2.5)
+        amrex::Real C_L;   // wind coefficient [(m/s)^-1] (default: 0.40)
+        amrex::Real D_L;   // slope coefficient [-]      (default: 0.50)
+    } lautenberger;
+
+    // ---- Scott & Reinhardt (2001) full TI/CI computation ----
+    // Computes the full Torching Index (TI) and Crowning Index (CI) as minimum
+    // 20-ft open wind speeds [km/h] using bisection over the Rothermel formula.
+    // Written to plotfiles as "torching_index_kmh" and "crowning_index_kmh".
+    struct ScottReinhardtFullParams {
+        int enable;              // 1 to enable bisection-based TI/CI (default: 0)
+        amrex::Real U_max_kmh;  // maximum wind speed for bisection [km/h] (default: 200.0)
+    } scott_reinhardt_full;
 
 };
 

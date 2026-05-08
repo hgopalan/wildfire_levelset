@@ -23,157 +23,158 @@ Capability Summary
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 20 10 10 10 10 10 10 10
+   :widths: 22 26 10 10 10 10 12
 
    * - Capability
-     - wildfire_levelset
+     - **Wildfire-AMR** (this solver)
      - FARSITE
      - WRF-SFIRE
      - FlamMap
      - BehavePlus
-     - FSPRO
-     - QUIC-Fire
-     - FIRETEC
-   * - **Fire spread model**
-     - Rothermel (1972) or Balbi (2009) ROS; Cheney & Gould (1995) grassland;
-       elliptical directional spread (Richards 1990); Eulerian level-set
-     - Rothermel ROS; explicit Huygens wavelet propagation
-     - Rothermel ROS (level-set)
-     - Rothermel ROS; minimum travel time (MTT) or Huygens wavelet
-     - Rothermel (1972) point-based ROS; no spatial propagation
-     - Ensemble of FARSITE simulations; probabilistic spread
-     - Coupled semi-empirical fire model with QUIC-URB 3-D wind solver
-     - High-fidelity LES with coupled combustion physics; no empirical ROS
-   * - **Wind adjustment**
-     - Optional WAF (20-ft → midflame) and MEWS cap; 7 wind-terrain feedback
-       models (Rothermel 1983 canyon, Viegas & Neto 1994, Pimont et al. 2009,
-       WindNinja ridge/canyon)
-     - WAF applied internally; MEWS cap
-     - Wind derived from WRF atmospheric model; WAF handled in coupling
-     - WindNinja or constant/gridded input; WAF optional
-     - User-specified WAF option
-     - Applied through each FARSITE instance
-     - 3-D mass-consistent wind field computed by QUIC-URB
-     - Wind computed by Navier-Stokes LES solver
-   * - **Terrain representation**
-     - Per-cell elevation, slope, aspect, and fuel from ``.lcp`` or XYZ; 2-D;
-       3-D terrain and canopy layer can be added in future
-     - Full 2-D landscape (``.lcp``)
-     - Full 3-D terrain from WRF grid
-     - Full 2-D landscape (``.lcp``)
-     - Point-based (user-specified slope/aspect); no raster landscape
-     - Full 2-D landscape (``.lcp``)
-     - Full 3-D terrain and vegetation canopy structure
-     - Full 3-D terrain and vegetation canopy
-   * - **Fire-atmosphere coupling**
-     - None (prescribed wind fields)
-     - None (prescribed gridded wind)
-     - Two-way (fire ↔ WRF atmosphere, heat/momentum flux)
-     - None (prescribed wind)
-     - None
-     - None (prescribed weather)
-     - One-way/quasi-coupled (QUIC-URB wind; no fire-driven feedback)
-     - Two-way (fully coupled LES fire–atmosphere)
-   * - **Atmospheric model**
-     - None
-     - None
-     - Full WRF mesoscale atmosphere (NWP)
-     - None
-     - None
-     - None
-     - Fast-response QUIC-URB 3-D mass-consistent wind model
-     - Full 3-D Navier-Stokes LES atmosphere
-   * - **Spatial resolution**
-     - User-defined (AMReX grid); adaptive mesh refinement (AMR)
-     - Landscape raster resolution
-     - WRF grid resolution (typically 100 m–1 km)
-     - Landscape raster resolution
-     - Point-based (no spatial grid)
-     - Landscape raster resolution (via FARSITE)
-     - User-defined 3-D grid (typically 1–10 m)
-     - User-defined 3-D grid (typically 1–10 m)
-   * - **Fuel models**
-     - Anderson 13 + Scott & Burgan 40
-     - Anderson 13 + Scott & Burgan 40
-     - Anderson 13
-     - Anderson 13 + Scott & Burgan 40
-     - Anderson 13 + Scott & Burgan 40
-     - Anderson 13 + Scott & Burgan 40
-     - Custom 3-D bulk fuel density and arrangement
-     - Continuous 3-D fuel density distribution
-   * - **Fuel moisture**
-     - Per size class (1-hr, 10-hr, 100-hr dead; live herbaceous and live
-       woody); time-varying ``.fmd`` schedule
-     - Dead/live moisture per size class
-     - Dead/live moisture (prescribed)
-     - Dead/live per size class; fuel moisture conditioning option
-     - Dead/live per size class
-     - Dead/live per size class (from historical RAWS)
-     - User-specified bulk moisture per cell
-     - User-specified moisture content per cell
+     - QUIC-Fire / FIRETEC
+   * - **Surface spread models**
+     - Rothermel (1972); Balbi (2009); Cheney–Gould (1995) grassland;
+       Cruz–Alexander–Wakimoto (2005) crown; FBP O1a/O1b/S1–S3 (Forestry
+       Canada 1992); Lautenberger (2013) physics-based
+     - Rothermel (1972)
+     - Rothermel (1972)
+     - Rothermel (1972)
+     - Rothermel (1972)
+     - Semi-empirical (QUIC); physics LES (FIRETEC)
+   * - **Propagation method**
+     - Eulerian level-set (WENO5-Z/RK3); FARSITE Huygens ellipse (Richards
+       1990); Minimum Travel Time (Finney 2002)
+     - Huygens wavelet (explicit vertex propagation)
+     - Eulerian level-set
+     - MTT or Huygens wavelet
+     - Point-based; no spatial propagation
+     - Eulerian CFD grid
    * - **Crown fire**
-     - Van Wagner (1977) initiation
-     - Van Wagner (1977) initiation
-     - Van Wagner (1977) initiation
-     - Scott & Reinhardt (2001) crown fire assessment
+     - Van Wagner (1977) initiation + passive CF blend;
+       Rothermel (1991) active ROS (3.34 × R\ :sub:`surface`);
+       Cruz et al. (2005) active ROS;
+       Scott & Reinhardt (2001) full TI/CI (bisection)
+     - Van Wagner (1977); active crown via R\ :sub:`c` = 3.34 R\ :sub:`s`
      - Van Wagner (1977)
-     - Via FARSITE (Van Wagner)
-     - Physics-based ignition via heat flux
-     - Governed by physical combustion model
+     - Scott & Reinhardt (2001) full assessment
+     - Van Wagner (1977)
+     - Physics-based (heat flux / combustion)
+   * - **Wind adjustment**
+     - WAF (Andrews 2018, 20-ft → midflame); MEWS cap; 7 wind-terrain
+       feedback models (canyon, Viegas, Pimont, WindNinja ridge/canyon)
+     - WAF + MEWS cap (internal)
+     - WRF-derived; WAF in coupling layer
+     - WindNinja or gridded; WAF optional
+     - User-specified WAF
+     - 3-D mass-consistent (QUIC-URB) or LES
+   * - **Fuel models**
+     - FBFM13 (Anderson 13); FBFM40 (Scott–Burgan 40); custom inline;
+       FBP O1a/O1b grass + S1–S3 slash; per-cell from LANDFIRE LCP
+     - FBFM13 + FBFM40
+     - FBFM13
+     - FBFM13 + FBFM40
+     - FBFM13 + FBFM40
+     - Custom 3-D bulk density
+   * - **Fuel moisture**
+     - 1-hr/10-hr/100-hr dead + live herb/woody per cell; FMD schedule;
+       Nelson (2000) diurnal EMC; precipitation wetting;
+       per-cell from FARSITE .fms; solar shade adjustment
+     - Dead/live per size class; FMD schedule
+     - Dead/live (prescribed)
+     - Dead/live per class; conditioning option
+     - Dead/live per class
+     - Bulk moisture per cell
+   * - **Flame diagnostics**
+     - Byram (1959) fireline intensity & flame length;
+       Thomas (1963) inverse (I\ :sub:`B` from observed L\ :sub:`f`);
+       scorch height; tree mortality; crown activity class
+     - Fireline intensity; flame length
+     - Fireline intensity
+     - Full fire behavior outputs
+     - Full fire behavior outputs
+     - Physics-derived heat release
    * - **Firebrand spotting**
-     - Stochastic + Albini (1983) 2-D trajectory model
-     - Albini empirical spotting
-     - Not included by default
+     - Albini (1983) 2-D trajectory; Albini (1979) torching-tree;
+       stochastic lognormal/exponential distance model
+     - Albini empirical
+     - Not included
      - Not standard
-     - Albini empirical (point calculation)
-     - Via FARSITE (Albini)
-     - Not standard
-     - Physics-based firebrand transport (select versions)
-   * - **Bulk fuel burnout**
-     - Residence-time model
-     - Per-cell burnout tracking
-     - Post-frontal fuel consumption
-     - Not tracked separately
+     - Albini (point)
+     - Physics-based (select FIRETEC versions)
+   * - **Terrain**
+     - Per-cell elevation, slope, aspect from LCP or XYZ terrain file;
+       2-D domain
+     - Full 2-D LCP landscape
+     - Full 3-D WRF terrain
+     - Full 2-D LCP landscape
+     - Point-based (user slope/aspect)
+     - Full 3-D terrain + canopy
+   * - **Fire–atmosphere coupling**
+     - None (prescribed wind; heat-flux plume correction optional)
+     - None
+     - Two-way (fire ↔ WRF; heat/momentum flux)
+     - None
+     - None
+     - One-way (QUIC-URB) or two-way LES (FIRETEC)
+   * - **Fuel burnout / depletion**
+     - Residence-time burnout; per-class exponential decay;
+       per-cell residual fuel tracking
+     - Per-cell burnout
+     - Post-frontal consumption
+     - Not tracked
      - Not applicable
-     - Via FARSITE
-     - Physics-based fuel consumption
-     - Physical combustion with full burnout
-   * - **Multi-ignition**
-     - CSV ignition file
-     - Interactive ignition map
-     - WPS/WRF fire restart
+     - Physics-based combustion
+   * - **Ignition types**
+     - Point CSV; sphere/box/ellipse; closed polygon; polyline (line fire);
+       dynamic fire-points polling; Gaussian sigma blending
+     - Interactive ignition map; polygon
+     - WPS/WRF restart
      - Ignition map or polygon
-     - Single point or simple polygon
-     - Multiple ignition points
-     - User-defined ignition locations
-     - User-defined ignition locations
+     - Single point / simple polygon
+     - User-defined locations
+   * - **Barrier / suppression**
+     - Polyline firebreaks (CSV); multiple barrier files;
+       extinguish-on-contact logic
+     - Dozer/hand lines; aerial retardant
+     - Not included
+     - Not included
+     - Not applicable
+     - Not included
+   * - **Spatial resolution**
+     - User-defined; AMReX AMR-ready; uniform 2-D default
+     - Landscape raster resolution
+     - WRF grid (100 m – 1 km)
+     - Landscape raster resolution
+     - Point-based
+     - 1–10 m 3-D grid
    * - **GPU acceleration**
-     - Yes (AMReX CUDA/HIP/SYCL kernels)
-     - No
-     - No
-     - No
-     - No
-     - No
-     - Partial (QUIC-URB GPU support in select versions)
-     - No (primarily MPI CPU)
+     - ✓ AMReX CUDA / HIP / SYCL kernels
+     - ✗
+     - ✗
+     - ✗
+     - ✗
+     - Partial (QUIC-URB select versions)
    * - **MPI parallelism**
-     - Yes (AMReX domain decomposition)
-     - No
-     - Yes (WRF MPI)
-     - No
-     - No
-     - No (ensemble via independent FARSITE instances)
-     - Yes (QUIC MPI/OpenMP)
-     - Yes (HPC clusters, MPI)
-   * - **Embedded boundaries / obstacles**
-     - Yes (AMReX EB for buildings, fuel breaks)
-     - No
-     - No
-     - No
-     - No
-     - No
-     - Yes (QUIC-URB handles buildings and obstacles)
-     - Yes (complex 3-D geometry)
+     - ✓ AMReX domain decomposition
+     - ✗
+     - ✓ WRF MPI
+     - ✗
+     - ✗
+     - ✓ MPI/OpenMP
+   * - **Embedded boundaries**
+     - ✓ AMReX EB (buildings, fuel breaks, complex geometry)
+     - ✗
+     - ✗
+     - ✗
+     - ✗
+     - ✓ (QUIC-URB / FIRETEC 3-D geometry)
+   * - **Open source**
+     - ✓ (MIT licence)
+     - ✗ (USFS proprietary binary)
+     - ✓ (WRF open source)
+     - ✗ (USFS proprietary binary)
+     - ✓ (open source)
+     - Partial (QUIC-Fire: research licence; FIRETEC: research only)
 
 Tool Documentation References
 ------------------------------
@@ -181,69 +182,78 @@ Tool Documentation References
 For authoritative and up-to-date information on each tool, refer to the
 official sources:
 
-* **wildfire_levelset**: https://hgopalan.github.io/wildfire_levelset/
+* **Wildfire-AMR**: https://hgopalan.github.io/wildfire_levelset/
 * **FARSITE**: https://www.firelab.org/project/farsite
 * **WRF-SFIRE**: https://github.com/openwfm/WRF-SFIRE
 * **FlamMap**: https://www.firelab.org/project/flammap
 * **BehavePlus**: https://www.firelab.org/project/behaveplusfiremodeling
-* **FSPRO**: https://www.firelab.org/project/fspro
 * **QUIC-Fire**: https://www.lanl.gov/projects/quic-fire/
 * **FIRETEC**: https://www.lanl.gov/org/padwp/adcles/fluid-dynamics-solid-mechanics/index.php
-  (see also Linn et al. 2002)
 
 Key Differences from FARSITE
 -----------------------------
 
-* **Eulerian level-set vs. explicit Huygens wavelets**: This solver implements
-  the same elliptical directional spread (Richards 1990) as FARSITE, but
-  embeds it in an Eulerian level-set framework. The fire perimeter is tracked
-  as the zero contour of a smooth signed-distance function rather than a chain
-  of individually advected vertex wavelets. The Eulerian approach handles
-  complex topology changes (merging fronts, islands) automatically without
-  explicit connectivity management.
+* **Eulerian level-set vs. explicit Huygens wavelets**: Wildfire-AMR embeds
+  the same Richards (1990) elliptical directional spread as FARSITE inside an
+  Eulerian level-set (WENO5-Z/RK3). The fire perimeter is the zero contour of
+  a signed-distance function; merging fronts and islands are handled
+  automatically without explicit connectivity management.
 
-* **Andrews (2018) wind adjustments are optional**: FARSITE applies the Wind
-  Adjustment Factor (WAF) and maximum effective wind speed (MEWS) cap
-  internally. This solver exposes both via ``rothermel.use_waf`` and
-  ``rothermel.use_wind_limit`` so users can enable them when wind input is at
-  20-ft (NWP or WRF) height rather than midflame height.
+* **Extended spread model library**: In addition to Rothermel (1972),
+  Wildfire-AMR includes Balbi (2009) physics-based, Cheney–Gould (1995)
+  Australian grassland, Cruz et al. (2005) crown fire, Canadian FBP
+  O1a/O1b/S1–S3 (Forestry Canada 1992), and Lautenberger (2013)
+  physics-based. FARSITE ships only with Rothermel (1972).
 
-* **Full 2-D landscape terrain**: Both solvers support per-cell elevation,
-  slope, aspect, and fuel model from FARSITE ``.lcp`` landscape files
-  (LANDFIRE data). Canopy fuel layers can be added to this solver in future
-  without architectural changes.
+* **Richer crown fire pipeline**: Wildfire-AMR supports Van Wagner (1977)
+  passive blending via the crowning fraction CF = (I\ :sub:`B`/I\ :sub:`o`)\ :sup:`2/3`,
+  Rothermel (1991) active crown ROS (3.34 × R\ :sub:`surface`), Cruz et al.
+  (2005) wind-dependent crown ROS, and full Scott & Reinhardt (2001) TI/CI via
+  bisection. FARSITE uses the Rothermel (1991) multiplier internally.
 
-* **Per size-class fuel moisture**: Dead fuel moisture is specified
-  independently for 1-hr, 10-hr, and 100-hr size classes; live herbaceous and
-  live woody moisture are specified separately. This mirrors FARSITE's moisture
-  inputs and drives the multi-class Rothermel (1972) reaction intensity
-  calculation.
+* **Wind adjustments are optional**: FARSITE applies WAF and MEWS internally.
+  Wildfire-AMR exposes both via ``rothermel.use_waf`` and
+  ``rothermel.use_wind_limit`` so users can match FARSITE behaviour or supply
+  midflame-height wind directly.
 
-* **Embedded Boundary**: AMReX EB allows irregular obstacles (buildings, fuel
-  breaks) on the Cartesian grid without remeshing.
+* **GPU and MPI**: AMReX CUDA/HIP/SYCL kernels and MPI domain decomposition.
+  FARSITE is serial and CPU-only.
 
-* **GPU and MPI**: The AMReX backend supports CUDA/HIP/SYCL and MPI for large
-  domains; FARSITE is serial and CPU-only.
+* **Embedded Boundary**: AMReX EB allows buildings and fuel breaks on the
+  Cartesian grid without remeshing. FARSITE has no EB support.
 
 Key Differences from WRF-Fire (WRF-SFIRE)
 ------------------------------------------
 
-* **No atmospheric coupling**: This solver uses prescribed wind fields
-  (constant, CSV, or WRF output); WRF-SFIRE fully couples the fire with the
-  WRF atmospheric model, including fire-induced wind, heat flux, and smoke
-  transport.
+* **No atmospheric coupling**: Wildfire-AMR uses prescribed wind fields
+  (constant, CSV, or WRF output); WRF-SFIRE fully couples fire with WRF,
+  including fire-induced wind, heat flux, and smoke transport.
 
-* **Wind adjustment control**: When using WRF output wind via
-  ``wrf_wind_reader.py``, enable ``rothermel.use_waf = 1`` to convert the NWP
-  wind to midflame height. WRF-SFIRE handles this internally as part of the
-  coupled framework.
+* **Wind adjustment**: When driving with WRF output, enable
+  ``rothermel.use_waf = 1`` to convert NWP wind to midflame height.
+  WRF-SFIRE handles this inside the coupled framework.
 
-* **Albini spotting vs. none**: WRF-SFIRE does not include firebrand spotting
-  by default.
+* **Richer fire behaviour models**: WRF-SFIRE uses Rothermel (1972) only.
+  Wildfire-AMR supports seven additional spread models and a richer crown fire
+  pipeline (see above).
 
-* **Simpler setup**: Running this solver requires only CMake and an AMReX
-  build; WRF-SFIRE requires a full WRF stack (NetCDF, MPI, WPS, WRF
-  pre-processing).
+* **Simpler setup**: Wildfire-AMR requires only CMake and AMReX; WRF-SFIRE
+  requires a full WRF stack (NetCDF, MPI, WPS, WRF pre-processing).
 
-* **GPU-native kernels**: WRF-SFIRE is primarily CPU-MPI; this solver's
-  hotspot loops use AMReX GPU kernels.
+* **GPU-native kernels**: WRF-SFIRE is CPU-MPI; Wildfire-AMR uses AMReX GPU
+  kernels throughout.
+
+Key Differences from FlamMap
+-----------------------------
+
+* **Time-dependent propagation**: FlamMap computes static fire behaviour maps
+  (no time stepping); Wildfire-AMR evolves the fire front dynamically via
+  level-set, FARSITE Huygens, or MTT.
+
+* **Crown fire depth**: FlamMap provides the full Scott & Reinhardt (2001)
+  crown fire assessment. Wildfire-AMR now matches this with bisection-based
+  TI/CI plus Van Wagner (1977) passive blending and Rothermel (1991) active
+  crown ROS.
+
+* **GPU / open source**: FlamMap is a closed-source Windows binary; Wildfire-AMR
+  is MIT-licensed and GPU-accelerated.

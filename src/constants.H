@@ -162,6 +162,76 @@ inline constexpr amrex::Real ADVECTION_VISC = amrex::Real(0.4);
 /// Minimum slope magnitude used as a denominator floor in uphill unit-vector
 inline constexpr amrex::Real WT_SLOPE_EPS = amrex::Real(1.0e-8);
 
+// ============================================================================
+// Canadian FBP System constants (Forestry Canada 1992)
+// ============================================================================
+
+/// FBP ISI wind correction exponent coefficient
+inline constexpr amrex::Real FBP_ISI_W_COEFF = amrex::Real(0.05039);
+/// FBP ISI moisture pre-factor
+inline constexpr amrex::Real FBP_ISI_F_PREFAC = amrex::Real(91.9);
+/// FBP ISI moisture exponential coefficient
+inline constexpr amrex::Real FBP_ISI_F_EXP = amrex::Real(-0.1386);
+/// FBP ISI moisture polynomial power
+inline constexpr amrex::Real FBP_ISI_F_POW = amrex::Real(5.31);
+/// FBP ISI moisture polynomial divisor
+inline constexpr amrex::Real FBP_ISI_F_DIV = amrex::Real(4.93e7);
+/// FBP ISI overall multiplier
+inline constexpr amrex::Real FBP_ISI_MULT = amrex::Real(0.208);
+
+/// FBP O1a lead coefficient [m/s]: 190 m/min / 60
+inline constexpr amrex::Real FBP_O1A_C = amrex::Real(190.0 / 60.0);
+/// FBP O1a ISI exponent
+inline constexpr amrex::Real FBP_O1A_K = amrex::Real(0.031);
+/// FBP O1b lead coefficient [m/s]
+inline constexpr amrex::Real FBP_O1B_C = amrex::Real(250.0 / 60.0);
+/// FBP O1b ISI exponent
+inline constexpr amrex::Real FBP_O1B_K = amrex::Real(0.035);
+
+/// FBP S1 lead coefficient [m/s]
+inline constexpr amrex::Real FBP_S1_C = amrex::Real(75.0  / 60.0);
+inline constexpr amrex::Real FBP_S1_K = amrex::Real(0.110);
+/// FBP S2 lead coefficient [m/s]
+inline constexpr amrex::Real FBP_S2_C = amrex::Real(200.0 / 60.0);
+inline constexpr amrex::Real FBP_S2_K = amrex::Real(0.062);
+/// FBP S3 lead coefficient [m/s]
+inline constexpr amrex::Real FBP_S3_C = amrex::Real(320.0 / 60.0);
+inline constexpr amrex::Real FBP_S3_K = amrex::Real(0.010);
+
+/// FBP curing factor exponent (O1a/O1b)
+inline constexpr amrex::Real FBP_O1_CURING_K = amrex::Real(2.1);
+
+// ============================================================================
+// Lautenberger (2013) physics-based spread model constants
+// ============================================================================
+
+/// Lautenberger (2013) moisture sensitivity coefficient B_L
+inline constexpr amrex::Real LAUT_B_L = amrex::Real(2.5);
+/// Lautenberger (2013) wind correction coefficient C_L [(m/s)^-1]
+inline constexpr amrex::Real LAUT_C_L = amrex::Real(0.40);
+/// Lautenberger (2013) slope correction coefficient D_L [-]
+inline constexpr amrex::Real LAUT_D_L = amrex::Real(0.50);
+/// Lautenberger (2013) pre-factor A_L [m^2/s] (sigma_m x A_L gives [m/s])
+inline constexpr amrex::Real LAUT_A_L = amrex::Real(1.05e-5);
+
+// ============================================================================
+// Rothermel (1991) crown fire constant
+// ============================================================================
+
+/// Rothermel (1991) active crown fire ROS multiplier: R_crown = 3.34 x R_surface
+inline constexpr amrex::Real ROTHERMEL1991_CROWN_MULT = amrex::Real(3.34);
+
+// ============================================================================
+// Thomas (1963) / Byram (1959) flame length <-> intensity
+// ============================================================================
+
+/// Thomas / Byram (1959) SI coefficient: L_f [m] = BYRAM_A * I_B [kW/m]^BYRAM_B
+inline constexpr amrex::Real BYRAM_A    = amrex::Real(0.0775);
+/// Thomas / Byram (1959) SI exponent
+inline constexpr amrex::Real BYRAM_B    = amrex::Real(0.46);
+/// Inverse exponent: 1 / BYRAM_B approximately 2.17391
+inline constexpr amrex::Real BYRAM_INVB = amrex::Real(1.0 / 0.46);
+
 } // namespace WildfireConst
 
 // ---------------------------------------------------------------------------

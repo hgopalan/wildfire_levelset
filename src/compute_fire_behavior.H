@@ -76,4 +76,33 @@ inline void compute_fire_behavior(MultiFab& fireline_intensity_mf,
     }
 }
 
+// ============================================================================
+// Thomas (1963) flame length <-> intensity
+// ============================================================================
+// Forward (I_B -> L_f): same as Byram (1959) SI form already in compute_fire_behavior
+//   L_f [m] = 0.0775 * I_B [kW/m]^0.46
+//
+// Inverse (L_f -> I_B): Thomas (1963) empirical relationship
+//   I_B [kW/m] = (L_f [m] / 0.0775)^(1 / 0.46)
+//              = (L_f / 0.0775)^2.1739...
+//
+// Reference:
+//   Thomas, P.H. (1963). "The size of flames from natural fires." 9th
+//   International Combustion Symposium, Academic Press, New York, pp. 844-859.
+//
+// Parameters:
+//   flame_length_m: observed flame length [m]
+//
+// Returns:
+//   I_B: fireline intensity [kW/m]
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real thomas_intensity_from_flame_length(amrex::Real flame_length_m) noexcept
+{
+    using namespace amrex;
+    if (flame_length_m <= Real(0.0)) return Real(0.0);
+    // Inverse Byram/Thomas: I_B = (L_f / BYRAM_A)^BYRAM_INVB
+    return std::pow(flame_length_m / WildfireConst::BYRAM_A, WildfireConst::BYRAM_INVB);
+}
+
 #endif // COMPUTE_FIRE_BEHAVIOR_H

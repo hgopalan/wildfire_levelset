@@ -98,6 +98,9 @@ add_regression_test(wilson_spread            surface_spread/wilson_spread)
 add_regression_test(alexander_lemniscate     surface_spread/alexander_lemniscate)
 add_regression_test(ellipse_sdf              surface_spread/ellipse_sdf)
 add_regression_test(reinitialization         surface_spread/reinitialization)
+add_regression_test(fbp_o1a_grassfire        surface_spread/fbp_o1a_grassfire)
+add_regression_test(fbp_s1_slash             surface_spread/fbp_s1_slash)
+add_regression_test(lautenberger_spread      surface_spread/lautenberger_spread)
 
 # ===========================================================================
 # crown_fire/ – crown fire initiation, active crown, FMC seasonal schedule
@@ -105,6 +108,7 @@ add_regression_test(reinitialization         surface_spread/reinitialization)
 add_regression_test(crown_initiation         crown_fire/crown_initiation)
 add_regression_test(cruz_crown_continental_us crown_fire/cruz_crown_continental_us)
 add_regression_test(fmc_seasonal             crown_fire/fmc_seasonal)
+add_regression_test(rothermel1991_crown      crown_fire/rothermel1991_crown)
 
 # ===========================================================================
 # spotting/ – firebrand spotting models
@@ -171,6 +175,7 @@ add_regression_test(wind_dir_schedule        wind/wind_dir_schedule)
 # diagnostics/ – fire ecology, emissions, Scott-Reinhardt TI/CI
 # ===========================================================================
 add_regression_test(scott_reinhardt_indices  diagnostics/scott_reinhardt_indices)
+add_regression_test(scott_reinhardt_full_ti_ci diagnostics/scott_reinhardt_full_ti_ci)
 
 # ===========================================================================
 # misc/ – 3-D tests, EB, MTT, benchmarks, LANDFIRE
@@ -252,9 +257,10 @@ message(STATUS "")
 message(STATUS "Regression tests (sub-folder organisation):")
 message(STATUS "  surface_spread/ : basic_levelset, farsite_ellipse, rothermel_fuel,")
 message(STATUS "                    anderson_lw, catchpole_demestre, wilson_spread,")
-message(STATUS "                    alexander_lemniscate, ellipse_sdf, reinitialization")
+message(STATUS "                    alexander_lemniscate, ellipse_sdf, reinitialization,")
+message(STATUS "                    fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread")
 message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
-message(STATUS "                    fmc_seasonal")
+message(STATUS "                    fmc_seasonal, rothermel1991_crown")
 message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
 message(STATUS "  terrain/        : terrain_wind (2-D), balbi_viegas_heatflux,")
 message(STATUS "                    windninja_ridge_canyon")
@@ -265,7 +271,7 @@ message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
 message(STATUS "                    polygon_ignition, polyline_ignition")
 message(STATUS "  wind/           : time_dependent_wind (2-D), turb_wind (2-D),")
 message(STATUS "                    wind_dir_schedule")
-message(STATUS "  diagnostics/    : scott_reinhardt_indices")
+message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci")
 message(STATUS "  misc/           : 3d_sphere (3-D), eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, timing_benchmark, landfire_farsite")
 message(STATUS "")

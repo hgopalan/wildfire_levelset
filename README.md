@@ -51,7 +51,11 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Rothermel (1972)** surface fire spread — Anderson 13 and Scott-Burgan 40 fuel databases
 - **FARSITE elliptical expansion** (Richards 1990) + Anderson (1983) L/W ratio
 - **Alternative spread models**: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005)
+- **Canadian FBP System** — O1a/O1b grass and S1/S2/S3 slash fuel types (`fbp_o1a`, `fbp_o1b`, `fbp_s1`, `fbp_s2`, `fbp_s3`)
+- **Lautenberger (2013) physics-based** fire spread model (`lautenberger`)
 - **Crown fire** — Van Wagner (1977) initiation + Cruz et al. (2005) active crown ROS
+- **Rothermel (1991) crown multiplier** — R_crown = 3.34 × R_surface (`crown.use_rothermel1991_crown`)
+- **Van Wagner passive crown blending** — smooth surface-to-crown transition (`crown.use_passive_blend`)
 - **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree
 - **Terrain effects** — per-cell slope/aspect from FARSITE LCP files or XYZ terrain
 - **Wind models** — time-varying, turbulent (OU/spectral), compact direction schedule
@@ -59,6 +63,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Ignition types** — point CSV, closed polygon, polyline (line fire)
 - **Per-cell spatial moisture** from FARSITE .fms scenario files
 - **Fire ecology diagnostics** — scorch height, tree mortality, Scott-Reinhardt TI/CI ratios
+- **Full TI/CI bisection** — exact Scott & Reinhardt (2001) Torching/Crowning Index in km/h (`scott_reinhardt_full.enable`)
 - **Fire emissions** — CO₂, CO, PM₂.₅ (WRF-Fire convention)
 - **MTT propagation** — Minimum Travel Time Dijkstra fast-marching
 - **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
@@ -70,15 +75,15 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 
 | Sub-folder | Tests |
 |---|---|
-| `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization |
-| `crown_fire/` | crown_initiation, cruz_crown_continental_us, **fmc_seasonal** *(new)* |
+| `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, **fbp_o1a_grassfire** *(new)*, **fbp_s1_slash** *(new)*, **lautenberger_spread** *(new)* |
+| `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, **rothermel1991_crown** *(new)* |
 | `spotting/` | firebrand_spotting, albini_spotting |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, **precip_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |
 | `ignition/` | barrier_polygons, fire_perimeter_output, **polygon_ignition** *(new)*, **polyline_ignition** *(new)* |
 | `wind/` | time_dependent_wind, turb_wind, **wind_dir_schedule** *(new)* |
-| `diagnostics/` | **scott_reinhardt_indices** *(new)* |
+| `diagnostics/` | scott_reinhardt_indices, **scott_reinhardt_full_ti_ci** *(new)* |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite |
 
 ```bash
