@@ -738,6 +738,9 @@ int main(int argc, char* argv[])
         const Real mf_i = amrex::max(Real(0.3),
                               amrex::min(Real(1.0),
                               Real(1.0) - (FMC_global_i - Real(100.0)) / Real(200.0)));
+        // Compute global crown ROS in this scope for the dt guard below.
+        const Real R_crown_g_ms_init = (Real(3.0) / amrex::max(CBD_global_i, Real(0.01)))
+                                       * mf_i / Real(60.0);
         for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
             const Box& bx  = mfi.validbox();
             auto       R   = R_mf.array(mfi);
@@ -757,9 +760,8 @@ int main(int argc, char* argv[])
                 R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
             });
         }
-        // Only recompute dt if active crown cells exist and could raise the max ROS.
-        // Check the max crown ROS (global) to decide if a recomputation is warranted.
-        if (use_levelset && R_crown_g_ms > Real(0.0)) {
+        // Only recompute dt when the crown ROS is positive and could tighten the CFL.
+        if (R_crown_g_ms_init > Real(0.0)) {
             dt = compute_dt(R_mf, geom, inputs.cfl);
         }
     }

@@ -511,7 +511,10 @@ def compute_matrix(
                         "fuel_name":     name,
                         "wind_m_s":      round(U_ms, 3),
                         "moisture_pct":  round(M_f * 100.0, 1),
-                        "slope_deg":     round(math.degrees(math.atan(slope_tan)), 1),
+                        # Column kept as 'slope_pct' for backward compatibility;
+                        # the value is terrain slope in degrees (not percent).
+                        # Use atan(slope_tan) × (180/π) to convert from tangent.
+                        "slope_pct":     round(math.degrees(math.atan(slope_tan)), 1),
                         "R_ros_m_min":   round(R_m_min, 4),
                         "I_R_kW_m2":     round(res["I_R"] * _BTU_FT2_MIN_TO_KW_M2, 3),
                         "I_B_kW_m":      round(I_B_kW, 3),
@@ -581,11 +584,11 @@ def print_matrix_table(rows: List[Dict], metric: str = "R_ros_m_min") -> None:
     if not rows:
         return
 
-    # Filter to first fuel_code and first slope_deg for a clean 2-D pivot
+    # Filter to first fuel_code and first slope_pct for a clean 2-D pivot
     first_fuel = rows[0]["fuel_code"]
-    first_slope = rows[0]["slope_deg"]
+    first_slope = rows[0]["slope_pct"]
     subset = [r for r in rows if r["fuel_code"] == first_fuel
-              and r["slope_deg"] == first_slope]
+              and r["slope_pct"] == first_slope]
 
     winds = sorted({r["wind_m_s"] for r in subset})
     moist = sorted({r["moisture_pct"] for r in subset})
@@ -651,9 +654,9 @@ def make_heatmaps(rows: List[Dict], out_path: str) -> None:
 
     # Use only the first fuel / slope combination for the heatmap
     first_fuel  = rows[0]["fuel_code"]
-    first_slope = rows[0]["slope_deg"]
+    first_slope = rows[0]["slope_pct"]
     subset = [r for r in rows if r["fuel_code"] == first_fuel
-              and r["slope_deg"] == first_slope]
+              and r["slope_pct"] == first_slope]
 
     winds = sorted({r["wind_m_s"] for r in subset})
     moist = sorted({r["moisture_pct"] for r in subset})

@@ -157,7 +157,7 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -646,7 +646,7 @@ def compute_run_areas(
     cell_area_ha = resolution * resolution / 1.0e4
     areas = []
     for run_pts in all_points:
-        cells: set = set()
+        cells: Set[Tuple[int, int]] = set()
         for x, y in run_pts:
             ix = int(x / resolution)
             iy = int(y / resolution)
