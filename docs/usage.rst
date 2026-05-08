@@ -184,13 +184,13 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
      - 0.5, 0.5, 0.5
      - Center of spherical ignition [m]
    * - ``sphere_radius``
-     - —
+     - (required)
      - Radius of spherical ignition [m]
    * - ``box_xmin`` … ``box_zmax``
-     - —
+     - (required)
      - Bounds of box ignition region [m]
    * - ``ellipse_center_x`` … ``ellipse_radius_z``
-     - —
+     - (required)
      - Center and semi-axes of elliptical ignition [m]
    * - ``fire_points_file``
      - ""
