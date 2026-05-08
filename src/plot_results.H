@@ -198,10 +198,10 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, fuel_model_mf,         0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, fireline_intensity_mf, 0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, flame_length_mf,       0, c, 1,           0); c += 1;
-    MultiFab::Copy(plotmf, weise_data,            0, c, WEISE_NCOMP, 0); c += WEISE_NCOMP;
-    MultiFab::Copy(plotmf, viegas_data,           0, c, VIEGAS_NCOMP,0); c += VIEGAS_NCOMP;
-    MultiFab::Copy(plotmf, ecology_mf,            0, c, ECOLOGY_NCOMP,0);c += ECOLOGY_NCOMP;
-    MultiFab::Copy(plotmf, emissions_mf,          0, c, EMISSIONS_NCOMP,0);c += EMISSIONS_NCOMP;
+    MultiFab::Copy(plotmf, weise_data,            0, c, WEISE_NCOMP,    0); c += WEISE_NCOMP;
+    MultiFab::Copy(plotmf, viegas_data,           0, c, VIEGAS_NCOMP,   0); c += VIEGAS_NCOMP;
+    MultiFab::Copy(plotmf, ecology_mf,            0, c, ECOLOGY_NCOMP,  0); c += ECOLOGY_NCOMP;
+    MultiFab::Copy(plotmf, emissions_mf,          0, c, EMISSIONS_NCOMP,0); c += EMISSIONS_NCOMP;
     MultiFab::Copy(plotmf, arrival_time_mf,       0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, heat_per_unit_area_mf, 0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, vorticity_mf,          0, c, 1,           0); c += 1;
