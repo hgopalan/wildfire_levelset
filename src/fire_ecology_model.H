@@ -436,10 +436,10 @@ inline void compute_full_scott_reinhardt(
     const RothermelComputed rc = compute_rothermel_params(rp);
 
     // Crown initiation threshold
-    const Real CBH = Real(cp.CBH);
-    const Real CBD = Real(cp.CBD);
-    const Real FMC = Real(cp.FMC);
-    const Real I_o = Real(0.010) * CBH * (Real(460.0) + Real(25.9) * FMC);
+    const Real CBH   = Real(cp.CBH);
+    const Real CBD   = Real(cp.CBD);
+    const Real FMC_pct = Real(cp.FMC);
+    const Real I_o = Real(0.010) * CBH * (Real(460.0) + Real(25.9) * FMC_pct);
 
     // Critical active crown ROS [m/s]
     const Real R_SA = Real(3.0) / amrex::max(CBD, Real(0.01)) / Real(60.0);

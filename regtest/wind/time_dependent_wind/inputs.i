@@ -22,9 +22,10 @@ cfl = 0.5
 plot_int = 10
 reinit_int = -1
 
-# Time-dependent wind: snapshots at t=0 (time_wind.csv) and t=3600 s (time_wind_1.csv).
-# wind_time_spacing must match the time separation between the two files so
-# that both snapshots bracket the entire final_time = 120 s run.
+# Time-dependent wind: snapshot 0 = time_wind.csv (t=0 s),
+#                      snapshot 1 = time_wind_1.csv (t=3600 s).
+# wind_time_spacing = 3600 s so both snapshots bracket the 120 s run;
+# the velocity is linearly interpolated at each timestep within [0, 3600] s.
 velocity_file = time_wind.csv
 use_time_dependent_wind = 1
 wind_time_spacing = 3600.0

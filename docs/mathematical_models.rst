@@ -2196,37 +2196,46 @@ the Canadian Forest Fire Behavior Prediction System.*  Information Report ST-X-3
 Lautenberger (2013) Physics-Based Fire Spread Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The Lautenberger model derives rate of spread from fundamental combustion physics
-rather than empirical regression.
-
 Select with ``fire_spread_model = lautenberger``.
 
-The flame spread velocity (m/s) is:
+The model derives rate of spread from a semi-physical fuel-energy balance
+calibrated against US wildfire data (Lautenberger 2013):
 
 .. math::
 
-   R = \frac{q_{\text{rad}} - q_{\text{crit}}}{\rho_b c_p (T_{\text{ig}} - T_\infty)}
-       \cdot \frac{1}{\sigma \delta}
+   R_0 = A_L \cdot \sigma_m \cdot \exp(-B_L \cdot M_f)
 
-where:
+where :math:`\sigma_m` is the fuel SAV ratio [m\ :sup:`-1`] (converted
+from ft\ :sup:`-1`), :math:`M_f` is fuel moisture (fraction), :math:`A_L`
+is a pre-factor [m²/s], and :math:`B_L` is the moisture sensitivity.
 
-* :math:`q_{\text{rad}}` – radiative heat flux from the flame front (kW/m²)
-* :math:`q_{\text{crit}}` – critical heat flux for ignition (kW/m²)
-* :math:`\rho_b` – bulk density of the fuel bed (kg/m³)
-* :math:`c_p` – specific heat capacity of fuel (kJ/kg·K)
-* :math:`T_{\text{ig}}` – ignition temperature (K)
-* :math:`T_\infty` – ambient temperature (K)
-* :math:`\sigma` – surface-area-to-volume ratio of fuel particles (m⁻¹)
-* :math:`\delta` – fuel depth (m), estimated from :math:`\rho_b` and :math:`\sigma`
-
-The wind enhancement multiplier follows:
+Wind and slope corrections are applied linearly:
 
 .. math::
 
-   \phi_W = \exp\!\bigl(k_W \, U_{10}\bigr)
+   \phi_W = C_L \cdot U \qquad \phi_S = D_L \cdot \tan\theta
 
-Parameters: ``lautenberger.rho_b``, ``lautenberger.sigma``, ``lautenberger.M_x``,
-``lautenberger.h``.
+   R = \max\bigl(R_0 \cdot (1 + \phi_W + \phi_S),\; 0\bigr)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``lautenberger.A_L``
+     - ``1.05e-5``
+     - Pre-factor :math:`A_L` [m²/s]
+   * - ``lautenberger.B_L``
+     - ``2.5``
+     - Moisture sensitivity :math:`B_L` [-]
+   * - ``lautenberger.C_L``
+     - ``0.40``
+     - Wind correction :math:`C_L` [(m/s)\ :sup:`-1`]
+   * - ``lautenberger.D_L``
+     - ``0.50``
+     - Slope correction :math:`D_L` [-]
 
 Reference: Lautenberger, C. (2013). *Wildland fire modeling with an Eulerian level
 set method and automated calibration.* Fire Safety Journal, 62, 289–298.

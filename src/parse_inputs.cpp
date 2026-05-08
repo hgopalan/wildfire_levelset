@@ -280,9 +280,8 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("crown.crown_fraction_weight must be between 0.0 and 2.0");
         }
         if (p.crown.use_rothermel1991_crown == 1 && p.crown.use_cruz_crown == 1) {
-            Print() << "WARNING: crown.use_rothermel1991_crown and crown.use_cruz_crown "
-                    << "are both enabled. Rothermel (1991) takes priority.\n";
-            p.crown.use_cruz_crown = 0;
+            amrex::Abort("crown.use_rothermel1991_crown = 1 and crown.use_cruz_crown = 1 "
+                         "are mutually exclusive. Set exactly one active-crown ROS model.");
         }
         if (p.crown.use_rothermel1991_crown == 1) {
             Print() << "Crown fire: active ROS model = Rothermel (1991): R_crown = 3.34 x R_surface\n";
