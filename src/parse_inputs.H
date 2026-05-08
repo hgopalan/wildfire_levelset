@@ -419,6 +419,42 @@ struct InputParameters {
         amrex::Real t_T_peak_s; // seconds from midnight when T is maximum (default: 50400 = 14:00)
     } diurnal_moisture;
 
+    // ---- Cap 10: Custom fuel model (text-based, inline in inputs file) ----
+    // Allows users to define a fully custom fuel model without modifying the
+    // compiled fuel database.  When ``custom_fuel.enable = 1``, all
+    // ``custom_fuel.*`` parameters override the Rothermel parameter defaults
+    // (or any database fuel model selected via ``rothermel.fuel_model``).
+    //
+    // This makes it straightforward to test a one-off fuel model — such as
+    // exotic grass species, post-fire shrubs, or experimental chaparral blends
+    // — directly from the inputs file without recompilation.
+    //
+    // Supported parameters (all optional; unset fields inherit the active
+    // RothermelParams values at the time custom_fuel is applied):
+    //
+    //   custom_fuel.enable   = 1            # must be 1 to activate
+    //   custom_fuel.name     = "my_fuel"    # label printed at startup
+    //   custom_fuel.w0       = 0.150        # oven-dry total fuel load [lb/ft²]
+    //   custom_fuel.sigma    = 2000.0       # surface-area-to-volume ratio [ft⁻¹]
+    //   custom_fuel.delta    = 1.5          # fuel bed depth [ft]
+    //   custom_fuel.M_x      = 0.20         # moisture of extinction [fraction]
+    //   custom_fuel.h_heat   = 8000.0       # heat content [BTU/lb]
+    //   custom_fuel.S_T      = 0.0555       # total mineral content [fraction]
+    //   custom_fuel.S_e      = 0.010        # effective mineral content [fraction]
+    //   custom_fuel.rho_p    = 32.0         # particle density [lb/ft³]
+    struct CustomFuelParams {
+        int enable;              // 1 to activate custom fuel override (default: 0)
+        std::string name;        // descriptive label (default: "custom")
+        amrex::Real w0;          // oven-dry total fuel load [lb/ft²]        (-1 = inherit)
+        amrex::Real sigma;       // surface-area-to-volume ratio [ft⁻¹]      (-1 = inherit)
+        amrex::Real delta;       // fuel bed depth [ft]                       (-1 = inherit)
+        amrex::Real M_x;         // moisture of extinction [fraction]         (-1 = inherit)
+        amrex::Real h_heat;      // heat content [BTU/lb]                     (-1 = inherit)
+        amrex::Real S_T;         // total mineral content [fraction]          (-1 = inherit)
+        amrex::Real S_e;         // effective mineral content [fraction]      (-1 = inherit)
+        amrex::Real rho_p;       // particle density [lb/ft³]                 (-1 = inherit)
+    } custom_fuel;
+
 };
 
 void parse_inputs(InputParameters& inputs);

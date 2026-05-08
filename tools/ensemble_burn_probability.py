@@ -19,6 +19,20 @@ Workflow
 4. Aggregate per-cell burn counts on a regular grid.
 5. Write ``burn_probability.csv`` (X, Y, P_burn columns) and optional GeoJSON.
 
+Additional outputs (Cap 7 – Exceedance probability curves)
+-----------------------------------------------------------
+``--area-exceedance``
+    After all ensemble runs, computes and writes a fire-area exceedance curve
+    (CCDF): the fraction of runs in which the total burned area exceeds each
+    area value.  The curve is saved as ``area_exceedance.csv`` (columns:
+    ``area_ha``, ``P_exceed``) and, optionally, as a PNG plot with
+    ``--area-exceedance-plot``.
+
+``--fl-thresholds M1 M2 …``
+    Conditional flame-length exceedance probability maps: P(FL > M) at each
+    grid cell, saved as CSV files.  Requires ``plot_int > 0`` in ``inputs.i``
+    so that plotfiles are written.
+
 Perturbation model
 ------------------
 Three independent parameters are perturbed:
@@ -80,6 +94,14 @@ Usage examples
       --out burn_probability.csv \\
       --geojson burn_probability.geojson
 
+  # Area exceedance CCDF (Cap 7)
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 50 \\
+      --area-exceedance \\
+      --area-exceedance-plot
+
   # Deterministic seed for reproducibility
   python3 tools/ensemble_burn_probability.py \\
       --exe ./wildfire_levelset \\
@@ -89,24 +111,28 @@ Usage examples
 
 Options
 -------
-  --exe FILE           Solver executable path (default: ./wildfire_levelset)
-  --inputs FILE        Template inputs.i file (default: inputs.i)
-  --n-runs N           Number of ensemble members (default: 50)
-  --mpi-ranks N        MPI ranks per ensemble member; 0 = serial (default: 0)
-  --mpirun CMD         MPI launcher command (default: mpirun)
-  --mpi-args ARGS      Extra space-separated arguments inserted after the
-                       launcher but before "-n N" (default: "")
-  --wind-speed-sigma S Std dev of multiplicative wind-speed factor (default: 0.20)
-  --wind-dir-sigma D   Std dev of additive wind-direction offset [deg] (default: 15.0)
-  --moisture-sigma M   Std dev of additive M_d1 offset [fraction] (default: 0.02)
-  --resolution R       Grid spacing for probability accumulation [m] (default: auto)
-  --out FILE           Output burn probability CSV (default: burn_probability.csv)
-  --geojson FILE       Optional GeoJSON probability raster output
-  --work-dir DIR       Base working directory for run scratch dirs (default: /tmp/ensemble)
-  --seed N             Random seed (default: 0 = system clock)
-  --sampler TYPE       Sampling method: "lhs" or "random" (default: lhs)
-  --jobs J             Number of parallel solver runs (default: 1 = sequential)
-  --keep-runs          Keep individual run directories after aggregation
+  --exe FILE              Solver executable path (default: ./wildfire_levelset)
+  --inputs FILE           Template inputs.i file (default: inputs.i)
+  --n-runs N              Number of ensemble members (default: 50)
+  --mpi-ranks N           MPI ranks per ensemble member; 0 = serial (default: 0)
+  --mpirun CMD            MPI launcher command (default: mpirun)
+  --mpi-args ARGS         Extra space-separated arguments inserted after the
+                          launcher but before "-n N" (default: "")
+  --wind-speed-sigma S    Std dev of multiplicative wind-speed factor (default: 0.20)
+  --wind-dir-sigma D      Std dev of additive wind-direction offset [deg] (default: 15.0)
+  --moisture-sigma M      Std dev of additive M_d1 offset [fraction] (default: 0.02)
+  --resolution R          Grid spacing for probability accumulation [m] (default: auto)
+  --out FILE              Output burn probability CSV (default: burn_probability.csv)
+  --geojson FILE          Optional GeoJSON probability raster output
+  --work-dir DIR          Base working directory for run scratch dirs (default: /tmp/ensemble)
+  --seed N                Random seed (default: 0 = system clock)
+  --sampler TYPE          Sampling method: "lhs" or "random" (default: lhs)
+  --jobs J                Number of parallel solver runs (default: 1 = sequential)
+  --keep-runs             Keep individual run directories after aggregation
+  --area-exceedance       Write area exceedance CCDF (Cap 7)
+  --area-exceedance-out F  Path for area exceedance CSV (default: area_exceedance.csv)
+  --area-exceedance-plot  Save area exceedance CCDF plot PNG
+  --area-exceedance-plot-out F  Path for exceedance PNG (default: area_exceedance.png)
 
 References
 ----------
@@ -131,7 +157,7 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +617,149 @@ def write_burn_probability_geojson(
 
 
 # ---------------------------------------------------------------------------
+# Cap 7: Fire-area exceedance CCDF
+# ---------------------------------------------------------------------------
+
+def compute_run_areas(
+    all_points: List[List[Tuple[float, float]]],
+    resolution: float,
+) -> List[float]:
+    """Compute total burned area [ha] for each ensemble run.
+
+    Each burned cell is counted as ``resolution² m²`` and converted to
+    hectares.  A cell is counted once per run even if multiple burned points
+    map to the same grid cell.
+
+    Parameters
+    ----------
+    all_points : list[list[tuple[float, float]]]
+        Per-run lists of burned (x, y) point coordinates.
+    resolution : float
+        Grid cell size [m] used to snap burned points.
+
+    Returns
+    -------
+    list[float]
+        Total burned area [ha] for each successful ensemble run,
+        in the same order as ``all_points``.
+    """
+    cell_area_ha = resolution * resolution / 1.0e4
+    areas = []
+    for run_pts in all_points:
+        cells: Set[Tuple[int, int]] = set()
+        for x, y in run_pts:
+            ix = int(x / resolution)
+            iy = int(y / resolution)
+            cells.add((ix, iy))
+        areas.append(len(cells) * cell_area_ha)
+    return areas
+
+
+def compute_area_exceedance(areas: List[float], n_points: int = 200) -> List[Tuple[float, float]]:
+    """Compute the complementary CDF (exceedance curve) of fire area.
+
+    Returns a list of ``(area_ha, P_exceed)`` pairs where
+    ``P_exceed = fraction of runs with burned area ≥ area_ha``.
+    The curve is sampled at *n_points* linearly spaced area values from
+    0 to the maximum observed area.
+
+    Parameters
+    ----------
+    areas : list[float]
+        Burned area [ha] for each ensemble run.
+    n_points : int
+        Number of points on the exceedance curve (default: 200).
+
+    Returns
+    -------
+    list[tuple[float, float]]
+        List of ``(area_ha, P_exceed)`` pairs, sorted by ascending area.
+    """
+    if not areas:
+        return []
+    n = len(areas)
+    max_area = max(areas)
+    # Sample the CCDF at n_points linearly spaced threshold values
+    thresholds = [max_area * i / max(n_points - 1, 1) for i in range(n_points)]
+    curve = []
+    for thr in thresholds:
+        p_exceed = sum(1 for a in areas if a >= thr) / n
+        curve.append((round(thr, 4), round(p_exceed, 6)))
+    return curve
+
+
+def write_area_exceedance_csv(
+    curve: List[Tuple[float, float]],
+    out_path: str,
+    n_runs: int,
+) -> None:
+    """Write the area exceedance curve to a CSV file.
+
+    The output CSV has two columns: ``area_ha`` and ``P_exceed``.
+
+    Parameters
+    ----------
+    curve : list[tuple[float, float]]
+        Output of :func:`compute_area_exceedance`.
+    out_path : str
+        Destination file path.
+    n_runs : int
+        Number of ensemble runs (written as a header comment).
+    """
+    with open(out_path, "w") as f:
+        f.write(f"# Fire area exceedance curve  n_runs={n_runs}\n")
+        f.write("area_ha,P_exceed\n")
+        for area, p in curve:
+            f.write(f"{area:.4f},{p:.6f}\n")
+    print(f"Wrote area exceedance CSV: {out_path}  ({len(curve)} points)")
+
+
+def plot_area_exceedance(
+    curve: List[Tuple[float, float]],
+    out_path: str,
+    n_runs: int,
+) -> None:
+    """Save the area exceedance curve as a PNG plot.
+
+    Requires ``matplotlib``.
+
+    Parameters
+    ----------
+    curve : list[tuple[float, float]]
+        Output of :func:`compute_area_exceedance`.
+    out_path : str
+        Destination PNG file path.
+    n_runs : int
+        Number of ensemble runs (used in plot title).
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("WARNING: matplotlib not available – skipping exceedance plot.",
+              file=sys.stderr)
+        return
+
+    areas = [a for a, _ in curve]
+    probs = [p for _, p in curve]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(areas, probs, linewidth=2, color="firebrick")
+    ax.fill_between(areas, probs, alpha=0.15, color="firebrick")
+    ax.set_xlabel("Burned Area [ha]")
+    ax.set_ylabel("P(burned area ≥ A)")
+    ax.set_title(f"Fire Area Exceedance Curve  (n_runs={n_runs})")
+    ax.set_xlim(left=0)
+    ax.set_ylim(0, 1)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved area exceedance plot → {out_path}")
+
+
+# ---------------------------------------------------------------------------
 # Single run execution
 # ---------------------------------------------------------------------------
 
@@ -773,6 +942,19 @@ def main(argv=None):
     parser.add_argument("--fl-out-prefix",   default="fl_exceedance",
                         help="Output file prefix for P(FL>M) CSVs "
                              "(default: fl_exceedance; produces fl_exceedance_0.5m.csv etc.)")
+    # ---- Cap 7: area exceedance CCDF ----
+    parser.add_argument("--area-exceedance",  action="store_true",
+                        help="Compute and write a fire-area exceedance curve "
+                             "P(burned_area >= A) as a CCDF across ensemble runs.")
+    parser.add_argument("--area-exceedance-out", default="area_exceedance.csv",
+                        help="Output CSV path for area exceedance curve "
+                             "(default: area_exceedance.csv)")
+    parser.add_argument("--area-exceedance-plot", action="store_true",
+                        help="Save area exceedance curve as a PNG plot "
+                             "(requires matplotlib)")
+    parser.add_argument("--area-exceedance-plot-out", default="area_exceedance.png",
+                        help="Output PNG path for area exceedance plot "
+                             "(default: area_exceedance.png)")
 
     args = parser.parse_args(argv)
 
@@ -808,6 +990,8 @@ def main(argv=None):
 
     if do_fl:
         print(f"Flame length exceedance thresholds [m]: {fl_thresholds}")
+    if args.area_exceedance:
+        print(f"Area exceedance CCDF: enabled → {args.area_exceedance_out}")
 
     with open(args.inputs) as f:
         template_lines = f.readlines()
@@ -914,6 +1098,17 @@ def main(argv=None):
     elif do_fl:
         print("WARNING: --fl-thresholds requested but no flame_length data was read "
               "(ensure plot_int > 0 in inputs.i).", file=sys.stderr)
+
+    # ---- Cap 7: Area exceedance CCDF ----
+    if args.area_exceedance:
+        print("\nComputing fire-area exceedance curve ...")
+        run_areas = compute_run_areas(all_points, resolution)
+        print(f"  Area range: {min(run_areas):.2f} – {max(run_areas):.2f} ha"
+              f"  (mean={sum(run_areas)/len(run_areas):.2f} ha)")
+        curve = compute_area_exceedance(run_areas)
+        write_area_exceedance_csv(curve, args.area_exceedance_out, n_success)
+        if args.area_exceedance_plot:
+            plot_area_exceedance(curve, args.area_exceedance_plot_out, n_success)
 
     if not args.keep_runs and args.work_dir is None:
         # Clean up the auto-created temp directory
