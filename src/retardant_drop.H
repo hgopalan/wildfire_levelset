@@ -222,4 +222,70 @@ inline void apply_retardant_to_ros(MultiFab&               R_mf,
     }
 }
 
+// ============================================================================
+// apply_retardant_to_spotting_probability
+//
+// Inside active retardant drop zones, scale the spotting probability field
+// (component 0 of spotting_prob_mf) by the same (1 - f_active) factor used
+// for ROS suppression.  This prevents firebrand spot fires from starting in
+// retardant-covered cells where sustained ignition is less likely.
+//
+// Parameters:
+//   spotting_prob_mf – spotting data MultiFab (comp 0 = probability, modified in place)
+//   drops            – retardant drop list (unchanged)
+//   geom             – AMReX geometry
+//   current_time     – current simulation time [s]
+// ============================================================================
+inline void apply_retardant_to_spotting_probability(
+    MultiFab&               spotting_prob_mf,
+    const RetardantDropList& drops,
+    const Geometry&          geom,
+    amrex::Real              current_time)
+{
+    if (drops.empty()) return;
+
+    const auto dx  = geom.CellSizeArray();
+    const auto plo = geom.ProbLoArray();
+
+    for (const auto& drop : drops.drops) {
+        const amrex::Real t_drop = static_cast<amrex::Real>(drop.drop_time_s);
+        if (current_time < t_drop) continue;
+
+        amrex::Real age = current_time - t_drop;
+        amrex::Real tau = static_cast<amrex::Real>(drop.tau_decay_s);
+        amrex::Real eff = static_cast<amrex::Real>(drop.effectiveness);
+        amrex::Real f_active = eff * std::exp(-age / tau);
+        if (f_active < amrex::Real(1.0e-6)) continue;
+
+        const int nv = static_cast<int>(drop.vx.size());
+
+        amrex::Gpu::DeviceVector<amrex::Real> d_vx(nv), d_vy(nv);
+        for (int vi = 0; vi < nv; ++vi) {
+            d_vx[vi] = static_cast<amrex::Real>(drop.vx[vi]);
+            d_vy[vi] = static_cast<amrex::Real>(drop.vy[vi]);
+        }
+        const amrex::Real* pvx = d_vx.data();
+        const amrex::Real* pvy = d_vy.data();
+
+        const amrex::Real f_ret_val = amrex::Real(1.0) - f_active;
+        const int nv_g = nv;
+
+        for (MFIter mfi(spotting_prob_mf); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto       sp = spotting_prob_mf.array(mfi);
+            const auto gdx  = dx;
+            const auto gplo = plo;
+
+            // Scale only component 0 (spotting probability)
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                amrex::Real x = gplo[0] + (i + amrex::Real(0.5)) * gdx[0];
+                amrex::Real y = gplo[1] + (j + amrex::Real(0.5)) * gdx[1];
+                if (retardant_point_in_polygon(x, y, pvx, pvy, nv_g)) {
+                    sp(i, j, k, 0) = amrex::max(amrex::Real(0.0), sp(i, j, k, 0) * f_ret_val);
+                }
+            });
+        }
+    }
+}
+
 #endif // RETARDANT_DROP_H

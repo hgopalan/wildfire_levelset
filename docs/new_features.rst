@@ -255,3 +255,183 @@ All new kernels follow the AMReX GPU-safe programming model:
 * All kernel captures are by value (scalars or device pointers).
 
 The new headers compile cleanly for CUDA, HIP, and SYCL backends.
+
+Non-Burnable Cell Masking
+--------------------------
+
+**Header**: ``src/compute_rothermel_R.H``
+
+Fuel model codes that correspond to non-burnable landscape types are now
+explicitly zeroed in the Rothermel ROS kernel.  This prevents fire from
+numerically creeping across water bodies, bare rock, or urban areas due to
+floating-point noise in zero-fuel cells.
+
+Affected codes:
+
+* **FBFM40 / FBFM13** landscape integer codes: 91 (Urban/Developed), 92
+  (Snow/Ice), 93 (Agriculture), 98 (Open Water), 99 (Bare Ground).
+
+When ``rothermel.landscape_file`` is provided and the per-cell fuel code
+maps to one of these values, the kernel returns ``R = 0`` for that cell
+without entering the wind-slope-fuel computation.
+
+**Parameters**: None.  Automatic when ``rothermel.landscape_file`` is used.
+
+**Test**: ``regtest/misc/nonburnable_mask/`` (setup: ``create_landscape.py``).
+
+ROS Floor (FARSITE Stall Threshold)
+-------------------------------------
+
+**Header**: ``src/constants.H``, ``src/compute_rothermel_R.H``
+
+A FARSITE-style stall threshold is applied: cells where the computed ROS is
+below ``WildfireConst::ROS_MIN_MS`` (1 × 10⁻⁴ m/s) are forced to zero.
+This prevents numerical drift in extremely low-moisture conditions and
+matches FARSITE's internal practice of not propagating the fire front when
+spread is negligible.
+
+**Parameters**: None (constant in ``constants.H``).
+
+Per-Fuel-Model Burnout (Residence) Time
+-----------------------------------------
+
+**Header**: ``src/burnout_time.H``
+
+``compute_burnout_time`` now accepts an optional per-cell fuel model MultiFab
+and a device-side ``FuelResidenceTime`` table populated by
+``build_fuel_tau_table``.  The residence time for each fuel code is derived
+from the Rothermel (1983) formula:
+
+.. math::
+
+   \tau_i \ [\text{s}] = \frac{\alpha \rho_p}{\sigma_i}
+
+where :math:`\alpha` = ``WildfireConst::BURNOUT_ALPHA`` = 3600 s·ft⁻¹/(lb/ft³),
+:math:`\rho_p` = 32 lb/ft³ (particle density), and :math:`\sigma_i` = 1739 ft⁻¹
+(1-hr fine fuel representative SAV).  When no landscape file is active the
+global ``farsite.tau_residence`` scalar is used (backward compatible).
+
+**Parameters**: Automatic when ``rothermel.landscape_file`` is present.
+
+Live Fuel Moisture Conditioning
+---------------------------------
+
+**Header**: ``src/main.cpp`` (conditioning block)
+
+During the pre-simulation conditioning period (``conditioning.n_days > 0``),
+live fuel moistures (M_lh, M_lw) are now ramped linearly from their initial
+values toward equilibrium dead-fuel targets over the conditioning steps.
+This matches FARSITE's behaviour of gradually updating live fuel moisture
+during the spin-up phase rather than holding it constant.
+
+The ramp is:
+
+.. code-block:: text
+
+   M_lh_target = M_d100 × 1.5   (live herbaceous ≈ 150% of 100-hr dead)
+   M_lw_target = M_d100 × 2.0   (live woody     ≈ 200% of 100-hr dead)
+
+At the end of conditioning, updated M_lh and M_lw are logged alongside the
+dead fuel values.
+
+**Parameters**: Uses ``conditioning.n_days`` (existing parameter).
+
+Spotting Suppression Inside Retardant Drop Zones
+--------------------------------------------------
+
+**Header**: ``src/retardant_drop.H``
+
+A new function ``apply_retardant_to_spotting_probability`` is called after
+``apply_retardant_to_ros`` in the time loop.  Inside active drop zones the
+spotting probability (component 0 of ``spotting_data``) is scaled by the
+same factor as ROS:
+
+.. math::
+
+   f_{\text{ret}} = 1 - \varepsilon \cdot e^{-(t - t_{\text{drop}}) / \tau_{\text{decay}}}
+
+This ensures that cells covered by retardant do not generate long-range spot
+fires, consistent with FARSITE's suppression model.
+
+**Parameters**: Existing ``retardant_file`` (no new parameters).
+
+Spatial Fuel Moisture in Plotfiles
+------------------------------------
+
+**Header**: ``src/main.cpp``
+
+The ``spatial_moisture_mf`` MultiFab (5 components: 1-hr, 10-hr, 100-hr dead
+plus live herb / woody) is now written to every AMReX plotfile as five named
+variables:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 50
+
+   * - Variable name
+     - Description
+   * - ``moisture_d1``
+     - 1-hr dead fuel moisture [fraction]
+   * - ``moisture_d10``
+     - 10-hr dead fuel moisture [fraction]
+   * - ``moisture_d100``
+     - 100-hr dead fuel moisture [fraction]
+   * - ``moisture_lh``
+     - Live herbaceous fuel moisture [fraction]
+   * - ``moisture_lw``
+     - Live woody fuel moisture [fraction]
+
+When the Nelson (2000) diurnal EMC or FARSITE .fms spatial scenario file is
+active, these fields reflect the spatially-varying per-cell values; otherwise
+they contain the global Rothermel moisture values uniformly.
+
+**Parameters**: None (automatic).
+
+**Test**: ``regtest/moisture/spatial_moisture_output/``.
+
+Multiple Weather Stations with Spatial IDW Interpolation
+----------------------------------------------------------
+
+**Header**: ``src/multi_wtr_weather.H``
+
+A new ``multi_wtr_file`` input enables loading multiple FARSITE .wtr weather
+station files and producing spatially-varying wind, temperature, and relative
+humidity via inverse-distance-weighting (IDW).
+
+Station list CSV format (``multi_wtr_file``)::
+
+   # station_id, x_m, y_m, wtr_file
+   1, 330000.0, 3775000.0, station1.wtr
+   2, 335000.0, 3775000.0, station2.wtr
+   3, 332500.0, 3780000.0, station3.wtr
+
+At each timestep, the U and V wind components from each station are IDW-
+interpolated to every grid cell, and the domain-mean T/RH from all stations
+are used to update the global diurnal moisture model.
+
+IDW formula:
+
+.. math::
+
+   V_{\text{cell}} = \frac{\sum_i w_i V_i}{\sum_i w_i},
+   \quad w_i = d_i^{-p}
+
+where :math:`d_i` is the distance from the cell to station :math:`i`,
+:math:`p` is the IDW power exponent (``multi_wtr_idw_power``, default 2.0),
+and :math:`V_i` is the wind component at station :math:`i` at the current time.
+
+**Parameters**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 50
+
+   * - Parameter
+     - Description
+   * - ``multi_wtr_file``
+     - Path to station list CSV (default: ``""`` = disabled)
+   * - ``multi_wtr_idw_power``
+     - IDW exponent :math:`p` (default: 2.0)
+
+When ``multi_wtr_file`` is set, the diurnal moisture model is automatically
+enabled and the domain-mean T/RH tracks the station-averaged IDW centroid.

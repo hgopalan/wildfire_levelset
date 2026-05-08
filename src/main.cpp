@@ -72,6 +72,7 @@ using namespace amrex;
 #include "wtr_weather.H"
 #include "retardant_drop.H"
 #include "herb_moisture_schedule.H"
+#include "multi_wtr_weather.H"
 
 
 // ======================= Main ================================================
@@ -526,6 +527,27 @@ int main(int argc, char* argv[])
         apply_fuel_adjustment_to_params(inputs.rothermel, adjs, inputs.fuel_adj_model);
     }
 
+    // ---------------- Per-fuel burnout (residence) time table ---------------
+    // Build a device-side table of per-fuel-model residence times used by
+    // compute_burnout_time.  When no landscape file is present the global
+    // tau_residence scalar is used instead (d_tau_table_ptr stays null).
+    Gpu::DeviceVector<FuelResidenceTime> d_tau_table;
+    const FuelResidenceTime* d_tau_table_ptr = nullptr;
+    int tau_table_size = 0;
+
+    if (d_fuel_table_ptr != nullptr && fuel_table_size > 0) {
+        std::vector<FuelResidenceTime> h_tau_table =
+            build_fuel_tau_table(fuel_table_size);
+        tau_table_size = static_cast<int>(h_tau_table.size());
+        d_tau_table.resize(tau_table_size);
+        Gpu::copy(Gpu::hostToDevice,
+                  h_tau_table.begin(), h_tau_table.end(),
+                  d_tau_table.begin());
+        d_tau_table_ptr = d_tau_table.data();
+        amrex::Print() << "Built per-fuel burnout time table: "
+                       << tau_table_size << " entries\n";
+    }
+
     // ---------------- Time-varying fuel moisture schedule ------------------
     FuelMoistureSchedule fmd_sched;
     if (!inputs.fmd_file.empty()) {
@@ -735,6 +757,21 @@ int main(int argc, char* argv[])
         load_retardant_drops(inputs.retardant_file, retardant_drops);
     }
 
+    // ---------------- Multiple weather stations (IDW spatial interpolation) -
+    // When multi_wtr_file is set, load all station .wtr files and apply IDW
+    // wind interpolation at each timestep.  This supersedes the single wtr_file
+    // wind schedule; T/RH/precip are taken as the domain-mean IDW centroid.
+    MultiWtrWeather multi_wtr;
+    const bool multi_wtr_active = !inputs.multi_wtr_file.empty();
+    if (multi_wtr_active) {
+        load_multi_wtr_stations(inputs.multi_wtr_file, multi_wtr,
+                                inputs.wtr_start_year, inputs.wtr_start_month,
+                                inputs.wtr_start_day,  inputs.wtr_start_hour,
+                                static_cast<double>(inputs.multi_wtr_idw_power));
+        // Apply IDW wind at t=0
+        apply_multi_wtr_to_vel(vel, geom, multi_wtr, 0.0);
+    }
+
     // ---------------- Multiple scheduled ignitions -------------------------
     IgnitionSchedule ignition_sched;
     if (!inputs.ignition_schedule_file.empty()) {
@@ -804,8 +841,19 @@ int main(int argc, char* argv[])
             emc_cond.M_d1   = static_cast<float>(emc_pct / 100.0);
             emc_cond.M_d10  = static_cast<float>(emc_pct * 1.10 / 100.0);
             emc_cond.M_d100 = static_cast<float>(emc_pct * 1.30 / 100.0);
-            emc_cond.M_lh   = precip_state.M_d100;  // live fuel moisture: not conditioned; use current dead fuel as placeholder
-            emc_cond.M_lw   = precip_state.M_d100;  // (live fuel conditioning requires phenological data not available here)
+            // Live fuel moisture during conditioning: linearly ramp from initial
+            // M_lh / M_lw toward the current dead-fuel equilibrium over the
+            // conditioning period (FARSITE-style linear schedule, Finney 1998).
+            // frac = ci / max(n_steps_cond - 1, 1)  → 0 at start, 1 at end.
+            const double cond_frac = (n_steps_cond > 1)
+                ? static_cast<double>(ci) / static_cast<double>(n_steps_cond - 1)
+                : 1.0;
+            const float M_lh_init = static_cast<float>(inputs.rothermel.M_lh);
+            const float M_lw_init = static_cast<float>(inputs.rothermel.M_lw);
+            const float M_lh_target = emc_cond.M_d100 * static_cast<float>(WildfireConst::COND_LH_EMC_MULT);
+            const float M_lw_target = emc_cond.M_d100 * static_cast<float>(WildfireConst::COND_LW_EMC_MULT);
+            emc_cond.M_lh = M_lh_init + static_cast<float>(cond_frac) * (M_lh_target - M_lh_init);
+            emc_cond.M_lw = M_lw_init + static_cast<float>(cond_frac) * (M_lw_target - M_lw_init);
             apply_precipitation_moisture(precip_state, emc_cond, rain_rate,
                                          static_cast<float>(cond_dt),
                                          static_cast<float>(inputs.precip_threshold_mm_hr),
@@ -817,10 +865,15 @@ int main(int argc, char* argv[])
         inputs.rothermel.M_d100 = static_cast<amrex::Real>(precip_state.M_d100);
         inputs.rothermel.M_d1000 = static_cast<amrex::Real>(precip_state.M_d1000);
         inputs.rothermel.M_f    = static_cast<amrex::Real>(precip_state.M_d1);
+        // Live fuel moisture from conditioning (linear ramp result)
+        inputs.rothermel.M_lh   = static_cast<amrex::Real>(precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LH_EMC_MULT));
+        inputs.rothermel.M_lw   = static_cast<amrex::Real>(precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LW_EMC_MULT));
         amrex::Print() << "Conditioning complete: M_d1=" << precip_state.M_d1
                        << " M_d10=" << precip_state.M_d10
                        << " M_d100=" << precip_state.M_d100
-                       << " M_d1000=" << precip_state.M_d1000 << "\n";
+                       << " M_d1000=" << precip_state.M_d1000
+                       << " M_lh=" << inputs.rothermel.M_lh
+                       << " M_lw=" << inputs.rothermel.M_lw << "\n";
     }
 
     // Load precipitation time series if provided
@@ -1200,7 +1253,9 @@ int main(int argc, char* argv[])
         compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
                                    inputs.farsite.tau_residence);
       }
-      compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
+      compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence,
+                       !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                       d_tau_table_ptr, tau_table_size);
       compute_vorticity(vorticity_mf, vel, geom);
       compute_reaction_intensity(reaction_intensity_mf,
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -1223,7 +1278,8 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #else
 				   , "farsite_dx", "farsite_dy", "R",
 				   "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -1241,10 +1297,11 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #endif
       };
-      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
+      MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13 + FMS_NCOMP, 0);
       MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
       MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
       MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -1276,6 +1333,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
 	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
 	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
+      MultiFab::Copy(plotmf, spatial_moisture_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, FMS_NCOMP, 0);
       {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "plt%04d", restart_step);
@@ -1458,6 +1516,22 @@ int main(int argc, char* argv[])
           inputs.ux = static_cast<amrex::Real>(ux_sched);
           inputs.uy = static_cast<amrex::Real>(uy_sched);
           init_velocity_constant(wind_target, geom, inputs.ux, inputs.uy, inputs.uz);
+      }
+
+      // Multi-station IDW wind interpolation (overrides single station / schedule)
+      if (multi_wtr_active) {
+          MultiFab& wind_target = turb_wind_active ? *vel_base : vel;
+          apply_multi_wtr_to_vel(wind_target, geom, multi_wtr,
+                                 static_cast<double>(time));
+          // Domain-mean T/RH for global moisture model
+          if (inputs.diurnal_moisture.enable == 1) {
+              auto [T_mww, RH_mww] = multi_wtr.get_domain_TRH_at_time(
+                                       static_cast<double>(time));
+              inputs.diurnal_moisture.T_min  = static_cast<amrex::Real>(T_mww);
+              inputs.diurnal_moisture.T_max  = static_cast<amrex::Real>(T_mww);
+              inputs.diurnal_moisture.RH_min = static_cast<amrex::Real>(RH_mww);
+              inputs.diurnal_moisture.RH_max = static_cast<amrex::Real>(RH_mww);
+          }
       }
 
       // Apply precipitation wetting to dead fuel moisture (extends diurnal model)
@@ -1799,6 +1873,8 @@ int main(int argc, char* argv[])
       // ---- Aerial retardant suppression: scale R_mf in active drop zones ----
       if (!retardant_drops.empty()) {
           apply_retardant_to_ros(R_mf, retardant_drops, geom, time);
+          // Suppress spotting probability inside active retardant zones
+          apply_retardant_to_spotting_probability(spotting_data, retardant_drops, geom, time);
       }
 
       if (use_levelset) {
@@ -2001,7 +2077,9 @@ int main(int argc, char* argv[])
 	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
 	                             inputs.farsite.tau_residence);
 	}
-	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
+	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence,
+                       !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                       d_tau_table_ptr, tau_table_size);
 	compute_vorticity(vorticity_mf, vel, geom);
 	compute_reaction_intensity(reaction_intensity_mf,
 	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -2026,7 +2104,8 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -2044,10 +2123,11 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13 + FMS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -2079,6 +2159,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
 	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
 	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
+	MultiFab::Copy(plotmf, spatial_moisture_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, FMS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
 	amrex::Print() << "Wrote " << buf << "\n";
 	{
@@ -2134,7 +2215,9 @@ int main(int argc, char* argv[])
 	  compute_heat_per_unit_area(heat_per_unit_area_mf, phi, rc_plt.I_R,
 	                             inputs.farsite.tau_residence);
 	}
-	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence);
+	compute_burnout_time(burnout_time_mf, arrival_time_mf, inputs.farsite.tau_residence,
+                       !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                       d_tau_table_ptr, tau_table_size);
 	compute_vorticity(vorticity_mf, vel, geom);
 	compute_reaction_intensity(reaction_intensity_mf,
 	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -2159,7 +2242,8 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #else
 				     , "farsite_dx", "farsite_dy", "R",
 				     "spot_prob", "spot_count", "spot_dist", "spot_active", "fuel_consumption", "crown_fraction",
@@ -2177,10 +2261,11 @@ int main(int argc, char* argv[])
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
    "reaction_intensity", "residual_fuel", "shade_fraction",
-   "torching_index_kmh", "crowning_index_kmh"
+   "torching_index_kmh", "crowning_index_kmh",
+   "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
 #endif
 	};
-	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, 0);
+	MultiFab plotmf(ba, dm, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13 + FMS_NCOMP, 0);
 	MultiFab::Copy(plotmf, phi, 0, 0, 1, 0);
 	MultiFab::Copy(plotmf, vel, 0, 1, AMREX_SPACEDIM, 0);
 	MultiFab::Copy(plotmf, farsite_spread, 0, 1 + AMREX_SPACEDIM, AMREX_SPACEDIM, 0);
@@ -2212,6 +2297,7 @@ int main(int argc, char* argv[])
 	MultiFab::Copy(plotmf, shade_fraction_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 10, 1, 0);
 	MultiFab::Copy(plotmf, ti_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 11, 1, 0);
 	MultiFab::Copy(plotmf, ci_full_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 12, 1, 0);
+	MultiFab::Copy(plotmf, spatial_moisture_mf, 0, 1 + AMREX_SPACEDIM + AMREX_SPACEDIM + 1 + 4 + 1 + 1 + 4 + 1 + 5 + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP + 13, FMS_NCOMP, 0);
 	WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, final_step);
 	amrex::Print() << "Wrote final " << buf << "\n";
 	{
