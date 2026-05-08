@@ -2,7 +2,7 @@
 """
 topographic_horizon_analysis.py
 ================================
-Standalone Python utility for analysing and visualising the FARSITE
+Standalone Python utility for analyzing and visualizing the FARSITE
 topographic horizon scan implemented in ``src/solar_radiation.H``.
 
 This script serves both as **executable documentation** of the horizon-scan
@@ -37,13 +37,13 @@ Usage
 -----
 ::
 
-    # Analyse a real terrain file
+    # Analyze a real terrain file
     python topographic_horizon_analysis.py terrain.csv \\
         --nx 64 --ny 64 \\
         --solar-elevation 10.0 --solar-azimuth 90.0 \\
         --max-scan-dist 800
 
-    # Generate and analyse a synthetic canyon (no terrain file needed)
+    # Generate and analyze a synthetic canyon (no terrain file needed)
     python topographic_horizon_analysis.py --synthetic \\
         --solar-elevation 10.0 --solar-azimuth 90.0
 
@@ -262,7 +262,7 @@ def _grid_stats(grid_2d: List[List[float]]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Optional matplotlib visualisation
+# Optional matplotlib visualization
 # ---------------------------------------------------------------------------
 
 def _try_plot(grid: Grid2D, horizon: List[List[List[float]]],

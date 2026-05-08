@@ -268,8 +268,8 @@ inline void compute_shade_fraction_mf(
     int         hz_dir_hi = 1;
     amrex::Real hz_frac   = amrex::Real(0.0);
     if (has_hz) {
-        constexpr amrex::Real RAD2DEG_L = amrex::Real(180.0) / WildfireConst::PI;
-        amrex::Real az_deg = sun_az * RAD2DEG_L;
+        constexpr amrex::Real RAD2DEG = amrex::Real(180.0) / WildfireConst::PI;
+        amrex::Real az_deg = sun_az * RAD2DEG;
         // Normalise to [0, 360)
         az_deg = std::fmod(az_deg, amrex::Real(360.0));
         if (az_deg < amrex::Real(0.0)) az_deg += amrex::Real(360.0);
@@ -448,7 +448,7 @@ inline void compute_topographic_horizon_angles(
                     elev_flat[(jj - lo_j) * ni + (ii - lo_i)];
 
                 for (int d = 0; d < 8; ++d) {
-                    amrex::Real max_angle = amrex::Real(-1.5708); // −π/2 floor
+                    amrex::Real max_angle = amrex::Real(-0.5) * WildfireConst::PI; // -π/2 floor
                     const amrex::Real sd  = step_dist[d];
 
                     for (int s = 1; s <= max_steps; ++s) {
