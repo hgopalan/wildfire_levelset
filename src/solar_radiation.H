@@ -69,6 +69,25 @@
 using namespace amrex;
 
 // ============================================================================
+// Solar-date helper functions
+// ============================================================================
+
+// Returns true when the given year is a leap year (Gregorian calendar).
+inline bool solar_is_leap_year(int year) noexcept
+{
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+// Returns the number of days in each month for the given year.
+// Index 0 = January, ..., 11 = December.
+inline void solar_days_in_months(int year, int (&dim)[12]) noexcept
+{
+    const int feb = solar_is_leap_year(year) ? 29 : 28;
+    const int d[] = {31, feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    for (int i = 0; i < 12; ++i) dim[i] = d[i];
+}
+
+// ============================================================================
 // SolarPosition
 // Holds the sun's elevation angle and azimuth at a given instant.
 // Azimuth follows the FARSITE compass convention: 0 = North, increasing CW.
@@ -111,10 +130,9 @@ inline SolarPosition compute_solar_position(
     // ---- Day of year ----
     // Follows the formula of Spencer (1971) / ASHRAE via days in each month.
     int doy = day;
-    // Leap year check (Gregorian)
-    int days_feb = ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) ? 29 : 28;
-    const int dim[] = {31, days_feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    for (int m = 1; m < month; ++m) doy += dim[m - 1];
+    int dim_pos[12];
+    solar_days_in_months(year, dim_pos);
+    for (int m = 1; m < month; ++m) doy += dim_pos[m - 1];
 
     // ---- Equation of time (Spencer 1971, minutes) ----
     amrex::Real B = DEG2RAD * amrex::Real(360.0) * (doy - 1) / amrex::Real(365.0);
@@ -363,21 +381,18 @@ inline amrex::Real advance_solar_date(
     double total_h = static_cast<double>(sim_start_hour)
                    + static_cast<double>(elapsed_s) / 3600.0;
 
-    // Number of whole days elapsed — use floor() to correctly handle
-    // negative total_h (which can occur due to floating-point precision
-    // when elapsed_s is very small and sim_start_hour rounds down).
-    int extra_days = (total_h >= 0.0) ? static_cast<int>(total_h / 24.0)
-                                      : 0;
-    double hour_of_day = total_h - extra_days * 24.0;
-    // Clamp to [0, 24) for robustness against floating-point edge cases
-    if (hour_of_day < 0.0)  hour_of_day = 0.0;
-    if (hour_of_day >= 24.0) hour_of_day = 0.0;
+    // Use std::floor to correctly compute whole days elapsed,
+    // handling both positive and negative total_h.
+    double extra_days_d = (total_h >= 0.0) ? std::floor(total_h / 24.0) : 0.0;
+    int    extra_days   = static_cast<int>(extra_days_d);
+    // Fractional remaining hour within the day
+    double hour_of_day = std::fmod(total_h, 24.0);
+    if (hour_of_day < 0.0) hour_of_day += 24.0;  // fmod can return negative
 
     // Advance calendar by extra_days using per-month day counts
     for (int d = 0; d < extra_days; ++d) {
-        // Leap-year check for current year
-        int days_feb = ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) ? 29 : 28;
-        const int dim[] = {31, days_feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        int dim[12];
+        solar_days_in_months(year, dim);
         ++day;
         if (day > dim[month - 1]) {
             day = 1;
