@@ -208,8 +208,9 @@ inline ScheduleData setup_schedules(
         inputs.rothermel.M_d100  = static_cast<amrex::Real>(sd.precip_state.M_d100);
         inputs.rothermel.M_d1000 = static_cast<amrex::Real>(sd.precip_state.M_d1000);
         inputs.rothermel.M_f     = static_cast<amrex::Real>(sd.precip_state.M_d1);
-        inputs.rothermel.M_lh    = static_cast<amrex::Real>(sd.precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LH_EMC_MULT));
-        inputs.rothermel.M_lw    = static_cast<amrex::Real>(sd.precip_state.M_d100 * static_cast<float>(WildfireConst::COND_LW_EMC_MULT));
+        const float m_d100_f     = sd.precip_state.M_d100;
+        inputs.rothermel.M_lh    = static_cast<amrex::Real>(m_d100_f * static_cast<float>(WildfireConst::COND_LH_EMC_MULT));
+        inputs.rothermel.M_lw    = static_cast<amrex::Real>(m_d100_f * static_cast<float>(WildfireConst::COND_LW_EMC_MULT));
         amrex::Print() << "Conditioning complete: M_d1="   << sd.precip_state.M_d1
                        << " M_d10="  << sd.precip_state.M_d10
                        << " M_d100=" << sd.precip_state.M_d100
