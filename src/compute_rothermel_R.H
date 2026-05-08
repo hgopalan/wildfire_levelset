@@ -169,15 +169,19 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             if (use_waf_flag == 1) {
                 Real waf_cell;
                 if (use_canopy_ht_waf) {
-                    // Per-cell WAF from blended fuel-bed + canopy height.
-                    // h_eff [ft] = (1-cc) * delta_ft + cc * canopy_height_ft
-                    // Canopy height from LCP is stored in metres; convert to ft.
+                    // Per-cell WAF using sheltered or unsheltered formula based on
+                    // local canopy cover fraction and canopy height.
+                    // Sheltered WAF (FARSITE Albini & Baughman 1979):
+                    //   WAF = 0.555 / (sqrt(f_c * h_c) * ln((20+0.36*h_c)/(0.13*h_c)))
+                    // Unsheltered WAF (Andrews 2018):
+                    //   WAF = 1.83 / ln((20+0.36*delta)/(0.13*delta))
+                    // Switch to sheltered when cc >= shelter_threshold (default 50%)
+                    // and canopy height > fuel depth.
                     const Real cc_frac = amrex::max(Real(0.0),
                                          amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
                     const Real canopy_ht_ft = cht_arr(i,j,k) / Real(0.3048); // m → ft
-                    const Real h_eff = (Real(1.0) - cc_frac) * delta_ft
-                                      + cc_frac * amrex::max(canopy_ht_ft, delta_ft);
-                    waf_cell = compute_waf_unsheltered(h_eff);
+                    waf_cell = compute_waf_per_cell(cc_frac, canopy_ht_ft, delta_ft,
+                                                    Real(0.5) /* shelter_threshold */);
                 } else if (use_cc_waf) {
                     // Fallback: global WAF blended with canopy-cover fraction
                     const Real cc_frac = amrex::max(Real(0.0),

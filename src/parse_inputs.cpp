@@ -152,6 +152,14 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
     p.rothermel.use_waf         = 0;    pp.query("rothermel.use_waf",         p.rothermel.use_waf);
     p.rothermel.use_wind_limit  = 0;    pp.query("rothermel.use_wind_limit",  p.rothermel.use_wind_limit);
+    p.rothermel.herb_curing_threshold = 0.0;   // 0.0 = disabled
+    pp.query("rothermel.herb_curing_threshold", p.rothermel.herb_curing_threshold);
+    if (p.rothermel.herb_curing_threshold > 0.0) {
+        if (p.rothermel.herb_curing_threshold > 1.0)
+            amrex::Abort("rothermel.herb_curing_threshold must be between 0.0 and 1.0");
+        Print() << "Live herbaceous curing transfer enabled: threshold="
+                << p.rothermel.herb_curing_threshold * 100.0 << " % M_lh\n";
+    }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
@@ -1175,6 +1183,47 @@ void parse_inputs(InputParameters& p)
                     << "M_lw=[" << p.live_fuel_seasonal.M_lw_winter
                     << "," << p.live_fuel_seasonal.M_lw_summer << "]\n";
         }
+    }
+
+    // -------- Ground suppression lines (dozer / hand crew) --------
+    p.suppression_file = "";
+    pp.query("suppression_file", p.suppression_file);
+    if (!p.suppression_file.empty()) {
+        Print() << "Ground suppression lines: loading from " << p.suppression_file << "\n";
+    }
+
+    // -------- Post-fire fuel model replacement --------
+    p.post_fire_fuel_map_file = "";
+    pp.query("post_fire_fuel_map_file", p.post_fire_fuel_map_file);
+    if (!p.post_fire_fuel_map_file.empty()) {
+        if (p.rothermel.landscape_file.empty()) {
+            Print() << "WARNING: post_fire_fuel_map_file requires a landscape file for per-cell fuel codes; "
+                       "post-fire replacement will be disabled.\n";
+            p.post_fire_fuel_map_file = "";
+        } else {
+            Print() << "Post-fire fuel model replacement: loading from "
+                    << p.post_fire_fuel_map_file << "\n";
+        }
+    }
+
+    // -------- CCFR active crown fire criterion (Scott & Reinhardt 2001) --------
+    p.use_ccfr        = 0;     pp.query("crown.use_ccfr",        p.use_ccfr);
+    p.ccfr_cbd_min    = 0.05;  pp.query("crown.ccfr_cbd_min",    p.ccfr_cbd_min);
+    p.ccfr_cbd_range  = 0.20;  pp.query("crown.ccfr_cbd_range",  p.ccfr_cbd_range);
+    if (p.use_ccfr == 1) {
+        if (p.ccfr_cbd_range <= 0.0)
+            amrex::Abort("crown.ccfr_cbd_range must be > 0 kg/m³");
+        Print() << "CCFR active crown fire criterion enabled:\n"
+                << "  CBD_min=" << p.ccfr_cbd_min
+                << " kg/m³  CBD_range=" << p.ccfr_cbd_range << " kg/m³\n";
+    }
+
+    // -------- Conditional weather / ERC percentile table --------
+    p.conditional_weather_file = "";
+    pp.query("conditional_weather_file", p.conditional_weather_file);
+    if (!p.conditional_weather_file.empty()) {
+        Print() << "Conditional weather table: loading from "
+                << p.conditional_weather_file << "\n";
     }
 
 }

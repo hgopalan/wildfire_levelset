@@ -114,14 +114,16 @@
 using namespace amrex;
 
 // Number of components in the ecology MultiFab
-// 0 – scorch_height [m]       (Van Wagner 1973)
-// 1 – prob_ignition [-]        (Anderson 1970)
-// 2 – tree_mortality [-]       (Ryan-Reinhardt 1988)
-// 3 – crown_activity [-]       (Van Wagner 1977)
-// 4 – torching_ratio [-]       (Scott & Reinhardt 2001 TI proxy)
-// 5 – crowning_ratio [-]       (Scott & Reinhardt 2001 CI proxy)
-// 6 – energy_release_component [-]  (Deeming et al. 1977 / NFDRS ERC)
-constexpr int ECOLOGY_NCOMP = 7;
+// 0 – scorch_height [m]                (Van Wagner 1973)
+// 1 – prob_ignition [-]                (Anderson 1970)
+// 2 – tree_mortality [-]               (Ryan-Reinhardt 1988)
+// 3 – crown_activity [-]               (Van Wagner 1977)
+// 4 – torching_ratio [-]               (Scott & Reinhardt 2001 TI proxy)
+// 5 – crowning_ratio [-]               (Scott & Reinhardt 2001 CI proxy)
+// 6 – energy_release_component [-]     (Deeming et al. 1977 / NFDRS ERC)
+// 7 – nfdrs_spread_component [-]       (NFDRS SC ∝ ROS under reference conditions)
+// 8 – nfdrs_burning_index [-]          (NFDRS BI = sqrt(I_R) × SC / 0.167 approx)
+constexpr int ECOLOGY_NCOMP = 9;
 
 // ============================================================================
 // compute_fire_ecology
@@ -195,6 +197,29 @@ inline void compute_fire_ecology(
     const Real ERC_global = Real(0.04) * Real(rc_erc.I_R);
 
     // -----------------------------------------------------------------------
+    // NFDRS Spread Component (SC) and Burning Index (BI)
+    // -----------------------------------------------------------------------
+    // SC (Deeming et al. 1977): rate-of-spread component proportional to ROS.
+    // NFDRS uses a scaling constant of 196.85 (m/s → ft/min) × 0.01 to
+    // normalise to the 0–99 NFDRS index range.  Here we compute it as a
+    // dimensionless multiplier that maps the per-cell R [m/s] to SC:
+    //   SC ≈ R [m/s] × 196.85 ft/min per m/s × 0.01 NFDRS scale
+    //      = R × 1.9685                                 (stored per-cell)
+    //
+    // BI (Deeming et al. 1977, simplified):
+    //   BI ≈ sqrt(I_R [BTU/ft²/min]) × SC / 0.167
+    // The denominator 0.167 normalises to the traditional NFDRS BI range.
+    // I_R is the global (no-wind/no-slope) reaction intensity.
+    //
+    // Reference:
+    //   Deeming, J.E., Burgan, R.E., & Cohen, J.D. (1977). The National Fire
+    //     Danger Rating System. USDA Forest Service GTR INT-39.
+    const Real SC_conv   = Real(1.9685);   // m/s → NFDRS SC scale
+    const Real IR_sqrt   = (rc_erc.I_R > Real(0.0))
+                           ? std::sqrt(Real(rc_erc.I_R)) : Real(0.0);
+    const Real BI_denom  = Real(0.167);    // NFDRS BI normalisation
+
+    // -----------------------------------------------------------------------
     // GPU-kernel locals (scalars captured by value)
     // -----------------------------------------------------------------------
     for (MFIter mfi(ecology_mf); mfi.isValid(); ++mfi) {
@@ -203,13 +228,16 @@ inline void compute_fire_ecology(
         auto const R   = R_mf.const_array(mfi);
         auto       eco = ecology_mf.array(mfi);
 
-        const Real Tf14 = T_fuel_14;
-        const Real MC   = MC_pct;
-        const Real Io   = I_o;
-        const Real Rsa  = R_SA;
-        const Real Ht   = H_tree;
-        const Real Cbh  = CBH;
-        const Real Erc  = ERC_global;
+        const Real Tf14    = T_fuel_14;
+        const Real MC      = MC_pct;
+        const Real Io      = I_o;
+        const Real Rsa     = R_SA;
+        const Real Ht      = H_tree;
+        const Real Cbh     = CBH;
+        const Real Erc     = ERC_global;
+        const Real Sc_conv = SC_conv;
+        const Real Ir_sqrt = IR_sqrt;
+        const Real Bi_den  = BI_denom;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             const Real IB = fi(i, j, k);
@@ -286,6 +314,28 @@ inline void compute_fire_ecology(
             //     not yet applied (global scalar written uniformly here).
             // ----------------------------------------------------------------
             eco(i, j, k, 6) = Erc;
+
+            // ----------------------------------------------------------------
+            // (7) NFDRS Spread Component (SC) [-]  -  Deeming et al. (1977)
+            //     SC = R [m/s] × 196.85 × 0.01   (NFDRS-normalised index)
+            //     Proportional to the per-cell ROS; higher values indicate
+            //     faster surface spread.  Range: 0 (no spread) to ~100.
+            // ----------------------------------------------------------------
+            eco(i, j, k, 7) = amrex::max(Real(0.0), Ri * Sc_conv);
+
+            // ----------------------------------------------------------------
+            // (8) NFDRS Burning Index (BI) [-]  -  Deeming et al. (1977)
+            //     BI ≈ sqrt(I_R [BTU/ft²/min]) × SC / 0.167
+            //     where I_R is the no-wind/no-slope reaction intensity and SC
+            //     is the per-cell spread component (component 7).  BI combines
+            //     fire intensity (I_R) with propagation rate (SC) into a single
+            //     fire danger index.  Range: 0 (no danger) to ~200+.
+            //     Reference: Deeming et al. (1977) GTR INT-39.
+            // ----------------------------------------------------------------
+            const Real SC_cell = amrex::max(Real(0.0), Ri * Sc_conv);
+            eco(i, j, k, 8) = (Bi_den > Real(0.0))
+                               ? Ir_sqrt * SC_cell / Bi_den
+                               : Real(0.0);
         });
     }
 }
