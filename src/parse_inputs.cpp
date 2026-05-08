@@ -834,4 +834,61 @@ void parse_inputs(InputParameters& p)
         Print() << "Fire acceleration model enabled: L_acc=" << p.acceleration.L_acc << " m\n";
     }
 
+    // -------- FMC seasonal schedule --------
+    p.fmc_schedule.enable            = 0;         pp.query("fmc_schedule.enable",            p.fmc_schedule.enable);
+    p.fmc_schedule.file              = "";         pp.query("fmc_schedule.file",              p.fmc_schedule.file);
+    p.fmc_schedule.use_farsite_curve = 0;          pp.query("fmc_schedule.use_farsite_curve", p.fmc_schedule.use_farsite_curve);
+    p.fmc_schedule.start_doy         = 1;          pp.query("fmc_schedule.start_doy",         p.fmc_schedule.start_doy);
+    p.fmc_schedule.spring_start      = 90;         pp.query("fmc_schedule.spring_start",      p.fmc_schedule.spring_start);
+    p.fmc_schedule.summer_peak       = 150;        pp.query("fmc_schedule.summer_peak",       p.fmc_schedule.summer_peak);
+    p.fmc_schedule.fall_start        = 240;        pp.query("fmc_schedule.fall_start",        p.fmc_schedule.fall_start);
+    p.fmc_schedule.fall_end          = 300;        pp.query("fmc_schedule.fall_end",          p.fmc_schedule.fall_end);
+    p.fmc_schedule.fmc_min           = 85.0;       pp.query("fmc_schedule.fmc_min",           p.fmc_schedule.fmc_min);
+    p.fmc_schedule.fmc_max           = 140.0;      pp.query("fmc_schedule.fmc_max",           p.fmc_schedule.fmc_max);
+    if (p.fmc_schedule.enable == 1) {
+        if (p.fmc_schedule.file.empty() && p.fmc_schedule.use_farsite_curve == 0) {
+            amrex::Abort("fmc_schedule.enable=1 requires either fmc_schedule.file or fmc_schedule.use_farsite_curve=1");
+        }
+        Print() << "FMC seasonal schedule enabled (start_doy=" << p.fmc_schedule.start_doy << ")\n";
+    }
+
+    // -------- Precipitation wetting (extends diurnal_moisture) --------
+    p.precip_rain_rate_mm_hr  = 0.0;   pp.query("diurnal_moisture.precip_rain_rate_mm_hr",  p.precip_rain_rate_mm_hr);
+    p.precip_schedule_file    = "";    pp.query("diurnal_moisture.precip_schedule_file",    p.precip_schedule_file);
+    p.precip_threshold_mm_hr  = 0.25;  pp.query("diurnal_moisture.precip_threshold_mm_hr",  p.precip_threshold_mm_hr);
+    p.M_sat                   = 1.20;  pp.query("diurnal_moisture.M_sat",                   p.M_sat);
+    if (p.precip_rain_rate_mm_hr > 0.0 || !p.precip_schedule_file.empty()) {
+        if (p.diurnal_moisture.enable != 1) {
+            Print() << "WARNING: precipitation wetting specified but diurnal_moisture.enable=0; "
+                       "enabling diurnal moisture model with current defaults\n";
+            p.diurnal_moisture.enable = 1;
+        }
+        Print() << "Precipitation wetting enabled: rain_rate=" << p.precip_rain_rate_mm_hr
+                << " mm/hr  threshold=" << p.precip_threshold_mm_hr
+                << " mm/hr  M_sat=" << p.M_sat << "\n";
+    }
+
+    // -------- Polygon / polyline ignition --------
+    p.fire_polygon_file      = "";     pp.query("fire_polygon_file",      p.fire_polygon_file);
+    p.polyline_width         = 10.0;   pp.query("polyline_width",         p.polyline_width);
+    p.fire_polygon_z_level   = 0.5;    pp.query("fire_polygon_z_level",   p.fire_polygon_z_level);
+    if ((p.source_type == "polygon" || p.source_type == "polyline") && p.fire_polygon_file.empty()) {
+        amrex::Abort("source_type=" + p.source_type + " requires fire_polygon_file to be set");
+    }
+
+    // -------- Per-cell live canopy moisture from .fms file --------
+    p.fms_file = "";    pp.query("fms_file", p.fms_file);
+    if (!p.fms_file.empty()) {
+        if (p.rothermel.landscape_file.empty()) {
+            amrex::Abort("fms_file requires a landscape file (rothermel.landscape_file) to provide per-cell fuel model codes");
+        }
+        Print() << "Per-cell live canopy moisture: loading from " << p.fms_file << "\n";
+    }
+
+    // -------- Compact wind direction schedule --------
+    p.wind_dir_schedule_file = "";    pp.query("wind_dir_schedule_file", p.wind_dir_schedule_file);
+    if (!p.wind_dir_schedule_file.empty()) {
+        Print() << "Compact wind direction schedule: " << p.wind_dir_schedule_file << "\n";
+    }
+
 }

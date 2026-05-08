@@ -1,295 +1,230 @@
 # CMakeLists.txt for regression tests
-# This file enables building and running regression tests for wildfire_levelset
+# Tests are organised into sub-folders:
+#   surface_spread/  – core fire spread model tests
+#   crown_fire/      – crown fire initiation and spread
+#   spotting/        – firebrand / torching spotting
+#   terrain/         – terrain and wind-terrain interactions
+#   moisture/        – fuel moisture models (FMD, diurnal, precipitation)
+#   fuel/            – fuel models and adjustment files
+#   ignition/        – ignition types (polygon, polyline, multi-point, barriers)
+#   wind/            – wind models (time-dependent, turbulent, direction schedule)
+#   diagnostics/     – fire ecology, emissions, Scott-Reinhardt TI/CI
+#   misc/            – 3-D tests, EB, MTT, benchmarks
 
 cmake_minimum_required(VERSION 3.20)
-
-# Include CTest for test framework
 enable_testing()
 
-# Define the levelset executable path (assumes build in build/ directory)
-set(LEVELSET_EXE "${CMAKE_BINARY_DIR}/levelset" CACHE FILEPATH "Path to levelset executable")
-
-# Path to the optional wind_solver executable
+set(LEVELSET_EXE   "${CMAKE_BINARY_DIR}/levelset"    CACHE FILEPATH "Path to levelset executable")
 set(WIND_SOLVER_EXE "${CMAKE_BINARY_DIR}/wind_solver" CACHE FILEPATH "Path to wind_solver executable")
 
-# Find Python3 interpreter (needed for the landfire_farsite setup step)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
-# Function to add a regression test
+# ---------------------------------------------------------------------------
+# Helper: add a solver regression test
+# ---------------------------------------------------------------------------
 function(add_regression_test TEST_NAME TEST_DIR)
-    set(TEST_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
+    set(TEST_INPUT   "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
     set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
-    
-    # Create working directory for test
     file(MAKE_DIRECTORY ${TEST_WORK_DIR})
-    
-    # Add the test
+
+    # Copy data files (wind CSVs, terrain files, polygon CSVs, etc.)
+    file(GLOB _DATA_FILES
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.csv"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.lcp"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.adj"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.fmd"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.fms")
+    foreach(_df ${_DATA_FILES})
+        file(COPY "${_df}" DESTINATION ${TEST_WORK_DIR})
+    endforeach()
+
     add_test(NAME ${TEST_NAME}
              COMMAND ${LEVELSET_EXE} ${TEST_INPUT}
              WORKING_DIRECTORY ${TEST_WORK_DIR})
-    
-    # Set test properties
     set_tests_properties(${TEST_NAME} PROPERTIES
-                        TIMEOUT 600  # 10 minute timeout
-                        LABELS "regtest")
-    
-    # Copy any data files if they exist
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/gaussian_hill_terrain.csv")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/gaussian_hill_terrain.csv"
-             DESTINATION ${TEST_WORK_DIR})
-    endif()
-    
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/gaussian_hill_wind.csv")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/gaussian_hill_wind.csv"
-             DESTINATION ${TEST_WORK_DIR})
-    endif()
-
-    # Copy time-dependent wind field snapshots if present
-    file(GLOB _TIME_WIND_FILES "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/time_wind*.csv")
-    foreach(_twf ${_TIME_WIND_FILES})
-        file(COPY "${_twf}" DESTINATION ${TEST_WORK_DIR})
-    endforeach()
-
-    # Copy landscape files if present (farsite_ellipse landscape test)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/socal_chaparral_landscape.lcp")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/socal_chaparral_landscape.lcp"
-             DESTINATION ${TEST_WORK_DIR})
-    endif()
+                         TIMEOUT 600
+                         LABELS  "regtest")
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Function to add a regression test that needs a Python setup step first
-# (e.g. generating a landscape file from LANDFIRE data or a synthetic fallback)
+# Helper: add a test that needs a Python setup step first
 # ---------------------------------------------------------------------------
 function(add_python_setup_regression_test TEST_NAME TEST_DIR SETUP_SCRIPT)
-    set(TEST_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
+    set(TEST_INPUT   "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
     set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
-
     file(MAKE_DIRECTORY ${TEST_WORK_DIR})
 
+    file(GLOB _DATA_FILES
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.csv"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.lcp"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.adj"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.fmd"
+         "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.fms")
+    foreach(_df ${_DATA_FILES})
+        file(COPY "${_df}" DESTINATION ${TEST_WORK_DIR})
+    endforeach()
+
     if(Python3_FOUND)
-        # Setup step: run the Python script to prepare test data
         set(SETUP_TEST_NAME "${TEST_NAME}_setup")
         add_test(NAME ${SETUP_TEST_NAME}
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/${SETUP_SCRIPT}
                  WORKING_DIRECTORY ${TEST_WORK_DIR})
         set_tests_properties(${SETUP_TEST_NAME} PROPERTIES
-                            TIMEOUT 300
-                            LABELS "regtest"
-                            FIXTURES_SETUP "${TEST_NAME}_fixture")
-
-        # Main test step: run the solver
+                             TIMEOUT 300
+                             LABELS  "regtest"
+                             FIXTURES_SETUP "${TEST_NAME}_fixture")
         add_test(NAME ${TEST_NAME}
                  COMMAND ${LEVELSET_EXE} ${TEST_INPUT}
                  WORKING_DIRECTORY ${TEST_WORK_DIR})
         set_tests_properties(${TEST_NAME} PROPERTIES
-                            TIMEOUT 600
-                            LABELS "regtest"
-                            FIXTURES_REQUIRED "${TEST_NAME}_fixture")
+                             TIMEOUT 600
+                             LABELS  "regtest"
+                             FIXTURES_REQUIRED "${TEST_NAME}_fixture")
     else()
         message(STATUS "Python3 not found – skipping ${TEST_NAME} (needs Python for setup)")
     endif()
 endfunction()
 
-# Add core regression tests
-# Core functionality tests (always run)
-add_regression_test(basic_levelset basic_levelset)
-add_regression_test(farsite_ellipse farsite_ellipse)
-add_regression_test(rothermel_fuel rothermel_fuel)
-add_regression_test(anderson_lw anderson_lw)
-add_regression_test(cheney_gould_grassfire cheney_gould_grassfire)
-# Alternative fire shape models (Richards 1990 alternatives)
-add_regression_test(catchpole_demestre catchpole_demestre)
-add_regression_test(wilson_spread wilson_spread)
-add_regression_test(alexander_lemniscate alexander_lemniscate)
+# ===========================================================================
+# surface_spread/ – core level-set and Rothermel spread models
+# ===========================================================================
+add_regression_test(basic_levelset           surface_spread/basic_levelset)
+add_regression_test(farsite_ellipse          surface_spread/farsite_ellipse)
+add_regression_test(rothermel_fuel           surface_spread/rothermel_fuel)
+add_regression_test(anderson_lw              surface_spread/anderson_lw)
+add_regression_test(catchpole_demestre       surface_spread/catchpole_demestre)
+add_regression_test(wilson_spread            surface_spread/wilson_spread)
+add_regression_test(alexander_lemniscate     surface_spread/alexander_lemniscate)
+add_regression_test(ellipse_sdf              surface_spread/ellipse_sdf)
+add_regression_test(reinitialization         surface_spread/reinitialization)
 
-# Advanced feature tests (can be enabled as needed)
-# Uncomment to run additional tests:
-# add_regression_test(reinitialization reinitialization)
-# add_regression_test(ellipse_sdf ellipse_sdf)
-# add_regression_test(eb_implicit eb_implicit)
-# add_regression_test(firebrand_spotting firebrand_spotting)
-# add_regression_test(crown_initiation crown_initiation)
-# add_regression_test(bulk_fuel_consumption bulk_fuel_consumption)
+# ===========================================================================
+# crown_fire/ – crown fire initiation, active crown, FMC seasonal schedule
+# ===========================================================================
+add_regression_test(crown_initiation         crown_fire/crown_initiation)
+add_regression_test(cruz_crown_continental_us crown_fire/cruz_crown_continental_us)
+add_regression_test(fmc_seasonal             crown_fire/fmc_seasonal)
 
-# 3D tests (only if building in 3D mode)
-if(NOT LEVELSET_DIM_2D)
-    add_regression_test(3d_sphere 3d_sphere)
-endif()
+# ===========================================================================
+# spotting/ – firebrand spotting models
+# ===========================================================================
+add_regression_test(firebrand_spotting       spotting/firebrand_spotting)
+add_regression_test(albini_spotting          spotting/albini_spotting)
 
-# 2D-specific tests (terrain_wind and time_dependent_wind require 2D build with data files)
+# ===========================================================================
+# terrain/ – terrain and wind-terrain interaction
+# ===========================================================================
 if(LEVELSET_DIM_2D)
-    add_regression_test(terrain_wind terrain_wind)
-    add_regression_test(time_dependent_wind time_dependent_wind)
+    add_regression_test(terrain_wind         terrain/terrain_wind)
 endif()
+add_regression_test(balbi_viegas_heatflux    terrain/balbi_viegas_heatflux)
+add_regression_test(windninja_ridge_canyon   terrain/windninja_ridge_canyon)
 
-# LANDFIRE / landscape-file FARSITE test (requires Python3 for setup step)
-# The setup script downloads LANDFIRE data or generates a synthetic fallback
-add_python_setup_regression_test(landfire_farsite landfire_farsite create_landscape.py)
-
-# Create a custom target to run all regression tests
-add_custom_target(regtest
-                 COMMAND ${CMAKE_CTEST_COMMAND} -L regtest --output-on-failure
-                 COMMENT "Running all regression tests"
-                 USES_TERMINAL)
-
-# Display information about configured tests
-message(STATUS "Configured core regression tests:")
-message(STATUS "  - basic_levelset: Basic level-set advection with constant velocity")
-message(STATUS "  - farsite_ellipse: FARSITE elliptical fire expansion (Richards 1990)")
-message(STATUS "  - rothermel_fuel: Rothermel model with fuel types")
-message(STATUS "  - anderson_lw: Anderson dynamic L/W ratio")
-message(STATUS "  - cheney_gould_grassfire: Cheney & Gould (1995/1998) grassland fire spread")
-message(STATUS "  - catchpole_demestre: Catchpole & de Mestre (1986) double-ellipse shape")
-message(STATUS "  - wilson_spread: Wilson (1988) single ellipse from rear focus")
-message(STATUS "  - alexander_lemniscate: Alexander et al. lemniscate (Limaçon) shape")
-if(NOT LEVELSET_DIM_2D)
-    message(STATUS "  - 3d_sphere: Full 3D fire spread simulation")
-endif()
-if(LEVELSET_DIM_2D)
-    message(STATUS "  - terrain_wind: External terrain and wind field (2D only)")
-    message(STATUS "  - time_dependent_wind: Time-dependent wind field with linear interpolation (2D only)")
-endif()
-message(STATUS "")
-message(STATUS "Note: Additional tests are available but commented out for faster testing.")
-message(STATUS "      Uncomment tests in regtest/CMakeLists.txt to enable them:")
-message(STATUS "      reinitialization, ellipse_sdf, eb_implicit, firebrand_spotting,")
-message(STATUS "      crown_initiation, bulk_fuel_consumption")
-message(STATUS "")
-message(STATUS "Run tests with: ctest -L regtest or make regtest")
-message(STATUS "")
+# ===========================================================================
+# moisture/ – fuel moisture models (FMD schedule, diurnal, precipitation)
+# ===========================================================================
 if(Python3_FOUND)
-    message(STATUS "Python3 found (${Python3_EXECUTABLE}): landfire_farsite regtest enabled")
-    message(STATUS "  - landfire_farsite: FARSITE with auto-downloaded LANDFIRE landscape")
-    message(STATUS "    (downloads real terrain/fuel data if internet is available;")
-    message(STATUS "     falls back to synthetic data if offline)")
-else()
-    message(STATUS "Python3 not found: landfire_farsite regtest disabled")
-    message(STATUS "  Install Python3 and run: pip install requests rasterio numpy pyproj")
+    add_python_setup_regression_test(fmd_moisture moisture/fmd_moisture create_fmd.py)
+endif()
+add_regression_test(cheney_gould_grassfire   moisture/cheney_gould_grassfire)
+add_regression_test(precip_wetting           moisture/precip_wetting)
+
+# ===========================================================================
+# fuel/ – fuel models and adjustment files
+# ===========================================================================
+if(Python3_FOUND)
+    add_python_setup_regression_test(fuel_adj_file fuel/fuel_adj_file create_adj.py)
 endif()
 
-# ---------------------------------------------------------------------------
-# New feature tests (added 2025)
-# ---------------------------------------------------------------------------
-
-# fuel_adj_file: .adj fuel adjustment file reader
+# ===========================================================================
+# ignition/ – ignition types (barriers, polygon, polyline, perimeter output)
+# ===========================================================================
 if(Python3_FOUND)
-    add_python_setup_regression_test(fuel_adj_file fuel_adj_file create_adj.py)
+    add_python_setup_regression_test(barrier_polygons ignition/barrier_polygons create_barriers.py)
 endif()
-
-# fmd_moisture: time-varying fuel moisture schedule (.fmd)
+add_regression_test(fire_perimeter_output    ignition/fire_perimeter_output)
+add_regression_test(polygon_ignition         ignition/polygon_ignition)
+add_regression_test(polyline_ignition        ignition/polyline_ignition)
 if(Python3_FOUND)
-    add_python_setup_regression_test(fmd_moisture fmd_moisture create_fmd.py)
-endif()
-
-# fire_perimeter_output: CSV + GeoJSON perimeter writers + burned-area CSV
-add_regression_test(fire_perimeter_output fire_perimeter_output)
-# Validation step (checks generated files)
-if(Python3_FOUND)
-    set(_perim_work "${CMAKE_CURRENT_BINARY_DIR}/fire_perimeter_output")
+    set(_perim_work "${CMAKE_CURRENT_BINARY_DIR}/ignition/fire_perimeter_output")
     add_test(NAME fire_perimeter_output_validate
              COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_CURRENT_SOURCE_DIR}/fire_perimeter_output/validate.py
+                     ${CMAKE_CURRENT_SOURCE_DIR}/ignition/fire_perimeter_output/validate.py
              WORKING_DIRECTORY ${_perim_work})
     set_tests_properties(fire_perimeter_output_validate PROPERTIES
                          TIMEOUT 60
-                         LABELS "regtest"
+                         LABELS  "regtest"
                          DEPENDS fire_perimeter_output)
 endif()
 
-# burned_area_timeseries: fire_stats.csv time series
-add_regression_test(burned_area_timeseries burned_area_timeseries)
-
-# mtt_propagation: Minimum Travel Time propagation method
-add_regression_test(mtt_propagation mtt_propagation)
-
-# barrier_polygons: FARSITE barrier polygon / firebreak CSV files
-if(Python3_FOUND)
-    add_python_setup_regression_test(barrier_polygons barrier_polygons create_barriers.py)
-endif()
-
-# turb_wind: turbulent wind perturbation (requires 2-D build)
+# ===========================================================================
+# wind/ – wind models (time-dependent, turbulent, direction schedule)
+# ===========================================================================
 if(LEVELSET_DIM_2D)
-    add_regression_test(turb_wind turb_wind)
+    add_regression_test(time_dependent_wind  wind/time_dependent_wind)
+    add_regression_test(turb_wind            wind/turb_wind)
+endif()
+add_regression_test(wind_dir_schedule        wind/wind_dir_schedule)
+
+# ===========================================================================
+# diagnostics/ – fire ecology, emissions, Scott-Reinhardt TI/CI
+# ===========================================================================
+add_regression_test(scott_reinhardt_indices  diagnostics/scott_reinhardt_indices)
+
+# ===========================================================================
+# misc/ – 3-D tests, EB, MTT, benchmarks, LANDFIRE
+# ===========================================================================
+if(NOT LEVELSET_DIM_2D)
+    add_regression_test(3d_sphere            misc/3d_sphere)
+endif()
+add_regression_test(eb_implicit              misc/eb_implicit)
+add_regression_test(mtt_propagation          misc/mtt_propagation)
+add_regression_test(bulk_fuel_consumption    misc/bulk_fuel_consumption)
+
+if(Python3_FOUND)
+    add_python_setup_regression_test(landfire_farsite misc/landfire_farsite create_landscape.py)
 endif()
 
-# cruz_crown_continental_us: Cruz et al. (2005) crown fire spread model
-add_regression_test(cruz_crown_continental_us cruz_crown_continental_us)
-
 # ---------------------------------------------------------------------------
-# Multi-resolution timing benchmark
-# ---------------------------------------------------------------------------
-# Runs the solver at several grid sizes for two scenarios (levelset and farsite)
-# and checks for monotonically increasing runtimes and plausible scaling.
+# Timing benchmark
 # ---------------------------------------------------------------------------
 if(Python3_FOUND)
-    set(TIMING_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/timing_benchmark")
+    set(TIMING_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/misc/timing_benchmark")
     file(MAKE_DIRECTORY ${TIMING_WORK_DIR})
-
-    # Determine spatial dimension flag for the benchmark script
     if(LEVELSET_DIM_2D)
         set(_TIMING_DIM 2)
-        set(_TIMING_RES "32;64;128")   # smaller set for faster CI
+        set(_TIMING_RES "32;64;128")
     else()
         set(_TIMING_DIM 3)
-        set(_TIMING_RES "16;32;48")    # 3-D is expensive; keep small
+        set(_TIMING_RES "16;32;48")
     endif()
-
-    # Convert semicolon-separated CMake list to space-separated args
     string(REPLACE ";" " " _TIMING_RES_ARGS "${_TIMING_RES}")
     separate_arguments(_TIMING_RES_LIST NATIVE_COMMAND "${_TIMING_RES_ARGS}")
-
     add_test(NAME timing_benchmark
              COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_CURRENT_SOURCE_DIR}/timing_benchmark/run_benchmark.py
-                     --exe       ${LEVELSET_EXE}
-                     --dim       ${_TIMING_DIM}
-                     --nsteps    20
-                     --resolutions ${_TIMING_RES_LIST}
-                     --timeout   300
-                     --output    timing_results.csv
-                     --skip-scaling   # scaling check is advisory; don't fail CI
+                     ${CMAKE_CURRENT_SOURCE_DIR}/misc/timing_benchmark/run_benchmark.py
+                     --exe ${LEVELSET_EXE} --dim ${_TIMING_DIM}
+                     --nsteps 20 --resolutions ${_TIMING_RES_LIST}
+                     --timeout 300 --output timing_results.csv --skip-scaling
              WORKING_DIRECTORY ${TIMING_WORK_DIR})
     set_tests_properties(timing_benchmark PROPERTIES
-                         TIMEOUT 1200        # 20 min overall
+                         TIMEOUT 1200
                          LABELS  "regtest;benchmark"
-                         # Re-run on failure to distinguish transient noise
                          RUN_SERIAL TRUE)
-    message(STATUS "Timing benchmark enabled:")
-    message(STATUS "  - timing_benchmark: multi-resolution wall-clock benchmark "
-                   "(dim=${_TIMING_DIM}, resolutions=${_TIMING_RES})")
-else()
-    message(STATUS "Python3 not found: timing_benchmark disabled")
 endif()
 
-message(STATUS "")
-message(STATUS "New feature regtests (2025):")
-message(STATUS "  - fuel_adj_file       : FARSITE .adj fuel adjustment reader")
-message(STATUS "  - fmd_moisture        : Time-varying .fmd fuel moisture schedule")
-message(STATUS "  - fire_perimeter_output: CSV + GeoJSON perimeter writers + stats CSV")
-message(STATUS "  - burned_area_timeseries: fire_stats.csv time series")
-message(STATUS "  - timing_benchmark    : Multi-resolution wall-clock timing (benchmark label)")
-message(STATUS "  - mtt_propagation     : Minimum Travel Time (MTT) propagation method")
-message(STATUS "  - barrier_polygons    : FARSITE barrier polygon / firebreak CSV files")
-message(STATUS "  - turb_wind           : Turbulent wind perturbation (spectral_noise)")
-message(STATUS "  - cruz_crown_continental_us: Cruz et al. (2005) crown fire spread")
-
 # ---------------------------------------------------------------------------
-# wind_solver regression tests (3-D builds only, requires linear solver)
+# wind_solver tests
 # ---------------------------------------------------------------------------
-# Function to register a wind_solver regression test
 function(add_wind_solver_regression_test TEST_NAME TEST_DIR)
-    set(TEST_INPUT   "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
+    set(TEST_INPUT    "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
     set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
     file(MAKE_DIRECTORY ${TEST_WORK_DIR})
-
-    # Copy terrain file if present
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv")
         file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv"
              DESTINATION ${TEST_WORK_DIR})
     endif()
-
     add_test(NAME ${TEST_NAME}
              COMMAND ${WIND_SOLVER_EXE} ${TEST_INPUT}
              WORKING_DIRECTORY ${TEST_WORK_DIR})
@@ -299,14 +234,42 @@ function(add_wind_solver_regression_test TEST_NAME TEST_DIR)
 endfunction()
 
 if(LEVELSET_BUILD_WIND_SOLVER)
-    add_wind_solver_regression_test(gaussian_hill_wind_solver gaussian_hill_wind_solver)
-    message(STATUS "")
-    message(STATUS "wind_solver regtests:")
-    message(STATUS "  - gaussian_hill_wind_solver: log-law + mass-consistent Poisson solve over a Gaussian hill")
-    if(LEVELSET_DIM_2D)
-        message(STATUS "  (wind_solver built via ExternalProject 3-D sub-build)")
-    endif()
-else()
-    message(STATUS "")
-    message(STATUS "wind_solver regtests: disabled (LEVELSET_BUILD_WIND_SOLVER=OFF)")
+    add_wind_solver_regression_test(gaussian_hill_wind_solver wind/gaussian_hill_wind_solver)
 endif()
+
+# ---------------------------------------------------------------------------
+# Custom target
+# ---------------------------------------------------------------------------
+add_custom_target(regtest
+                 COMMAND ${CMAKE_CTEST_COMMAND} -L regtest --output-on-failure
+                 COMMENT "Running all regression tests"
+                 USES_TERMINAL)
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+message(STATUS "")
+message(STATUS "Regression tests (sub-folder organisation):")
+message(STATUS "  surface_spread/ : basic_levelset, farsite_ellipse, rothermel_fuel,")
+message(STATUS "                    anderson_lw, catchpole_demestre, wilson_spread,")
+message(STATUS "                    alexander_lemniscate, ellipse_sdf, reinitialization")
+message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
+message(STATUS "                    fmc_seasonal (NEW)")
+message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
+message(STATUS "  terrain/        : terrain_wind (2-D), balbi_viegas_heatflux,")
+message(STATUS "                    windninja_ridge_canyon")
+message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
+message(STATUS "                    precip_wetting (NEW)")
+message(STATUS "  fuel/           : fuel_adj_file")
+message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
+message(STATUS "                    polygon_ignition (NEW), polyline_ignition (NEW)")
+message(STATUS "  wind/           : time_dependent_wind (2-D), turb_wind (2-D),")
+message(STATUS "                    wind_dir_schedule (NEW)")
+message(STATUS "  diagnostics/    : scott_reinhardt_indices (NEW)")
+message(STATUS "  misc/           : 3d_sphere (3-D), eb_implicit, mtt_propagation,")
+message(STATUS "                    bulk_fuel_consumption, timing_benchmark, landfire_farsite")
+message(STATUS "")
+message(STATUS "All domains use UTM Zone 11N, Southern California reference")
+message(STATUS "  (330000 E, 3775000 N  →  Malibu / Santa Monica Mountains area)")
+message(STATUS "")
+message(STATUS "Run tests with: ctest -L regtest  or  make regtest")

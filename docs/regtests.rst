@@ -330,3 +330,150 @@ Adding a New Regression Test
 3. Add a ``README.md`` documenting expected behavior.
 4. Register in ``CMakeLists.txt`` so CTest discovers it.
 5. Add a description to the main ``regtest/README.md`` and to this page.
+
+New Feature Regression Tests
+-----------------------------
+
+The following tests were added with the 2025 feature update. All use
+**UTM Zone 11N, Southern California** coordinates
+(reference: 330000 E, 3775000 N — Malibu / Santa Monica Mountains area).
+
+fmc_seasonal (crown_fire/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the FMC seasonal phenological schedule.
+
+The foliar moisture content (FMC) used by the Van Wagner (1977) crown fire initiation
+model is updated each timestep from a built-in parametric curve representing Southern
+California chaparral phenology (green-up in spring, peak in summer, curing in autumn).
+
+Key parameters::
+
+    fmc_schedule.enable            = 1
+    fmc_schedule.use_farsite_curve = 1
+    fmc_schedule.start_doy         = 200   # mid-July (summer peak)
+
+Confirms that ``crown.FMC`` changes each timestep and that crown fire behaviour
+responds to the seasonal FMC change.
+
+precip_wetting (moisture/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests precipitation-driven dead fuel moisture wetting.
+
+Dead fuel moisture evolves under a constant light rain rate (2 mm/hr).  The
+exponential wetting model drives 1-hr fuel moisture towards saturation (120%)
+with a 1-hr time constant, and 10-hr fuel with a 2-hr time constant.
+
+Key parameters::
+
+    diurnal_moisture.enable              = 1
+    diurnal_moisture.precip_rain_rate_mm_hr = 2.0
+    diurnal_moisture.M_sat               = 1.20
+
+Confirms that ``rothermel.M_d1`` increases over time and fire spread rate
+decreases as fuel becomes wetter.
+
+polygon_ignition (ignition/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests closed-polygon fire ignition rasterisation.
+
+An irregular 8-vertex polygon (~20 m × 18 m) is rasterised into the level-set
+field using the winding-number algorithm.  The interior is set to ``phi < 0``
+(burned) and the exterior to the Euclidean signed distance.
+
+Key parameters::
+
+    source_type        = polygon
+    fire_polygon_file  = ignition_polygon.csv
+
+Confirms that the rasterised initial perimeter closely follows the input polygon
+vertices and that the signed-distance function is correct inside and outside.
+
+polyline_ignition (ignition/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests polyline (line fire) ignition rasterisation.
+
+A 6-vertex east-west polyline is rasterised with a 6 m half-width, creating an
+initial line-fire ignition zone.  Wind drives the fire northward from the ignition
+line.
+
+Key parameters::
+
+    source_type       = polyline
+    fire_polygon_file = ignition_line.csv
+    polyline_width    = 6.0
+
+wind_dir_schedule (wind/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the compact wind direction / speed schedule.
+
+Wind starts at 270° (westerly) at 3 m/s and backs to 180° (southerly) at 5 m/s
+over 2 hours.  The schedule is read from a three-column CSV
+(``time_s, speed_ms, dir_deg``).
+
+Key parameters::
+
+    wind_dir_schedule_file = wind_schedule.csv
+
+Confirms that the wind vector changes direction and magnitude at each timestep,
+and that the fire footprint reflects the wind rotation.
+
+scott_reinhardt_indices (diagnostics/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the Scott & Reinhardt (2001) TI/CI diagnostic outputs.
+
+A strong 8 m/s wind and low canopy base height (2.5 m) create active crown fire
+conditions.  The plotfile ``torching_ratio`` and ``crowning_ratio`` fields
+(ecology components 4 and 5) should be ≥ 1.0 in the active fire zone.
+
+.. math::
+
+    \text{torching\_ratio} = I_B / I_o \qquad
+    \text{crowning\_ratio} = R / R^\prime_{SA}
+
+These dimensionless ratios are zero for surface fire, cross 1.0 when torching
+begins, and exceed 1.0 again for active crown fire, giving an easily interpreted
+diagnostic layer without inverting the Rothermel wind function.
+
+Sub-folder Organisation
+-----------------------
+
+Starting from the 2025 release all regression tests reside in named sub-folders
+grouped by physical category:
+
++------------------+---------------------------------------------------------+
+| Sub-folder       | Tests                                                   |
++==================+=========================================================+
+| ``surface_spread`` | basic_levelset, farsite_ellipse, rothermel_fuel,      |
+|                  | anderson_lw, catchpole_demestre, wilson_spread,         |
+|                  | alexander_lemniscate, ellipse_sdf, reinitialization     |
++------------------+---------------------------------------------------------+
+| ``crown_fire``   | crown_initiation, cruz_crown_continental_us, fmc_seasonal|
++------------------+---------------------------------------------------------+
+| ``spotting``     | firebrand_spotting, albini_spotting                     |
++------------------+---------------------------------------------------------+
+| ``terrain``      | terrain_wind, balbi_viegas_heatflux,                    |
+|                  | windninja_ridge_canyon                                  |
++------------------+---------------------------------------------------------+
+| ``moisture``     | fmd_moisture, cheney_gould_grassfire, precip_wetting    |
++------------------+---------------------------------------------------------+
+| ``fuel``         | fuel_adj_file                                           |
++------------------+---------------------------------------------------------+
+| ``ignition``     | barrier_polygons, fire_perimeter_output,                |
+|                  | polygon_ignition, polyline_ignition                     |
++------------------+---------------------------------------------------------+
+| ``wind``         | time_dependent_wind, turb_wind, wind_dir_schedule       |
++------------------+---------------------------------------------------------+
+| ``diagnostics``  | scott_reinhardt_indices                                 |
++------------------+---------------------------------------------------------+
+| ``misc``         | 3d_sphere, eb_implicit, mtt_propagation,                |
+|                  | bulk_fuel_consumption, timing_benchmark, landfire_farsite|
++------------------+---------------------------------------------------------+
+
+All tests use UTM Zone 11N, Southern California reference coordinates
+(330 000 E, 3 775 000 N).

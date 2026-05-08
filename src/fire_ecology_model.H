@@ -1,14 +1,46 @@
 // ============================================================================
 // Fire Ecology Diagnostics
 // ============================================================================
-// Computes four per-cell fire ecology and behavior fields written to every
+// Computes six per-cell fire ecology and behavior fields written to every
 // plotfile as additional diagnostic outputs:
 //
-//   Component 0 - scorch_height   [m]   Van Wagner (1973)
-//   Component 1 - prob_ignition   [-]   Anderson (1970) / Rothermel (1983)
-//   Component 2 - tree_mortality  [-]   Ryan-Reinhardt (1988) style logistic
-//   Component 3 - crown_activity  [-]   0=surface, 1=passive, 2=active
-//                                       Van Wagner (1977) / Scott & Reinhardt (2001)
+//   Component 0 - scorch_height      [m]   Van Wagner (1973)
+//   Component 1 - prob_ignition      [-]   Anderson (1970) / Rothermel (1983)
+//   Component 2 - tree_mortality     [-]   Ryan-Reinhardt (1988) style logistic
+//   Component 3 - crown_activity     [-]   0=surface, 1=passive, 2=active
+//                                          Van Wagner (1977) / Scott & Reinhardt (2001)
+//   Component 4 - torching_ratio     [-]   I_B / I_o  (Scott & Reinhardt 2001 TI proxy)
+//                                          ≥ 1 → passive / active crown fire possible
+//   Component 5 - crowning_ratio     [-]   R / R'_SA  (Scott & Reinhardt 2001 CI proxy)
+//                                          ≥ 1 → active crown fire possible
+//
+// ----------------------------------------------------------------------------
+// Scott & Reinhardt (2001) Torching Index / Crowning Index proxies
+// ----------------------------------------------------------------------------
+// The original TI and CI are defined as the minimum open (20-ft) wind speed
+// at which torching or active crowning begins.  Computing them exactly requires
+// inverting the Rothermel ROS function with respect to wind speed, which is
+// numerically expensive per cell.
+//
+// Instead this module computes dimensionless ratios that carry the same
+// diagnostic information:
+//
+//   torching_ratio  = I_B / I_o
+//     I_B = Byram fireline intensity [kW/m]
+//     I_o = Van Wagner (1977) crown initiation threshold [kW/m]
+//         = 0.010 * CBH * (460 + 25.9 * FMC)
+//   torching_ratio ≥ 1.0  ↔  torching / passive crown fire conditions met
+//
+//   crowning_ratio  = R / R'_SA
+//     R    = current surface/crown ROS [m/s]
+//     R'SA = Van Wagner (1977) critical active-crown ROS [m/s]
+//          = 3.0 / CBD / 60
+//   crowning_ratio ≥ 1.0  ↔  active crown fire conditions met
+//
+// Reference:
+//   Scott, J.H. & Reinhardt, E.D. (2001). "Assessing Crown Fire Potential by
+//     Linking Models of Surface and Crown Fire Behavior." USDA Forest Service
+//     Research Paper RMRS-RP-29.
 //
 // ----------------------------------------------------------------------------
 // Scorch height (Van Wagner 1973)
@@ -80,7 +112,7 @@
 using namespace amrex;
 
 // Number of components in the ecology MultiFab
-constexpr int ECOLOGY_NCOMP = 4;
+constexpr int ECOLOGY_NCOMP = 6;
 
 // ============================================================================
 // compute_fire_ecology
@@ -202,6 +234,22 @@ inline void compute_fire_ecology(
                 activity = (Ri >= Rsa) ? Real(2.0) : Real(1.0);
             }
             eco(i, j, k, 3) = activity;
+
+            // ----------------------------------------------------------------
+            // (4) Torching ratio [-]  -  Scott & Reinhardt (2001) TI proxy
+            //     torching_ratio = I_B / I_o
+            //     ≥ 1.0 → passive or active crown fire possible
+            //     < 1.0 → surface fire only
+            // ----------------------------------------------------------------
+            eco(i, j, k, 4) = IB / amrex::max(Io, Real(1.0e-6));
+
+            // ----------------------------------------------------------------
+            // (5) Crowning ratio [-]  -  Scott & Reinhardt (2001) CI proxy
+            //     crowning_ratio = R / R'_SA
+            //     ≥ 1.0 → active crown fire conditions met
+            //     < 1.0 → passive crown fire at most
+            // ----------------------------------------------------------------
+            eco(i, j, k, 5) = Ri / amrex::max(Rsa, Real(1.0e-8));
         });
     }
 }
