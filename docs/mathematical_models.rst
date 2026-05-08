@@ -2142,50 +2142,52 @@ Select with ``fire_spread_model = fbp_o1a`` (or ``fbp_o1b``, ``fbp_s1``, ``fbp_s
 
 **Grass fuel types (O1a / O1b)**
 
-The Initial Spread Index (ISI) is computed from wind speed :math:`U_{10}` (km/h):
+The fine-fuel moisture factor follows Van Wagner (1985):
 
 .. math::
 
-   f_W = \exp(0.05039\,U_{10})
+   f_F = 91.9 \exp(-0.1386\,M_f)
+         \left(1 + \frac{M_f^{5.31}}{4.93 \times 10^7}\right)
 
-   \text{ISI} = 0.208 \, f_W \exp\!\bigl(-0.050989 \, M_f\bigr)
+The wind factor and Initial Spread Index (ISI) are:
 
-where :math:`M_f` is the fine fuel moisture content (%).
+.. math::
+
+   f_W = \exp(0.05039\,U_{10}), \qquad \text{ISI} = 0.208 \, f_W \, f_F
+
+where :math:`U_{10}` is the 10-m wind speed (km/h) and :math:`M_f` is the fine fuel moisture content (%).
 The curing factor (CF) accounts for the fraction of dead fuel:
 
 .. math::
 
    \mathrm{CF} = \Bigl(1 - \exp\!\bigl(-2.1\,\mathrm{PC}/100\bigr)\Bigr)^2
 
-Rate of spread (m/min):
+Rate of spread [m/s]:
 
 .. math::
 
-   R = \begin{cases}
-     0 & \text{if } \mathrm{PC} < 20 \\
-     \alpha_c \,(1 - \exp(-\beta_c\,\text{ISI}))^{a_c} \times \mathrm{CF} \times \mathrm{GFL}/0.3 & \text{otherwise}
-   \end{cases}
+   R = C_c \exp(k_c\,\text{ISI}) \times \mathrm{CF}
 
-where the coefficients :math:`(\alpha_c, \beta_c, a_c)` differ between O1a and O1b:
+Coefficients per fuel type:
 
-* **O1a** (matted): :math:`\alpha=190,\;\beta=0.0310,\;a=1.40`
-* **O1b** (standing): :math:`\alpha=250,\;\beta=0.0350,\;a=1.50`
+* **O1a** (matted grass): :math:`C_c = 190/60,\; k_c = 0.031`
+* **O1b** (standing grass): :math:`C_c = 250/60,\; k_c = 0.035`
 
 **Slash fuel types (S1 / S2 / S3)**
 
-Rate of spread (m/min):
+Same ISI computation; :math:`\mathrm{CF} = 1`. Rate of spread [m/s]:
 
 .. math::
 
-   R = \alpha_s \,(1 - \exp(-\beta_s\,\text{ISI}))^{a_s}
+   R = C_s \exp(k_s\,\text{ISI})
 
 Coefficients:
 
-* **S1**: :math:`\alpha=75.0,\;\beta=0.0297,\;a=1.30`
-* **S2**: :math:`\alpha=40.0,\;\beta=0.0438,\;a=1.70`
-* **S3**: :math:`\alpha=55.0,\;\beta=0.0829,\;a=3.00`
+* **S1**: :math:`C_s = 75/60,\; k_s = 0.110`
+* **S2**: :math:`C_s = 200/60,\; k_s = 0.062`
+* **S3**: :math:`C_s = 320/60,\; k_s = 0.010`
 
-Parameters: ``fbp.fuel_type``, ``fbp.PC`` (curing [%], O1a/O1b only), ``fbp.GFL`` (grass fuel load [kg/m²], O1a/O1b only).
+Parameters: ``fbp.fuel_type``, ``fbp.curing`` (curing [%], O1a/O1b only), ``fbp.moisture`` (dead fine fuel moisture [%]).
 
 Reference: Forestry Canada Fire Danger Group (1992). *Development and Structure of
 the Canadian Forest Fire Behavior Prediction System.*  Information Report ST-X-3.
@@ -2270,7 +2272,7 @@ Van Wagner crown fire initiation threshold (kW/m):
 
 .. math::
 
-   I_o = 0.010\,h_{\text{CBH}}\,(460 + 25.9\,\mathrm{FMC})^{1.5}
+   I_o = 0.010\,h_{\text{CBH}}\,(460 + 25.9\,\mathrm{FMC})
 
 Parameters: ``crown.use_passive_blend = 1``, ``crown.CBH``, ``crown.FMC``.
 

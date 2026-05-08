@@ -101,10 +101,8 @@ amrex::Real thomas_intensity_from_flame_length(amrex::Real flame_length_m) noexc
 {
     using namespace amrex;
     if (flame_length_m <= Real(0.0)) return Real(0.0);
-    // Inverse Byram/Thomas: I_B = (L_f / 0.0775)^(1/0.46)
-    constexpr Real BYRAM_A_loc    = Real(0.0775);
-    constexpr Real BYRAM_INVB_loc = Real(1.0) / Real(0.46);  // approximately 2.1739
-    return std::pow(flame_length_m / BYRAM_A_loc, BYRAM_INVB_loc);
+    // Inverse Byram/Thomas: I_B = (L_f / BYRAM_A)^BYRAM_INVB
+    return std::pow(flame_length_m / WildfireConst::BYRAM_A, WildfireConst::BYRAM_INVB);
 }
 
 #endif // COMPUTE_FIRE_BEHAVIOR_H

@@ -146,8 +146,8 @@ struct InputParameters {
         //       Uses cruz_crown.CBD and cruz_crown.MC10 for canopy/moisture inputs.
         int use_cruz_crown;                  // 1 = Cruz et al. (2005) active crown ROS (default: 0)
         // Rothermel (1991) active crown fire ROS option:
-        //   0 – do not use (keep existing crown model selection)  [default]
-        //   1 – use Rothermel (1991): R_crown = 3.34 × R_surface
+        //   0 - do not use (keep existing crown model selection)  [default]
+        //   1 - use Rothermel (1991): R_crown = 3.34 x R_surface
         int use_rothermel1991_crown;         // 1 = Rothermel (1991) (default: 0)
         // Van Wagner (1977) passive crown fire interpolation blending:
         //   0 – abrupt max(R_surface, R_crown)  [current behaviour, default]

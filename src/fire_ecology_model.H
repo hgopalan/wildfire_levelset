@@ -427,7 +427,8 @@ inline void compute_full_scott_reinhardt(
     const InputParameters::CrownInitiationParams& cp,
     const MultiFab* /*fuel_model_mf*/ = nullptr,
     const void*     /*fuel_table*/     = nullptr,
-    int             /*fuel_table_size*/= 0)
+    int             /*fuel_table_size*/= 0,
+    amrex::Real     U_max_kmh          = amrex::Real(200.0))
 {
     using namespace amrex;
 
@@ -450,7 +451,7 @@ inline void compute_full_scott_reinhardt(
     const Real w_net_kg_m2 = w_eff * (Real(1.0) - Real(rp.S_T))
                             * WildfireConst::LB_FT2_TO_KG_M2;
 
-    const Real U_max = Real(200.0);
+    const Real U_max = amrex::max(U_max_kmh, Real(10.0));
 
     // Compute scalar TI/CI using bisection
     const Real TI_val = compute_torching_index_kmh(rc, rp, I_o, h_kJ_kg, w_net_kg_m2, U_max);

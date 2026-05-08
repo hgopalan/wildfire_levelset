@@ -1027,7 +1027,8 @@ int main(int argc, char* argv[])
             ti_full_mf, ci_full_mf,
             inputs.rothermel, inputs.crown,
             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-            nullptr, 0);
+            nullptr, 0,
+            amrex::Real(inputs.scott_reinhardt_full.U_max_kmh));
     }
 
 
@@ -1415,7 +1416,8 @@ int main(int argc, char* argv[])
               ti_full_mf, ci_full_mf,
               inputs.rothermel, inputs.crown,
               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-              nullptr, 0);
+              nullptr, 0,
+              amrex::Real(inputs.scott_reinhardt_full.U_max_kmh));
       }
 
       // Ecology → propagation coupling:
@@ -1456,7 +1458,6 @@ int main(int argc, char* argv[])
               }
               const Real CBD_g   = CBD_global;
               const Real mf_val  = m_factor_g;
-              const bool use_roth91_tl = use_roth1991_tl;
               const bool use_passive_tl = use_passive_blend_tl;
               const Real I_o_tl_k = I_o_tl;
 
@@ -1464,7 +1465,7 @@ int main(int argc, char* argv[])
                   if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive
                   Real R_surface = R(i, j, k);
                   Real R_crown_ms;
-                  if (use_roth91_tl) {
+                  if (use_roth1991_tl) {
                       R_crown_ms = compute_rothermel_1991_crown_ros(R_surface);
                   } else if (use_cruz_tl) {
                       Real ux = v(i,j,k,0);
