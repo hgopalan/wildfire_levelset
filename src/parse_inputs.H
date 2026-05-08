@@ -511,6 +511,60 @@ struct InputParameters {
         amrex::Real L_acc;      // acceleration length scale [m]; fire reaches full ROS when r ≈ L_acc (default: 50.0)
     } acceleration;
 
+    // ---- FMC seasonal / phenological schedule ----
+    // When fmc_schedule_file is non-empty, the foliar moisture content used by
+    // the Van Wagner (1977) crown fire initiation model is updated each timestep
+    // from the schedule.  When fmc_use_farsite_curve = 1, a built-in parametric
+    // phenological curve calibrated to Southern California chaparral is used
+    // instead of a CSV file.
+    // Input prefix: "fmc_schedule."
+    struct FMCScheduleParams {
+        int         enable;              // 1 to enable (default: 0)
+        std::string file;                // path to two-column CSV (doy, fmc_pct); empty → use curve
+        int         use_farsite_curve;   // 1 to use built-in parametric curve (default: 0)
+        int         start_doy;           // day-of-year at t=0 (default: 1 = Jan 1)
+        // Parametric curve breakpoints (used when use_farsite_curve = 1)
+        int    spring_start;   // doy when green-up begins  (default: 90)
+        int    summer_peak;    // doy when FMC reaches max  (default: 150)
+        int    fall_start;     // doy when curing begins    (default: 240)
+        int    fall_end;       // doy when curing ends      (default: 300)
+        amrex::Real fmc_min;   // dormant / cured FMC [%]   (default: 85.0)
+        amrex::Real fmc_max;   // peak green FMC [%]        (default: 140.0)
+    } fmc_schedule;
+
+    // ---- Precipitation wetting of dead fuels ----
+    // When diurnal_moisture.enable = 1 AND precip_rain_rate_mm_hr > 0, dead
+    // fuel moisture is additionally driven by a wetting model.  Rain rate can
+    // be either a constant (precip_rain_rate_mm_hr) or read from a time series
+    // file (precip_schedule_file: two-column CSV of time_s, rain_mm_hr).
+    // Input prefix: "diurnal_moisture." (extends the existing struct).
+    // New fields:
+    amrex::Real precip_rain_rate_mm_hr;   // constant rain rate [mm/hr] (default: 0.0)
+    std::string precip_schedule_file;      // time-series CSV of (time_s, rain_mm_hr); overrides constant
+    amrex::Real precip_threshold_mm_hr;   // min rain rate to trigger wetting (default: 0.25)
+    amrex::Real M_sat;                     // saturation moisture content [fraction] (default: 1.20)
+
+    // ---- Polygon / polyline fire ignition ----
+    // When source_type = "polygon" or "polyline", the initial fire perimeter is
+    // rasterised from a CSV vertex file.
+    // Input prefix: none (uses existing source_type / fire_polygon_file).
+    std::string fire_polygon_file;         // path to CSV vertex file (X, Y [, Z])
+    amrex::Real polyline_width;            // half-width [m] for polyline ignition (default: 10.0)
+    amrex::Real fire_polygon_z_level;      // Z centre of ignition layer in 3-D (default: 0.5)
+
+    // ---- Per-cell live canopy moisture from FARSITE .fms scenario file ----
+    // When fms_file is non-empty, a per-cell moisture MultiFab is populated
+    // from the .fms scenario and used to override global rothermel moistures
+    // on a per-cell basis.  Requires a landscape file to provide per-cell fuel
+    // model codes.
+    std::string fms_file;                  // path to FARSITE .fms file (default: "")
+
+    // ---- Compact wind direction schedule ----
+    // When wind_dir_schedule_file is non-empty, the ambient wind is updated
+    // each timestep from a compact (time_s, speed_ms, dir_deg) CSV schedule.
+    // This overrides the constant ux/uy and use_time_dependent_wind modes.
+    std::string wind_dir_schedule_file;    // path to compact wind schedule CSV (default: "")
+
 };
 
 void parse_inputs(InputParameters& inputs);

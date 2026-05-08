@@ -1,0 +1,9 @@
+# time_s  speed_ms  dir_deg
+# Westerly wind (blowing East) in first hour
+0       3.0    270
+1800    3.5    260
+3600    4.0    240
+# Backing to southerly in second hour
+4200    4.5    220
+5400    5.0    200
+7200    5.0    180

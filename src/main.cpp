@@ -57,6 +57,11 @@ using namespace amrex;
 #include "compute_reaction_intensity.H"
 #include "albini_torching_spotting.H"
 #include "fire_acceleration.H"
+#include "fmc_schedule.H"
+#include "precipitation_moisture.H"
+#include "polygon_ignition.H"
+#include "fms_moisture.H"
+#include "wind_dir_schedule.H"
 
 
 // ======================= Main ================================================
@@ -278,6 +283,21 @@ int main(int argc, char* argv[])
       }
       fill_boundary_extrap(phi, geom);
     }
+    else if (inputs.source_type == "polygon") {
+      // Closed polygon ignition rasterizer
+      std::vector<Real> poly_xs, poly_ys;
+      read_polygon_vertices(inputs.fire_polygon_file, poly_xs, poly_ys);
+      init_phi_from_polygon(phi, geom, poly_xs, poly_ys, inputs.fire_polygon_z_level);
+      fill_boundary_extrap(phi, geom);
+    }
+    else if (inputs.source_type == "polyline") {
+      // Polyline (line-fire) ignition rasterizer
+      std::vector<Real> poly_xs, poly_ys;
+      read_polygon_vertices(inputs.fire_polygon_file, poly_xs, poly_ys);
+      init_phi_from_polyline(phi, geom, poly_xs, poly_ys,
+                             inputs.polyline_width, inputs.fire_polygon_z_level);
+      fill_boundary_extrap(phi, geom);
+    }
     else {
       amrex::Abort("Invalid source_type: " + inputs.source_type);
     }
@@ -427,6 +447,25 @@ int main(int argc, char* argv[])
           &canopy_height_mf);
     }
 
+    // ---------------- Per-cell live canopy moisture from FMS file -----------
+    // Spatially-varying dead and live moisture per fuel model code.
+    // Populated from a FARSITE .fms scenario file when fms_file is non-empty.
+    // When absent, the global RothermelParams moisture values are used.
+    const int FMS_NCOMP = FMS_MOISTURE_NCOMP;  // 5 components
+    MultiFab spatial_moisture_mf(ba, dm, FMS_NCOMP, 0);
+    bool has_spatial_moisture = false;
+    // Initialise to global Rothermel moisture values as fallback
+    spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_d1),   0, 1, 0);
+    spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_d10),  1, 1, 0);
+    spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_d100), 2, 1, 0);
+    spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lh),   3, 1, 0);
+    spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lw),   4, 1, 0);
+    if (!inputs.fms_file.empty() && !inputs.rothermel.landscape_file.empty()) {
+        load_fms_spatial_moisture(spatial_moisture_mf, fuel_model_mf,
+                                  geom, inputs.fms_file, inputs.rothermel);
+        has_spatial_moisture = true;
+    }
+
     // ---------------- Fuel model lookup table for per-cell spread --------
     // When a landscape file is present with fuel model data, precompute a
     // RothermelComputed lookup table indexed by fuel code so the GPU kernel
@@ -529,6 +568,67 @@ int main(int argc, char* argv[])
 
     // Apply FMD at t=0 so initial plotfile uses correct moisture
     apply_fmd_moisture(Real(0.0));
+
+    // ---------------- FMC seasonal schedule --------------------------------
+    FMCSchedule fmc_sched;
+    if (inputs.fmc_schedule.enable == 1) {
+        if (!inputs.fmc_schedule.file.empty()) {
+            load_fmc_schedule(inputs.fmc_schedule.file, fmc_sched,
+                              inputs.fmc_schedule.start_doy);
+        } else if (inputs.fmc_schedule.use_farsite_curve == 1) {
+            build_farsite_fmc_curve(fmc_sched,
+                                    inputs.fmc_schedule.start_doy,
+                                    inputs.fmc_schedule.spring_start,
+                                    inputs.fmc_schedule.summer_peak,
+                                    inputs.fmc_schedule.fall_start,
+                                    inputs.fmc_schedule.fall_end,
+                                    static_cast<double>(inputs.fmc_schedule.fmc_min),
+                                    static_cast<double>(inputs.fmc_schedule.fmc_max));
+        }
+        // Apply at t=0 to set initial FMC in crown params
+        if (!fmc_sched.empty()) {
+            inputs.crown.FMC = static_cast<amrex::Real>(
+                get_fmc_at_time(fmc_sched, 0.0));
+            amrex::Print() << "FMC at t=0: " << inputs.crown.FMC << " %\n";
+        }
+    }
+
+    // ---------------- Compact wind direction schedule -----------------------
+    WindDirSchedule wind_dir_sched;
+    if (!inputs.wind_dir_schedule_file.empty()) {
+        load_wind_dir_schedule(inputs.wind_dir_schedule_file, wind_dir_sched);
+        // Apply at t=0
+        auto [ux0, uy0] = get_wind_at_time(wind_dir_sched, 0.0);
+        inputs.ux = static_cast<amrex::Real>(ux0);
+        inputs.uy = static_cast<amrex::Real>(uy0);
+        init_velocity_constant(vel, geom, inputs.ux, inputs.uy, inputs.uz);
+    }
+
+    // ---------------- Precipitation wetting state --------------------------
+    PrecipState precip_state;
+    precip_state.M_d1   = static_cast<float>(inputs.rothermel.M_d1);
+    precip_state.M_d10  = static_cast<float>(inputs.rothermel.M_d10);
+    precip_state.M_d100 = static_cast<float>(inputs.rothermel.M_d100);
+    precip_state.initialised = true;
+
+    // Load precipitation time series if provided
+    std::vector<std::pair<double,double>> precip_schedule;  // (time_s, rain_mm_hr)
+    if (!inputs.precip_schedule_file.empty()) {
+        std::ifstream pf(inputs.precip_schedule_file);
+        if (!pf.is_open()) {
+            amrex::Abort("Cannot open precip_schedule_file: " + inputs.precip_schedule_file);
+        }
+        std::string pline;
+        while (std::getline(pf, pline)) {
+            if (pline.empty() || pline[0] == '#' || pline[0] == '!') continue;
+            for (char& c : pline) if (c == ',') c = ' ';
+            std::istringstream piss(pline);
+            double ts, rate;
+            if (piss >> ts >> rate) precip_schedule.push_back({ts, rate});
+        }
+        amrex::Print() << "Precipitation schedule: loaded " << precip_schedule.size()
+                       << " records from " << inputs.precip_schedule_file << "\n";
+    }
 
     // ---------------- Cruz crown pre-computed coefficients ------------------
     // Pre-compute Cruz, Alexander & Wakimoto (2005) crown fire ROS coefficients
@@ -853,6 +953,7 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -869,6 +970,7 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -981,6 +1083,81 @@ int main(int argc, char* argv[])
 
       // Update time-varying fuel moisture from FMD schedule
       apply_fmd_moisture(time);
+
+      // Update FMC seasonal schedule (updates crown.FMC used by Van Wagner model)
+      if (inputs.fmc_schedule.enable == 1 && !fmc_sched.empty()) {
+          inputs.crown.FMC = static_cast<amrex::Real>(
+              get_fmc_at_time(fmc_sched, static_cast<double>(time)));
+      }
+
+      // Update wind from compact direction schedule (overrides constant wind)
+      if (!wind_dir_sched.empty()) {
+          MultiFab& wind_target = turb_wind_active ? *vel_base : vel;
+          auto [ux_sched, uy_sched] = get_wind_at_time(wind_dir_sched,
+                                                        static_cast<double>(time));
+          inputs.ux = static_cast<amrex::Real>(ux_sched);
+          inputs.uy = static_cast<amrex::Real>(uy_sched);
+          init_velocity_constant(wind_target, geom, inputs.ux, inputs.uy, inputs.uz);
+      }
+
+      // Apply precipitation wetting to dead fuel moisture (extends diurnal model)
+      if (inputs.diurnal_moisture.enable == 1 && precip_state.initialised) {
+          // Determine current rain rate
+          float rain_rate = static_cast<float>(inputs.precip_rain_rate_mm_hr);
+          if (!precip_schedule.empty()) {
+              // Linearly interpolate from schedule
+              double t_d = static_cast<double>(time);
+              if (t_d <= precip_schedule.front().first) {
+                  rain_rate = static_cast<float>(precip_schedule.front().second);
+              } else if (t_d >= precip_schedule.back().first) {
+                  rain_rate = static_cast<float>(precip_schedule.back().second);
+              } else {
+                  for (size_t pi = 0; pi + 1 < precip_schedule.size(); ++pi) {
+                      if (t_d >= precip_schedule[pi].first &&
+                          t_d <  precip_schedule[pi+1].first) {
+                          double alpha = (t_d - precip_schedule[pi].first) /
+                              (precip_schedule[pi+1].first - precip_schedule[pi].first);
+                          rain_rate = static_cast<float>(
+                              precip_schedule[pi].second +
+                              alpha * (precip_schedule[pi+1].second -
+                                       precip_schedule[pi].second));
+                          break;
+                      }
+                  }
+              }
+          }
+          // Build EMC from diurnal model as drying target
+          RothermelMoistures emc_target = compute_diurnal_emc(
+              inputs.diurnal_moisture,
+              static_cast<double>(time),
+              {static_cast<float>(inputs.rothermel.M_d1),
+               static_cast<float>(inputs.rothermel.M_d10),
+               static_cast<float>(inputs.rothermel.M_d100),
+               static_cast<float>(inputs.rothermel.M_lh),
+               static_cast<float>(inputs.rothermel.M_lw)});
+          apply_precipitation_moisture(precip_state, emc_target, rain_rate,
+                                       static_cast<float>(dt_step),
+                                       static_cast<float>(inputs.precip_threshold_mm_hr),
+                                       static_cast<float>(inputs.M_sat));
+          // Apply wetting result to Rothermel params (dead fuels only)
+          inputs.rothermel.M_d1   = static_cast<amrex::Real>(precip_state.M_d1);
+          inputs.rothermel.M_d10  = static_cast<amrex::Real>(precip_state.M_d10);
+          inputs.rothermel.M_d100 = static_cast<amrex::Real>(precip_state.M_d100);
+          inputs.rothermel.M_f    = static_cast<amrex::Real>(precip_state.M_d1);
+          // Rebuild fuel table with updated moisture
+          if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
+              std::vector<RothermelComputed> h_table =
+                  build_fuel_rothermel_table(inputs.rothermel,
+                                             inputs.rothermel.landscape_fuel_type);
+              if (!inputs.fuel_adj_file.empty()) {
+                  auto adjs = parse_fuel_adjustment_file(inputs.fuel_adj_file);
+                  apply_fuel_adjustment_to_table(h_table, adjs);
+              }
+              Gpu::copy(Gpu::hostToDevice,
+                        h_table.begin(), h_table.end(),
+                        d_fuel_table.begin());
+          }
+      }
 
       // --- Step 2: Compute surface ROS via selected fire spread model
       // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
@@ -1289,6 +1466,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1305,6 +1483,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1415,6 +1594,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1431,6 +1611,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
+					   "torching_ratio", "crowning_ratio",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
