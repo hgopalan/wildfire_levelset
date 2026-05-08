@@ -114,7 +114,14 @@
 using namespace amrex;
 
 // Number of components in the ecology MultiFab
-constexpr int ECOLOGY_NCOMP = 6;
+// 0 – scorch_height [m]       (Van Wagner 1973)
+// 1 – prob_ignition [-]        (Anderson 1970)
+// 2 – tree_mortality [-]       (Ryan-Reinhardt 1988)
+// 3 – crown_activity [-]       (Van Wagner 1977)
+// 4 – torching_ratio [-]       (Scott & Reinhardt 2001 TI proxy)
+// 5 – crowning_ratio [-]       (Scott & Reinhardt 2001 CI proxy)
+// 6 – energy_release_component [-]  (Deeming et al. 1977 / NFDRS ERC)
+constexpr int ECOLOGY_NCOMP = 7;
 
 // ============================================================================
 // compute_fire_ecology
@@ -123,7 +130,7 @@ constexpr int ECOLOGY_NCOMP = 6;
 //   ecology_mf             - output: ECOLOGY_NCOMP-component MultiFab
 //   fireline_intensity_mf  - input:  Byram fireline intensity [kW/m]
 //   R_mf                   - input:  rate of spread [m/s]
-//   rp                     - Rothermel parameters (provides M_f for P_i)
+//   rp                     - Rothermel parameters (provides M_f for P_i and I_R for ERC)
 //   fep                    - fire ecology parameters
 //   cp                     - crown initiation parameters (CBH, CBD, FMC,
 //                            tree_height for mortality; crown.enable not
@@ -172,6 +179,22 @@ inline void compute_fire_ecology(
                                    CBH + Real(0.1));  // avoid degenerate case
 
     // -----------------------------------------------------------------------
+    // Energy Release Component (ERC) – Deeming et al. (1977) / NFDRS
+    // -----------------------------------------------------------------------
+    // ERC = 0.04 × I_R  [I_R in BTU/ft²/min]
+    // The factor 0.04 is the standard NFDRS conversion constant.
+    // I_R is computed from the global RothermelParams (no-wind, no-slope
+    // reaction intensity).  This gives a site-specific ERC value (0–100)
+    // driven by dead fuel moistures and fuel load.
+    //
+    // Unit conversion: BTU/ft²/min → kW/m²: multiply by 0.18941.
+    // Inverse: kW/m² → BTU/ft²/min: divide by 0.18941.
+    // We compute I_R_BTU directly from the Rothermel precomputed struct.
+    const RothermelComputed rc_erc = compute_rothermel_params(rp);
+    // I_R is stored in RothermelComputed in BTU/ft²/min
+    const Real ERC_global = Real(0.04) * Real(rc_erc.I_R);
+
+    // -----------------------------------------------------------------------
     // GPU-kernel locals (scalars captured by value)
     // -----------------------------------------------------------------------
     for (MFIter mfi(ecology_mf); mfi.isValid(); ++mfi) {
@@ -186,6 +209,7 @@ inline void compute_fire_ecology(
         const Real Rsa  = R_SA;
         const Real Ht   = H_tree;
         const Real Cbh  = CBH;
+        const Real Erc  = ERC_global;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             const Real IB = fi(i, j, k);
@@ -252,6 +276,16 @@ inline void compute_fire_ecology(
             //     < 1.0 → passive crown fire at most
             // ----------------------------------------------------------------
             eco(i, j, k, 5) = Ri / amrex::max(Rsa, Real(1.0e-8));
+
+            // ----------------------------------------------------------------
+            // (6) Energy Release Component (ERC) [-]  -  Deeming et al. (1977)
+            //     ERC = 0.04 × I_R [BTU/ft²/min]
+            //     Typical range: 0 (wet) to ~100 (very dry, heavy fuels).
+            //     Computed from the global Rothermel no-wind/no-slope reaction
+            //     intensity; spatial variation due to per-cell fuel models is
+            //     not yet applied (global scalar written uniformly here).
+            // ----------------------------------------------------------------
+            eco(i, j, k, 6) = Erc;
         });
     }
 }

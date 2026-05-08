@@ -35,6 +35,7 @@
 #include "constants.H"
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "scott_spotting_table.H"
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
@@ -145,7 +146,10 @@ static bool albini_interp_wind(
 //   4. Integrate the 2-D horizontal trajectory forward-Euler until the
 //      particle has descended from H_z to the ground (flight time = H_z /
 //      asp.terminal_velocity).
-//   5. Place a new spot-fire circle in phi at the landing location.
+//   5. Cap the trajectory travel distance against the Scott/Albini (1979)
+//      per-fuel-model maximum spotting distance table (when fuel_model_mf
+//      and fuel_system are provided).
+//   6. Place a new spot-fire circle in phi at the landing location.
 //
 // albini_data (4 components):
 //   0 – lofting height H_z [m] at fire-front source cells
@@ -164,7 +168,9 @@ inline void compute_albini_spotting(
     const Geometry& geom,
     const RothermelParams& rp,
     const InputParameters::AlbiniSpottingParams& asp,
-    int step)
+    int step,
+    const MultiFab* fuel_model_mf  = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system = nullptr)   // "13" or "40" (optional)
 {
     if (asp.enable == 0) {
         return;
@@ -221,14 +227,20 @@ inline void compute_albini_spotting(
         int  i, j;                // grid indices
         Real H_z;                 // Albini lofting height [m]
         Real I_B;                 // Byram fire line intensity [kW/m]
+        int  fuel_model;          // FBFM fuel model code at this cell (0 = unknown)
     };
     std::vector<FrontCell> front_cells;
+
+    const bool has_fm = (fuel_model_mf != nullptr);
 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx   = mfi.validbox();
         auto const p    = phi.const_array(mfi);
         auto const r    = R_mf.const_array(mfi);
         auto       adata = albini_data.array(mfi);
+
+        Array4<const Real> fm_arr;
+        if (has_fm) fm_arr = fuel_model_mf->const_array(mfi);
 
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
@@ -251,9 +263,10 @@ inline void compute_albini_spotting(
                 // Store lofting height diagnostic
                 adata(i, j, 0, 0) = H_z;
 
+                int fm_code = has_fm ? static_cast<int>(fm_arr(i, j, 0)) : 0;
                 Real x = prob_lo[0] + (i + Real(0.5)) * dx[0];
                 Real y = prob_lo[1] + (j + Real(0.5)) * dx[1];
-                front_cells.push_back({x, y, i, j, H_z, I_B});
+                front_cells.push_back({x, y, i, j, H_z, I_B, fm_code});
             }
         }
     }
@@ -273,7 +286,7 @@ inline void compute_albini_spotting(
 
         // Serialise struct fields into flat arrays
         std::vector<Real> fc_x(local_n), fc_y(local_n), fc_Hz(local_n), fc_IB(local_n);
-        std::vector<int>  fc_i(local_n), fc_j(local_n);
+        std::vector<int>  fc_i(local_n), fc_j(local_n), fc_fm(local_n);
         for (int n = 0; n < local_n; ++n) {
             fc_x[n]  = front_cells[n].x;
             fc_y[n]  = front_cells[n].y;
@@ -281,6 +294,7 @@ inline void compute_albini_spotting(
             fc_IB[n] = front_cells[n].I_B;
             fc_i[n]  = front_cells[n].i;
             fc_j[n]  = front_cells[n].j;
+            fc_fm[n] = front_cells[n].fuel_model;
         }
 
         auto allgatherv_real = [&](std::vector<Real>& v) {
@@ -303,12 +317,13 @@ inline void compute_albini_spotting(
         allgatherv_real(fc_x);  allgatherv_real(fc_y);
         allgatherv_real(fc_Hz); allgatherv_real(fc_IB);
         allgatherv_int(fc_i);   allgatherv_int(fc_j);
+        allgatherv_int(fc_fm);
 
         front_cells.clear();
         front_cells.reserve(total);
         for (int n = 0; n < total; ++n) {
             front_cells.push_back({fc_x[n], fc_y[n], fc_i[n], fc_j[n],
-                                   fc_Hz[n], fc_IB[n]});
+                                   fc_Hz[n], fc_IB[n], fc_fm[n]});
         }
     }
 #endif
@@ -382,6 +397,25 @@ inline void compute_albini_spotting(
         // Require the firebrand to have travelled at least one cell width
         if (dist < dx[0]) {
             continue;
+        }
+
+        // ---- Scott/Albini (1979) per-fuel-model maximum spotting distance cap ----
+        // When a fuel model MultiFab is available, look up the table maximum for
+        // the fuel model at the source cell and discard the firebrand if the
+        // integrated distance exceeds it.
+        if (has_fm && fuel_system != nullptr && fc.fuel_model > 0) {
+            float d_max = (*fuel_system == "40")
+                          ? get_max_spot_dist_fbfm40(fc.fuel_model)
+                          : get_max_spot_dist_fbfm13(fc.fuel_model);
+            if (d_max > 0.0f && dist > static_cast<Real>(d_max)) {
+                // Clamp landing position to the cap distance along the same direction
+                Real dir_x = px - fc.x;
+                Real dir_y = py - fc.y;
+                Real inv_dist = Real(1.0) / dist;
+                px = fc.x + dir_x * inv_dist * static_cast<Real>(d_max);
+                py = fc.y + dir_y * inv_dist * static_cast<Real>(d_max);
+                dist = static_cast<Real>(d_max);
+            }
         }
 
         int ic = static_cast<int>(std::floor((px - prob_lo[0]) / dx[0]));

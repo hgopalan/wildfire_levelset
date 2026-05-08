@@ -207,13 +207,19 @@ inline SolarPosition compute_solar_position(
 //
 // Canopy shading (optional): shade_canopy = canopy_cover [%] / 100.
 //
+// Cloud-cover shading (optional): cloud_cover [0,1] uniformly increases the
+// effective shade fraction:
+//   f_total = max(f_terrain_canopy, cloud_cover)
+// When cloud_cover = 1 the entire domain is fully overcast (f = 1 everywhere).
+//
 // Parameters:
-//   shade_mf   – output MultiFab (1 component), filled in-place
-//   slope_mf   – terrain slope [deg] (1 component, FARSITE convention)
-//   aspect_mf  – terrain aspect [deg] (1 component, FARSITE 0=N, CW)
-//   cc_mf      – canopy cover [%] (1 component); nullptr = ignore canopy
-//   sun        – solar position (elevation_rad, azimuth_rad)
-//   use_canopy – 1 to include canopy_cover shading, 0 to ignore
+//   shade_mf     – output MultiFab (1 component), filled in-place
+//   slope_mf     – terrain slope [deg] (1 component, FARSITE convention)
+//   aspect_mf    – terrain aspect [deg] (1 component, FARSITE 0=N, CW)
+//   cc_mf        – canopy cover [%] (1 component); nullptr = ignore canopy
+//   sun          – solar position (elevation_rad, azimuth_rad)
+//   use_canopy   – 1 to include canopy_cover shading, 0 to ignore
+//   cloud_cover  – domain-uniform cloud fraction [0, 1] (default 0 = clear sky)
 // ============================================================================
 inline void compute_shade_fraction_mf(
     MultiFab&           shade_mf,
@@ -221,12 +227,17 @@ inline void compute_shade_fraction_mf(
     const MultiFab&     aspect_mf,
     const MultiFab*     cc_mf,
     const SolarPosition& sun,
-    int                 use_canopy)
+    int                 use_canopy,
+    amrex::Real         cloud_cover = amrex::Real(0.0))
 {
     constexpr amrex::Real DEG2RAD = WildfireConst::PI / amrex::Real(180.0);
 
     const amrex::Real sun_elev = sun.elevation_rad;
     const amrex::Real sun_az   = sun.azimuth_rad;
+
+    // Clamp cloud_cover to [0, 1]
+    const amrex::Real cc_frac = amrex::max(amrex::Real(0.0),
+                                           amrex::min(amrex::Real(1.0), cloud_cover));
 
     // When the sun is at or below the horizon, every cell is fully shaded.
     if (sun_elev <= amrex::Real(0.0)) {
@@ -247,6 +258,8 @@ inline void compute_shade_fraction_mf(
         // Capture canopy cover array only when needed
         Array4<const Real> cc_arr;
         if (has_cc) cc_arr = cc_mf->const_array(mfi);
+
+        const amrex::Real cloud_f = cc_frac;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             amrex::Real slope_deg  = slope (i, j, k);
@@ -273,6 +286,9 @@ inline void compute_shade_fraction_mf(
                 amrex::Real f_canopy = cc_pct / amrex::Real(100.0);
                 f = amrex::max(f, f_canopy);
             }
+
+            // Cloud-cover shading: domain-uniform overcast fraction
+            f = amrex::max(f, cloud_f);
 
             shade(i, j, k) = f;
         });

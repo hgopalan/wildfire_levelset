@@ -18,6 +18,7 @@
 #include "fire_models.H"
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "scott_spotting_table.H"
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
@@ -131,7 +132,9 @@ inline void generate_firebrand_spots(
     const MultiFab &vel,
     const Geometry &geom,
     const InputParameters::SpottingParams &sp,
-    int step)
+    int step,
+    const MultiFab* fuel_model_mf  = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system = nullptr)   // "13" or "40" (optional)
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
@@ -192,6 +195,9 @@ inline void generate_firebrand_spots(
 #if (AMREX_SPACEDIM == 3)
     std::vector<Real> wind_z;
 #endif
+    std::vector<int> src_fuel_model;  // fuel model code at each source cell
+
+    const bool has_fm_sp = (fuel_model_mf != nullptr);
     
     // First pass: collect fire front cells
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
@@ -199,7 +205,10 @@ inline void generate_firebrand_spots(
         auto const p = phi.const_array(mfi);
         auto const spot = spotting_data.const_array(mfi);
         auto const v = vel.const_array(mfi);
-        
+
+        Array4<const Real> fm_arr;
+        if (has_fm_sp) fm_arr = fuel_model_mf->const_array(mfi);
+
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
         
@@ -217,6 +226,8 @@ inline void generate_firebrand_spots(
                         probabilities.push_back(prob);
                         wind_x.push_back(v(i, j, k, 0));
                         wind_y.push_back(v(i, j, k, 1));
+                        src_fuel_model.push_back(has_fm_sp
+                            ? static_cast<int>(fm_arr(i, j, k)) : 0);
 #if (AMREX_SPACEDIM == 3)
                         Real z = prob_lo[2] + (k + 0.5) * gdx[2];
                         zarray.push_back(z);
@@ -259,6 +270,15 @@ inline void generate_firebrand_spots(
         allgatherv_real(zarray);
         allgatherv_real(wind_z);
 #endif
+
+        // allgather fuel model codes (int)
+        {
+            std::vector<int> all_fm(total);
+            MPI_Allgatherv(src_fuel_model.data(), local_n, MPI_INT,
+                           all_fm.data(), counts.data(), displs.data(), MPI_INT,
+                           ParallelDescriptor::Communicator());
+            src_fuel_model = std::move(all_fm);
+        }
     }
 #endif
 
@@ -290,6 +310,20 @@ inline void generate_firebrand_spots(
             // Clamp distance to reasonable bounds
             distance = amrex::min(distance, Real(0.5) * domain_length); // Max 50% of domain
             distance = amrex::max(distance, sp.spot_radius * Real(2.0)); // Min 2x spot radius
+
+            // ---- Scott/Albini (1979) per-fuel-model maximum spotting distance cap ----
+            if (has_fm_sp && fuel_system != nullptr) {
+                int fm_code = (idx < static_cast<int>(src_fuel_model.size()))
+                              ? src_fuel_model[idx] : 0;
+                if (fm_code > 0) {
+                    float d_max = (*fuel_system == "40")
+                                  ? get_max_spot_dist_fbfm40(fm_code)
+                                  : get_max_spot_dist_fbfm13(fm_code);
+                    if (d_max > 0.0f && distance > static_cast<Real>(d_max)) {
+                        distance = static_cast<Real>(d_max);
+                    }
+                }
+            }
             
             // Compute wind direction
             Real wx = wind_x[idx];
