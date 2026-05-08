@@ -1334,3 +1334,131 @@ Performance Issues
 * Increase ``max_grid_size`` for better cache performance
 * Reduce grid resolution if simulation is too slow
 * Use Release build type for optimization
+
+New Physics-Coupling Parameters
+---------------------------------
+
+This section documents input keys that couple fire sub-models (crown fire, fire
+ecology, fuel burnout, fire acceleration, spotting) to the propagation field.
+
+Cruz Crown ROS (Van Wagner + Cruz coupling)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    crown.enable        = 1      # enable crown fire initiation (Van Wagner 1977)
+    crown.CBH           = 4.0    # canopy base height [m]
+    crown.CBD           = 0.15   # canopy bulk density [kg/m³]
+    crown.FMC           = 100.0  # foliar moisture content [%]
+    crown.use_cruz_crown = 1     # 0 = Van Wagner 3/CBD proxy (default)
+                                  # 1 = Cruz, Alexander & Wakimoto (2005)
+                                  #     R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17×MC10)
+    cruz_crown.CBD      = 0.10   # canopy bulk density for Cruz formula [kg/m³]
+    cruz_crown.MC10     = 10.0   # 10-h dead fuel moisture for Cruz formula [%]
+
+Fire Ecology → Propagation Coupling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    fire_ecology.couple_to_ros    = 1     # scale R by P_ignition in unburned cells
+    fire_ecology.p_ignition_floor = 0.05  # minimum P_i used as ROS scale floor
+    fire_ecology.T_a_C            = 25.0  # ambient temperature [°C]
+    fire_ecology.solar_heating_F  = 25.0  # solar temperature increment [°F]
+    fire_ecology.tree_height      = 10.0  # mean stand height [m] for tree mortality
+
+Per-Class Fuel Burnout
+^^^^^^^^^^^^^^^^^^^^^^
+
+The ``farsite.use_bulk_fuel_consumption = 1`` option uses the Albini (1976)
+exponential per-class burnout model:
+
+::
+
+    farsite.use_bulk_fuel_consumption = 1   # enable per-class burnout
+    farsite.tau_residence             = 60.0  # flame residence time [s]
+    farsite.f_consumed_min            = 0.0
+    farsite.f_consumed_max            = 1.0
+
+Burnout time constants: ``τᵢ = 3600 × ρₚ / σᵢ``
+
+* 1-hr (σ ≈ 1739 ft⁻¹): τ ≈ 66 s → ~59% consumed in 60 s
+* 10-hr (σ = 109 ft⁻¹): τ ≈ 1056 s → ~6% consumed in 60 s
+* 100-hr (σ = 30 ft⁻¹): τ ≈ 3840 s → ~2% consumed in 60 s
+
+Per-Cell Canopy-Height WAF
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a binary LCP provides canopy height (``use_spatial_crown = 1``) and
+``rothermel.use_waf = 1``, the Wind Adjustment Factor is computed per-cell::
+
+    h_eff [ft] = (1 − cc) × δ_fuel + cc × h_canopy
+    WAF_cell   = 1.83 / ln((20 + 0.36 × h_eff) / (0.13 × h_eff))
+
+No extra input keys are needed — it activates automatically when both
+``use_spatial_crown = 1`` and ``rothermel.use_waf = 1`` are set.
+
+Passive vs Active Crown Fire (Feature 11)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Crown fire state now correctly distinguishes passive from active:
+
+* **Passive crown** (``I_B ≥ I_o`` but ``R < R'_SA``): fire torches in the canopy
+  intermittently but does not propagate through it. Surface ROS is used;
+  no crown-ROS enhancement is applied.
+* **Active crown** (``I_B ≥ I_o`` AND ``R ≥ R'_SA``): fire propagates
+  continuously through the canopy. Crown ROS (Van Wagner or Cruz) is applied.
+
+The critical active-crown ROS is R'_SA = 3.0/CBD [m/min] = 3.0/CBD/60 [m/s]
+(Van Wagner 1977). No additional inputs are required; the distinction is
+automatic when ``crown.enable = 1``.
+
+Ellipse Scaling for Active Crown Fire (Feature 12)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Active crown fires produce a more elongated fire shape (higher L/W) because
+wind effects on the crown are stronger than on surface fuels. The following
+parameters enable scaling the FARSITE ellipse coefficients when active crown
+fire is detected (backward compatible — off by default)::
+
+    farsite.scale_ellipse_with_crown = 1   # 0 = off (default, backward compat)
+    farsite.crown_lw_scale           = 1.5  # multiplier for L/W when active crown
+
+Albini (1979) Torching-Tree Spotting (Feature 8)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Long-range spotting originating from torching trees (when crown fire is
+present). Triggered by ``crown_activity ≥ min_crown_activity``::
+
+    torching_spotting.enable             = 1     # 1 to enable
+    torching_spotting.k_torch            = 4.24  # d = k × U × sqrt(H_eff) [m]
+    torching_spotting.I_B_min            = 100.0 # minimum I_B [kW/m]
+    torching_spotting.spot_radius        = 5.0   # new spot fire radius [m]
+    torching_spotting.P_base             = 0.05  # probability per torching cell
+    torching_spotting.check_interval     = 5     # check every N steps
+    torching_spotting.min_crown_activity = 1     # 1=passive+active, 2=active-only
+    torching_spotting.random_seed        = 0     # 0 = system time
+
+Persistent Fuel Load Depletion (Feature 9)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Tracks per-cell residual fuel fraction that decays exponentially after fire
+passage: ``f_r = exp(-(t - t_arrive) / tau_burnout)``.
+Written to plotfiles as ``residual_fuel``::
+
+    fuel_depletion.enable        = 1       # 1 to track per-cell fuel depletion
+    fuel_depletion.tau_burnout   = 3600.0  # fine-fuel burnout time constant [s]
+    fuel_depletion.couple_to_ros = 0       # 1 to scale ROS in re-entry cells
+
+Fire Acceleration Model (Feature 10)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Small fires spread slower than their quasi-steady-state ROS. This model
+applies a scaling factor ``α = 1 − exp(−r_fire / L_acc)`` where ``r_fire``
+is the effective fire radius from burned area::
+
+    acceleration.enable = 1      # 1 to enable (default: 0, backward compat)
+    acceleration.L_acc  = 50.0   # acceleration length scale [m]
+
+When ``r_fire ≫ L_acc``, ``α → 1`` and ROS is unchanged (large fires are
+unaffected).

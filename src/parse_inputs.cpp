@@ -201,6 +201,15 @@ void parse_inputs(InputParameters& p)
     p.farsite.tau_residence = 60.0;              pp.query("farsite.tau_residence", p.farsite.tau_residence);
     p.farsite.f_consumed_max = 0.9;              pp.query("farsite.f_consumed_max", p.farsite.f_consumed_max);
     p.farsite.f_consumed_min = 0.5;              pp.query("farsite.f_consumed_min", p.farsite.f_consumed_min);
+
+    // Feature 12: ellipse scaling for active crown fire (default off = backward compatible)
+    p.farsite.scale_ellipse_with_crown = 0;      pp.query("farsite.scale_ellipse_with_crown", p.farsite.scale_ellipse_with_crown);
+    p.farsite.crown_lw_scale = 1.5;              pp.query("farsite.crown_lw_scale", p.farsite.crown_lw_scale);
+    if (p.farsite.scale_ellipse_with_crown == 1) {
+        if (p.farsite.crown_lw_scale <= 0.0)
+            amrex::Abort("farsite.crown_lw_scale must be > 0");
+        Print() << "FARSITE crown ellipse scaling: crown L/W × " << p.farsite.crown_lw_scale << " for active crown fire\n";
+    }
     
     // Validate bulk fuel consumption parameters
     if (p.farsite.use_bulk_fuel_consumption == 1) {
@@ -779,6 +788,50 @@ void parse_inputs(InputParameters& p)
         Print() << "  (final Rothermel params after custom_fuel override)\n";
         Print() << "  w0=" << p.rothermel.w0 << " sigma=" << p.rothermel.sigma
                 << " delta=" << p.rothermel.delta << " M_x=" << p.rothermel.M_x << "\n";
+    }
+
+    // -------- Feature 8: Albini (1979) torching-tree spotting --------
+    p.torching_spotting.enable              = 0;       pp.query("torching_spotting.enable",              p.torching_spotting.enable);
+    p.torching_spotting.k_torch             = 4.24;    pp.query("torching_spotting.k_torch",             p.torching_spotting.k_torch);
+    p.torching_spotting.I_B_min             = 100.0;   pp.query("torching_spotting.I_B_min",             p.torching_spotting.I_B_min);
+    p.torching_spotting.spot_radius         = 5.0;     pp.query("torching_spotting.spot_radius",         p.torching_spotting.spot_radius);
+    p.torching_spotting.P_base              = 0.05;    pp.query("torching_spotting.P_base",              p.torching_spotting.P_base);
+    p.torching_spotting.random_seed         = 0;       pp.query("torching_spotting.random_seed",         p.torching_spotting.random_seed);
+    p.torching_spotting.check_interval      = 5;       pp.query("torching_spotting.check_interval",      p.torching_spotting.check_interval);
+    p.torching_spotting.min_crown_activity  = 1;       pp.query("torching_spotting.min_crown_activity",  p.torching_spotting.min_crown_activity);
+    if (p.torching_spotting.enable == 1) {
+        if (p.torching_spotting.P_base < 0.0 || p.torching_spotting.P_base > 1.0)
+            amrex::Abort("torching_spotting.P_base must be in [0, 1]");
+        if (p.torching_spotting.check_interval < 1)
+            amrex::Abort("torching_spotting.check_interval must be >= 1");
+        if (p.torching_spotting.min_crown_activity < 1 || p.torching_spotting.min_crown_activity > 2)
+            amrex::Abort("torching_spotting.min_crown_activity must be 1 (passive+active) or 2 (active-only)");
+        Print() << "Torching-tree spotting (Albini 1979) enabled:\n";
+        Print() << "  k_torch=" << p.torching_spotting.k_torch
+                << "  I_B_min=" << p.torching_spotting.I_B_min << " kW/m"
+                << "  spot_radius=" << p.torching_spotting.spot_radius << " m"
+                << "  P_base=" << p.torching_spotting.P_base
+                << "  min_crown_activity=" << p.torching_spotting.min_crown_activity << "\n";
+    }
+
+    // -------- Feature 9: Persistent per-cell fuel load depletion --------
+    p.fuel_depletion.enable        = 0;        pp.query("fuel_depletion.enable",        p.fuel_depletion.enable);
+    p.fuel_depletion.tau_burnout   = 3600.0;   pp.query("fuel_depletion.tau_burnout",   p.fuel_depletion.tau_burnout);
+    p.fuel_depletion.couple_to_ros = 0;        pp.query("fuel_depletion.couple_to_ros", p.fuel_depletion.couple_to_ros);
+    if (p.fuel_depletion.enable == 1) {
+        if (p.fuel_depletion.tau_burnout <= 0.0)
+            amrex::Abort("fuel_depletion.tau_burnout must be > 0 s");
+        Print() << "Fuel depletion tracking enabled: tau_burnout=" << p.fuel_depletion.tau_burnout << " s"
+                << (p.fuel_depletion.couple_to_ros == 1 ? "  couple_to_ros=1" : "") << "\n";
+    }
+
+    // -------- Feature 10: Fire acceleration model --------
+    p.acceleration.enable  = 0;       pp.query("acceleration.enable",  p.acceleration.enable);
+    p.acceleration.L_acc   = 50.0;    pp.query("acceleration.L_acc",   p.acceleration.L_acc);
+    if (p.acceleration.enable == 1) {
+        if (p.acceleration.L_acc <= 0.0)
+            amrex::Abort("acceleration.L_acc must be > 0 m");
+        Print() << "Fire acceleration model enabled: L_acc=" << p.acceleration.L_acc << " m\n";
     }
 
 }
