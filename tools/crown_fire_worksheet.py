@@ -15,6 +15,13 @@ worksheet.  Given stand and weather inputs it computes:
   7. Total (surface + crown) ROS             [m/min]
   8. Crowning index (critical wind for active crown fire)  [m/s]
 
+The active crown fire ROS can be computed from two models:
+  * **Van Wagner (1977)** – simplified proxy: R'_SA = 3.0 / CBD  (default)
+  * **Cruz, Alexander & Wakimoto (2005)** – empirical calibrated formula:
+      R = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(−0.17 × MC₁₀)
+    where U₁₀ is the 10-m open wind speed [km/h] and MC₁₀ is the 10-h
+    dead fuel moisture [%].  Use ``--crown-ros-model cruz`` to select.
+
 The worksheet can be swept over a range of wind speeds and/or moisture values
 to produce a tabular output identical in structure to the BehavePlus *Crown
 Fire* module output.
@@ -77,6 +84,10 @@ References
     Research Paper RMRS-RP-29.
   Andrews, P.L. (2018). The Rothermel surface fire spread model and
     associated developments.  USDA Forest Service GTR RMRS-GTR-371.
+  Cruz, M.G., Alexander, M.E., and Wakimoto, R.H. (2005). Development and
+    testing of models for predicting crown fire rate of spread in conifer
+    forest stands.  Canadian Journal of Forest Research, 35(7), 1626–1639.
+    https://doi.org/10.1139/x05-068
 """
 
 from __future__ import annotations
@@ -284,9 +295,44 @@ def active_crown_ros(CBD: float, FMC: float = 100.0) -> float:
     return R_sa * m_factor
 
 
+def cruz_crown_ros(U10_ms: float, CBD: float, MC10_pct: float) -> float:
+    """Compute Cruz, Alexander & Wakimoto (2005) active crown fire ROS.
+
+    Empirical formula calibrated on western North American conifer crown fires:
+
+        R [m/min] = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(−0.17 × MC₁₀)
+
+    where U₁₀ is the 10-m open wind speed [km/h].
+
+    Parameters
+    ----------
+    U10_ms : float
+        10-m open wind speed [m/s].
+    CBD : float
+        Canopy bulk density [kg/m³] (clamped to ≥ 0.01).
+    MC10_pct : float
+        10-h timelag dead fuel moisture content [%] (clamped to ≥ 0).
+
+    Returns
+    -------
+    float
+        Active crown fire ROS [m/min].
+
+    References
+    ----------
+    Cruz, M.G., Alexander, M.E., and Wakimoto, R.H. (2005). "Development and
+    testing of models for predicting crown fire rate of spread in conifer forest
+    stands." *Canadian Journal of Forest Research*, 35(7), 1626–1639.
+    https://doi.org/10.1139/x05-068
+    """
+    CBD = max(CBD, 0.01)
+    MC10_pct = max(MC10_pct, 0.0)
+    U_kmh = max(U10_ms * 3.6, 1.0)  # minimum 1 km/h (model not calibrated at calm)
+    return 11.02 * (U_kmh ** 0.90) * (CBD ** 0.19) * math.exp(-0.17 * MC10_pct)
+
+
 def crown_status_label(I_B_kW: float, R_ros_m_min: float,
                        I_o: float, R_sa: float) -> str:
-    """Return crown fire activity label.
 
     Parameters
     ----------
@@ -375,6 +421,8 @@ def compute_crown_worksheet(
     CBD: float = 0.15,
     FMC: float = 100.0,
     slope_tan: float = 0.0,
+    crown_ros_model: str = "van_wagner",
+    MC10_pct: float = 10.0,
 ) -> List[Dict]:
     """Compute the crown fire assessment worksheet.
 
@@ -401,6 +449,13 @@ def compute_crown_worksheet(
         Foliar moisture content [%] (default: 100).
     slope_tan : float
         Terrain slope as tan(angle) (default: 0.0).
+    crown_ros_model : str
+        Active crown ROS model: ``"van_wagner"`` (default) or ``"cruz"``.
+        * ``"van_wagner"`` – Van Wagner (1977): R'_SA = 3.0/CBD × moisture_factor
+        * ``"cruz"`` – Cruz et al. (2005): R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17×MC10)
+    MC10_pct : float
+        10-h dead fuel moisture [%] for the Cruz model (default: 10.0).
+        Ignored when ``crown_ros_model = "van_wagner"``.
 
     Returns
     -------
@@ -414,8 +469,10 @@ def compute_crown_worksheet(
         )
     _code, name, w0, sigma, delta, M_x = fuel
 
-    I_o   = critical_crown_intensity(CBH, FMC)
-    R_sa  = active_crown_ros(CBD, FMC)        # m/min
+    I_o  = critical_crown_intensity(CBH, FMC)
+    R_sa = active_crown_ros(CBD, FMC)  # Van Wagner critical active ROS [m/min]
+
+    use_cruz = (crown_ros_model.lower() == "cruz")
 
     rows = []
     for U_ms in wind_speeds_ms:
@@ -429,31 +486,39 @@ def compute_crown_worksheet(
             I_B_kW    = res["I_B"]   * _BTU_FT_S_TO_KW_M        # kW/m
             L_f_m     = res["L_f"]   * 0.3048                    # m
             status    = crown_status_label(I_B_kW, R_surf, I_o, R_sa)
-            R_crown   = active_crown_ros(CBD, FMC)               # m/min
+
+            # Active crown ROS: Van Wagner proxy or Cruz et al. (2005)
+            if use_cruz:
+                R_crown = cruz_crown_ros(U_ms, CBD, MC10_pct)    # m/min
+            else:
+                R_crown = active_crown_ros(CBD, FMC)             # m/min
+
             R_total   = max(R_surf, R_crown) if status == "active" else R_surf
             cf        = (R_crown / (R_crown + R_surf)
                          if status == "active" and (R_crown + R_surf) > 0 else 0.0)
             CI        = crowning_index(w0, sigma, delta, M_f, M_x, I_o, slope_tan)
 
             rows.append({
-                "fuel_code":      fuel_code,
-                "fuel_name":      name,
-                "wind_m_s":       round(U_ms, 3),
-                "moisture_pct":   round(M_f * 100.0, 1),
-                "slope_deg":      round(math.degrees(math.atan(slope_tan)), 1),
-                "CBH_m":          round(CBH, 2),
-                "CBD_kgm3":       round(CBD, 4),
-                "FMC_pct":        round(FMC, 1),
-                "I_o_kW_m":       round(I_o, 2),
-                "R_sa_m_min":     round(R_sa, 3),
-                "R_surf_m_min":   round(R_surf, 4),
-                "I_B_kW_m":       round(I_B_kW, 3),
-                "L_f_m":          round(L_f_m, 3),
-                "crown_status":   status,
-                "R_crown_m_min":  round(R_crown, 3),
-                "crown_fraction": round(cf, 4),
-                "R_total_m_min":  round(R_total, 4),
-                "CI_m_s":         round(CI, 3),
+                "fuel_code":        fuel_code,
+                "fuel_name":        name,
+                "wind_m_s":         round(U_ms, 3),
+                "moisture_pct":     round(M_f * 100.0, 1),
+                "slope_deg":        round(math.degrees(math.atan(slope_tan)), 1),
+                "CBH_m":            round(CBH, 2),
+                "CBD_kgm3":         round(CBD, 4),
+                "FMC_pct":          round(FMC, 1),
+                "MC10_pct":         round(MC10_pct, 1),
+                "crown_ros_model":  "cruz" if use_cruz else "van_wagner",
+                "I_o_kW_m":         round(I_o, 2),
+                "R_sa_m_min":       round(R_sa, 3),
+                "R_surf_m_min":     round(R_surf, 4),
+                "I_B_kW_m":         round(I_B_kW, 3),
+                "L_f_m":            round(L_f_m, 3),
+                "crown_status":     status,
+                "R_crown_m_min":    round(R_crown, 3),
+                "crown_fraction":   round(cf, 4),
+                "R_total_m_min":    round(R_total, 4),
+                "CI_m_s":           round(CI, 3),
             })
     return rows
 
@@ -669,6 +734,13 @@ def main(argv=None):
                         help="Save heatmap PNG (requires matplotlib + numpy)")
     parser.add_argument("--plot-out",     default="crown_fire_worksheet_heatmap.png",
                         help="Heatmap PNG path (default: crown_fire_worksheet_heatmap.png)")
+    # --- Cruz crown ROS ---
+    parser.add_argument("--crown-ros-model", default="van_wagner",
+                        choices=["van_wagner", "cruz"],
+                        help="Active crown fire ROS model: 'van_wagner' (default) or 'cruz' "
+                             "(Cruz, Alexander & Wakimoto 2005)")
+    parser.add_argument("--mc10",         type=float, default=10.0,
+                        help="10-h dead fuel moisture [%%] for Cruz model (default: 10.0)")
 
     args = parser.parse_args(argv)
 
@@ -694,6 +766,8 @@ def main(argv=None):
 
     print(f"Fuel model:  FM{args.fuel_model} – {fuel[1]}  (FBFM{args.fuel_system})")
     print(f"Canopy:      CBH={args.cbh} m   CBD={args.cbd} kg/m³   FMC={args.fmc}%")
+    print(f"Crown ROS model: {args.crown_ros_model}"
+          + (f"  MC10={args.mc10}%" if args.crown_ros_model == "cruz" else ""))
     print(f"Critical I_o = {I_o:.1f} kW/m")
     print(f"Critical R'_SA = {R_sa:.2f} m/min")
     print(f"Wind speeds: {len(winds)} steps  [{args.wind_min:.1f} – {args.wind_max:.1f} m/s]")
@@ -702,6 +776,7 @@ def main(argv=None):
     rows = compute_crown_worksheet(
         args.fuel_model, args.fuel_system, winds, moist,
         CBH=args.cbh, CBD=args.cbd, FMC=args.fmc, slope_tan=args.slope,
+        crown_ros_model=args.crown_ros_model, MC10_pct=args.mc10,
     )
 
     print_crown_worksheet(rows)

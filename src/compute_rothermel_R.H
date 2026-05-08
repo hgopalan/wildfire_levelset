@@ -34,7 +34,8 @@ inline void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab* fuel_model_mf = nullptr,
                                 const RothermelComputed* fuel_table = nullptr,
                                 int fuel_table_size = 0,
-                                const MultiFab* canopy_cover_mf = nullptr)
+                                const MultiFab* canopy_cover_mf = nullptr,
+                                const MultiFab* canopy_height_mf = nullptr)
 {
     // Compute Rothermel (1972) fire spread parameters (global default)
     const RothermelComputed rc = compute_rothermel_params(rp);
@@ -51,18 +52,25 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     const Real U_max_default    = rc.U_max_ftmin;
     const int  use_waf_flag     = rp.use_waf;
     const int  use_wind_limit_flag = rp.use_wind_limit;
+    // Global fuel bed depth [ft] used as WAF baseline when no canopy height is available
+    const Real delta_ft_global = rp.delta;
 
     const bool use_fuel_table = (fuel_model_mf != nullptr &&
                                   fuel_table != nullptr &&
                                   fuel_table_size > 0);
 
-    // Per-cell canopy-cover-weighted WAF (Item 4):
-    // When canopy_cover_mf is provided and use_waf = 1, the WAF is modulated
-    // by the local canopy cover fraction:
-    //   waf_cell = 1.0 - (cc/100) * (1.0 - waf_fuel)
-    // cc = 0%  → waf_cell = 1.0 (open, no wind reduction)
-    // cc = 100% → waf_cell = waf_fuel (fully sheltered, full reduction)
-    const bool use_cc_waf = (canopy_cover_mf != nullptr && use_waf_flag == 1);
+    // Per-cell canopy WAF:
+    // When canopy_height_mf is provided and use_waf = 1, the effective midflame
+    // wind height is blended from the fuel-bed depth (open areas) and the
+    // canopy height (covered areas) using the local canopy cover fraction:
+    //   h_eff [ft] = (1 - cc) * delta_ft + cc * canopy_height_ft
+    //   waf_cell = 1.83 / ln((20 + 0.36*h_eff) / (0.13*h_eff))
+    // This replaces the previous two-step approach (global WAF + cover weighting)
+    // with a single, continuous per-cell WAF that responds to actual canopy height.
+    // When canopy_height_mf is absent but canopy_cover_mf is present the old
+    // blending formula is retained as a fallback.
+    const bool use_canopy_ht_waf = (canopy_height_mf != nullptr && canopy_cover_mf != nullptr && use_waf_flag == 1);
+    const bool use_cc_waf        = (!use_canopy_ht_waf && canopy_cover_mf != nullptr && use_waf_flag == 1);
 
     // Compute the domain-mean wind components so that extreme wind-speed cells
     // (> 25 m/s) can be replaced with the global mean of the flow field rather
@@ -90,11 +98,24 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             fm = fuel_model_mf->const_array(mfi);
         }
 
-        // Get per-cell canopy cover for WAF weighting (if provided)
+        // Get per-cell canopy cover and height arrays for per-cell WAF
+        // Safety invariant: cht_arr (and cc_arr) are accessed in the GPU kernel
+        // only when use_canopy_ht_waf (or use_cc_waf) is true.  These booleans
+        // are evaluated before the MFIter loop and captured by value in the
+        // ParallelFor lambda; when true, the Array4 is always initialized here
+        // before the kernel is launched.  Default-constructed Array4 (null-pointer
+        // state) is never dereferenced because the same boolean guards both the
+        // host assignment and the device access path.
         Array4<const Real> cc_arr;
-        if (use_cc_waf) {
+        if (use_cc_waf || use_canopy_ht_waf) {
             cc_arr = canopy_cover_mf->const_array(mfi);
         }
+        Array4<const Real> cht_arr;
+        if (use_canopy_ht_waf) {
+            cht_arr = canopy_height_mf->const_array(mfi);
+        }
+
+        const Real delta_ft = delta_ft_global;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // Horizontal wind components
@@ -137,16 +158,26 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             // Wind speed in ft/min (Rothermel units)
             Real U_ftmin = std::sqrt(ux*ux + uy*uy) * wind_conv;
 
-            // Apply Wind Adjustment Factor if enabled (Andrews 2018):
-            // converts 20-ft open wind to midflame height wind.
-            // When canopy_cover_mf is supplied, blend per-cell:
-            //   waf_cell = 1 - (cc/100) * (1 - waf_fuel)
+            // Apply Wind Adjustment Factor if enabled (Andrews 2018)
             if (use_waf_flag == 1) {
-                Real waf_cell = cell_waf;
-                if (use_cc_waf) {
-                    Real cc_frac = amrex::max(Real(0.0),
-                                  amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+                Real waf_cell;
+                if (use_canopy_ht_waf) {
+                    // Per-cell WAF from blended fuel-bed + canopy height.
+                    // h_eff [ft] = (1-cc) * delta_ft + cc * canopy_height_ft
+                    // Canopy height from LCP is stored in metres; convert to ft.
+                    const Real cc_frac = amrex::max(Real(0.0),
+                                         amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+                    const Real canopy_ht_ft = cht_arr(i,j,k) / Real(0.3048); // m → ft
+                    const Real h_eff = (Real(1.0) - cc_frac) * delta_ft
+                                      + cc_frac * amrex::max(canopy_ht_ft, delta_ft);
+                    waf_cell = compute_waf_unsheltered(h_eff);
+                } else if (use_cc_waf) {
+                    // Fallback: global WAF blended with canopy-cover fraction
+                    const Real cc_frac = amrex::max(Real(0.0),
+                                         amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
                     waf_cell = Real(1.0) - cc_frac * (Real(1.0) - cell_waf);
+                } else {
+                    waf_cell = cell_waf;
                 }
                 U_ftmin *= waf_cell;
             }

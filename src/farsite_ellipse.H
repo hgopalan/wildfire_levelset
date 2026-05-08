@@ -29,6 +29,7 @@
 #include "rothermel_model.H"
 #include "bulk_fuel_consumption.H"
 #include "crown_initiation.H"
+#include "cruz_crown_model.H"
 #include <AMReX.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_GpuLaunch.H>
@@ -45,8 +46,12 @@ constexpr Real PHI_RESET_MULTIPLIER = -1.0;
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
 // combined with Rothermel (1972) ROS
-// Optionally applies Van Wagner (1977) crown fire initiation
-// Optionally computes bulk fuel consumption fraction if enabled
+// Optionally applies Van Wagner (1977) crown fire initiation with either
+//   Van Wagner 3/CBD proxy (use_cruz_crown=0) or Cruz et al. (2005) active
+//   crown ROS (use_cruz_crown=1, requires ccc to be pre-computed).
+// Optionally computes per-class fuel consumption fraction if enabled.
+// Optionally computes per-cell WAF from canopy height when canopy_height_mf
+//   is provided (replaces global WAF + cover-weighted blending).
 // ============================================================================
 inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    MultiFab &farsite_spread,
@@ -57,8 +62,11 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    const MultiFab *slopes = nullptr,
                                    MultiFab *fuel_consumption = nullptr,
                                    MultiFab *crown_fire_fraction = nullptr,
-                                   const MultiFab *canopy_cover_mf = nullptr) {
+                                   const MultiFab *canopy_cover_mf = nullptr,
+                                   const MultiFab *canopy_height_mf = nullptr,
+                                   const CruzCrownComputed *ccc = nullptr) {
   // (FARSITE is always active when propagation_method = farsite; guard removed)
+
 
   const auto dx = geom.CellSize();
 #if (AMREX_SPACEDIM == 3)
@@ -113,14 +121,37 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const int  use_waf_flag        = rp.use_waf;
   const int  use_wind_limit_flag = rp.use_wind_limit;
 
-  // Per-cell canopy-cover WAF flag
-  const bool use_cc_waf = (canopy_cover_mf != nullptr && use_waf_flag == 1);
+  // Per-cell canopy WAF flag
+  const bool use_canopy_ht_waf = (canopy_height_mf != nullptr && canopy_cover_mf != nullptr && use_waf_flag == 1);
+  const bool use_cc_waf        = (!use_canopy_ht_waf && canopy_cover_mf != nullptr && use_waf_flag == 1);
+  // Global fuel-bed depth [ft] for WAF baseline
+  const Real delta_ft_global = rp.delta;
+  
+  // Cruz crown ROS: enabled when ccc pointer is non-null and crown.use_cruz_crown = 1
+  const int use_cruz_crown_flag = cp.use_cruz_crown;
+  const bool have_cruz = (ccc != nullptr && use_cruz_crown_flag == 1);
+  // Copy CruzCrownComputed scalars by value only when Cruz model is active,
+  // so the GPU kernel captures a plain struct (no host pointer indirection).
+  CruzCrownComputed ccc_local;
+  if (have_cruz) { ccc_local = *ccc; }
   
   // Bulk fuel consumption model parameters
   const int use_fuel_consumption = fp.use_bulk_fuel_consumption;
   const Real tau_residence = fp.tau_residence;
   const Real f_c_min = fp.f_consumed_min;
   const Real f_c_max = fp.f_consumed_max;
+  // Per-class fuel load and SAV scalars for per-class burnout model
+  const Real rp_w_d1    = rp.w_d1;
+  const Real rp_sigma_d1= rp.sigma_d1;
+  const Real rp_w_d10   = rp.w_d10;
+  const Real rp_w_d100  = rp.w_d100;
+  const Real rp_w_lh    = rp.w_lh;
+  const Real rp_sigma_lh= rp.sigma_lh;
+  const Real rp_w_lw    = rp.w_lw;
+  const Real rp_sigma_lw= rp.sigma_lw;
+  const Real rp_w0      = rp.w0;
+  const Real rp_sigma   = rp.sigma;
+  const Real rp_rho_p   = rp.rho_p;
   
   // Crown fire initiation model parameters
   const int use_crown_initiation = cp.enable;
@@ -166,10 +197,18 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       cff = crown_fire_fraction->array(mfi);
     }
 
-    // Get canopy cover array for per-cell WAF (if provided)
+    // Get canopy cover and height arrays for per-cell WAF (if provided).
+    // Safety invariant: cht_arr is only dereferenced in the GPU kernel when
+    // use_canopy_ht_waf is true (a const bool captured by value).  That same
+    // bool gates the initialization below, so cht_arr is never read in a
+    // default-constructed (null-pointer) state.
     Array4<const Real> cc_arr;
-    if (use_cc_waf) {
+    if (use_cc_waf || use_canopy_ht_waf) {
       cc_arr = canopy_cover_mf->const_array(mfi);
+    }
+    Array4<const Real> cht_arr;
+    if (use_canopy_ht_waf) {
+      cht_arr = canopy_height_mf->const_array(mfi);
     }
 
     ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -233,14 +272,24 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 
       // Apply Wind Adjustment Factor if enabled (Andrews 2018):
       // converts 20-ft open wind to midflame height wind.
-      // When canopy_cover_mf is supplied, blend per-cell:
-      //   waf_cell = 1 - (cc/100) * (1 - waf_global)
+      // When canopy_height_mf is supplied: compute per-cell WAF from blended
+      //   fuel-bed depth (open) + canopy height (covered areas).
+      // When only canopy_cover_mf is supplied: blend global WAF with cover fraction.
       if (use_waf_flag == 1) {
-          Real waf_cell = waf_default;
-          if (use_cc_waf) {
+          Real waf_cell;
+          if (use_canopy_ht_waf) {
+              const Real cc_frac = amrex::max(Real(0.0),
+                                   amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+              const Real canopy_ht_ft = cht_arr(i,j,k) / Real(0.3048); // m → ft
+              const Real h_eff = (Real(1.0) - cc_frac) * delta_ft_global
+                                + cc_frac * amrex::max(canopy_ht_ft, delta_ft_global);
+              waf_cell = compute_waf_unsheltered(h_eff);
+          } else if (use_cc_waf) {
               Real cc_frac = amrex::max(Real(0.0),
-                            amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
+                             amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
               waf_cell = Real(1.0) - cc_frac * (Real(1.0) - waf_default);
+          } else {
+              waf_cell = waf_default;
           }
           U_ftmin *= waf_cell;
       }
@@ -288,13 +337,21 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
         bool crown_initiated = will_crown_initiate(I_B, I_o);
         
         if (crown_initiated) {
-          // Compute crown fire spread rate [m/min]
-          Real R_crown_mmin = compute_crown_fire_spread_rate(CBD, FMC);
-          
-          // Convert to simulation units (assuming ros_conv is for ft/min to sim units)
-          // Need to convert m/min to ft/min first: 1 m = 3.28084 ft
-          Real R_crown_ftmin = R_crown_mmin * Real(3.28084);
-          Real R_crown = R_crown_ftmin * ros_conv;
+          // Compute active crown fire spread rate [m/s].
+          // Route to Cruz et al. (2005) when use_cruz_crown = 1; otherwise
+          // use the Van Wagner 3/CBD proxy.
+          Real R_crown;
+          if (have_cruz) {
+            // Cruz, Alexander & Wakimoto (2005): R = 11.02 * U10^0.90 * CBD^0.19 * exp(-0.17*MC10)
+            // wind_mag here is in simulation units (m/s)
+            R_crown = cruz_crown_ros(ccc_local, wind_mag);  // already in m/s
+          } else {
+            // Van Wagner (1977) simplified proxy: R_crown [m/min] = 3.0 / CBD * moisture_factor
+            Real R_crown_mmin = compute_crown_fire_spread_rate(CBD, FMC);
+            // Convert to simulation units (assuming ros_conv is for ft/min → sim units)
+            Real R_crown_ftmin = R_crown_mmin * Real(3.28084);
+            R_crown = R_crown_ftmin * ros_conv;
+          }
           
           // Compute combined rate (crown fire dominates)
           R_head = compute_total_spread_rate(R_surface, R_crown, crown_initiated, crown_fraction_weight);
@@ -378,7 +435,16 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 
       // Compute fuel consumption fraction if enabled
       if (compute_fuel_consumption) {
-        Real f_c = compute_fuel_consumption_fraction(I_R, tau_residence, f_c_min, f_c_max);
+        // Per-class exponential burnout model (Albini 1976):
+        //   f_c_i = 1 - exp(-tau_res / tau_i)  where tau_i = BURNOUT_ALPHA * rho_p / sigma_i
+        // Falls back to single-class (using aggregate sigma) when per-class loads are zero.
+        Real f_c = compute_per_class_fuel_consumption_frac(
+            tau_residence,
+            rp_w_d1, rp_sigma_d1, rp_w_d10, rp_w_d100,
+            rp_w_lh, rp_sigma_lh, rp_w_lw, rp_sigma_lw,
+            rp_w0, rp_sigma, rp_rho_p);
+        // Clamp to user-specified bounds
+        f_c = amrex::max(f_c_min, amrex::min(f_c_max, f_c));
         fc(i, j, k) = f_c;
       }
       

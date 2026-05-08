@@ -134,6 +134,11 @@ struct InputParameters {
         amrex::Real FMC;                     // Foliar moisture content [%] (default: 100.0)
         amrex::Real crown_fraction_weight;   // Crown fire weighting factor (0-2) (default: 1.0)
         int use_metric_units;                // 1 for metric (m, kW), 0 for imperial (ft, BTU) (default: 1)
+        // Active crown fire ROS model selection:
+        //   0 – Van Wagner (1977) proxy: R_crown = 3.0 / CBD * moisture_factor [m/min] (default)
+        //   1 – Cruz, Alexander & Wakimoto (2005): R = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(-0.17 × MC₁₀)
+        //       Uses cruz_crown.CBD and cruz_crown.MC10 for canopy/moisture inputs.
+        int use_cruz_crown;                  // 1 = Cruz et al. (2005) active crown ROS (default: 0)
     } crown;
     
     // Cheney & Gould (1995) / Cheney, Gould & Catchpole (1998) grassland fire
@@ -299,6 +304,12 @@ struct InputParameters {
         amrex::Real T_a_C;           // ambient temperature [°C] for scorch height / P_i (default: 25.0)
         amrex::Real solar_heating_F; // solar temperature increment [°F] added to fuel temp for P_i (default: 25.0)
         amrex::Real tree_height;     // mean stand height [m] for tree mortality (default: 10.0)
+        // When couple_to_ros = 1, the computed probability-of-ignition (P_i) is used to
+        // scale R_mf before advection: R_eff = R * max(P_i, p_i_floor).
+        // This makes fire spread slower through wet or cold fuel where sustained ignition
+        // is less likely (Anderson 1970 / Rothermel 1983 coupling).
+        int couple_to_ros;           // 1 to scale R_mf by P_ignition (default: 0)
+        amrex::Real p_ignition_floor;// minimum P_i used as a floor when scaling ROS (default: 0.05)
     } fire_ecology;
 
     // Fire emissions (CO₂, CO, PM₂.₅) computed from fuel consumption

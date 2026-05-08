@@ -101,6 +101,49 @@ bool will_crown_initiate(
 }
 
 // ============================================================================
+// Cruz, Alexander & Wakimoto (2005) active crown fire rate of spread
+// ============================================================================
+// Device-inline version that can be called from within the FARSITE GPU kernel
+// and from the levelset crown-override loop in main.cpp.
+//
+// Formula: R [m/min] = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(−0.17 × MC₁₀)
+// Returns ROS in m/s.
+//
+// Parameters:
+//   wind_speed_ms – local 10-m open wind speed [m/s]
+//   CBD_kgm3      – canopy bulk density [kg/m³]
+//   MC10_pct      – 10-h dead fuel moisture content [%]
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_crown_fire_spread_rate_cruz(
+    amrex::Real wind_speed_ms,
+    amrex::Real CBD_kgm3,
+    amrex::Real MC10_pct) noexcept
+{
+    using namespace amrex;
+
+    constexpr Real A_LEAD  = WildfireConst::CRUZ_A_LEAD;   // 11.02
+    constexpr Real CBD_EXP = WildfireConst::CRUZ_CBD_EXP;  // 0.19
+    constexpr Real MC_COEF = WildfireConst::CRUZ_MC_COEFF; // 0.17
+    constexpr Real W_EXP   = WildfireConst::CRUZ_WIND_EXP; // 0.90
+
+    // Clamp inputs to physically valid ranges
+    const Real CBD  = amrex::max(CBD_kgm3,     Real(0.01));
+    const Real MC10 = amrex::max(MC10_pct,     Real(0.0));
+    // Convert m/s → km/h; enforce minimum 1 km/h (model not calibrated at calm)
+    const Real U_kmh = amrex::max(wind_speed_ms * Real(3.6), Real(1.0));
+
+    // R [m/min] = 11.02 * U^0.90 * CBD^0.19 * exp(-0.17 * MC10)
+    const Real R_mmin = A_LEAD
+                       * std::pow(U_kmh, W_EXP)
+                       * std::pow(CBD,   CBD_EXP)
+                       * std::exp(-MC_COEF * MC10);
+
+    // Convert m/min → m/s
+    return amrex::max(R_mmin / Real(60.0), Real(0.0));
+}
+
+// ============================================================================
 // Compute active crown fire rate of spread
 // ============================================================================
 // Van Wagner (1977) model for active crown fire spread rate based on

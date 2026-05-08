@@ -252,6 +252,7 @@ void parse_inputs(InputParameters& p)
     p.crown.FMC = 100.0;                         pp.query("crown.FMC", p.crown.FMC);
     p.crown.crown_fraction_weight = 1.0;         pp.query("crown.crown_fraction_weight", p.crown.crown_fraction_weight);
     p.crown.use_metric_units = 1;                pp.query("crown.use_metric_units", p.crown.use_metric_units);
+    p.crown.use_cruz_crown = 0;                  pp.query("crown.use_cruz_crown", p.crown.use_cruz_crown);
     
     // Validate crown fire parameters
     if (p.crown.enable == 1) {
@@ -266,6 +267,9 @@ void parse_inputs(InputParameters& p)
         }
         if (p.crown.crown_fraction_weight < 0.0 || p.crown.crown_fraction_weight > 2.0) {
             amrex::Abort("crown.crown_fraction_weight must be between 0.0 and 2.0");
+        }
+        if (p.crown.use_cruz_crown == 1) {
+            Print() << "Crown fire: active ROS model = Cruz, Alexander & Wakimoto (2005)\n";
         }
     }
 
@@ -682,8 +686,12 @@ void parse_inputs(InputParameters& p)
     p.fire_ecology.T_a_C           = 25.0;   pp.query("fire_ecology.T_a_C",           p.fire_ecology.T_a_C);
     p.fire_ecology.solar_heating_F = 25.0;   pp.query("fire_ecology.solar_heating_F", p.fire_ecology.solar_heating_F);
     p.fire_ecology.tree_height     = 10.0;   pp.query("fire_ecology.tree_height",     p.fire_ecology.tree_height);
+    p.fire_ecology.couple_to_ros   = 0;      pp.query("fire_ecology.couple_to_ros",   p.fire_ecology.couple_to_ros);
+    p.fire_ecology.p_ignition_floor = 0.05;  pp.query("fire_ecology.p_ignition_floor", p.fire_ecology.p_ignition_floor);
     if (p.fire_ecology.tree_height <= 0.0)
         amrex::Abort("fire_ecology.tree_height must be > 0 m");
+    if (p.fire_ecology.p_ignition_floor < 0.0 || p.fire_ecology.p_ignition_floor > 1.0)
+        amrex::Abort("fire_ecology.p_ignition_floor must be in [0, 1]");
 
     // -------- Fire emissions (CO2, CO, PM2.5) --------
     // Emission factors from Seiler & Crutzen (1980) / WRF-Fire defaults.

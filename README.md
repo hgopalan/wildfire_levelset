@@ -60,8 +60,11 @@ The documentation includes:
 - **GIS output**: plotfile → GeoTIFF rasters and GeoJSON perimeter contours
 - **Ensemble burn probability** – FSPro-style LHS/random driver with optional MPI parallelism
 - **Stochastic and physics-based (Albini 1983) firebrand spotting**
-- **Crown fire initiation** (Van Wagner 1977) and **bulk fuel consumption**
-- **Multi-point ignition** from a CSV file
+- **Crown fire initiation** (Van Wagner 1977) coupled to **Cruz, Alexander & Wakimoto (2005) active crown ROS** — the active crown fire spread rate can be computed from the validated empirical formula `R = 11.02 × U₁₀^0.90 × CBD^0.19 × exp(−0.17 × MC₁₀)` (set `crown.use_cruz_crown = 1`)
+- **Fire ecology diagnostics** (scorch height, probability of ignition, tree mortality, crown activity) **coupled to propagation** — probability of ignition scales R_mf in unburned cells when `fire_ecology.couple_to_ros = 1` (Anderson 1970 / Rothermel 1983)
+- **Per-class exponential fuel burnout** (Albini 1976) — replaces the sigmoid proxy with per-size-class time constants (`τᵢ = BURNOUT_ALPHA × ρₚ / σᵢ`): 1-hr fine fuel ≈59%, 10-hr ≈6%, 100-hr ≈2% consumed in a 60-second flame residence
+- **Per-cell canopy-height WAF** — Wind Adjustment Factor computed from a blended effective height `h_eff = (1−cc) × δ_fuel + cc × h_canopy` when `canopy_height_mf` is available from a binary LCP file (replaces the previous two-step global WAF + cover-fraction blend)
+- **Bulk fuel consumption** and **multi-point ignition** from a CSV file
 - **2D and 3D** simulation capabilities; **Embedded Boundary (EB)** support
 - **AMReX-based** with GPU-ready kernels (CUDA/HIP/SYCL) and optional MPI parallelism
 
@@ -175,11 +178,65 @@ See the 📚 [full documentation](https://hgopalan.github.io/wildfire_levelset/t
 
 3. **Terrain** — Per-cell slope/aspect from FARSITE `.lcp` or XYZ files. True 3-D terrain geometry for 3-D simulations is not yet supported.
 
-4. **Physical sub-models** — Crown fire uses Van Wagner (1977) empirical criteria; no mechanistic crown spread. Firebrand transport is stochastic or Albini 2-D; no full 3-D plume. No radiation/convective heat transfer or post-frontal smouldering.
+4. **Physical sub-models** — Crown fire uses Van Wagner (1977) empirical criteria with optional Cruz et al. (2005) active crown ROS. Firebrand transport is stochastic or Albini 2-D; no full 3-D plume. No radiation/convective heat transfer or post-frontal smouldering.
 
 5. **Parallel execution** — GPU via AMReX `ParallelFor`; some paths (spotting, landscape I/O) have serial CPU fallbacks. MPI decomposition provided by AMReX.
 
 6. **Validation** — Limited validation against real wildfire events; parameters calibrated to standard fuel models.
+
+## New Physics-Coupling Parameters (v2.x)
+
+The following new input keys were added to couple fire ecology diagnostics and crown fire ROS to the propagation field:
+
+### Cruz Crown ROS (Van Wagner + Cruz coupling)
+```
+crown.enable        = 1      # enable crown fire initiation (Van Wagner 1977)
+crown.CBH           = 4.0    # canopy base height [m]
+crown.CBD           = 0.15   # canopy bulk density [kg/m³]
+crown.FMC           = 100.0  # foliar moisture content [%]
+crown.use_cruz_crown = 1     # 0 = Van Wagner 3/CBD proxy (default)
+                              # 1 = Cruz, Alexander & Wakimoto (2005)
+                              #     R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17×MC10)
+                              # Requires: cruz_crown.CBD and cruz_crown.MC10
+cruz_crown.CBD      = 0.10   # canopy bulk density for Cruz formula [kg/m³]
+cruz_crown.MC10     = 10.0   # 10-h dead fuel moisture for Cruz formula [%]
+```
+
+### Fire Ecology → Propagation Coupling
+```
+fire_ecology.couple_to_ros    = 1     # 1 = scale R by P_ignition in unburned cells
+fire_ecology.p_ignition_floor = 0.05  # minimum P_i used as ROS scale floor (prevents quenching)
+fire_ecology.T_a_C            = 25.0  # ambient temperature [°C] for P_ignition
+fire_ecology.solar_heating_F  = 25.0  # solar temperature increment [°F]
+fire_ecology.tree_height      = 10.0  # mean stand height [m] for tree mortality
+```
+
+### Per-Class Fuel Burnout
+The `farsite.use_bulk_fuel_consumption = 1` option now uses the Albini (1976)
+exponential per-class burnout model instead of the old tanh sigmoid:
+
+```
+farsite.use_bulk_fuel_consumption = 1  # enable per-class burnout
+farsite.tau_residence             = 60.0  # flame residence time [s]
+farsite.f_consumed_min            = 0.0   # clamped lower bound
+farsite.f_consumed_max            = 1.0   # clamped upper bound
+```
+
+Burnout time constants: `τᵢ = 3600 × ρₚ / σᵢ`
+- 1-hr (σ ≈ 1739 ft⁻¹): τ ≈ 66 s → ~59% consumed in 60 s
+- 10-hr (σ = 109 ft⁻¹): τ ≈ 1056 s → ~6% consumed in 60 s
+- 100-hr (σ = 30 ft⁻¹): τ ≈ 3840 s → ~2% consumed in 60 s
+
+### Per-Cell Canopy-Height WAF
+When a binary LCP provides canopy height (`use_spatial_crown = 1`) and
+`rothermel.use_waf = 1`, the Wind Adjustment Factor is computed per-cell
+from a blended effective height rather than the global fuel-bed depth:
+```
+h_eff [ft] = (1 − cc) × δ_fuel + cc × h_canopy
+WAF_cell   = 1.83 / ln((20 + 0.36 × h_eff) / (0.13 × h_eff))
+```
+No extra input keys are needed — it activates automatically when both
+`use_spatial_crown = 1` and `rothermel.use_waf = 1` are set.
 
 ## Comparison with Other Wildfire Simulation Tools
 

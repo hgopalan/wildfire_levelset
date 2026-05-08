@@ -115,6 +115,26 @@ inline constexpr amrex::Real WB_WHIRL_R_MIN = amrex::Real(0.01);
 // Cruz, Alexander & Wakimoto (2005) crown fire model constants
 // ============================================================================
 
+// ============================================================================
+// Per-class exponential fuel burnout model (Albini 1976)
+// ============================================================================
+
+/// Particle burnout time-constant coefficient [s·ft⁻¹/(lb/ft³)].
+/// tau_i [s] = BURNOUT_ALPHA * rho_p [lb/ft³] / sigma_i [ft⁻¹]
+/// Calibrated so that 1-hr fine fuel (sigma ≈ 1739 ft⁻¹, rho_p = 32 lb/ft³)
+/// has tau ≈ 66 s, and 100-hr fuel (sigma = 30 ft⁻¹) has tau ≈ 3840 s.
+inline constexpr amrex::Real BURNOUT_ALPHA = amrex::Real(3600.0);
+
+/// Live-fuel burnout time-constant multiplier relative to 10-hr dead fuel.
+/// Live herbaceous burns roughly as fast as 10-hr dead under fire conditions;
+/// live woody burns roughly as fast as 100-hr dead.
+inline constexpr amrex::Real BURNOUT_LIVE_HERB_MULT = amrex::Real(1.0);   // herb ≈ 10-hr
+inline constexpr amrex::Real BURNOUT_LIVE_WOOD_MULT = amrex::Real(10.0);  // wood ≈ 100-hr
+
+// ============================================================================
+// Cruz, Alexander & Wakimoto (2005) crown fire model constants
+// ============================================================================
+
 /// Lead coefficient in the Cruz et al. (2005) crown ROS formula
 inline constexpr amrex::Real CRUZ_A_LEAD   = amrex::Real(11.02);
 /// Canopy bulk density exponent
