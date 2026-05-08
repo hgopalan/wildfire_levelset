@@ -725,6 +725,13 @@ void parse_inputs(InputParameters& p)
     p.fire_stats_file = "fire_stats.csv";
     pp.query("fire_stats_file", p.fire_stats_file);
 
+    // -------- Timed isochrone output --------
+    p.isochrone_interval_s = 0.0;
+    pp.query("isochrone_interval_s", p.isochrone_interval_s);
+    if (p.isochrone_interval_s > 0.0) {
+        Print() << "Timed isochrone output: interval = " << p.isochrone_interval_s << " s\n";
+    }
+
     // -------- Fire perimeter output --------
     p.write_perimeter_csv     = 1;  pp.query("write_perimeter_csv",     p.write_perimeter_csv);
     p.write_perimeter_geojson = 0;  pp.query("write_perimeter_geojson", p.write_perimeter_geojson);
@@ -921,6 +928,48 @@ void parse_inputs(InputParameters& p)
         Print() << "FMC seasonal schedule enabled (start_doy=" << p.fmc_schedule.start_doy << ")\n";
     }
 
+    // -------- Live herbaceous moisture / curing schedule --------
+    p.herb_moisture_schedule.enable           = 0;
+    p.herb_moisture_schedule.file             = "";
+    p.herb_moisture_schedule.use_curing_curve = 0;
+    p.herb_moisture_schedule.start_doy        = 1;
+    p.herb_moisture_schedule.spring_start     = 90;
+    p.herb_moisture_schedule.summer_peak      = 150;
+    p.herb_moisture_schedule.fall_start       = 200;
+    p.herb_moisture_schedule.fall_end         = 270;
+    p.herb_moisture_schedule.m_lh_min         = 30.0;
+    p.herb_moisture_schedule.m_lh_max         = 180.0;
+
+    pp.query("herb_moisture_schedule.enable",           p.herb_moisture_schedule.enable);
+    pp.query("herb_moisture_schedule.file",             p.herb_moisture_schedule.file);
+    pp.query("herb_moisture_schedule.use_curing_curve", p.herb_moisture_schedule.use_curing_curve);
+    pp.query("herb_moisture_schedule.start_doy",        p.herb_moisture_schedule.start_doy);
+    pp.query("herb_moisture_schedule.spring_start",     p.herb_moisture_schedule.spring_start);
+    pp.query("herb_moisture_schedule.summer_peak",      p.herb_moisture_schedule.summer_peak);
+    pp.query("herb_moisture_schedule.fall_start",       p.herb_moisture_schedule.fall_start);
+    pp.query("herb_moisture_schedule.fall_end",         p.herb_moisture_schedule.fall_end);
+    pp.query("herb_moisture_schedule.m_lh_min",         p.herb_moisture_schedule.m_lh_min);
+    pp.query("herb_moisture_schedule.m_lh_max",         p.herb_moisture_schedule.m_lh_max);
+
+    if (p.herb_moisture_schedule.enable == 1) {
+        if (p.herb_moisture_schedule.file.empty() && p.herb_moisture_schedule.use_curing_curve == 0) {
+            amrex::Abort("herb_moisture_schedule.enable=1 requires either "
+                         "herb_moisture_schedule.file or herb_moisture_schedule.use_curing_curve=1");
+        }
+        if (p.herb_moisture_schedule.m_lh_min < 0.0 || p.herb_moisture_schedule.m_lh_min > 400.0)
+            amrex::Abort("herb_moisture_schedule.m_lh_min must be in [0, 400] %");
+        if (p.herb_moisture_schedule.m_lh_max <= p.herb_moisture_schedule.m_lh_min)
+            amrex::Abort("herb_moisture_schedule.m_lh_max must be > m_lh_min");
+        Print() << "Live herbaceous moisture schedule enabled (start_doy="
+                << p.herb_moisture_schedule.start_doy << ")\n";
+        if (!p.herb_moisture_schedule.file.empty())
+            Print() << "  File: " << p.herb_moisture_schedule.file << "\n";
+        else
+            Print() << "  Using built-in parametric curing curve"
+                    << "  M_lh=[" << p.herb_moisture_schedule.m_lh_min
+                    << "," << p.herb_moisture_schedule.m_lh_max << "]%\n";
+    }
+
     // -------- Precipitation wetting (extends diurnal_moisture) --------
     p.precip_rain_rate_mm_hr  = 0.0;   pp.query("diurnal_moisture.precip_rain_rate_mm_hr",  p.precip_rain_rate_mm_hr);
     p.precip_schedule_file    = "";    pp.query("diurnal_moisture.precip_schedule_file",    p.precip_schedule_file);
@@ -987,6 +1036,8 @@ void parse_inputs(InputParameters& p)
     pp.query("solar_radiation.timezone_offset",    p.solar_radiation.timezone_offset);
     pp.query("solar_radiation.solar_heating_C",    p.solar_radiation.solar_heating_C);
     pp.query("solar_radiation.use_canopy_shading", p.solar_radiation.use_canopy_shading);
+    p.solar_radiation.cloud_cover = 0.0;
+    pp.query("solar_radiation.cloud_cover",        p.solar_radiation.cloud_cover);
 
     if (p.solar_radiation.enable == 1) {
         if (p.solar_radiation.latitude < -90.0 || p.solar_radiation.latitude > 90.0)
@@ -997,6 +1048,8 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("solar_radiation.month must be in [1, 12]");
         if (p.solar_radiation.day < 1 || p.solar_radiation.day > 31)
             amrex::Abort("solar_radiation.day must be in [1, 31]");
+        if (p.solar_radiation.cloud_cover < 0.0 || p.solar_radiation.cloud_cover > 1.0)
+            amrex::Abort("solar_radiation.cloud_cover must be in [0, 1]");
         if (p.solar_radiation.sim_start_hour < 0.0 || p.solar_radiation.sim_start_hour >= 24.0)
             amrex::Abort("solar_radiation.sim_start_hour must be in [0, 24)");
         if (p.solar_radiation.timezone_offset < -14.0 || p.solar_radiation.timezone_offset > 14.0)
@@ -1029,6 +1082,10 @@ void parse_inputs(InputParameters& p)
         Print() << "  Solar heating: " << p.solar_radiation.solar_heating_C << " °C\n";
         if (p.solar_radiation.use_canopy_shading == 1)
             Print() << "  Canopy shading: enabled (uses canopy_cover from LCP if available)\n";
+        if (p.solar_radiation.cloud_cover > 0.0)
+            Print() << "  Cloud cover: " << p.solar_radiation.cloud_cover
+                    << " (domain-uniform; reduces solar heating by "
+                    << int(p.solar_radiation.cloud_cover * 100.0) << "%)\n";
     }
 
     // -------- Multiple scheduled ignitions --------

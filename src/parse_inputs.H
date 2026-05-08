@@ -461,6 +461,16 @@ struct InputParameters {
     // active_front_cells, mean_co2, mean_co, mean_pm25.
     std::string fire_stats_file;             // output CSV path (default: "fire_stats.csv")
 
+    // ---- Timed isochrone output ----
+    // When isochrone_interval_s > 0, a fire perimeter file is written at each
+    // simulation clock-time that is an exact multiple of isochrone_interval_s.
+    // Files are named isochrone_NNNNNN.csv (or .geojson) where NNNNNN is the
+    // isochrone index (0, 1, 2, ...).  The file format follows the same
+    // convention as perimeter_NNNN.csv / .geojson from write_perimeter_csv /
+    // write_perimeter_geojson.
+    // Set to 0 or negative to disable (default: 0.0 = disabled).
+    amrex::Real isochrone_interval_s;        // isochrone write interval [s] (default: 0.0)
+
     // ---- Fire perimeter output ----
     // Controls whether CSV and GeoJSON perimeter files are written alongside
     // the existing .dat (phi_negative / phi_envelope) files at every plotfile step.
@@ -657,6 +667,7 @@ struct InputParameters {
         amrex::Real timezone_offset; // UTC offset [hours] (e.g., -8 = PST; default: -8.0)
         amrex::Real solar_heating_C; // max solar heating of fuel above air temp [°C] (default: 17.0)
         int use_canopy_shading;      // 1 to include canopy cover in shade fraction (default: 1)
+        amrex::Real cloud_cover;     // domain-uniform cloud fraction [0, 1] (0 = clear sky; default: 0.0)
     } solar_radiation;
 
     // ---- Canadian FBP System fire spread model parameters ----
@@ -695,6 +706,26 @@ struct InputParameters {
         int enable;              // 1 to enable bisection-based TI/CI (default: 0)
         amrex::Real U_max_kmh;  // maximum wind speed for bisection [km/h] (default: 200.0)
     } scott_reinhardt_full;
+
+    // ---- Live herbaceous moisture / curing schedule ----
+    // When enabled, the live herbaceous moisture (M_lh) is updated each
+    // timestep from a seasonal schedule.  Two modes:
+    //   1. CSV file (herb_moisture_schedule.file): (doy, m_lh_pct) rows.
+    //   2. Built-in parametric curing curve (use_curing_curve = 1).
+    // Input prefix: "herb_moisture_schedule."
+    struct HerbMoistureScheduleParams {
+        int         enable;          // 1 to enable (default: 0)
+        std::string file;            // path to CSV file (empty → use built-in curve)
+        int         use_curing_curve;// 1 to use built-in parametric curve (default: 0)
+        int         start_doy;       // day-of-year at t=0 (default: 1 = Jan 1)
+        // Parametric curing curve breakpoints
+        int    spring_start;   // doy when green-up begins  (default: 90)
+        int    summer_peak;    // doy when M_lh reaches max (default: 150)
+        int    fall_start;     // doy when curing begins    (default: 200)
+        int    fall_end;       // doy when curing ends      (default: 270)
+        amrex::Real m_lh_min;  // dormant / cured M_lh [%]  (default: 30.0)
+        amrex::Real m_lh_max;  // peak green M_lh [%]       (default: 180.0)
+    } herb_moisture_schedule;
 
     // ---- Live fuel moisture FMC seasonal link ----
     // When fmc_schedule is enabled, live herbaceous and woody moistures are

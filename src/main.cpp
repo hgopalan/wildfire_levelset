@@ -71,6 +71,7 @@ using namespace amrex;
 #include "ignition_schedule.H"
 #include "wtr_weather.H"
 #include "retardant_drop.H"
+#include "herb_moisture_schedule.H"
 
 
 // ======================= Main ================================================
@@ -159,11 +160,14 @@ int main(int argc, char* argv[])
     fireline_intensity_mf.setVal(0.0);
     flame_length_mf.setVal(0.0);
 
-    // Fire ecology diagnostics (ECOLOGY_NCOMP = 4 components):
-    //   0 – scorch_height   [m]  (Van Wagner 1973)
-    //   1 – prob_ignition   [-]  (Anderson 1970 / Rothermel 1983)
-    //   2 – tree_mortality  [-]  (Ryan-Reinhardt 1988 style logistic)
-    //   3 – crown_activity  [-]  (0=surface, 1=passive, 2=active crown fire)
+    // Fire ecology diagnostics (ECOLOGY_NCOMP = 7 components):
+    //   0 – scorch_height            [m]  (Van Wagner 1973)
+    //   1 – prob_ignition            [-]  (Anderson 1970 / Rothermel 1983)
+    //   2 – tree_mortality           [-]  (Ryan-Reinhardt 1988 style logistic)
+    //   3 – crown_activity           [-]  (0=surface, 1=passive, 2=active crown fire)
+    //   4 – torching_ratio           [-]  (Scott & Reinhardt 2001 TI proxy)
+    //   5 – crowning_ratio           [-]  (Scott & Reinhardt 2001 CI proxy)
+    //   6 – energy_release_component [-]  (Deeming et al. 1977 NFDRS ERC)
     MultiFab ecology_mf(ba, dm, ECOLOGY_NCOMP, 0);
     ecology_mf.setVal(0.0);
 
@@ -618,7 +622,8 @@ int main(int argc, char* argv[])
                                   slope_mf, aspect_mf,
                                   cc_for_shade0,
                                   sun0,
-                                  inputs.solar_radiation.use_canopy_shading);
+                                  inputs.solar_radiation.use_canopy_shading,
+                                  static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover));
         if (inputs.diurnal_moisture.enable == 1) {
             const double phase0 = WildfireConst::TWO_PI *
                 (inputs.diurnal_moisture.t_start_s - inputs.diurnal_moisture.t_T_peak_s)
@@ -661,6 +666,32 @@ int main(int argc, char* argv[])
             inputs.crown.FMC = static_cast<amrex::Real>(
                 get_fmc_at_time(fmc_sched, 0.0));
             amrex::Print() << "FMC at t=0: " << inputs.crown.FMC << " %\n";
+        }
+    }
+
+    // ---------------- Live herbaceous moisture schedule ---------------------
+    HerbMoistureSchedule herb_sched;
+    if (inputs.herb_moisture_schedule.enable == 1) {
+        if (!inputs.herb_moisture_schedule.file.empty()) {
+            load_herb_moisture_schedule(inputs.herb_moisture_schedule.file,
+                                        herb_sched,
+                                        inputs.herb_moisture_schedule.start_doy);
+        } else if (inputs.herb_moisture_schedule.use_curing_curve == 1) {
+            build_herb_curing_curve(herb_sched,
+                                    inputs.herb_moisture_schedule.start_doy,
+                                    inputs.herb_moisture_schedule.spring_start,
+                                    inputs.herb_moisture_schedule.summer_peak,
+                                    inputs.herb_moisture_schedule.fall_start,
+                                    inputs.herb_moisture_schedule.fall_end,
+                                    static_cast<double>(inputs.herb_moisture_schedule.m_lh_min),
+                                    static_cast<double>(inputs.herb_moisture_schedule.m_lh_max));
+        }
+        // Apply at t=0 to set initial M_lh
+        if (!herb_sched.empty()) {
+            double m_lh_pct0 = get_herb_moisture_at_time(herb_sched, 0.0);
+            inputs.rothermel.M_lh = static_cast<amrex::Real>(m_lh_pct0 / 100.0);
+            amrex::Print() << "Herb moisture at t=0: " << m_lh_pct0 << " % (M_lh="
+                           << inputs.rothermel.M_lh << " fraction)\n";
         }
     }
 
@@ -713,6 +744,15 @@ int main(int argc, char* argv[])
                                   Real(0.0), Real(0.0), use_indicator);
         fill_boundary_extrap(phi, geom);
     }
+
+    // ---------------- Precipitation wetting state --------------------------
+    // Must be declared before the conditioning block which uses precip_state.
+    PrecipState precip_state;
+    precip_state.M_d1   = static_cast<float>(inputs.rothermel.M_d1);
+    precip_state.M_d10  = static_cast<float>(inputs.rothermel.M_d10);
+    precip_state.M_d100 = static_cast<float>(inputs.rothermel.M_d100);
+    precip_state.M_d1000 = static_cast<float>(inputs.rothermel.M_d1000);
+    precip_state.initialized = true;
 
     // ---------------- Fuel moisture conditioning period --------------------
     // Pre-run the Nelson (2000) diurnal EMC model for conditioning.n_days of
@@ -782,14 +822,6 @@ int main(int argc, char* argv[])
                        << " M_d100=" << precip_state.M_d100
                        << " M_d1000=" << precip_state.M_d1000 << "\n";
     }
-
-    // ---------------- Precipitation wetting state --------------------------
-    PrecipState precip_state;
-    precip_state.M_d1   = static_cast<float>(inputs.rothermel.M_d1);
-    precip_state.M_d10  = static_cast<float>(inputs.rothermel.M_d10);
-    precip_state.M_d100 = static_cast<float>(inputs.rothermel.M_d100);
-    precip_state.M_d1000 = static_cast<float>(inputs.rothermel.M_d1000);
-    precip_state.initialized = true;
 
     // Load precipitation time series if provided
     std::vector<std::pair<double,double>> precip_schedule;  // (time_s, rain_mm_hr)
@@ -1186,7 +1218,7 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1204,7 +1236,7 @@ int main(int argc, char* argv[])
 				   "viegas_ROS", "viegas_eruptive_flag",
 				   "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				   "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				   "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1293,6 +1325,11 @@ int main(int argc, char* argv[])
     // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
     const bool use_final_time = (inputs.final_time > 0.0);
     int step = restart_step;
+
+    // ---- Timed isochrone state ----
+    // Track the last isochrone index written so we fire exactly once per interval.
+    int last_isochrone_idx = -1;
+    const bool isochrone_active = (inputs.isochrone_interval_s > amrex::Real(0.0));
     while ((use_final_time && time < inputs.final_time) ||
            (!use_final_time && step < restart_step + inputs.nsteps)) {
       ++step;
@@ -1352,7 +1389,8 @@ int main(int argc, char* argv[])
                                     slope_mf, aspect_mf,
                                     cc_for_shade,
                                     sun,
-                                    inputs.solar_radiation.use_canopy_shading);
+                                    inputs.solar_radiation.use_canopy_shading,
+                                    static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover));
 
           // Per-cell shade-adjusted EMC (requires diurnal T_air / RH)
           if (inputs.diurnal_moisture.enable == 1) {
@@ -1389,6 +1427,27 @@ int main(int argc, char* argv[])
       if (inputs.fmc_schedule.enable == 1 && !fmc_sched.empty()) {
           inputs.crown.FMC = static_cast<amrex::Real>(
               get_fmc_at_time(fmc_sched, static_cast<double>(time)));
+      }
+
+      // Update live herbaceous moisture from curing schedule
+      if (inputs.herb_moisture_schedule.enable == 1 && !herb_sched.empty()) {
+          double m_lh_pct = get_herb_moisture_at_time(herb_sched, static_cast<double>(time));
+          inputs.rothermel.M_lh = static_cast<amrex::Real>(m_lh_pct / 100.0);
+          // Propagate into the spatial moisture MultiFab component 3 (M_lh)
+          spatial_moisture_mf.setVal(inputs.rothermel.M_lh, 3, 1, 0);
+          // Rebuild fuel lookup table if per-cell landscape is active
+          if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
+              std::vector<RothermelComputed> h_herb_table =
+                  build_fuel_rothermel_table(inputs.rothermel,
+                                             inputs.rothermel.landscape_fuel_type);
+              if (!inputs.fuel_adj_file.empty()) {
+                  auto adjs = parse_fuel_adjustment_file(inputs.fuel_adj_file);
+                  apply_fuel_adjustment_to_table(h_herb_table, adjs);
+              }
+              Gpu::copy(Gpu::hostToDevice,
+                        h_herb_table.begin(), h_herb_table.end(),
+                        d_fuel_table.begin());
+          }
       }
 
       // Update wind from compact direction schedule (overrides constant wind)
@@ -1767,12 +1826,16 @@ int main(int argc, char* argv[])
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
 	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
-	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step);
+	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step,
+	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
 	}
 	// Albini (1983) firebrand spotting with 2-D trajectory integration
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {
 	  compute_albini_spotting(phi, albini_data, vel, R_mf, geom,
-	                          inputs.rothermel, inputs.albini_spotting, step);
+	                          inputs.rothermel, inputs.albini_spotting, step,
+	                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether
@@ -1902,6 +1965,34 @@ int main(int argc, char* argv[])
         write_checkpoint(chk_buf, phi, geom, step, time);
       }
 
+      // ---- Timed isochrone output ----
+      // Fire at each clock time that is a new multiple of isochrone_interval_s.
+      if (isochrone_active) {
+        int cur_iso_idx = static_cast<int>(std::floor(
+            static_cast<double>(time) /
+            static_cast<double>(inputs.isochrone_interval_s)));
+        if (cur_iso_idx > last_isochrone_idx) {
+          // Write all intervals that elapsed since the last check
+          // (handles large dt that skips multiple intervals, though unusual)
+          for (int iso_i = last_isochrone_idx + 1; iso_i <= cur_iso_idx; ++iso_i) {
+            char iso_csv_buf[128];
+            std::snprintf(iso_csv_buf, sizeof(iso_csv_buf),
+                          "isochrone_%06d.csv", iso_i);
+            write_fire_perimeter_csv(phi, geom, iso_csv_buf);
+            amrex::Print() << "Isochrone " << iso_i
+                           << " written at t=" << time << " s -> "
+                           << iso_csv_buf << "\n";
+            if (inputs.write_perimeter_geojson == 1) {
+              char iso_gj_buf[128];
+              std::snprintf(iso_gj_buf, sizeof(iso_gj_buf),
+                            "isochrone_%06d.geojson", iso_i);
+              write_fire_perimeter_geojson(phi, geom, iso_gj_buf, iso_i, time);
+            }
+          }
+          last_isochrone_idx = cur_iso_idx;
+        }
+      }
+
       // --- Step 7: Update states, record outputs, step time
       if (inputs.plot_int > 0 && (step % inputs.plot_int == 0)) {
 	// Compute per-plotfile diagnostics
@@ -1930,7 +2021,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -1948,7 +2039,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -2063,7 +2154,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
@@ -2081,7 +2172,7 @@ int main(int argc, char* argv[])
 				     "viegas_ROS", "viegas_eruptive_flag",
 				     "viegas_ROS_excess", "viegas_flame_tilt", "viegas_slope_factor",
 				     "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
-					   "torching_ratio", "crowning_ratio",
+					   "torching_ratio", "crowning_ratio", "energy_release_component",
 				     "co2_emissions", "co_emissions", "pm25_emissions",
 				   "arrival_time", "heat_per_unit_area", "vorticity_z",
 				   "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
