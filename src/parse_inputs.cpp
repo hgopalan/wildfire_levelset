@@ -710,4 +710,67 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Cap 10: Custom fuel model (text-based inline override) --------
+    // Allows a fully user-defined fuel model to be specified in the inputs file
+    // without recompilation.  When custom_fuel.enable = 1, any supplied fields
+    // override the RothermelParams values set above (including those loaded from
+    // a database model via rothermel.fuel_model).
+    //
+    // Only the fields the user explicitly sets are applied; all others retain
+    // the values already stored in p.rothermel.
+    //
+    // Usage example (inputs.i):
+    //   custom_fuel.enable = 1
+    //   custom_fuel.name   = "post_fire_shrub"
+    //   custom_fuel.w0     = 0.080
+    //   custom_fuel.sigma  = 2500.0
+    //   custom_fuel.delta  = 0.8
+    //   custom_fuel.M_x    = 0.20
+    p.custom_fuel.enable = 0;
+    pp.query("custom_fuel.enable", p.custom_fuel.enable);
+    p.custom_fuel.name   = "custom";
+    pp.query("custom_fuel.name",   p.custom_fuel.name);
+    // Initialise all overrideable fields to -1 (sentinel = "not set by user")
+    p.custom_fuel.w0     = -1.0;
+    p.custom_fuel.sigma  = -1.0;
+    p.custom_fuel.delta  = -1.0;
+    p.custom_fuel.M_x    = -1.0;
+    p.custom_fuel.h_heat = -1.0;
+    p.custom_fuel.S_T    = -1.0;
+    p.custom_fuel.S_e    = -1.0;
+    p.custom_fuel.rho_p  = -1.0;
+    // Read user-supplied overrides
+    pp.query("custom_fuel.w0",     p.custom_fuel.w0);
+    pp.query("custom_fuel.sigma",  p.custom_fuel.sigma);
+    pp.query("custom_fuel.delta",  p.custom_fuel.delta);
+    pp.query("custom_fuel.M_x",    p.custom_fuel.M_x);
+    pp.query("custom_fuel.h_heat", p.custom_fuel.h_heat);
+    pp.query("custom_fuel.S_T",    p.custom_fuel.S_T);
+    pp.query("custom_fuel.S_e",    p.custom_fuel.S_e);
+    pp.query("custom_fuel.rho_p",  p.custom_fuel.rho_p);
+
+    if (p.custom_fuel.enable == 1) {
+        Print() << "Custom fuel model: '" << p.custom_fuel.name << "'\n";
+        // Apply non-sentinel fields to RothermelParams
+        if (p.custom_fuel.w0     > 0.0)  { p.rothermel.w0     = p.custom_fuel.w0;
+            Print() << "  w0    = " << p.custom_fuel.w0    << " lb/ft²\n"; }
+        if (p.custom_fuel.sigma  > 0.0)  { p.rothermel.sigma  = p.custom_fuel.sigma;
+            Print() << "  sigma = " << p.custom_fuel.sigma  << " ft⁻¹\n"; }
+        if (p.custom_fuel.delta  > 0.0)  { p.rothermel.delta  = p.custom_fuel.delta;
+            Print() << "  delta = " << p.custom_fuel.delta  << " ft\n"; }
+        if (p.custom_fuel.M_x   >= 0.0)  { p.rothermel.M_x   = p.custom_fuel.M_x;
+            Print() << "  M_x   = " << p.custom_fuel.M_x   << "\n"; }
+        if (p.custom_fuel.h_heat > 0.0)  { p.rothermel.h_heat = p.custom_fuel.h_heat;
+            Print() << "  h_heat= " << p.custom_fuel.h_heat << " BTU/lb\n"; }
+        if (p.custom_fuel.S_T   >= 0.0)  { p.rothermel.S_T   = p.custom_fuel.S_T;
+            Print() << "  S_T   = " << p.custom_fuel.S_T   << "\n"; }
+        if (p.custom_fuel.S_e   >= 0.0)  { p.rothermel.S_e   = p.custom_fuel.S_e;
+            Print() << "  S_e   = " << p.custom_fuel.S_e   << "\n"; }
+        if (p.custom_fuel.rho_p  > 0.0)  { p.rothermel.rho_p = p.custom_fuel.rho_p;
+            Print() << "  rho_p = " << p.custom_fuel.rho_p << " lb/ft³\n"; }
+        Print() << "  (final Rothermel params after custom_fuel override)\n";
+        Print() << "  w0=" << p.rothermel.w0 << " sigma=" << p.rothermel.sigma
+                << " delta=" << p.rothermel.delta << " M_x=" << p.rothermel.M_x << "\n";
+    }
+
 }

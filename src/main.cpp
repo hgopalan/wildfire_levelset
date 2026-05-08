@@ -728,6 +728,38 @@ int main(int argc, char* argv[])
     // crown activity) – always computed, always written to plotfile
     compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                          inputs.rothermel, inputs.fire_ecology, inputs.crown);
+
+    // Cap 8: Active crown fire ROS feedback (initial dt computation).
+    // Apply the same crown-ROS override used in the time loop so the initial
+    // CFL dt correctly accounts for any active crown fire cells.
+    if (inputs.crown.enable == 1 && use_levelset) {
+        const Real CBD_global_i = Real(inputs.crown.CBD);
+        const Real FMC_global_i = Real(inputs.crown.FMC);
+        const Real mf_i = amrex::max(Real(0.3),
+                              amrex::min(Real(1.0),
+                              Real(1.0) - (FMC_global_i - Real(100.0)) / Real(200.0)));
+        for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
+            const Box& bx  = mfi.validbox();
+            auto       R   = R_mf.array(mfi);
+            auto const eco = ecology_mf.const_array(mfi);
+            const bool use_sp_i = has_spatial_crown;
+            Array4<const Real> cbd_arr_i;
+            if (use_sp_i) {
+                cbd_arr_i = cbd_mf.const_array(mfi);
+            }
+            const Real CBD_g_i = CBD_global_i;
+            const Real mf_val_i = mf_i;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                if (eco(i, j, k, 3) < Real(1.5)) return;
+                Real CBD_c = use_sp_i ? cbd_arr_i(i, j, k) : CBD_g_i;
+                CBD_c = amrex::max(CBD_c, Real(0.01));
+                Real R_crown_ms = (Real(3.0) / CBD_c) * mf_val_i / Real(60.0);
+                R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
+            });
+        }
+        if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
+    }
+
     // Fire emissions (CO₂, CO, PM₂.₅) from fuel load × consumption fraction
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
@@ -958,6 +990,53 @@ int main(int argc, char* argv[])
       // Fire ecology diagnostics (always computed)
       compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                            inputs.rothermel, inputs.fire_ecology, inputs.crown);
+
+      // Cap 8: Active crown fire ROS feedback into the level-set ROS field.
+      // When crown.enable = 1 and a cell is classified as active crown fire
+      // (crown_activity == 2), replace R_mf with the Van Wagner active crown
+      // ROS (m/s) so the level-set front propagates at the faster crown speed.
+      // The crown ROS [m/min] = 3.0 / CBD * moisture_factor; convert to m/s.
+      // Spatial CBD is used when available (has_spatial_crown); otherwise the
+      // global scalar crown.CBD is used.
+      if (inputs.crown.enable == 1 && use_levelset) {
+          const Real CBD_global   = Real(inputs.crown.CBD);
+          const Real FMC_global   = Real(inputs.crown.FMC);
+          const Real m_factor_g   = amrex::max(Real(0.3),
+                                        amrex::min(Real(1.0),
+                                        Real(1.0) - (FMC_global - Real(100.0)) / Real(200.0)));
+          const Real R_crown_g_ms = (Real(3.0) / amrex::max(CBD_global, Real(0.01)))
+                                    * m_factor_g / Real(60.0); // m/min → m/s
+
+          for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
+              const Box& bx   = mfi.validbox();
+              auto       R    = R_mf.array(mfi);
+              auto const eco  = ecology_mf.const_array(mfi);
+              // Get per-cell CBD if spatial crown layers were loaded
+              const bool use_sp = has_spatial_crown;
+              Array4<const Real> cbd_arr;
+              if (use_sp) {
+                  cbd_arr = cbd_mf.const_array(mfi);
+              }
+              const Real FMC_val = FMC_global;
+
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  // Crown activity component is stored in ecology_mf component 3
+                  if (eco(i, j, k, 3) < Real(1.5)) {
+                      return; // surface or passive – no crown ROS override
+                  }
+                  Real CBD_c = use_sp ? cbd_arr(i, j, k) : CBD_global;
+                  CBD_c = amrex::max(CBD_c, Real(0.01));
+                  Real mf  = amrex::max(Real(0.3),
+                                 amrex::min(Real(1.0),
+                                 Real(1.0) - (FMC_val - Real(100.0)) / Real(200.0)));
+                  Real R_crown_ms = (Real(3.0) / CBD_c) * mf / Real(60.0); // m/s
+                  // Use the maximum of surface and crown ROS (crown typically dominates)
+                  R(i, j, k) = amrex::max(R(i, j, k), R_crown_ms);
+              });
+          }
+          amrex::Print() << "  Crown ROS override applied (crown.enable=1, active crown cells).\n";
+      }
+
       // Fire emissions (CO₂, CO, PM₂.₅)
       compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                              inputs.rothermel, inputs.emissions);

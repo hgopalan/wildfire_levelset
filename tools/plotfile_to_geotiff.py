@@ -7,6 +7,18 @@ one GeoTIFF per variable (or a user-specified subset).  An optional UTM origin
 can be supplied so that the output is correctly georeferenced; without it the
 coordinates are written in the native simulation units (metres by default).
 
+Cap 6 — Multi-variable behavioral raster export
+------------------------------------------------
+By default, **all** variables stored in a plotfile are converted automatically
+to individual GeoTIFFs in one pass.  This covers the full set of fire-behavior
+diagnostics written by the solver (phi, R, fireline_intensity, flame_length,
+elevation, slope, aspect, fuel_model, scorch_height, prob_ignition,
+tree_mortality, crown_activity, co2_emissions, …) without requiring the user
+to enumerate them with ``-v``.
+
+Use ``--all`` to process every ``plt####`` directory in the working directory
+in a single command.
+
 **Multi-level (AMR) plotfiles** from external AMReX-based codes are supported.
 When ``finest_level > 0`` is detected in the plotfile Header, all available
 levels are read.  Finer-level data are composited (block-averaged) onto the
@@ -19,7 +31,7 @@ Requirements
 
 Usage
 -----
-  # Convert all variables in a plotfile, simulation coordinates only
+  # Export ALL variables from a plotfile (Cap 6 default)
   python3 tools/plotfile_to_geotiff.py plt0100 --outdir gis_out
 
   # Specific variables only
@@ -31,7 +43,7 @@ Usage
       --epsg 32613 \\
       --outdir gis_out
 
-  # Convert every plt#### directory in the current working directory
+  # Convert every plt#### directory in the current working directory (Cap 6 batch)
   python3 tools/plotfile_to_geotiff.py --all --outdir gis_out
 
   # Convert a multi-level AMR plotfile from an external AMReX-based code
@@ -45,7 +57,15 @@ Fire-behaviour variables of interest
   flame_length        – Byram (1959) flame length [m]
   elevation           – terrain elevation [m]
   slope               – terrain slope [degrees]
+  aspect              – terrain aspect [degrees]
   fuel_model          – FBFM13/FBFM40 fuel model code
+  scorch_height       – Van Wagner (1973) scorch height [m]
+  prob_ignition       – Anderson (1970) probability of ignition [-]
+  tree_mortality      – Ryan-Reinhardt (1988) tree mortality fraction [-]
+  crown_activity      – crown fire activity (0=surface, 1=passive, 2=active)
+  co2_emissions       – cumulative CO₂ emissions [kg/m²]
+  arrival_time        – time of first ignition per cell [s]
+  heat_per_unit_area  – Rothermel heat per unit area [BTU/ft²]
 """
 
 import argparse
