@@ -125,6 +125,563 @@ In addition, two plain-text files are written at each output step:
 Input Parameters Reference
 ---------------------------
 
+All Parameters Quick Reference
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following table lists every input parameter with its default value and
+purpose.  Detailed descriptions and examples follow in the subsections below.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 18 47
+
+   * - Parameter
+     - Default
+     - Purpose
+   * - **Domain and Grid**
+     -
+     -
+   * - ``n_cell``
+     - 64
+     - Number of cells in all directions (cube); overridden by per-direction values
+   * - ``n_cell_x``, ``n_cell_y``, ``n_cell_z``
+     - n_cell
+     - Number of cells in each Cartesian direction independently
+   * - ``max_grid_size``
+     - 32
+     - Maximum grid-box size for domain decomposition
+   * - ``prob_lo_x``, ``prob_lo_y``, ``prob_lo_z``
+     - 0.0
+     - Lower corner of physical domain [m]
+   * - ``prob_hi_x``, ``prob_hi_y``, ``prob_hi_z``
+     - 1.0
+     - Upper corner of physical domain [m]
+   * - **Time Stepping**
+     -
+     -
+   * - ``nsteps``
+     - 300
+     - Maximum number of time steps (used when ``final_time`` is not set)
+   * - ``final_time``
+     - -1.0
+     - Simulation stop time [s]; overrides ``nsteps`` when positive
+   * - ``cfl``
+     - 0.5
+     - CFL number for adaptive time-step calculation
+   * - ``plot_int``
+     - 50
+     - Number of time steps between output (plot) files
+   * - ``reinit_int``
+     - 20
+     - Steps between level-set reinitialization (-1 = disabled)
+   * - **Initial Conditions**
+     -
+     -
+   * - ``source_type``
+     - sphere
+     - Initial fire shape: ``sphere``, ``box``, ``ellipse``, ``eb``, ``polygon``, ``polyline``
+   * - ``center_x``, ``center_y``, ``center_z``
+     - 0.5, 0.5, 0.5
+     - Center of spherical ignition [m]
+   * - ``sphere_radius``
+     - —
+     - Radius of spherical ignition [m]
+   * - ``box_xmin`` … ``box_zmax``
+     - —
+     - Bounds of box ignition region [m]
+   * - ``ellipse_center_x`` … ``ellipse_radius_z``
+     - —
+     - Center and semi-axes of elliptical ignition [m]
+   * - ``fire_points_file``
+     - ""
+     - CSV of ignition point coordinates (X Y [Z]), one per row
+   * - ``fire_gaussian_sigma``
+     - auto
+     - Ignition disk radius [m] (≤ 0 = 3 × min cell spacing)
+   * - ``fire_polygon_file``
+     - ""
+     - CSV vertex file for ``polygon`` or ``polyline`` ignition
+   * - ``polyline_width``
+     - 10.0
+     - Half-width of line-ignition zone [m]
+   * - ``fire_polygon_z_level``
+     - 0.5
+     - Z-centre of ignition layer in 3-D polygon/polyline runs [m]
+   * - **Fire Model Selection**
+     -
+     -
+   * - ``fire_spread_model``
+     - rothermel
+     - ROS model: ``rothermel``, ``balbi``, ``cheney_gould``
+   * - ``propagation_method``
+     - levelset
+     - Propagation method: ``levelset``, ``farsite``, ``mtt``
+   * - **Barriers**
+     -
+     -
+   * - ``barrier_files``
+     - ""
+     - Space-separated list of barrier polyline/polygon CSV files
+   * - **Rothermel Fuel Properties**
+     -
+     -
+   * - ``rothermel.fuel_model``
+     - custom
+     - Fuel model name from database (e.g. ``FM4``, ``FM101``)
+   * - ``rothermel.M_f``
+     - 0.08
+     - Aggregate dead fuel moisture [fraction]
+   * - ``rothermel.M_x``
+     - 0.30
+     - Moisture of extinction [fraction]
+   * - ``rothermel.w0``
+     - 0.230
+     - Oven-dry total fuel loading [lb/ft²]
+   * - ``rothermel.sigma``
+     - 1739.0
+     - Surface-area-to-volume ratio [ft⁻¹]
+   * - ``rothermel.delta``
+     - 2.0
+     - Fuel bed depth [ft]
+   * - ``rothermel.h_heat``
+     - 8000.0
+     - Heat content [BTU/lb]
+   * - ``rothermel.S_T``
+     - 0.0555
+     - Total mineral content [fraction]
+   * - ``rothermel.S_e``
+     - 0.010
+     - Effective mineral content [fraction]
+   * - ``rothermel.rho_p``
+     - 32.0
+     - Oven-dry particle density [lb/ft³]
+   * - ``rothermel.slope_x``, ``rothermel.slope_y``
+     - 0.0
+     - Constant terrain slope (tan θ) in x and y directions
+   * - ``rothermel.M_d1``
+     - =M_f
+     - 1-hr dead fuel moisture [fraction]
+   * - ``rothermel.M_d10``
+     - =M_f
+     - 10-hr dead fuel moisture [fraction]
+   * - ``rothermel.M_d100``
+     - =M_f
+     - 100-hr dead fuel moisture [fraction]
+   * - ``rothermel.M_lh``
+     - 0.90
+     - Live herbaceous fuel moisture [fraction]
+   * - ``rothermel.M_lw``
+     - 1.20
+     - Live woody fuel moisture [fraction]
+   * - ``rothermel.w_d1``
+     - 0.0
+     - 1-hr dead fuel load [lb/ft²] (override)
+   * - ``rothermel.sigma_d1``
+     - 0.0
+     - 1-hr dead SAV [ft⁻¹] (override)
+   * - ``rothermel.w_d10``
+     - 0.0
+     - 10-hr dead fuel load [lb/ft²] (override)
+   * - ``rothermel.w_d100``
+     - 0.0
+     - 100-hr dead fuel load [lb/ft²] (override)
+   * - ``rothermel.w_lh``
+     - 0.0
+     - Live herbaceous fuel load [lb/ft²] (override)
+   * - ``rothermel.sigma_lh``
+     - 0.0
+     - Live herbaceous SAV [ft⁻¹] (override)
+   * - ``rothermel.w_lw``
+     - 0.0
+     - Live woody fuel load [lb/ft²] (override)
+   * - ``rothermel.sigma_lw``
+     - 0.0
+     - Live woody SAV [ft⁻¹] (override)
+   * - ``rothermel.use_waf``
+     - 0
+     - Enable per-cell Wind Adjustment Factor from canopy height (1=yes)
+   * - **Cheney & Gould Grassland Parameters**
+     -
+     -
+   * - ``cheney_gould.moisture``
+     - 10.0
+     - Dead fine fuel moisture [%]
+   * - ``cheney_gould.curing``
+     - 1.0
+     - Degree of grass curing [0–1; 1 = fully cured]
+   * - **Wind**
+     -
+     -
+   * - ``u_x``, ``u_y``, ``u_z``
+     - 0.25, 0.0, 0.0
+     - Constant wind velocity components [m/s]
+   * - ``velocity_file``
+     - ""
+     - Spatially-varying wind field CSV (X Y U V)
+   * - ``use_time_dependent_wind``
+     - 0
+     - Enable time-dependent sequence of wind field files (1=yes)
+   * - ``wind_time_spacing``
+     - 60.0
+     - Time spacing between consecutive wind field files [s]
+   * - ``wind_dir_schedule_file``
+     - ""
+     - Three-column CSV wind schedule (time_s, speed_ms, dir_deg)
+   * - ``multi_wtr_file``
+     - ""
+     - Station list CSV for multi-station IDW weather interpolation
+   * - ``multi_wtr_idw_power``
+     - 2.0
+     - IDW exponent for multi-station weather interpolation
+   * - **Terrain**
+     -
+     -
+   * - ``rothermel.terrain_file``
+     - ""
+     - Terrain elevation CSV (X Y Z)
+   * - ``rothermel.landscape_file``
+     - ""
+     - FARSITE landscape file (ASCII: X Y ELEV SLOPE ASPECT FUEL)
+   * - ``rothermel.landscape_fuel_type``
+     - "13"
+     - Fuel model system in landscape file: ``"13"`` (FBFM13) or ``"40"`` (FBFM40)
+   * - **FARSITE Parameters**
+     -
+     -
+   * - ``farsite.use_anderson_LW``
+     - 0
+     - Use Anderson (1983) L/W ratio from wind speed (1=yes)
+   * - ``farsite.length_to_width_ratio``
+     - 3.0
+     - Fixed ellipse length-to-width ratio
+   * - ``farsite.coeff_a``
+     - 1.0
+     - Richards' head-fire (maximum spread) coefficient
+   * - ``farsite.coeff_b``
+     - 0.5
+     - Richards' flank-fire coefficient
+   * - ``farsite.coeff_c``
+     - 0.2
+     - Richards' backing-fire (minimum spread) coefficient
+   * - ``farsite.phi_threshold``
+     - 0.1
+     - Level-set threshold for fire-front cell detection
+   * - ``farsite.scale_ellipse_with_crown``
+     - 0
+     - Scale ellipse L/W during active crown fire (1=yes)
+   * - ``farsite.crown_lw_scale``
+     - 1.5
+     - L/W multiplier applied during active crown fire
+   * - **Crown Fire Parameters**
+     -
+     -
+   * - ``crown.enable``
+     - 0
+     - Enable Van Wagner (1977) crown fire model (1=yes)
+   * - ``crown.CBH``
+     - 4.0
+     - Canopy base height [m]
+   * - ``crown.CBD``
+     - 0.15
+     - Canopy bulk density [kg/m³]
+   * - ``crown.FMC``
+     - 100.0
+     - Foliar moisture content [%]
+   * - ``crown.crown_fraction_weight``
+     - 1.0
+     - Crown fire weighting factor [0–2]
+   * - ``crown.use_metric_units``
+     - 1
+     - Unit system: 1 = metric (m, kW/m), 0 = imperial
+   * - ``crown.use_cruz_crown``
+     - 0
+     - Use Cruz (2005) empirical crown ROS formula instead of Van Wagner proxy (1=yes)
+   * - ``cruz_crown.CBD``
+     - 0.10
+     - Canopy bulk density for Cruz (2005) formula [kg/m³]
+   * - ``cruz_crown.MC10``
+     - 10.0
+     - 10-hr dead fuel moisture for Cruz (2005) formula [%]
+   * - **Bulk Fuel Consumption**
+     -
+     -
+   * - ``farsite.use_bulk_fuel_consumption``
+     - 0
+     - Enable exponential bulk fuel consumption model (1=yes)
+   * - ``farsite.tau_residence``
+     - 60.0
+     - Fuel residence / burnout time [s]
+   * - ``farsite.f_consumed_max``
+     - 0.9
+     - Maximum fuel consumption fraction [0–1]
+   * - ``farsite.f_consumed_min``
+     - 0.5
+     - Minimum fuel consumption fraction [0–1]
+   * - **Probability-Based Spotting**
+     -
+     -
+   * - ``spotting.enable``
+     - 0
+     - Enable stochastic firebrand spotting model (1=yes)
+   * - ``spotting.P_base``
+     - 0.02
+     - Base spotting probability per fire-front cell [0–1]
+   * - ``spotting.k_wind``
+     - 0.3
+     - Wind speed scaling coefficient for spotting probability
+   * - ``spotting.I_critical``
+     - 1000.0
+     - Critical fire intensity threshold for spotting [kW/m]
+   * - ``spotting.d_mean``
+     - 0.1
+     - Mean spotting distance parameter
+   * - ``spotting.d_sigma``
+     - 0.5
+     - Lognormal standard deviation for spotting distance
+   * - ``spotting.d_lambda``
+     - 10.0
+     - Exponential decay rate for spotting distance
+   * - ``spotting.distance_model``
+     - "lognormal"
+     - Spotting distance distribution: ``lognormal`` or ``exponential``
+   * - ``spotting.lateral_spread_angle``
+     - 15.0
+     - Angular spread perpendicular to wind direction [°]
+   * - ``spotting.spot_radius``
+     - 0.02
+     - Spot-fire ignition zone radius [m]
+   * - ``spotting.random_seed``
+     - 0
+     - RNG seed (0 = system clock)
+   * - ``spotting.check_interval``
+     - 5
+     - Run spotting model every N time steps
+   * - **Albini (1983) Physics-Based Spotting**
+     -
+     -
+   * - ``albini_spotting.enable``
+     - 0
+     - Enable Albini physics-based spotting model (1=yes)
+   * - ``albini_spotting.terminal_velocity``
+     - 1.0
+     - Firebrand terminal descent velocity [m/s]
+   * - ``albini_spotting.P_base``
+     - 0.01
+     - Maximum launch probability per front cell [0–1]
+   * - ``albini_spotting.I_B_min``
+     - 10.0
+     - Minimum Byram intensity for firebrand launch [kW/m]
+   * - ``albini_spotting.spot_radius``
+     - 5.0
+     - Spot-fire ignition zone radius [m]
+   * - ``albini_spotting.random_seed``
+     - 0
+     - RNG seed (0 = system clock)
+   * - ``albini_spotting.check_interval``
+     - 5
+     - Run Albini spotting every N time steps
+   * - ``albini_spotting.n_traj_steps``
+     - 100
+     - Forward-Euler sub-steps for 2-D firebrand trajectory
+   * - **Torching-Tree Spotting**
+     -
+     -
+   * - ``torching_spotting.enable``
+     - 0
+     - Enable torching-tree spotting model (1=yes)
+   * - ``torching_spotting.k_torch``
+     - 4.24
+     - Spotting distance coefficient: d = k × U × √H_eff [m]
+   * - ``torching_spotting.I_B_min``
+     - 100.0
+     - Minimum Byram intensity for torching-tree spotting [kW/m]
+   * - ``torching_spotting.spot_radius``
+     - 5.0
+     - Spot-fire ignition zone radius [m]
+   * - ``torching_spotting.P_base``
+     - 0.05
+     - Probability of spotting per torching cell per check [0–1]
+   * - ``torching_spotting.check_interval``
+     - 5
+     - Run torching-tree spotting every N time steps
+   * - ``torching_spotting.min_crown_activity``
+     - 1
+     - Min crown activity to trigger spotting (1=passive+active, 2=active-only)
+   * - ``torching_spotting.random_seed``
+     - 0
+     - RNG seed (0 = system clock)
+   * - **Turbulent Wind Perturbation**
+     -
+     -
+   * - ``turb_wind.model``
+     - "none"
+     - Turbulent wind model: ``none``, ``ou_process``, ``spectral_noise``, ``direction_walk``
+   * - ``turb_wind.theta``
+     - 0.1
+     - Ornstein-Uhlenbeck reversion rate [s⁻¹]
+   * - ``turb_wind.sigma``
+     - 0.5
+     - OU stationary standard deviation [m/s]
+   * - ``turb_wind.L_c``
+     - 0.0
+     - Spatial correlation length [m] (0 = domain-uniform perturbation)
+   * - ``turb_wind.N_modes``
+     - 32
+     - Number of random Fourier modes (``spectral_noise`` model)
+   * - ``turb_wind.sigma_theta``
+     - 0.1
+     - Direction walk angular standard deviation [rad/step]
+   * - ``turb_wind.theta_max``
+     - 0.5236
+     - Max cumulative direction deviation [rad] (≈ ±30°)
+   * - ``turb_wind.random_seed``
+     - 0
+     - RNG seed (0 = system clock)
+   * - **Wind-Terrain Feedback**
+     -
+     -
+   * - ``wind_terrain.model``
+     - "none"
+     - Terrain wind model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, ``windninja_ridge_canyon``
+   * - ``wind_terrain.k_canyon``
+     - 1.0
+     - Canyon wind amplification coefficient (``canyon_wind`` model)
+   * - ``wind_terrain.k_pimont``
+     - 0.5
+     - Exponential slope correction coefficient (``pimont`` model)
+   * - ``wind_terrain.k_ridge``
+     - 1.0
+     - Ridge speed-up coefficient (``windninja_ridge_canyon`` model)
+   * - ``wind_terrain.k_canyon_wn``
+     - 0.5
+     - Canyon channeling coefficient (``windninja_ridge_canyon`` model)
+   * - **Heat Flux**
+     -
+     -
+   * - ``heat_flux.value``
+     - 0.0
+     - Uniform heat flux [W/m²]
+   * - ``heat_flux.file``
+     - ""
+     - Spatially-varying heat flux CSV (X Y Q); overrides ``heat_flux.value``
+   * - ``heat_flux.rho_air``
+     - 1.2
+     - Air density [kg/m³]
+   * - ``heat_flux.Cp_air``
+     - 1005.0
+     - Specific heat of air [J/(kg·K)]
+   * - ``heat_flux.T_a``
+     - 300.0
+     - Ambient temperature for buoyancy calculation [K]
+   * - ``heat_flux.ref_height``
+     - 10.0
+     - Reference plume height for buoyancy calculation [m]
+   * - ``heat_flux.k_upward``
+     - 1.0
+     - Scaling coefficient for fire-plume upward velocity
+   * - ``heat_flux.k_induced``
+     - 0.5
+     - Scaling coefficient for induced horizontal inflow
+   * - ``heat_flux.enable_upward``
+     - 0
+     - Enable upward convective velocity term (1=yes)
+   * - ``heat_flux.enable_induced``
+     - 0
+     - Enable induced horizontal inflow term (1=yes)
+   * - **Fire Ecology Coupling**
+     -
+     -
+   * - ``fire_ecology.couple_to_ros``
+     - 0
+     - Scale ROS by per-cell ignition probability in unburned cells (1=yes)
+   * - ``fire_ecology.p_ignition_floor``
+     - 0.05
+     - Minimum ignition probability used as ROS scale floor
+   * - ``fire_ecology.T_a_C``
+     - 25.0
+     - Ambient temperature for fire ecology calculations [°C]
+   * - ``fire_ecology.solar_heating_F``
+     - 25.0
+     - Solar temperature increment [°F]
+   * - ``fire_ecology.tree_height``
+     - 10.0
+     - Mean stand height for tree mortality sub-model [m]
+   * - **Persistent Fuel Depletion**
+     -
+     -
+   * - ``fuel_depletion.enable``
+     - 0
+     - Track per-cell residual fuel fraction (1=yes)
+   * - ``fuel_depletion.tau_burnout``
+     - 3600.0
+     - Fine-fuel burnout time constant [s]
+   * - ``fuel_depletion.couple_to_ros``
+     - 0
+     - Scale ROS by residual fuel in re-entry cells (1=yes)
+   * - **Fire Acceleration**
+     -
+     -
+   * - ``acceleration.enable``
+     - 0
+     - Enable small-fire acceleration model (1=yes)
+   * - ``acceleration.L_acc``
+     - 50.0
+     - Acceleration length scale [m]
+   * - **FMC Seasonal Schedule**
+     -
+     -
+   * - ``fmc_schedule.enable``
+     - 0
+     - Enable FMC seasonal schedule (1=yes)
+   * - ``fmc_schedule.file``
+     - ""
+     - Two-column CSV (day-of-year, fmc_pct)
+   * - ``fmc_schedule.use_farsite_curve``
+     - 0
+     - Use built-in parametric phenology curve (1=yes)
+   * - ``fmc_schedule.start_doy``
+     - 1
+     - Day-of-year at simulation t = 0
+   * - ``fmc_schedule.spring_start``
+     - 90
+     - DOY when spring green-up begins
+   * - ``fmc_schedule.summer_peak``
+     - 150
+     - DOY when FMC reaches its maximum
+   * - ``fmc_schedule.fall_start``
+     - 240
+     - DOY when autumn curing begins
+   * - ``fmc_schedule.fall_end``
+     - 300
+     - DOY when curing ends
+   * - ``fmc_schedule.fmc_min``
+     - 85.0
+     - Dormant / cured FMC [%]
+   * - ``fmc_schedule.fmc_max``
+     - 140.0
+     - Peak green FMC [%]
+   * - **Precipitation Wetting**
+     -
+     -
+   * - ``diurnal_moisture.precip_rain_rate_mm_hr``
+     - 0.0
+     - Constant rain rate [mm/hr]
+   * - ``diurnal_moisture.precip_schedule_file``
+     - ""
+     - CSV of (time_s, rain_mm_hr) for time-varying rain
+   * - ``diurnal_moisture.precip_threshold_mm_hr``
+     - 0.25
+     - Minimum rain rate to trigger dead-fuel wetting [mm/hr]
+   * - ``diurnal_moisture.M_sat``
+     - 1.20
+     - Saturation moisture content [fraction]
+   * - **FMS Moisture Scenario File**
+     -
+     -
+   * - ``fms_file``
+     - ""
+     - Path to FARSITE ``.fms`` per-fuel-model moisture scenario file
+
 Domain and Grid
 ^^^^^^^^^^^^^^^
 
@@ -599,6 +1156,18 @@ FARSITE Parameters
 
   Example: ``farsite.phi_threshold = 0.1``
 
+**farsite.scale_ellipse_with_crown** (default: 0)
+  Scale the FARSITE ellipse length-to-width ratio when active crown fire is
+  detected (1=yes, 0=no). Off by default for backward compatibility.
+
+  Example: ``farsite.scale_ellipse_with_crown = 1``
+
+**farsite.crown_lw_scale** (default: 1.5)
+  Multiplier applied to the ellipse L/W ratio during active crown fire.
+  Only used when ``farsite.scale_ellipse_with_crown = 1``.
+
+  Example: ``farsite.crown_lw_scale = 1.5``
+
 Crown Fire Parameters
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -632,6 +1201,73 @@ Crown Fire Parameters
   Unit system for crown fire calculations. 1 = metric (m, kW/m), 0 = imperial.
 
   Example: ``crown.use_metric_units = 1``
+
+**crown.use_cruz_crown** (default: 0)
+  Use the Cruz, Alexander & Wakimoto (2005) empirical crown ROS formula instead
+  of the Van Wagner 3/CBD proxy (1=yes, 0=no).  When enabled, the crown ROS
+  is ``R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17 × MC10)``.
+
+  Example: ``crown.use_cruz_crown = 1``
+
+**cruz_crown.CBD** (default: 0.10)
+  Canopy bulk density used specifically in the Cruz (2005) crown ROS formula
+  [kg/m³].  May differ from ``crown.CBD`` used by the Van Wagner threshold.
+
+  Example: ``cruz_crown.CBD = 0.12``
+
+**cruz_crown.MC10** (default: 10.0)
+  10-hr dead fuel moisture content used in the Cruz (2005) crown ROS formula
+  [%].
+
+  Example: ``cruz_crown.MC10 = 8.0``
+
+Crown Fire State (Passive vs. Active)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Crown fire state is automatically distinguished when ``crown.enable = 1``:
+
+* **Passive crown** (``I_B ≥ I_o`` but ``R < R'_SA``): fire torches
+  intermittently but does not propagate through the canopy. Surface ROS is
+  used; no crown-ROS enhancement is applied.
+* **Active crown** (``I_B ≥ I_o`` AND ``R ≥ R'_SA``): fire propagates
+  continuously through the canopy. Crown ROS (Van Wagner or Cruz) is applied.
+
+The critical active-crown ROS is :math:`R'_{SA} = 3.0 / \text{CBD}` [m/min].
+No additional inputs are required.
+
+Fire Ecology Coupling Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters couple the fire ecology model (ignition probability,
+tree mortality) to the spread-rate field.
+
+**fire_ecology.couple_to_ros** (default: 0)
+  Scale the Rothermel/Balbi ROS by the per-cell ignition probability in
+  unburned cells (1=yes, 0=no).
+
+  Example: ``fire_ecology.couple_to_ros = 1``
+
+**fire_ecology.p_ignition_floor** (default: 0.05)
+  Minimum ignition probability used as the ROS scale floor.  Prevents ROS
+  from being driven to zero in low-probability cells.
+
+  Example: ``fire_ecology.p_ignition_floor = 0.10``
+
+**fire_ecology.T_a_C** (default: 25.0)
+  Ambient temperature for fire ecology calculations [°C].
+
+  Example: ``fire_ecology.T_a_C = 30.0``
+
+**fire_ecology.solar_heating_F** (default: 25.0)
+  Solar temperature increment added to ambient temperature [°F].  Used in
+  fuel moisture and ignition probability computations.
+
+  Example: ``fire_ecology.solar_heating_F = 30.0``
+
+**fire_ecology.tree_height** (default: 10.0)
+  Mean stand height [m] used in the tree mortality sub-model.
+
+  Example: ``fire_ecology.tree_height = 15.0``
 
 Bulk Fuel Consumption Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -772,6 +1408,98 @@ wind field.
   Number of forward-Euler sub-steps for the 2-D firebrand trajectory integration.
 
   Example: ``albini_spotting.n_traj_steps = 200``
+
+Albini (1979) Torching-Tree Spotting Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Long-range spotting originating from torching trees when crown fire is
+present.  Triggered in cells where ``crown_activity ≥ min_crown_activity``.
+The spotting distance is ``d = k_torch × U × sqrt(H_eff)`` [m].
+
+**torching_spotting.enable** (default: 0)
+  Enable the torching-tree spotting model (1=yes, 0=no).
+
+  Example: ``torching_spotting.enable = 1``
+
+**torching_spotting.k_torch** (default: 4.24)
+  Spotting distance coefficient in the formula
+  :math:`d = k_{\text{torch}} \times U \times \sqrt{H_{\text{eff}}}` [m].
+
+  Example: ``torching_spotting.k_torch = 4.24``
+
+**torching_spotting.I_B_min** (default: 100.0)
+  Minimum Byram fire line intensity required for torching-tree spotting [kW/m].
+
+  Example: ``torching_spotting.I_B_min = 200.0``
+
+**torching_spotting.spot_radius** (default: 5.0)
+  Radius of new spot-fire ignition zone [m].
+
+  Example: ``torching_spotting.spot_radius = 10.0``
+
+**torching_spotting.P_base** (default: 0.05)
+  Probability of spotting per torching cell per check interval [0–1].
+
+  Example: ``torching_spotting.P_base = 0.10``
+
+**torching_spotting.check_interval** (default: 5)
+  Run the torching-tree spotting model every N time steps.
+
+  Example: ``torching_spotting.check_interval = 3``
+
+**torching_spotting.min_crown_activity** (default: 1)
+  Minimum crown fire activity level required to trigger spotting.
+  1 = passive or active crown fire; 2 = active crown fire only.
+
+  Example: ``torching_spotting.min_crown_activity = 2``
+
+**torching_spotting.random_seed** (default: 0)
+  Seed for the random number generator. 0 uses the system clock.
+
+  Example: ``torching_spotting.random_seed = 42``
+
+Persistent Fuel Depletion Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Tracks per-cell residual fuel fraction that decays exponentially after fire
+passage: :math:`f_r = \exp(-(t - t_{\text{arrive}}) / \tau_{\text{burnout}})`.
+Written to plotfiles as ``residual_fuel``.
+
+**fuel_depletion.enable** (default: 0)
+  Track per-cell residual fuel fraction (1=yes, 0=no).
+
+  Example: ``fuel_depletion.enable = 1``
+
+**fuel_depletion.tau_burnout** (default: 3600.0)
+  Fine-fuel burnout time constant [s].
+
+  Example: ``fuel_depletion.tau_burnout = 1800.0``
+
+**fuel_depletion.couple_to_ros** (default: 0)
+  Scale ROS by residual fuel fraction in cells the fire re-enters (1=yes, 0=no).
+
+  Example: ``fuel_depletion.couple_to_ros = 1``
+
+Fire Acceleration Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Small fires spread slower than their quasi-steady-state ROS.  This model
+applies a scaling factor :math:`\alpha = 1 - \exp(-r_{\text{fire}} / L_{\text{acc}})`,
+where :math:`r_{\text{fire}}` is the effective fire radius from burned area.
+When :math:`r_{\text{fire}} \gg L_{\text{acc}}`, :math:`\alpha \to 1` and large
+fires are unaffected.
+
+**acceleration.enable** (default: 0)
+  Enable the small-fire acceleration model (1=yes, 0=no). Off by default for
+  backward compatibility.
+
+  Example: ``acceleration.enable = 1``
+
+**acceleration.L_acc** (default: 50.0)
+  Acceleration length scale [m]. Controls how quickly the fire approaches its
+  quasi-steady-state ROS as it grows.
+
+  Example: ``acceleration.L_acc = 30.0``
 
 Output Parameters
 ^^^^^^^^^^^^^^^^^
@@ -1334,131 +2062,3 @@ Performance Issues
 * Increase ``max_grid_size`` for better cache performance
 * Reduce grid resolution if simulation is too slow
 * Use Release build type for optimization
-
-New Physics-Coupling Parameters
----------------------------------
-
-This section documents input keys that couple fire sub-models (crown fire, fire
-ecology, fuel burnout, fire acceleration, spotting) to the propagation field.
-
-Cruz Crown ROS (Van Wagner + Cruz coupling)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-::
-
-    crown.enable        = 1      # enable crown fire initiation (Van Wagner 1977)
-    crown.CBH           = 4.0    # canopy base height [m]
-    crown.CBD           = 0.15   # canopy bulk density [kg/m³]
-    crown.FMC           = 100.0  # foliar moisture content [%]
-    crown.use_cruz_crown = 1     # 0 = Van Wagner 3/CBD proxy (default)
-                                  # 1 = Cruz, Alexander & Wakimoto (2005)
-                                  #     R = 11.02 × U10^0.90 × CBD^0.19 × exp(-0.17×MC10)
-    cruz_crown.CBD      = 0.10   # canopy bulk density for Cruz formula [kg/m³]
-    cruz_crown.MC10     = 10.0   # 10-h dead fuel moisture for Cruz formula [%]
-
-Fire Ecology → Propagation Coupling
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-::
-
-    fire_ecology.couple_to_ros    = 1     # scale R by P_ignition in unburned cells
-    fire_ecology.p_ignition_floor = 0.05  # minimum P_i used as ROS scale floor
-    fire_ecology.T_a_C            = 25.0  # ambient temperature [°C]
-    fire_ecology.solar_heating_F  = 25.0  # solar temperature increment [°F]
-    fire_ecology.tree_height      = 10.0  # mean stand height [m] for tree mortality
-
-Per-Class Fuel Burnout
-^^^^^^^^^^^^^^^^^^^^^^
-
-The ``farsite.use_bulk_fuel_consumption = 1`` option uses the Albini (1976)
-exponential per-class burnout model:
-
-::
-
-    farsite.use_bulk_fuel_consumption = 1   # enable per-class burnout
-    farsite.tau_residence             = 60.0  # flame residence time [s]
-    farsite.f_consumed_min            = 0.0
-    farsite.f_consumed_max            = 1.0
-
-Burnout time constants: ``τᵢ = 3600 × ρₚ / σᵢ``
-
-* 1-hr (σ ≈ 1739 ft⁻¹): τ ≈ 66 s → ~59% consumed in 60 s
-* 10-hr (σ = 109 ft⁻¹): τ ≈ 1056 s → ~6% consumed in 60 s
-* 100-hr (σ = 30 ft⁻¹): τ ≈ 3840 s → ~2% consumed in 60 s
-
-Per-Cell Canopy-Height WAF
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When a binary LCP provides canopy height (``use_spatial_crown = 1``) and
-``rothermel.use_waf = 1``, the Wind Adjustment Factor is computed per-cell::
-
-    h_eff [ft] = (1 − cc) × δ_fuel + cc × h_canopy
-    WAF_cell   = 1.83 / ln((20 + 0.36 × h_eff) / (0.13 × h_eff))
-
-No extra input keys are needed — it activates automatically when both
-``use_spatial_crown = 1`` and ``rothermel.use_waf = 1`` are set.
-
-Passive vs Active Crown Fire (Feature 11)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Crown fire state now correctly distinguishes passive from active:
-
-* **Passive crown** (``I_B ≥ I_o`` but ``R < R'_SA``): fire torches in the canopy
-  intermittently but does not propagate through it. Surface ROS is used;
-  no crown-ROS enhancement is applied.
-* **Active crown** (``I_B ≥ I_o`` AND ``R ≥ R'_SA``): fire propagates
-  continuously through the canopy. Crown ROS (Van Wagner or Cruz) is applied.
-
-The critical active-crown ROS is R'_SA = 3.0/CBD [m/min] = 3.0/CBD/60 [m/s]
-(Van Wagner 1977). No additional inputs are required; the distinction is
-automatic when ``crown.enable = 1``.
-
-Ellipse Scaling for Active Crown Fire (Feature 12)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Active crown fires produce a more elongated fire shape (higher L/W) because
-wind effects on the crown are stronger than on surface fuels. The following
-parameters enable scaling the FARSITE ellipse coefficients when active crown
-fire is detected (backward compatible — off by default)::
-
-    farsite.scale_ellipse_with_crown = 1   # 0 = off (default, backward compat)
-    farsite.crown_lw_scale           = 1.5  # multiplier for L/W when active crown
-
-Albini (1979) Torching-Tree Spotting (Feature 8)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Long-range spotting originating from torching trees (when crown fire is
-present). Triggered by ``crown_activity ≥ min_crown_activity``::
-
-    torching_spotting.enable             = 1     # 1 to enable
-    torching_spotting.k_torch            = 4.24  # d = k × U × sqrt(H_eff) [m]
-    torching_spotting.I_B_min            = 100.0 # minimum I_B [kW/m]
-    torching_spotting.spot_radius        = 5.0   # new spot fire radius [m]
-    torching_spotting.P_base             = 0.05  # probability per torching cell
-    torching_spotting.check_interval     = 5     # check every N steps
-    torching_spotting.min_crown_activity = 1     # 1=passive+active, 2=active-only
-    torching_spotting.random_seed        = 0     # 0 = system time
-
-Persistent Fuel Load Depletion (Feature 9)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Tracks per-cell residual fuel fraction that decays exponentially after fire
-passage: ``f_r = exp(-(t - t_arrive) / tau_burnout)``.
-Written to plotfiles as ``residual_fuel``::
-
-    fuel_depletion.enable        = 1       # 1 to track per-cell fuel depletion
-    fuel_depletion.tau_burnout   = 3600.0  # fine-fuel burnout time constant [s]
-    fuel_depletion.couple_to_ros = 0       # 1 to scale ROS in re-entry cells
-
-Fire Acceleration Model (Feature 10)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Small fires spread slower than their quasi-steady-state ROS. This model
-applies a scaling factor ``α = 1 − exp(−r_fire / L_acc)`` where ``r_fire``
-is the effective fire radius from burned area::
-
-    acceleration.enable = 1      # 1 to enable (default: 0, backward compat)
-    acceleration.L_acc  = 50.0   # acceleration length scale [m]
-
-When ``r_fire ≫ L_acc``, ``α → 1`` and ROS is unchanged (large fires are
-unaffected).
