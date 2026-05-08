@@ -880,6 +880,32 @@ Barrier Polygons / Firebreaks
       330200.0  3775300.0
       330300.0  3775300.0
 
+**burn_period.enable** (default: 0)
+  When set to 1, fire spread (rate-of-spread field) is suppressed to zero
+  outside a user-specified daily active-burn time window.  This reproduces the
+  operational *burn period* concept used in FARSITE and FSPro, where nighttime
+  recovery of fuel moisture effectively halts spread.  Moisture evolution and
+  all diagnostics continue normally during inactive hours.
+
+  Example::
+
+      burn_period.enable     = 1
+      burn_period.start_hour = 10.0   # 10:00 AM – spread begins
+      burn_period.end_hour   = 20.0   # 8:00 PM  – spread ends
+      burn_period.sim_start_hour = 8.0
+
+**burn_period.start_hour** (default: 10.0)
+  Local clock hour (decimal, 0–24) when the daily burn period begins.
+
+**burn_period.end_hour** (default: 20.0)
+  Local clock hour (decimal, 0–24) when the daily burn period ends.
+  Overnight windows (``end_hour < start_hour``) are handled correctly.
+
+**burn_period.sim_start_hour** (default: inherited from ``solar_radiation.sim_start_hour``)
+  Local clock hour at simulation time = 0.  Defaults to
+  ``solar_radiation.sim_start_hour`` when solar shading is enabled; otherwise
+  defaults to 0.0 (midnight start).
+
 Rothermel Fuel Properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
