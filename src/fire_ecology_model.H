@@ -332,7 +332,7 @@ inline amrex::Real compute_torching_index_kmh(
     amrex::Real I_o_kwm,
     amrex::Real h_kJ_kg,
     amrex::Real w_net_kg_m2,
-    amrex::Real U_max_kmh = 160.0,
+    amrex::Real U_max_kmh = 200.0,
     int max_iter = 50)
 {
     using namespace amrex;
@@ -378,7 +378,7 @@ inline amrex::Real compute_crowning_index_kmh(
     const RothermelComputed& rc,
     const RothermelParams& rp,
     amrex::Real R_SA_ms,
-    amrex::Real U_max_kmh = 160.0,
+    amrex::Real U_max_kmh = 200.0,
     int max_iter = 50)
 {
     using namespace amrex;

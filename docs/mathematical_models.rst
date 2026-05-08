@@ -2284,7 +2284,7 @@ Scott & Reinhardt (2001) Bisection-Based TI and CI
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The full Scott & Reinhardt (2001) Torching Index (TI) and Crowning Index (CI) are
-defined as the minimum 10-m open-wind speed (km/h) at which passive torching or
+defined as the minimum 20-ft (6.1 m) open-wind speed (km/h) at which passive torching or
 active crowning can occur.  These are output as the plotfile fields
 ``torching_index_kmh`` and ``crowning_index_kmh``.
 

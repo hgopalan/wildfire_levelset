@@ -279,11 +279,15 @@ void parse_inputs(InputParameters& p)
         if (p.crown.crown_fraction_weight < 0.0 || p.crown.crown_fraction_weight > 2.0) {
             amrex::Abort("crown.crown_fraction_weight must be between 0.0 and 2.0");
         }
-        if (p.crown.use_cruz_crown == 1) {
-            Print() << "Crown fire: active ROS model = Cruz, Alexander & Wakimoto (2005)\n";
+        if (p.crown.use_rothermel1991_crown == 1 && p.crown.use_cruz_crown == 1) {
+            Print() << "WARNING: crown.use_rothermel1991_crown and crown.use_cruz_crown "
+                    << "are both enabled. Rothermel (1991) takes priority.\n";
+            p.crown.use_cruz_crown = 0;
         }
         if (p.crown.use_rothermel1991_crown == 1) {
             Print() << "Crown fire: active ROS model = Rothermel (1991): R_crown = 3.34 x R_surface\n";
+        } else if (p.crown.use_cruz_crown == 1) {
+            Print() << "Crown fire: active ROS model = Cruz, Alexander & Wakimoto (2005)\n";
         }
         if (p.crown.use_passive_blend == 1) {
             Print() << "Crown fire: passive blending = Van Wagner (1977) CF = (I_B/I_o)^(2/3)\n";
