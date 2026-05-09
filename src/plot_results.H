@@ -274,31 +274,39 @@ inline void write_wildfire_plotfile(
     }
 
     // ---- Burned area and perimeter statistics ----
+    // Perimeter is computed using the FARSITE/FlamMap edge-crossing method:
+    // for every cell face that separates a burned cell (phi < 0) from an
+    // unburned cell (phi >= 0), the face length is added to the perimeter.
+    // This correctly accounts for corner cells and diagonal fire fronts,
+    // unlike the simpler "perimeter-cell count × sqrt(cell_area)" approach.
     {
-        amrex::Long n_burned = 0, n_perim = 0;
+        amrex::Long n_burned = 0;
+        Real perim_m = Real(0.0);
         const auto dxx = geom.CellSize();
         for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
             const Box& bx = mfi.validbox();
             auto const p = phi.const_array(mfi);
-            const IntVect bxlo = bx.smallEnd();
             const IntVect bxhi = bx.bigEnd();
             amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
-                if (p(i, j, k, 0) < Real(0.0)) {
-                    ++n_burned;
-                    bool on_perim = false;
-                    if (i > bxlo[0]) on_perim |= (p(i-1, j, k, 0) >= Real(0.0));
-                    if (i < bxhi[0]) on_perim |= (p(i+1, j, k, 0) >= Real(0.0));
-                    if (j > bxlo[1]) on_perim |= (p(i, j-1, k, 0) >= Real(0.0));
-                    if (j < bxhi[1]) on_perim |= (p(i, j+1, k, 0) >= Real(0.0));
-                    if (on_perim) ++n_perim;
+                Real pv = p(i, j, k, 0);
+                if (pv < Real(0.0)) ++n_burned;
+                // x-face between (i,j) and (i+1,j): face length = dxx[1]
+                if (i < bxhi[0]) {
+                    Real pn = p(i+1, j, k, 0);
+                    if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[1];
+                }
+                // y-face between (i,j) and (i,j+1): face length = dxx[0]
+                if (j < bxhi[1]) {
+                    Real pn = p(i, j+1, k, 0);
+                    if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[0];
                 }
             });
         }
         ParallelDescriptor::ReduceLongSum(n_burned);
-        ParallelDescriptor::ReduceLongSum(n_perim);
+        ParallelDescriptor::ReduceRealSum(perim_m);
         Real cell_area = dxx[0] * dxx[1];
         amrex::Print() << "  Burned area: " << Real(n_burned)*cell_area/1.0e4 << " ha"
-                       << "  Perimeter: "   << Real(n_perim)*std::sqrt(cell_area)/1000.0 << " km\n";
+                       << "  Perimeter: "   << perim_m/Real(1000.0) << " km\n";
     }
 
     // ---- Write negative-phi x-y data files ----
