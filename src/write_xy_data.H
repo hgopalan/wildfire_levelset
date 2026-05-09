@@ -597,7 +597,14 @@ inline void append_fire_stats(const MultiFab& phi,
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
-    amrex::Long n_burned = 0, n_perim = 0, n_active = 0;
+    // Perimeter is accumulated as a sum of face lengths using the
+    // FARSITE/FlamMap edge-crossing method: for every cell face separating a
+    // burned cell (phi < 0) from an unburned cell (phi >= 0), the face length
+    // is added to the total perimeter.  This correctly handles corner cells
+    // (which contribute two face lengths, not one) and diagonal fire fronts,
+    // giving perimeter estimates consistent with FARSITE raster outputs.
+    amrex::Long n_burned = 0, n_active = 0;
+    Real perim_m = Real(0.0);
     Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
     Real head_ros = Real(0.0);  // maximum ROS in perimeter cells [m/s]
 
@@ -615,20 +622,32 @@ inline void append_fire_stats(const MultiFab& phi,
             Real pv = p(i, j, k, 0);
             if (pv < Real(0.0)) {
                 ++n_burned;
-                bool on_perim = false;
-                if (i > lo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
-                if (i < hi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
-                if (j > lo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
-                if (j < hi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
-                if (on_perim) {
-                    ++n_perim;
-                    if (R_mf) {
+                // Track head ROS for perimeter cells (any burned cell adjacent
+                // to an unburned neighbor qualifies as a perimeter cell).
+                if (R_mf) {
+                    bool on_perim = false;
+                    if (i > lo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
+                    if (i < hi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
+                    if (j > lo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
+                    if (j < hi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+                    if (on_perim) {
                         Real r = R_arr(i, j, k, 0);
                         if (r > head_ros) head_ros = r;
                     }
                 }
             } else if (pv < Real(0.1)) {
                 ++n_active;  // cells within phi_thresh = 0.1 of the front
+            }
+            // Edge-crossing perimeter (FARSITE/FlamMap raster method):
+            // x-face between (i,j) and (i+1,j): face length = dxx[1]
+            if (i < hi[0]) {
+                Real pn = p(i+1, j, k, 0);
+                if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[1];
+            }
+            // y-face between (i,j) and (i,j+1): face length = dxx[0]
+            if (j < hi[1]) {
+                Real pn = p(i, j+1, k, 0);
+                if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[0];
             }
         });
 
@@ -643,8 +662,8 @@ inline void append_fire_stats(const MultiFab& phi,
     }
 
     ParallelDescriptor::ReduceLongSum(n_burned);
-    ParallelDescriptor::ReduceLongSum(n_perim);
     ParallelDescriptor::ReduceLongSum(n_active);
+    ParallelDescriptor::ReduceRealSum(perim_m);
     if (R_mf) {
         ParallelDescriptor::ReduceRealMax(head_ros);
     }
@@ -655,7 +674,7 @@ inline void append_fire_stats(const MultiFab& phi,
     }
 
     Real burned_ha    = static_cast<Real>(n_burned) * cell_area / Real(1.0e4);
-    Real perim_km     = static_cast<Real>(n_perim)  * std::sqrt(cell_area) / Real(1000.0);
+    Real perim_km     = perim_m / Real(1000.0);
     // Convert domain-sum emission [kg/m²·cell] to mean [kg/m²]
     amrex::Long total_cells  = geom.Domain().numPts();
     Real mean_co2  = (total_cells > 0) ? sum_co2  / static_cast<Real>(total_cells) : Real(0.0);
