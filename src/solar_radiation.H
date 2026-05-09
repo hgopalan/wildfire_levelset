@@ -473,6 +473,17 @@ inline void compute_topographic_horizon_angles(
     amrex::Gpu::streamSynchronize();
 
     amrex::Print() << "Topographic horizon angles precomputed for all 8 directions.\n";
+
+    // ---- Diagnostic: elevation range and per-direction horizon angle stats --
+    amrex::Print() << "  Elevation range: ["
+                   << elevation_mf.min(0) << ", " << elevation_mf.max(0) << "] m\n";
+    constexpr amrex::Real RAD2DEG_diag = amrex::Real(180.0) / WildfireConst::PI;
+    const char* dir_names[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+    for (int d = 0; d < 8; ++d) {
+        amrex::Print() << "  Max horizon angle " << dir_names[d] << ": "
+                       << horizon_mf.max(d) * RAD2DEG_diag << " deg"
+                       << "  (min: " << horizon_mf.min(d) * RAD2DEG_diag << " deg)\n";
+    }
 }
 
 
@@ -659,6 +670,9 @@ inline void apply_solar_radiation_step(
                        << sun.elevation_rad * (180.0 / WildfireConst::PI) << " deg"
                        << "  azimuth="
                        << sun.azimuth_rad   * (180.0 / WildfireConst::PI) << " deg\n";
+        amrex::Print() << "  Topographic horizon check: "
+                       << (horizon_mf != nullptr ? "ACTIVE" : "NOT ACTIVE (horizon_mf is null)")
+                       << "\n";
     }
 
     // Per-cell terrain + canopy shade fraction
@@ -671,6 +685,13 @@ inline void apply_solar_radiation_step(
                               inputs.solar_radiation.use_canopy_shading,
                               static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover),
                               horizon_mf);
+
+    if (print_position) {
+        amrex::Real sf_min = shade_fraction_mf.min(0);
+        amrex::Real sf_max = shade_fraction_mf.max(0);
+        amrex::Print() << "  Shade fraction after compute: min=" << sf_min
+                       << "  max=" << sf_max << "\n";
+    }
 
     // Per-cell shade-adjusted EMC (requires diurnal T_air / RH)
     if (inputs.diurnal_moisture.enable == 1) {
