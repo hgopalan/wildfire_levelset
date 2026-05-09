@@ -833,6 +833,77 @@ struct InputParameters {
                                      //   solar_radiation.sim_start_hour if set, else 0.0)
     } burn_period;
 
+    // ---- Plotfile variable filter ----
+    // When non-empty, only the listed variable names are written to each AMReX
+    // plotfile.  If the list is empty (default) every field is written.
+    //
+    // Usage in inputs file (space-separated):
+    //   plot_vars = phi R arrival_time fireline_intensity flame_length
+    //
+    // Available variable names (use these exact strings):
+    //   phi                  – level-set function (fire front where phi = 0)
+    //   velx, vely [, velz]  – wind velocity components [m/s]
+    //   farsite_dx, farsite_dy [, farsite_dz] – FARSITE spread displacements
+    //   R                    – rate of spread [m/s]
+    //   spot_prob            – firebrand spotting probability
+    //   spot_count           – firebrand count per cell
+    //   spot_dist            – firebrand landing distance [m]
+    //   spot_active          – spotting ignition flag
+    //   fuel_consumption     – bulk fuel consumption fraction
+    //   crown_fraction       – crown fire fraction
+    //   albini_Hz            – Albini lofting height [m]
+    //   albini_count         – firebrands launched per cell
+    //   albini_dist          – max firebrand landing distance [m]
+    //   albini_active        – Albini spot ignition flag
+    //   elevation            – terrain elevation [m]
+    //   slope                – terrain slope [degrees]
+    //   aspect               – terrain aspect [degrees]
+    //   fuel_model           – fuel model number (from landscape)
+    //   fireline_intensity   – Byram fireline intensity [kW/m]
+    //   flame_length         – Byram flame length [m]
+    //   weise_flame_height   – Weise & Biging flame height [m]
+    //   weise_flame_tilt     – Weise & Biging flame tilt angle [rad]
+    //   weise_whirl_height   – fire whirl height [m]
+    //   weise_whirl_radius   – fire whirl radius [m]
+    //   weise_angular_velocity – fire whirl angular velocity [rad/s]
+    //   weise_max_tang_vel   – fire whirl max tangential velocity [m/s]
+    //   viegas_ROS           – Viegas eruptive rate of spread [m/s]
+    //   viegas_eruptive_flag – Viegas eruptive fire flag (0/1)
+    //   viegas_ROS_excess    – Viegas ROS excess above threshold
+    //   viegas_flame_tilt    – Viegas flame tilt angle [rad]
+    //   viegas_slope_factor  – Viegas slope amplification factor
+    //   scorch_height        – Van Wagner scorch height [m]
+    //   prob_ignition        – Anderson probability of ignition [0-1]
+    //   tree_mortality       – Ryan-Reinhardt tree mortality [0-1]
+    //   crown_activity       – crown activity class (0=surface,1=passive,2=active)
+    //   torching_ratio       – Scott-Reinhardt torching ratio
+    //   crowning_ratio       – Scott-Reinhardt crowning ratio
+    //   energy_release_component – NFDRS energy release component
+    //   nfdrs_spread_component   – NFDRS spread component
+    //   nfdrs_burning_index      – NFDRS burning index
+    //   co2_emissions        – CO₂ emission rate [kg/m²/s]
+    //   co_emissions         – CO emission rate [kg/m²/s]
+    //   pm25_emissions       – PM₂.₅ emission rate [kg/m²/s]
+    //   arrival_time         – fire arrival time [s]
+    //   heat_per_unit_area   – heat per unit area [kJ/m²]
+    //   vorticity_z          – vertical vorticity [1/s]
+    //   cbh                  – canopy base height [m]
+    //   cbd                  – canopy bulk density [kg/m³]
+    //   canopy_cover         – canopy cover fraction [0-1]
+    //   canopy_height        – canopy height [m]
+    //   burnout_time         – cell burnout time [s]
+    //   reaction_intensity   – Rothermel reaction intensity [BTU/ft²/min]
+    //   residual_fuel        – residual (unconsumed) fuel fraction
+    //   shade_fraction       – terrain/canopy shade fraction [0-1]
+    //   torching_index_kmh   – Scott-Reinhardt torching index [km/h]
+    //   crowning_index_kmh   – Scott-Reinhardt crowning index [km/h]
+    //   moisture_d1          – 1-hr dead fuel moisture [fraction]
+    //   moisture_d10         – 10-hr dead fuel moisture [fraction]
+    //   moisture_d100        – 100-hr dead fuel moisture [fraction]
+    //   moisture_lh          – live herbaceous moisture [fraction]
+    //   moisture_lw          – live woody moisture [fraction]
+    std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
+
 };
 
 void parse_inputs(InputParameters& inputs);

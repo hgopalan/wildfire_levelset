@@ -76,46 +76,134 @@ Each plotfile directory contains:
 
 Each plotfile contains the following fields:
 
-+------------------------------+-----------------------------------+
-| Field name                   | Description                       |
-+==============================+===================================+
-| ``phi``                      | Level-set function (fire front    |
-|                              | where phi = 0)                    |
-+------------------------------+-----------------------------------+
-| ``velx``, ``vely``           | Wind velocity components [m/s]    |
-+------------------------------+-----------------------------------+
-| ``farsite_dx``, ``farsite_dy`` | FARSITE spread displacements    |
-+------------------------------+-----------------------------------+
-| ``R``                        | Rothermel rate of spread [m/s]    |
-+------------------------------+-----------------------------------+
-| ``spot_prob``, ``spot_count``| Spotting probability and count    |
-+------------------------------+-----------------------------------+
-| ``spot_dist``, ``spot_active`` | Spotting distance and flag      |
-+------------------------------+-----------------------------------+
-| ``fuel_consumption``         | Bulk fuel consumption fraction    |
-+------------------------------+-----------------------------------+
-| ``crown_fraction``           | Crown fire fraction               |
-+------------------------------+-----------------------------------+
-| ``albini_Hz``                | Albini lofting height [m]         |
-+------------------------------+-----------------------------------+
-| ``albini_count``             | Firebrands launched per cell      |
-+------------------------------+-----------------------------------+
-| ``albini_dist``              | Maximum firebrand landing dist [m]|
-+------------------------------+-----------------------------------+
-| ``albini_active``            | Spot ignition flag                |
-+------------------------------+-----------------------------------+
-| ``elevation``                | Terrain elevation [m]             |
-+------------------------------+-----------------------------------+
-| ``slope``                    | Terrain slope [degrees]           |
-+------------------------------+-----------------------------------+
-| ``aspect``                   | Terrain aspect [degrees]          |
-+------------------------------+-----------------------------------+
-| ``fuel_model``               | Fuel model number (from landscape)|
-+------------------------------+-----------------------------------+
-| ``fireline_intensity``       | Byram fireline intensity [kW/m]   |
-+------------------------------+-----------------------------------+
-| ``flame_length``             | Byram flame length [m]            |
-+------------------------------+-----------------------------------+
++----------------------------------------+---------------------------------------------------+
+| Field name                             | Description                                       |
++========================================+===================================================+
+| ``phi``                                | Level-set function (fire front where phi = 0)     |
++----------------------------------------+---------------------------------------------------+
+| ``velx``, ``vely`` [, ``velz``]        | Wind velocity components [m/s]                    |
++----------------------------------------+---------------------------------------------------+
+| ``farsite_dx``, ``farsite_dy``         | FARSITE spread displacements                      |
+| [, ``farsite_dz``]                     |                                                   |
++----------------------------------------+---------------------------------------------------+
+| ``R``                                  | Rate of spread [m/s]                              |
++----------------------------------------+---------------------------------------------------+
+| ``spot_prob``, ``spot_count``          | Firebrand spotting probability and count          |
++----------------------------------------+---------------------------------------------------+
+| ``spot_dist``, ``spot_active``         | Spotting distance [m] and ignition flag           |
++----------------------------------------+---------------------------------------------------+
+| ``fuel_consumption``                   | Bulk fuel consumption fraction                    |
++----------------------------------------+---------------------------------------------------+
+| ``crown_fraction``                     | Crown fire fraction                               |
++----------------------------------------+---------------------------------------------------+
+| ``albini_Hz``                          | Albini lofting height [m]                         |
++----------------------------------------+---------------------------------------------------+
+| ``albini_count``                       | Firebrands launched per cell                      |
++----------------------------------------+---------------------------------------------------+
+| ``albini_dist``                        | Maximum firebrand landing distance [m]            |
++----------------------------------------+---------------------------------------------------+
+| ``albini_active``                      | Albini spot ignition flag                         |
++----------------------------------------+---------------------------------------------------+
+| ``elevation``                          | Terrain elevation [m]                             |
++----------------------------------------+---------------------------------------------------+
+| ``slope``                              | Terrain slope [degrees]                           |
++----------------------------------------+---------------------------------------------------+
+| ``aspect``                             | Terrain aspect [degrees]                          |
++----------------------------------------+---------------------------------------------------+
+| ``fuel_model``                         | Fuel model number (from landscape)                |
++----------------------------------------+---------------------------------------------------+
+| ``fireline_intensity``                 | Byram fireline intensity [kW/m]                   |
++----------------------------------------+---------------------------------------------------+
+| ``flame_length``                       | Byram flame length [m]                            |
++----------------------------------------+---------------------------------------------------+
+| ``weise_flame_height``                 | Weise & Biging flame height [m]                   |
++----------------------------------------+---------------------------------------------------+
+| ``weise_flame_tilt``                   | Flame tilt angle [rad]                            |
++----------------------------------------+---------------------------------------------------+
+| ``weise_whirl_height``                 | Fire whirl height [m]                             |
++----------------------------------------+---------------------------------------------------+
+| ``weise_whirl_radius``                 | Fire whirl radius [m]                             |
++----------------------------------------+---------------------------------------------------+
+| ``weise_angular_velocity``             | Fire whirl angular velocity [rad/s]               |
++----------------------------------------+---------------------------------------------------+
+| ``weise_max_tang_vel``                 | Fire whirl max tangential velocity [m/s]          |
++----------------------------------------+---------------------------------------------------+
+| ``viegas_ROS``                         | Viegas eruptive rate of spread [m/s]              |
++----------------------------------------+---------------------------------------------------+
+| ``viegas_eruptive_flag``               | Viegas eruptive fire flag (0/1)                   |
++----------------------------------------+---------------------------------------------------+
+| ``viegas_ROS_excess``                  | Viegas ROS excess above threshold                 |
++----------------------------------------+---------------------------------------------------+
+| ``viegas_flame_tilt``                  | Viegas flame tilt angle [rad]                     |
++----------------------------------------+---------------------------------------------------+
+| ``viegas_slope_factor``                | Viegas slope amplification factor                 |
++----------------------------------------+---------------------------------------------------+
+| ``scorch_height``                      | Van Wagner scorch height [m]                      |
++----------------------------------------+---------------------------------------------------+
+| ``prob_ignition``                      | Anderson probability of ignition [0–1]            |
++----------------------------------------+---------------------------------------------------+
+| ``tree_mortality``                     | Ryan–Reinhardt tree mortality [0–1]               |
++----------------------------------------+---------------------------------------------------+
+| ``crown_activity``                     | Crown activity class (0=surface, 1=passive,       |
+|                                        | 2=active)                                         |
++----------------------------------------+---------------------------------------------------+
+| ``torching_ratio``                     | Scott–Reinhardt torching ratio                    |
++----------------------------------------+---------------------------------------------------+
+| ``crowning_ratio``                     | Scott–Reinhardt crowning ratio                    |
++----------------------------------------+---------------------------------------------------+
+| ``energy_release_component``           | NFDRS energy release component                    |
++----------------------------------------+---------------------------------------------------+
+| ``nfdrs_spread_component``             | NFDRS spread component                            |
++----------------------------------------+---------------------------------------------------+
+| ``nfdrs_burning_index``                | NFDRS burning index                               |
++----------------------------------------+---------------------------------------------------+
+| ``co2_emissions``                      | CO₂ emission rate [kg/m²/s]                       |
++----------------------------------------+---------------------------------------------------+
+| ``co_emissions``                       | CO emission rate [kg/m²/s]                        |
++----------------------------------------+---------------------------------------------------+
+| ``pm25_emissions``                     | PM₂.₅ emission rate [kg/m²/s]                     |
++----------------------------------------+---------------------------------------------------+
+| ``arrival_time``                       | Fire arrival time [s]                             |
++----------------------------------------+---------------------------------------------------+
+| ``heat_per_unit_area``                 | Heat per unit area [kJ/m²]                        |
++----------------------------------------+---------------------------------------------------+
+| ``vorticity_z``                        | Vertical vorticity [1/s]                          |
++----------------------------------------+---------------------------------------------------+
+| ``cbh``                                | Canopy base height [m]                            |
++----------------------------------------+---------------------------------------------------+
+| ``cbd``                                | Canopy bulk density [kg/m³]                       |
++----------------------------------------+---------------------------------------------------+
+| ``canopy_cover``                       | Canopy cover fraction [0–1]                       |
++----------------------------------------+---------------------------------------------------+
+| ``canopy_height``                      | Canopy height [m]                                 |
++----------------------------------------+---------------------------------------------------+
+| ``burnout_time``                       | Cell burnout time [s]                             |
++----------------------------------------+---------------------------------------------------+
+| ``reaction_intensity``                 | Rothermel reaction intensity [BTU/ft²/min]        |
++----------------------------------------+---------------------------------------------------+
+| ``residual_fuel``                      | Residual (unconsumed) fuel fraction               |
++----------------------------------------+---------------------------------------------------+
+| ``shade_fraction``                     | Terrain/canopy shade fraction [0–1]               |
++----------------------------------------+---------------------------------------------------+
+| ``torching_index_kmh``                 | Scott–Reinhardt torching index [km/h]             |
++----------------------------------------+---------------------------------------------------+
+| ``crowning_index_kmh``                 | Scott–Reinhardt crowning index [km/h]             |
++----------------------------------------+---------------------------------------------------+
+| ``moisture_d1``                        | 1-hr dead fuel moisture [fraction]                |
++----------------------------------------+---------------------------------------------------+
+| ``moisture_d10``                       | 10-hr dead fuel moisture [fraction]               |
++----------------------------------------+---------------------------------------------------+
+| ``moisture_d100``                      | 100-hr dead fuel moisture [fraction]              |
++----------------------------------------+---------------------------------------------------+
+| ``moisture_lh``                        | Live herbaceous moisture [fraction]               |
++----------------------------------------+---------------------------------------------------+
+| ``moisture_lw``                        | Live woody moisture [fraction]                    |
++----------------------------------------+---------------------------------------------------+
+
+.. note::
+
+   The plotfile can become large when all variables are enabled.  Use
+   ``plot_vars`` to write only the fields you need (see :ref:`plot-vars`).
 
 In addition, two plain-text files are written at each output step:
 
@@ -171,6 +259,9 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
    * - ``plot_int``
      - 50
      - Number of time steps between output (plot) files
+   * - ``plot_vars``
+     - "" (all)
+     - Space-separated list of variable names to include in plotfiles; when empty all fields are written (see :ref:`plot-vars` for the complete list)
    * - ``reinit_int``
      - 20
      - Steps between level-set reinitialization (-1 = disabled)
@@ -2028,6 +2119,177 @@ WindNinja Ridge/Canyon Simulation
     wind_terrain.model       = windninja_ridge_canyon
     wind_terrain.k_ridge     = 1.5    # ridge amplification
     wind_terrain.k_canyon_wn = 0.8   # canyon channeling
+
+.. _plot-vars:
+
+Controlling Plotfile Output Variables
+--------------------------------------
+
+By default every simulation field is written to each AMReX plotfile.  For
+large domains or long runs this can produce very large files.  The
+``plot_vars`` input key lets you restrict the output to only the variables
+you need.
+
+Usage
+^^^^^
+
+Add a space-separated list of variable names to your ``inputs.i`` file::
+
+    # Write only essential fire-spread diagnostics
+    plot_vars = phi R arrival_time fireline_intensity flame_length
+
+If ``plot_vars`` is **not** specified (the default), all fields are written.
+If a name in the list does not match any known variable a warning is printed
+and that entry is ignored.  If the resulting list is empty after filtering,
+the full plotfile is written as a fallback.
+
+Complete Variable Name Reference
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following table lists every variable name accepted by ``plot_vars``.
+Use the exact string shown in the **Variable name** column.
+
++------------------------------------+---------------------------------------------------+
+| Variable name                      | Description                                       |
++====================================+===================================================+
+| ``phi``                            | Level-set function (fire front where phi = 0)     |
++------------------------------------+---------------------------------------------------+
+| ``velx``, ``vely`` [, ``velz``]    | Wind velocity components [m/s]                    |
++------------------------------------+---------------------------------------------------+
+| ``farsite_dx``, ``farsite_dy``     | FARSITE spread displacements                      |
+| [, ``farsite_dz``]                 |                                                   |
++------------------------------------+---------------------------------------------------+
+| ``R``                              | Rate of spread [m/s]                              |
++------------------------------------+---------------------------------------------------+
+| ``spot_prob``                      | Firebrand spotting probability                    |
++------------------------------------+---------------------------------------------------+
+| ``spot_count``                     | Firebrand count per cell                          |
++------------------------------------+---------------------------------------------------+
+| ``spot_dist``                      | Firebrand landing distance [m]                    |
++------------------------------------+---------------------------------------------------+
+| ``spot_active``                    | Spotting ignition flag                            |
++------------------------------------+---------------------------------------------------+
+| ``fuel_consumption``               | Bulk fuel consumption fraction                    |
++------------------------------------+---------------------------------------------------+
+| ``crown_fraction``                 | Crown fire fraction                               |
++------------------------------------+---------------------------------------------------+
+| ``albini_Hz``                      | Albini lofting height [m]                         |
++------------------------------------+---------------------------------------------------+
+| ``albini_count``                   | Firebrands launched per cell                      |
++------------------------------------+---------------------------------------------------+
+| ``albini_dist``                    | Max firebrand landing distance [m]                |
++------------------------------------+---------------------------------------------------+
+| ``albini_active``                  | Albini spot ignition flag                         |
++------------------------------------+---------------------------------------------------+
+| ``elevation``                      | Terrain elevation [m]                             |
++------------------------------------+---------------------------------------------------+
+| ``slope``                          | Terrain slope [degrees]                           |
++------------------------------------+---------------------------------------------------+
+| ``aspect``                         | Terrain aspect [degrees]                          |
++------------------------------------+---------------------------------------------------+
+| ``fuel_model``                     | Fuel model number (from landscape)                |
++------------------------------------+---------------------------------------------------+
+| ``fireline_intensity``             | Byram fireline intensity [kW/m]                   |
++------------------------------------+---------------------------------------------------+
+| ``flame_length``                   | Byram flame length [m]                            |
++------------------------------------+---------------------------------------------------+
+| ``weise_flame_height``             | Weise & Biging flame height [m]                   |
++------------------------------------+---------------------------------------------------+
+| ``weise_flame_tilt``               | Flame tilt angle [rad]                            |
++------------------------------------+---------------------------------------------------+
+| ``weise_whirl_height``             | Fire whirl height [m]                             |
++------------------------------------+---------------------------------------------------+
+| ``weise_whirl_radius``             | Fire whirl radius [m]                             |
++------------------------------------+---------------------------------------------------+
+| ``weise_angular_velocity``         | Fire whirl angular velocity [rad/s]               |
++------------------------------------+---------------------------------------------------+
+| ``weise_max_tang_vel``             | Fire whirl max tangential velocity [m/s]          |
++------------------------------------+---------------------------------------------------+
+| ``viegas_ROS``                     | Viegas eruptive rate of spread [m/s]              |
++------------------------------------+---------------------------------------------------+
+| ``viegas_eruptive_flag``           | Viegas eruptive fire flag (0/1)                   |
++------------------------------------+---------------------------------------------------+
+| ``viegas_ROS_excess``              | Viegas ROS excess above threshold                 |
++------------------------------------+---------------------------------------------------+
+| ``viegas_flame_tilt``              | Viegas flame tilt angle [rad]                     |
++------------------------------------+---------------------------------------------------+
+| ``viegas_slope_factor``            | Viegas slope amplification factor                 |
++------------------------------------+---------------------------------------------------+
+| ``scorch_height``                  | Van Wagner scorch height [m]                      |
++------------------------------------+---------------------------------------------------+
+| ``prob_ignition``                  | Anderson probability of ignition [0–1]            |
++------------------------------------+---------------------------------------------------+
+| ``tree_mortality``                 | Ryan–Reinhardt tree mortality [0–1]               |
++------------------------------------+---------------------------------------------------+
+| ``crown_activity``                 | Crown activity (0=surface, 1=passive, 2=active)   |
++------------------------------------+---------------------------------------------------+
+| ``torching_ratio``                 | Scott–Reinhardt torching ratio                    |
++------------------------------------+---------------------------------------------------+
+| ``crowning_ratio``                 | Scott–Reinhardt crowning ratio                    |
++------------------------------------+---------------------------------------------------+
+| ``energy_release_component``       | NFDRS energy release component                    |
++------------------------------------+---------------------------------------------------+
+| ``nfdrs_spread_component``         | NFDRS spread component                            |
++------------------------------------+---------------------------------------------------+
+| ``nfdrs_burning_index``            | NFDRS burning index                               |
++------------------------------------+---------------------------------------------------+
+| ``co2_emissions``                  | CO₂ emission rate [kg/m²/s]                       |
++------------------------------------+---------------------------------------------------+
+| ``co_emissions``                   | CO emission rate [kg/m²/s]                        |
++------------------------------------+---------------------------------------------------+
+| ``pm25_emissions``                 | PM₂.₅ emission rate [kg/m²/s]                     |
++------------------------------------+---------------------------------------------------+
+| ``arrival_time``                   | Fire arrival time [s]                             |
++------------------------------------+---------------------------------------------------+
+| ``heat_per_unit_area``             | Heat per unit area [kJ/m²]                        |
++------------------------------------+---------------------------------------------------+
+| ``vorticity_z``                    | Vertical vorticity [1/s]                          |
++------------------------------------+---------------------------------------------------+
+| ``cbh``                            | Canopy base height [m]                            |
++------------------------------------+---------------------------------------------------+
+| ``cbd``                            | Canopy bulk density [kg/m³]                       |
++------------------------------------+---------------------------------------------------+
+| ``canopy_cover``                   | Canopy cover fraction [0–1]                       |
++------------------------------------+---------------------------------------------------+
+| ``canopy_height``                  | Canopy height [m]                                 |
++------------------------------------+---------------------------------------------------+
+| ``burnout_time``                   | Cell burnout time [s]                             |
++------------------------------------+---------------------------------------------------+
+| ``reaction_intensity``             | Rothermel reaction intensity [BTU/ft²/min]        |
++------------------------------------+---------------------------------------------------+
+| ``residual_fuel``                  | Residual (unconsumed) fuel fraction               |
++------------------------------------+---------------------------------------------------+
+| ``shade_fraction``                 | Terrain/canopy shade fraction [0–1]               |
++------------------------------------+---------------------------------------------------+
+| ``torching_index_kmh``             | Scott–Reinhardt torching index [km/h]             |
++------------------------------------+---------------------------------------------------+
+| ``crowning_index_kmh``             | Scott–Reinhardt crowning index [km/h]             |
++------------------------------------+---------------------------------------------------+
+| ``moisture_d1``                    | 1-hr dead fuel moisture [fraction]                |
++------------------------------------+---------------------------------------------------+
+| ``moisture_d10``                   | 10-hr dead fuel moisture [fraction]               |
++------------------------------------+---------------------------------------------------+
+| ``moisture_d100``                  | 100-hr dead fuel moisture [fraction]              |
++------------------------------------+---------------------------------------------------+
+| ``moisture_lh``                    | Live herbaceous moisture [fraction]               |
++------------------------------------+---------------------------------------------------+
+| ``moisture_lw``                    | Live woody moisture [fraction]                    |
++------------------------------------+---------------------------------------------------+
+
+Example: minimal fire-spread output
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To reduce disk usage to the bare essentials for a fire-spread study::
+
+    plot_vars = phi R arrival_time fireline_intensity flame_length
+
+Example: ecology and emissions only
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To write only post-fire ecology and air-quality diagnostics::
+
+    plot_vars = phi scorch_height prob_ignition tree_mortality \
+                co2_emissions co_emissions pm25_emissions
 
 Visualization
 -------------
