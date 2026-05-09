@@ -1227,6 +1227,20 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Plotfile variable filter --------
+    // Accept a space-separated list: plot_vars = phi R arrival_time ...
+    // Empty list (default) → write all variables.
+    {
+        std::vector<std::string> pvars;
+        pp.queryarr("plot_vars", pvars);
+        p.plot_vars = pvars;
+        if (!p.plot_vars.empty()) {
+            Print() << "Plotfile variable filter (" << p.plot_vars.size() << " variable(s)):\n";
+            for (const auto& v : p.plot_vars)
+                Print() << "  " << v << "\n";
+        }
+    }
+
     // -------- CCFR active crown fire criterion (Scott & Reinhardt 2001) --------
     p.use_ccfr        = 0;     pp.query("crown.use_ccfr",        p.use_ccfr);
     p.ccfr_cbd_min    = 0.05;  pp.query("crown.ccfr_cbd_min",    p.ccfr_cbd_min);

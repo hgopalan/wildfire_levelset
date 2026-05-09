@@ -16,6 +16,14 @@
 //   // final:
 //   write_wildfire_plotfile(f, ba, dm, geom, inputs, final_step, time, ftd,
 //                           /*write_stats=*/true,  /*is_final=*/true);
+//
+// Plotfile variable filtering (inputs.plot_vars):
+//   When inputs.plot_vars is non-empty only the listed variable names are
+//   written.  Unknown names trigger a warning and are skipped.  If all names
+//   are unknown the full plotfile is written as a fallback.
+//   Set in the inputs file as a space-separated list, e.g.:
+//     plot_vars = phi R arrival_time fireline_intensity flame_length
+//   See parse_inputs.H for the complete list of valid variable name strings.
 
 #ifndef PLOT_RESULTS_H
 #define PLOT_RESULTS_H
@@ -222,7 +230,40 @@ inline void write_wildfire_plotfile(
     // ---- Write plotfile ----
     char buf[64];
     std::snprintf(buf, sizeof(buf), "plt%04d", step);
-    WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
+
+    if (inputs.plot_vars.empty()) {
+        // Default: write all variables
+        WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
+    } else {
+        // Filtered: write only the user-requested subset of variables.
+        // Unknown names are silently skipped (a warning is printed).
+        Vector<std::string> filtered_names;
+        Vector<int>         filtered_comps;
+        for (const auto& req : inputs.plot_vars) {
+            bool found = false;
+            for (int i = 0; i < (int)names.size(); ++i) {
+                if (names[i] == req) {
+                    filtered_names.push_back(names[i]);
+                    filtered_comps.push_back(i);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                amrex::Print() << "WARNING: plot_vars: unknown variable '" << req
+                               << "' – skipped\n";
+        }
+        if (filtered_names.empty()) {
+            amrex::Print() << "WARNING: plot_vars list produced no valid variables; "
+                              "writing full plotfile instead.\n";
+            WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
+        } else {
+            MultiFab filtered_mf(ba, dm, (int)filtered_names.size(), 0);
+            for (int i = 0; i < (int)filtered_comps.size(); ++i)
+                MultiFab::Copy(filtered_mf, plotmf, filtered_comps[i], i, 1, 0);
+            WriteSingleLevelPlotfile(buf, filtered_mf, filtered_names, geom, time, step);
+        }
+    }
     if (write_stats) {
         if (is_final)
             amrex::Print() << "Wrote final " << buf << "\n";
