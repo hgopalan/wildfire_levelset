@@ -326,8 +326,8 @@ inline void write_wildfire_plotfile(
     // ---- Optional side outputs (fire stats + perimeter files) ----
     if (write_stats) {
         if (!inputs.fire_stats_file.empty())
-            append_fire_stats(phi, arrival_time_mf, geom, &emissions_mf, step, time,
-                              inputs.fire_stats_file, &R_mf);
+            append_fire_stats(phi, geom, &emissions_mf, step, time,
+                              inputs.fire_stats_file, arrival_time_mf, &R_mf);
         if (inputs.write_perimeter_csv == 1) {
             char csv_buf[64];
             std::snprintf(csv_buf, sizeof(csv_buf), "perimeter_%04d.csv", step);

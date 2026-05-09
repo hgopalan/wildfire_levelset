@@ -594,11 +594,11 @@ inline void write_fire_stats_header(const std::string& filename)
 // R_mf is optional (pass nullptr to skip head ROS tracking).
 // ============================================================================
 inline void append_fire_stats(const MultiFab& phi,
-                               const MultiFab& arrival_time_mf,
                                const Geometry& geom,
                                const MultiFab* emissions_mf,
                                int step, Real time_s,
                                const std::string& filename,
+                               const MultiFab& arrival_time_mf,
                                const MultiFab* R_mf = nullptr)
 {
     const auto dxx = geom.CellSize();
