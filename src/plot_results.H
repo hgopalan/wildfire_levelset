@@ -28,6 +28,7 @@
 #ifndef PLOT_RESULTS_H
 #define PLOT_RESULTS_H
 
+#include <unordered_map>
 // ============================================================================
 // write_wildfire_plotfile
 //
@@ -236,22 +237,23 @@ inline void write_wildfire_plotfile(
         WriteSingleLevelPlotfile(buf, plotmf, names, geom, time, step);
     } else {
         // Filtered: write only the user-requested subset of variables.
-        // Unknown names are silently skipped (a warning is printed).
+        // Build a name→component-index map for O(1) lookup.
+        std::unordered_map<std::string,int> name_to_comp;
+        name_to_comp.reserve(names.size());
+        for (int i = 0; i < (int)names.size(); ++i)
+            name_to_comp[names[i]] = i;
+
         Vector<std::string> filtered_names;
         Vector<int>         filtered_comps;
         for (const auto& req : inputs.plot_vars) {
-            bool found = false;
-            for (int i = 0; i < (int)names.size(); ++i) {
-                if (names[i] == req) {
-                    filtered_names.push_back(names[i]);
-                    filtered_comps.push_back(i);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
+            auto it = name_to_comp.find(req);
+            if (it != name_to_comp.end()) {
+                filtered_names.push_back(req);
+                filtered_comps.push_back(it->second);
+            } else {
                 amrex::Print() << "WARNING: plot_vars: unknown variable '" << req
                                << "' – skipped\n";
+            }
         }
         if (filtered_names.empty()) {
             amrex::Print() << "WARNING: plot_vars list produced no valid variables; "
