@@ -584,10 +584,17 @@ inline void write_fire_stats_header(const std::string& filename)
 // head ROS [m/s] (maximum ROS in perimeter cells), and domain-mean emission
 // totals, then appends one row to the CSV file.
 //
+// Burned area and perimeter are based on arrival_time_mf >= 0 (every cell
+// that has ever been ignited, including the burned interior).  In the FARSITE
+// propagation mode phi is reset to 0 after each step so phi < 0 only marks
+// the thin current fire-front ring; arrival_time correctly accumulates the
+// full burned region for all propagation modes.
+//
 // emissions_mf is optional (pass nullptr to skip emission stats).
 // R_mf is optional (pass nullptr to skip head ROS tracking).
 // ============================================================================
 inline void append_fire_stats(const MultiFab& phi,
+                               const MultiFab& arrival_time_mf,
                                const Geometry& geom,
                                const MultiFab* emissions_mf,
                                int step, Real time_s,
@@ -597,12 +604,11 @@ inline void append_fire_stats(const MultiFab& phi,
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
-    // Perimeter is accumulated as a sum of face lengths using the
-    // FARSITE/FlamMap edge-crossing method: for every cell face separating a
-    // burned cell (phi < 0) from an unburned cell (phi >= 0), the face length
-    // is added to the total perimeter.  This correctly handles corner cells
-    // (which contribute two face lengths, not one) and diagonal fire fronts,
-    // giving perimeter estimates consistent with FARSITE raster outputs.
+    // Burned area and perimeter use arrival_time_mf >= 0 (cumulative burned
+    // region) via the edge-crossing method: for every cell face separating a
+    // burned cell (at >= 0) from an unburned cell (at < 0), the face length
+    // is added to the total perimeter.  phi is still used for n_active (cells
+    // near the live fire front).
     amrex::Long n_burned = 0, n_active = 0;
     Real perim_m = Real(0.0);
     Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
@@ -611,6 +617,7 @@ inline void append_fire_stats(const MultiFab& phi,
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const p  = phi.const_array(mfi);
+        auto const at = arrival_time_mf.const_array(mfi);
         const IntVect lo = bx.smallEnd();
         const IntVect hi = bx.bigEnd();
 
@@ -619,35 +626,36 @@ inline void append_fire_stats(const MultiFab& phi,
         if (R_mf) R_arr = R_mf->const_array(mfi);
 
         amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
-            Real pv = p(i, j, k, 0);
-            if (pv < Real(0.0)) {
+            bool burned = (at(i, j, k, 0) >= Real(0.0));
+            Real pv     = p(i, j, k, 0);
+            if (burned) {
                 ++n_burned;
                 // Track head ROS for perimeter cells (any burned cell adjacent
                 // to an unburned neighbor qualifies as a perimeter cell).
                 if (R_mf) {
                     bool on_perim = false;
-                    if (i > lo[0]) on_perim |= (p(i-1,j,k,0) >= Real(0.0));
-                    if (i < hi[0]) on_perim |= (p(i+1,j,k,0) >= Real(0.0));
-                    if (j > lo[1]) on_perim |= (p(i,j-1,k,0) >= Real(0.0));
-                    if (j < hi[1]) on_perim |= (p(i,j+1,k,0) >= Real(0.0));
+                    if (i > lo[0]) on_perim |= (at(i-1,j,k,0) < Real(0.0));
+                    if (i < hi[0]) on_perim |= (at(i+1,j,k,0) < Real(0.0));
+                    if (j > lo[1]) on_perim |= (at(i,j-1,k,0) < Real(0.0));
+                    if (j < hi[1]) on_perim |= (at(i,j+1,k,0) < Real(0.0));
                     if (on_perim) {
                         Real r = R_arr(i, j, k, 0);
                         if (r > head_ros) head_ros = r;
                     }
                 }
-            } else if (pv < Real(0.1)) {
-                ++n_active;  // cells within phi_thresh = 0.1 of the front
+            } else if (pv < Real(0.1) && pv >= Real(0.0)) {
+                ++n_active;  // unburned cells within phi_thresh of the front
             }
-            // Edge-crossing perimeter (FARSITE/FlamMap raster method):
+            // Edge-crossing perimeter (arrival_time boundary):
             // x-face between (i,j) and (i+1,j): face length = dxx[1]
             if (i < hi[0]) {
-                Real pn = p(i+1, j, k, 0);
-                if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[1];
+                bool burned_n = (at(i+1, j, k, 0) >= Real(0.0));
+                if (burned != burned_n) perim_m += dxx[1];
             }
             // y-face between (i,j) and (i,j+1): face length = dxx[0]
             if (j < hi[1]) {
-                Real pn = p(i, j+1, k, 0);
-                if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[0];
+                bool burned_n = (at(i, j+1, k, 0) >= Real(0.0));
+                if (burned != burned_n) perim_m += dxx[0];
             }
         });
 
