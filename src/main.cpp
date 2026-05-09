@@ -443,6 +443,42 @@ int main(int argc, char* argv[])
         fill_boundary_extrap(phi, geom);
       }
       } else {
+      // FARSITE: compute initial ROS field and CFL-based dt (same as levelset/MTT paths).
+      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      if (heat_flux_active) {
+          apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
+      }
+      const MultiFab& vel_for_farsite_init = (wind_terrain_modifies_vel || heat_flux_active)
+                                              ? vel_effective : vel;
+      if (inputs.fire_spread_model == "balbi") {
+          compute_balbi_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel, inputs.balbi,
+                           terrain_slopes.get(),
+                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                           d_balbi_table_ptr, balbi_table_size,
+                           heat_flux_active ? &heat_flux_mf : nullptr,
+                           heat_flux_active ? &inputs.heat_flux : nullptr);
+      } else if (inputs.fire_spread_model == "cheney_gould") {
+          compute_cheney_gould_R(R_mf, vel_for_farsite_init, inputs.cheney_gould);
+      } else if (inputs.fire_spread_model == "cruz_crown") {
+          compute_cruz_crown_R(R_mf, vel_for_farsite_init, inputs.cruz_crown);
+      } else if (inputs.fire_spread_model == "fbp_o1a" ||
+                 inputs.fire_spread_model == "fbp_o1b" ||
+                 inputs.fire_spread_model == "fbp_s1"  ||
+                 inputs.fire_spread_model == "fbp_s2"  ||
+                 inputs.fire_spread_model == "fbp_s3") {
+          compute_fbp_R(R_mf, vel_for_farsite_init, inputs.fbp);
+      } else if (inputs.fire_spread_model == "lautenberger") {
+          compute_lautenberger_R(R_mf, vel_for_farsite_init, inputs.rothermel, inputs.lautenberger,
+                                  terrain_slopes.get());
+      } else {
+          compute_rothermel_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel,
+                               terrain_slopes.get(),
+                               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                               d_fuel_table_ptr, fuel_table_size,
+                               has_spatial_crown ? &cc_mf : nullptr,
+                               has_spatial_crown ? &canopy_height_mf : nullptr);
+      }
+      dt = compute_dt(R_mf, geom, inputs.cfl);
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
@@ -1099,6 +1135,8 @@ int main(int argc, char* argv[])
 	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
 	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
+	// Update dt for next step using CFL condition (original FARSITE method).
+	dt = compute_dt(R_mf, geom, inputs.cfl);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
