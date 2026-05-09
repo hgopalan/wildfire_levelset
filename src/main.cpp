@@ -596,6 +596,11 @@ int main(int argc, char* argv[])
     while ((use_final_time && time < inputs.final_time) ||
            (!use_final_time && step < restart_step + inputs.nsteps)) {
       ++step;
+      // When a hard stop time is specified, clamp the next timestep so the
+      // simulation ends exactly at final_time rather than overshooting by a
+      // full CFL step (which could be much larger than the remaining time).
+      if (use_final_time)
+        dt = std::min(dt, inputs.final_time - time);
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
       amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;

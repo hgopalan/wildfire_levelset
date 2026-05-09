@@ -497,7 +497,7 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       }
     });
   }
-  amrex::Print()<<" Maximum Spread (cells) = "<<farsite_spread.norminf(0)<<" "<<farsite_spread.norminf(1)
+  amrex::Print()<<" Maximum Spread (m) = "<<farsite_spread.norminf(0)<<" "<<farsite_spread.norminf(1)
 #if (AMREX_SPACEDIM == 3)
              <<" "<<farsite_spread.norminf(2) 
 #endif  

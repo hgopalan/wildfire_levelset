@@ -274,31 +274,36 @@ inline void write_wildfire_plotfile(
     }
 
     // ---- Burned area and perimeter statistics ----
-    // Perimeter is computed using the FARSITE/FlamMap edge-crossing method:
-    // for every cell face that separates a burned cell (phi < 0) from an
-    // unburned cell (phi >= 0), the face length is added to the perimeter.
-    // This correctly accounts for corner cells and diagonal fire fronts,
-    // unlike the simpler "perimeter-cell count × sqrt(cell_area)" approach.
+    // We use arrival_time_mf >= 0 (set by init_phi_source for the initial
+    // ignition and updated each step as new cells burn) rather than phi < 0.
+    // In the FARSITE propagation the phi field is reset to 0 after every step
+    // so that phi < 0 only marks the current thin fire-front ring; the burned
+    // interior is phi = 0 and would be missed.  arrival_time accumulates every
+    // cell that has ever been ignited and is correct for all propagation modes.
+    //
+    // Perimeter uses the edge-crossing method on the arrival_time boundary:
+    // every face separating a burned cell (at >= 0) from an unburned cell
+    // (at < 0) contributes the face length to the perimeter total.
     {
         amrex::Long n_burned = 0;
         Real perim_m = Real(0.0);
         const auto dxx = geom.CellSize();
-        for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        for (MFIter mfi(arrival_time_mf); mfi.isValid(); ++mfi) {
             const Box& bx = mfi.validbox();
-            auto const p = phi.const_array(mfi);
+            auto const at = arrival_time_mf.const_array(mfi);
             const IntVect bxhi = bx.bigEnd();
             amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
-                Real pv = p(i, j, k, 0);
-                if (pv < Real(0.0)) ++n_burned;
+                bool burned = (at(i, j, k, 0) >= Real(0.0));
+                if (burned) ++n_burned;
                 // x-face between (i,j) and (i+1,j): face length = dxx[1]
                 if (i < bxhi[0]) {
-                    Real pn = p(i+1, j, k, 0);
-                    if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[1];
+                    bool burned_n = (at(i+1, j, k, 0) >= Real(0.0));
+                    if (burned != burned_n) perim_m += dxx[1];
                 }
                 // y-face between (i,j) and (i,j+1): face length = dxx[0]
                 if (j < bxhi[1]) {
-                    Real pn = p(i, j+1, k, 0);
-                    if ((pv < Real(0.0)) != (pn < Real(0.0))) perim_m += dxx[0];
+                    bool burned_n = (at(i, j+1, k, 0) >= Real(0.0));
+                    if (burned != burned_n) perim_m += dxx[0];
                 }
             });
         }
@@ -322,7 +327,7 @@ inline void write_wildfire_plotfile(
     if (write_stats) {
         if (!inputs.fire_stats_file.empty())
             append_fire_stats(phi, geom, &emissions_mf, step, time,
-                              inputs.fire_stats_file, &R_mf);
+                              inputs.fire_stats_file, arrival_time_mf, &R_mf);
         if (inputs.write_perimeter_csv == 1) {
             char csv_buf[64];
             std::snprintf(csv_buf, sizeof(csv_buf), "perimeter_%04d.csv", step);
