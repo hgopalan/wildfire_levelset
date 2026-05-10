@@ -9,6 +9,10 @@
 //      at a constant terminal velocity v_t while being carried horizontally by
 //      the 2-D wind field.  The horizontal position is integrated with a simple
 //      forward-Euler scheme interpolating the cell-centered velocity MultiFab.
+//      When 3-D wind data from massconsistent_amr is provided (via
+//      albini_spotting.use_3d_wind = 1 and albini_spotting.plt_wind_file),
+//      the height-averaged horizontal wind from that dataset replaces the 2-D
+//      MultiFab wind for trajectory integration.
 //
 // References:
 //   Albini (1983). "Potential spotting distance from wind-driven surface fires."
@@ -34,6 +38,7 @@
 
 #include "constants.H"
 #include "parse_inputs.H"
+#include "plt_wind_reader.H"
 #include "rothermel_model.H"
 #include "scott_spotting_table.H"
 #include <AMReX.H>
@@ -157,6 +162,10 @@ static bool albini_interp_wind(
 //   2 – maximum landing distance [m] from each source cell
 //   3 – active flag (1.0) at cells that received a spot ignition
 //
+// When asp.use_3d_wind == 1 and plt_wind is valid, the column-averaged
+// horizontal wind from the 3-D plt file is used for trajectory integration
+// instead of the 2-D velocity MultiFab.
+//
 // NOTE: This function requires serial execution (no MPI / OMP / GPU),
 //       identical to the constraint in firebrand_spotting.H.
 // ============================================================================
@@ -170,7 +179,8 @@ inline void compute_albini_spotting(
     const InputParameters::AlbiniSpottingParams& asp,
     int step,
     const MultiFab* fuel_model_mf  = nullptr,  // per-cell fuel model code (optional)
-    const std::string* fuel_system = nullptr)   // "13" or "40" (optional)
+    const std::string* fuel_system = nullptr,   // "13" or "40" (optional)
+    const PltWindData* plt_wind    = nullptr)   // 3-D wind from massconsistent_amr (optional)
 {
     if (asp.enable == 0) {
         return;
@@ -192,34 +202,89 @@ inline void compute_albini_spotting(
     // ---- Reset albini_data ----
     albini_data.setVal(Real(0.0));
 
-    // ---- Copy wind field into flat arrays for trajectory integration ----
+    // ---- Build flat wind arrays for trajectory integration ----
+    // When use_3d_wind = 1 and plt_wind is valid, use the height-averaged
+    // horizontal wind from the 3-D plt file.  Otherwise use the 2-D vel MultiFab.
     std::vector<Real> u_arr(nx * ny, Real(0.0));
     std::vector<Real> v_arr(nx * ny, Real(0.0));
 
-    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
-        const Box& bx     = mfi.validbox();
-        auto const v_data = vel.const_array(mfi);
-        const auto lo = lbound(bx);
-        const auto hi = ubound(bx);
-        for (int j = lo.y; j <= hi.y; ++j) {
-            for (int i = lo.x; i <= hi.x; ++i) {
-                u_arr[j * nx + i] = v_data(i, j, 0, 0);
-                v_arr[j * nx + i] = v_data(i, j, 0, 1);
+    const bool use_3d = (asp.use_3d_wind == 1 && plt_wind != nullptr && plt_wind->valid);
+
+    if (use_3d) {
+        // 3-D wind: bilinearly interpolate the height-averaged u2d/v2d grid
+        // from PltWindData onto the fire-model 2-D cell grid.
+        const int   pw_nx = plt_wind->nx_2d;
+        const int   pw_ny = plt_wind->ny_2d;
+        const Real  pw_x0 = plt_wind->lo2d[0];
+        const Real  pw_y0 = plt_wind->lo2d[1];
+        const Real  pw_x1 = plt_wind->hi2d[0];
+        const Real  pw_y1 = plt_wind->hi2d[1];
+        const Real  pw_dx = (pw_nx > 0) ? (pw_x1 - pw_x0) / pw_nx : Real(1.0);
+        const Real  pw_dy = (pw_ny > 0) ? (pw_y1 - pw_y0) / pw_ny : Real(1.0);
+
+        const auto& u2d_h = plt_wind->u2d;
+        const auto& v2d_h = plt_wind->v2d;
+
+        amrex::Print() << "Albini spotting: using 3-D plt wind ("
+                       << pw_nx << "x" << pw_ny << " 2-D averaged) for trajectory\n";
+
+        for (int j = 0; j < ny; ++j) {
+            for (int i = 0; i < nx; ++i) {
+                // Cell-centre physical coordinates in the fire-model domain
+                Real xc = prob_lo[0] + (i + Real(0.5)) * dx[0];
+                Real yc = prob_lo[1] + (j + Real(0.5)) * dx[1];
+
+                // Bilinear interpolation on the plt wind 2-D grid
+                Real xi = (xc - pw_x0) / pw_dx - Real(0.5);
+                Real yj = (yc - pw_y0) / pw_dy - Real(0.5);
+                int pi = std::max(0, std::min(static_cast<int>(std::floor(xi)), pw_nx - 2));
+                int pj = std::max(0, std::min(static_cast<int>(std::floor(yj)), pw_ny - 2));
+                Real fx = std::max(Real(0.0), std::min(xi - static_cast<Real>(pi), Real(1.0)));
+                Real fy = std::max(Real(0.0), std::min(yj - static_cast<Real>(pj), Real(1.0)));
+
+                auto pidx = [pw_nx](int ii, int jj){ return jj * pw_nx + ii; };
+                Real u_interp =
+                    (Real(1.0)-fx)*(Real(1.0)-fy)*u2d_h[pidx(pi,  pj  )]
+                   + fx           *(Real(1.0)-fy)*u2d_h[pidx(pi+1,pj  )]
+                   + (Real(1.0)-fx)*fy           *u2d_h[pidx(pi,  pj+1)]
+                   + fx            *fy           *u2d_h[pidx(pi+1,pj+1)];
+                Real v_interp =
+                    (Real(1.0)-fx)*(Real(1.0)-fy)*v2d_h[pidx(pi,  pj  )]
+                   + fx           *(Real(1.0)-fy)*v2d_h[pidx(pi+1,pj  )]
+                   + (Real(1.0)-fx)*fy           *v2d_h[pidx(pi,  pj+1)]
+                   + fx            *fy           *v2d_h[pidx(pi+1,pj+1)];
+
+                u_arr[j * nx + i] = u_interp;
+                v_arr[j * nx + i] = v_interp;
             }
         }
-    }
+    } else {
+        // Default: copy from the 2-D velocity MultiFab
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx     = mfi.validbox();
+            auto const v_data = vel.const_array(mfi);
+            const auto lo = lbound(bx);
+            const auto hi = ubound(bx);
+            for (int j = lo.y; j <= hi.y; ++j) {
+                for (int i = lo.x; i <= hi.x; ++i) {
+                    u_arr[j * nx + i] = v_data(i, j, 0, 0);
+                    v_arr[j * nx + i] = v_data(i, j, 0, 1);
+                }
+            }
+        }
 
 #ifdef AMREX_USE_MPI
-    // Each MFIter rank iterates over disjoint valid boxes (guaranteed by AMReX's
-    // DistributionMapping), so summing across ranks assembles the full wind field
-    // without double-counting.
-    MPI_Allreduce(MPI_IN_PLACE, u_arr.data(), nx * ny,
-                  ParallelDescriptor::Mpi_typemap<Real>::type(),
-                  MPI_SUM, ParallelDescriptor::Communicator());
-    MPI_Allreduce(MPI_IN_PLACE, v_arr.data(), nx * ny,
-                  ParallelDescriptor::Mpi_typemap<Real>::type(),
-                  MPI_SUM, ParallelDescriptor::Communicator());
+        // Each MFIter rank iterates over disjoint valid boxes (guaranteed by AMReX's
+        // DistributionMapping), so summing across ranks assembles the full wind field
+        // without double-counting.
+        MPI_Allreduce(MPI_IN_PLACE, u_arr.data(), nx * ny,
+                      ParallelDescriptor::Mpi_typemap<Real>::type(),
+                      MPI_SUM, ParallelDescriptor::Communicator());
+        MPI_Allreduce(MPI_IN_PLACE, v_arr.data(), nx * ny,
+                      ParallelDescriptor::Mpi_typemap<Real>::type(),
+                      MPI_SUM, ParallelDescriptor::Communicator());
 #endif
+    }
 
     // ---- Identify fire-front cells and compute lofting heights ----
     struct FrontCell {

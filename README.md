@@ -57,7 +57,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **ROS stall threshold** — FARSITE-compatible floor (1×10⁻⁴ m/s)
 - **Crown fire** — Van Wagner (1977) initiation + Cruz et al. (2005) + Rothermel (1991) multiplier + passive blend
 - **Per-fuel burnout time** — Rothermel (1983) residence time from SAV / particle density when landscape file is present
-- **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree
+- **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree; optional 3-D wind from [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) plotfiles
 - **Retardant suppression** — ROS and spotting probability zeroed inside active drop zones
 - **Terrain effects** — per-cell slope/aspect from FARSITE LCP files or XYZ terrain; FARSITE full topographic horizon scan (8-direction ridge shading)
 - **Wind models** — time-varying, turbulent (OU/spectral), compact direction schedule
@@ -81,7 +81,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 |---|---|
 | `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread |
 | `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
-| `spotting/` | firebrand_spotting, albini_spotting |
+| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)* |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)* |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, **spatial_moisture_output** *(new)* |
 | `fuel/` | fuel_adj_file |
@@ -89,6 +89,13 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule |
 | `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask** *(new)* |
+
+The `albini_spotting_3d_wind` test requires a Python pre-step to generate the synthetic plt wind file:
+
+```bash
+cd regtest/spotting/albini_spotting_3d_wind
+python3 generate_plt_wind.py   # creates plt_wind_3d/ directory
+```
 
 ```bash
 cmake -S . -B build -DLEVELSET_DIM_2D=ON
@@ -103,10 +110,20 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 
 ## References
 
-See the [full reference list](https://hgopalan.github.io/wildfire_levelset/references.html) in the documentation.
-
-Key references: Rothermel (1972), Richards (1990), Van Wagner (1977), Cruz et al. (2005),
-Albini (1983), Andrews (2018), Nelson (2000), Scott & Reinhardt (2001), Finney (2004).
+- Albini, F.A. (1979). Spot fire distance from burning trees — a predictive model. USDA For. Serv. Gen. Tech. Rep. INT-56.
+- Albini, F.A. (1983). Potential spotting distance from wind-driven surface fires. USDA For. Serv. Res. Pap. INT-309.
+- Andrews, P.L. (2018). The Rothermel surface fire spread model and associated developments. USDA For. Serv. Gen. Tech. Rep. RMRS-GTR-371.
+- Byram, G.M. (1959). Combustion of forest fuels. In: Davis, K.P. (ed.) Forest Fire: Control and Use. McGraw-Hill.
+- Cheney, N.P. & Gould, J.S. (1995). Fire growth in grassland fuels. Int. J. Wildland Fire 5(4):237–247.
+- Cruz, M.G., Alexander, M.E. & Wakimoto, R.H. (2005). Development and testing of models for predicting crown fire rate of spread in conifer forest stands. Can. J. For. Res. 35:1626–1639.
+- Finney, M.A. (2004). FARSITE: Fire Area Simulator — Model Development and Evaluation. USDA For. Serv. Res. Pap. RMRS-RP-4 Revised.
+- Lautenberger, C. (2013). Wildland fire modeling with an Eulerian level set method and automated calibration. Fire Safety J. 62:477–485.
+- Nelson, R.M. Jr. (2000). Prediction of diurnal change in 10-h fuel stick moisture content. Can. J. For. Res. 30:1071–1087.
+- Richards, G.D. (1990). An elliptical growth model of forest fire fronts and its numerical solution. Int. J. Numer. Meth. Eng. 30:1163–1179.
+- Rothermel, R.C. (1972). A mathematical model for predicting fire spread in wildland fuels. USDA For. Serv. Res. Pap. INT-115.
+- Rothermel, R.C. (1991). Predicting behavior and size of crown fires in the Northern Rocky Mountains. USDA For. Serv. Res. Pap. INT-438.
+- Scott, J.H. & Reinhardt, E.D. (2001). Assessing crown fire potential by linking models of surface and crown fire behavior. USDA For. Serv. Res. Pap. RMRS-RP-29.
+- Van Wagner, C.E. (1977). Conditions for the start and spread of crown fire. Can. J. For. Res. 7:23–34.
 
 ## License
 

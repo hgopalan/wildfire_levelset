@@ -601,6 +601,12 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
    * - ``albini_spotting.n_traj_steps``
      - 100
      - Forward-Euler sub-steps for 2-D firebrand trajectory
+   * - ``albini_spotting.use_3d_wind``
+     - 0
+     - Use 3-D wind from massconsistent_amr plt file for trajectory (1=yes)
+   * - ``albini_spotting.plt_wind_file``
+     - ""
+     - Path to massconsistent_amr plt directory (required when use_3d_wind=1)
    * - **Torching-Tree Spotting**
      -
      -
@@ -1613,6 +1619,27 @@ wind field.
   Number of forward-Euler sub-steps for the 2-D firebrand trajectory integration.
 
   Example: ``albini_spotting.n_traj_steps = 200``
+
+**albini_spotting.use_3d_wind** (default: 0)
+  When set to 1, read horizontal wind from a 3-D AMReX plotfile produced by
+  `massconsistent_amr <https://github.com/hgopalan/massconsistent_amr>`_ and
+  use it for firebrand trajectory integration in place of the 2-D ``vel`` MultiFab.
+  The plotfile must contain variables named ``"u"`` and ``"v"`` (and optionally
+  ``"w"``).  The 3-D wind is projected to 2-D by column-averaging ``u`` and ``v``
+  over all vertical levels at each horizontal grid point.  This allows full
+  terrain-following mass-consistent wind fields to drive firebrand trajectories
+  while the fire-spread solver remains 2-D.
+
+  Requires ``albini_spotting.plt_wind_file`` to be set.
+
+  Example: ``albini_spotting.use_3d_wind = 1``
+
+**albini_spotting.plt_wind_file** (default: "")
+  Path to the AMReX plotfile directory produced by massconsistent_amr.
+  The directory must contain a ``Header`` file and a ``Level_0/`` sub-directory
+  with ``Cell_H`` and binary data files.  Required when ``use_3d_wind = 1``.
+
+  Example: ``albini_spotting.plt_wind_file = /path/to/plt_wind``
 
 Albini (1979) Torching-Tree Spotting Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

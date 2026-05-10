@@ -152,6 +152,20 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ---- 3-D wind from massconsistent_amr plt file ----
+    // When albini_spotting.use_3d_wind = 1, read the plt file once before the
+    // time loop.  The PltWindData struct stores flat 1-D GPU arrays of
+    // (x, y, z, u, v, w) and a precomputed height-averaged 2-D wind field.
+    PltWindData albini_plt_wind;
+    if (inputs.albini_spotting.enable == 1 &&
+        inputs.albini_spotting.use_3d_wind == 1 &&
+        !inputs.albini_spotting.plt_wind_file.empty()) {
+        if (!read_plt_wind_file(inputs.albini_spotting.plt_wind_file, albini_plt_wind)) {
+            amrex::Abort("Failed to read 3-D wind plt file for Albini spotting: "
+                         + inputs.albini_spotting.plt_wind_file);
+        }
+    }
+
     // ---- Terrain, landscape, crown layers, and spatial moisture ------------
     bool has_spatial_crown    = false;
     bool has_spatial_moisture = false;
@@ -1154,7 +1168,9 @@ int main(int argc, char* argv[])
 	  compute_albini_spotting(phi, albini_data, vel, R_mf, geom,
 	                          inputs.rothermel, inputs.albini_spotting, step,
 	                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
+	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
+	                          (inputs.albini_spotting.use_3d_wind == 1 && albini_plt_wind.valid)
+	                              ? &albini_plt_wind : nullptr);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether

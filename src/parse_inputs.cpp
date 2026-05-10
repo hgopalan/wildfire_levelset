@@ -475,6 +475,8 @@ void parse_inputs(InputParameters& p)
     p.albini_spotting.random_seed        = 0;        pp.query("albini_spotting.random_seed",        p.albini_spotting.random_seed);
     p.albini_spotting.check_interval     = 5;        pp.query("albini_spotting.check_interval",     p.albini_spotting.check_interval);
     p.albini_spotting.n_traj_steps       = 100;      pp.query("albini_spotting.n_traj_steps",       p.albini_spotting.n_traj_steps);
+    p.albini_spotting.use_3d_wind        = 0;        pp.query("albini_spotting.use_3d_wind",        p.albini_spotting.use_3d_wind);
+    p.albini_spotting.plt_wind_file      = "";       pp.query("albini_spotting.plt_wind_file",      p.albini_spotting.plt_wind_file);
 
     // Validate Albini spotting parameters
     if (p.albini_spotting.enable == 1) {
@@ -489,6 +491,13 @@ void parse_inputs(InputParameters& p)
         }
         if (p.albini_spotting.n_traj_steps < 1) {
             amrex::Abort("albini_spotting.n_traj_steps must be at least 1");
+        }
+        if (p.albini_spotting.use_3d_wind == 1 && p.albini_spotting.plt_wind_file.empty()) {
+            amrex::Abort("albini_spotting.use_3d_wind = 1 requires albini_spotting.plt_wind_file to be set");
+        }
+        if (p.albini_spotting.use_3d_wind == 1) {
+            Print() << "Albini spotting: using 3-D wind from plt file: "
+                    << p.albini_spotting.plt_wind_file << "\n";
         }
     }
 
