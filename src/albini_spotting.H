@@ -30,9 +30,18 @@
 //       x(t + dt) = x(t) + u(x,y) * dt
 //       y(t + dt) = y(t) + v(x,y) * dt
 //
-// Serial execution is assumed (same constraint as firebrand_spotting.H).
-// In GPU builds the function synchronizes the device, processes data on the
-// CPU host, and copies results back to device (see GPU safety note below).
+// Serial execution is assumed for trajectory integration (same constraint as
+// firebrand_spotting.H).  In GPU builds the function synchronizes the device,
+// processes trajectory data on the CPU host, and copies results back to device.
+//
+// GPU pathway for 3-D wind interpolation (AMREX_USE_GPU):
+//   When use_3d_wind = 1 and a GPU build is active, the bilinear interpolation
+//   of the height-averaged plt wind onto the fire-model 2-D cell grid is
+//   offloaded to the device via amrex::ParallelFor, using the device-side
+//   PltWindData::d_u2d / d_v2d arrays.  The resulting wind field is copied back
+//   to the host u_arr/v_arr for the serial trajectory integration step.
+//   In CPU-only builds the same interpolation is performed as a plain nested
+//   double loop over host arrays (CPU pathway, kept intact).
 // ============================================================================
 
 #ifndef ALBINI_SPOTTING_H
@@ -168,12 +177,20 @@ static bool albini_interp_wind(
 // horizontal wind from the 3-D plt file is used for trajectory integration
 // instead of the 2-D velocity MultiFab.
 //
-// GPU safety: All trajectory computation runs on the CPU host.  In GPU builds
-// (AMREX_USE_GPU) the function synchronizes the device stream, creates
-// host-pinned copies of phi, vel, R_mf, and albini_data, performs all
-// computation on the host, then copies results back to device.  In CPU-only
-// builds the host copies are zero-cost views of the same memory.
-// The function is therefore safe to call from any build configuration.
+// GPU safety: All stochastic trajectory computation runs on the CPU host.
+// In GPU builds (AMREX_USE_GPU) the function synchronizes the device stream,
+// creates host-pinned copies of phi, vel, R_mf, and albini_data, then
+// performs trajectory integration on the host before copying results back.
+//
+// GPU pathway for 3-D wind (AMREX_USE_GPU + use_3d_wind = 1):
+//   The bilinear interpolation of the height-averaged plt wind onto the
+//   fire-model grid is offloaded to a GPU kernel (amrex::ParallelFor) that
+//   reads PltWindData::d_u2d / d_v2d (device arrays populated by
+//   read_plt_wind_file).  The resulting wind field is then copied back to
+//   host for the serial trajectory step.  In CPU-only builds the same
+//   interpolation is a plain double loop over host u2d/v2d arrays.
+//
+// The function is safe to call from any build configuration (CPU/GPU).
 // ============================================================================
 inline void compute_albini_spotting(
     MultiFab& phi,
@@ -261,42 +278,130 @@ inline void compute_albini_spotting(
         const Real  pw_dx = (pw_nx > 0) ? (pw_x1 - pw_x0) / pw_nx : Real(1.0);
         const Real  pw_dy = (pw_ny > 0) ? (pw_y1 - pw_y0) / pw_ny : Real(1.0);
 
-        const auto& u2d_h = plt_wind->u2d;
-        const auto& v2d_h = plt_wind->v2d;
-
         amrex::Print() << "Albini spotting: using 3-D plt wind ("
-                       << pw_nx << "x" << pw_ny << " 2-D averaged) for trajectory\n";
+                       << pw_nx << "x" << pw_ny << " 2-D averaged) for trajectory";
 
-        for (int j = 0; j < ny; ++j) {
-            for (int i = 0; i < nx; ++i) {
-                // Cell-centre physical coordinates in the fire-model domain
-                Real xc = prob_lo[0] + (i + Real(0.5)) * dx[0];
-                Real yc = prob_lo[1] + (j + Real(0.5)) * dx[1];
+#ifdef AMREX_USE_GPU
+        // ---- GPU pathway ----
+        // Use device-side d_u2d/d_v2d to build the interpolated wind field
+        // in parallel on the GPU, then copy the result to host u_arr/v_arr
+        // for the serial stochastic trajectory integration step.
+        amrex::Print() << " [GPU kernel]\n";
+        {
+            amrex::Gpu::DeviceVector<Real> u_dev(nx * ny);
+            amrex::Gpu::DeviceVector<Real> v_dev(nx * ny);
 
-                // Bilinear interpolation on the plt wind 2-D grid
-                Real xi = (xc - pw_x0) / pw_dx - Real(0.5);
-                Real yj = (yc - pw_y0) / pw_dy - Real(0.5);
-                int pi = std::max(0, std::min(static_cast<int>(std::floor(xi)), pw_nx - 2));
-                int pj = std::max(0, std::min(static_cast<int>(std::floor(yj)), pw_ny - 2));
-                Real fx = std::max(Real(0.0), std::min(xi - static_cast<Real>(pi), Real(1.0)));
-                Real fy = std::max(Real(0.0), std::min(yj - static_cast<Real>(pj), Real(1.0)));
+            const Real* d_u2d_ptr = plt_wind->d_u2d.data();
+            const Real* d_v2d_ptr = plt_wind->d_v2d.data();
+            Real* u_dev_ptr = u_dev.data();
+            Real* v_dev_ptr = v_dev.data();
 
-                auto pidx = [pw_nx](int ii, int jj){ return jj * pw_nx + ii; };
-                Real u_interp =
-                    (Real(1.0)-fx)*(Real(1.0)-fy)*u2d_h[pidx(pi,  pj  )]
-                   + fx           *(Real(1.0)-fy)*u2d_h[pidx(pi+1,pj  )]
-                   + (Real(1.0)-fx)*fy           *u2d_h[pidx(pi,  pj+1)]
-                   + fx            *fy           *u2d_h[pidx(pi+1,pj+1)];
-                Real v_interp =
-                    (Real(1.0)-fx)*(Real(1.0)-fy)*v2d_h[pidx(pi,  pj  )]
-                   + fx           *(Real(1.0)-fy)*v2d_h[pidx(pi+1,pj  )]
-                   + (Real(1.0)-fx)*fy           *v2d_h[pidx(pi,  pj+1)]
-                   + fx            *fy           *v2d_h[pidx(pi+1,pj+1)];
+            // Capture all scalar values needed inside the kernel by value
+            // (host pointer dereference is not allowed inside device lambdas).
+            const int  g_nx    = nx;
+            const int  g_pw_nx = pw_nx;
+            const int  g_pw_ny = pw_ny;
+            const Real g_pw_x0 = pw_x0;
+            const Real g_pw_y0 = pw_y0;
+            const Real g_pw_dx = pw_dx;
+            const Real g_pw_dy = pw_dy;
+            const Real g_lo_x  = prob_lo[0];
+            const Real g_lo_y  = prob_lo[1];
+            const Real g_dx0   = dx[0];
+            const Real g_dx1   = dx[1];
 
-                u_arr[j * nx + i] = u_interp;
-                v_arr[j * nx + i] = v_interp;
+            amrex::ParallelFor(nx * ny,
+                [=] AMREX_GPU_DEVICE (int n) noexcept {
+                    if (g_pw_nx < 2 || g_pw_ny < 2) { return; }
+
+                    const int i  = n % g_nx;
+                    const int j  = n / g_nx;
+
+                    // Cell-centre physical coordinates in the fire-model domain
+                    const Real xc = g_lo_x + (i + Real(0.5)) * g_dx0;
+                    const Real yc = g_lo_y + (j + Real(0.5)) * g_dx1;
+
+                    // Fractional index on the plt wind 2-D grid
+                    const Real xi = (xc - g_pw_x0) / g_pw_dx - Real(0.5);
+                    const Real yj = (yc - g_pw_y0) / g_pw_dy - Real(0.5);
+
+                    const int pi = amrex::max(0, amrex::min(
+                        static_cast<int>(::floor(xi)), g_pw_nx - 2));
+                    const int pj = amrex::max(0, amrex::min(
+                        static_cast<int>(::floor(yj)), g_pw_ny - 2));
+
+                    const Real fx = amrex::max(Real(0.0),
+                        amrex::min(xi - static_cast<Real>(pi), Real(1.0)));
+                    const Real fy = amrex::max(Real(0.0),
+                        amrex::min(yj - static_cast<Real>(pj), Real(1.0)));
+
+                    const int idx00 =  pj      * g_pw_nx + pi;
+                    const int idx10 =  pj      * g_pw_nx + pi + 1;
+                    const int idx01 = (pj + 1) * g_pw_nx + pi;
+                    const int idx11 = (pj + 1) * g_pw_nx + pi + 1;
+
+                    u_dev_ptr[n] =
+                        (Real(1.0)-fx)*(Real(1.0)-fy)*d_u2d_ptr[idx00]
+                        + fx           *(Real(1.0)-fy)*d_u2d_ptr[idx10]
+                        + (Real(1.0)-fx)*fy            *d_u2d_ptr[idx01]
+                        + fx            *fy            *d_u2d_ptr[idx11];
+
+                    v_dev_ptr[n] =
+                        (Real(1.0)-fx)*(Real(1.0)-fy)*d_v2d_ptr[idx00]
+                        + fx           *(Real(1.0)-fy)*d_v2d_ptr[idx10]
+                        + (Real(1.0)-fx)*fy            *d_v2d_ptr[idx01]
+                        + fx            *fy            *d_v2d_ptr[idx11];
+                });
+            amrex::Gpu::streamSynchronize();
+
+            // Copy GPU-interpolated wind field back to host u_arr/v_arr so
+            // the serial trajectory integration loop can use it.
+            amrex::Gpu::copy(amrex::Gpu::deviceToHost,
+                             u_dev.begin(), u_dev.end(), u_arr.begin());
+            amrex::Gpu::copy(amrex::Gpu::deviceToHost,
+                             v_dev.begin(), v_dev.end(), v_arr.begin());
+            amrex::Gpu::streamSynchronize();
+        }
+#else
+        // ---- CPU pathway (kept intact for non-GPU builds) ----
+        // Bilinearly interpolate host-side u2d/v2d onto the fire-model grid.
+        amrex::Print() << "\n";
+        {
+            const auto& u2d_h = plt_wind->u2d;
+            const auto& v2d_h = plt_wind->v2d;
+
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) {
+                    // Cell-centre physical coordinates in the fire-model domain
+                    Real xc = prob_lo[0] + (i + Real(0.5)) * dx[0];
+                    Real yc = prob_lo[1] + (j + Real(0.5)) * dx[1];
+
+                    // Bilinear interpolation on the plt wind 2-D grid
+                    Real xi = (xc - pw_x0) / pw_dx - Real(0.5);
+                    Real yj = (yc - pw_y0) / pw_dy - Real(0.5);
+                    int pi = std::max(0, std::min(static_cast<int>(std::floor(xi)), pw_nx - 2));
+                    int pj = std::max(0, std::min(static_cast<int>(std::floor(yj)), pw_ny - 2));
+                    Real fx = std::max(Real(0.0), std::min(xi - static_cast<Real>(pi), Real(1.0)));
+                    Real fy = std::max(Real(0.0), std::min(yj - static_cast<Real>(pj), Real(1.0)));
+
+                    auto pidx = [pw_nx](int ii, int jj){ return jj * pw_nx + ii; };
+                    Real u_interp =
+                        (Real(1.0)-fx)*(Real(1.0)-fy)*u2d_h[pidx(pi,  pj  )]
+                       + fx           *(Real(1.0)-fy)*u2d_h[pidx(pi+1,pj  )]
+                       + (Real(1.0)-fx)*fy           *u2d_h[pidx(pi,  pj+1)]
+                       + fx            *fy           *u2d_h[pidx(pi+1,pj+1)];
+                    Real v_interp =
+                        (Real(1.0)-fx)*(Real(1.0)-fy)*v2d_h[pidx(pi,  pj  )]
+                       + fx           *(Real(1.0)-fy)*v2d_h[pidx(pi+1,pj  )]
+                       + (Real(1.0)-fx)*fy           *v2d_h[pidx(pi,  pj+1)]
+                       + fx            *fy           *v2d_h[pidx(pi+1,pj+1)];
+
+                    u_arr[j * nx + i] = u_interp;
+                    v_arr[j * nx + i] = v_interp;
+                }
             }
         }
+#endif
     } else {
         // Default: copy from the 2-D velocity host copy
         for (MFIter mfi(vel_h); mfi.isValid(); ++mfi) {
