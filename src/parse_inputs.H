@@ -204,6 +204,17 @@ struct InputParameters {
         int random_seed;                     // Seed for RNG (0 = use system time) (default: 0)
         int check_interval;                  // Run spotting check every N timesteps (default: 5)
         int n_traj_steps;                    // Number of forward-Euler steps for 2-D trajectory (default: 100)
+        // ---- 3-D wind from massconsistent_amr ----
+        // When use_3d_wind = 1 and plt_wind_file is non-empty, the horizontal
+        // wind used for firebrand trajectory integration is read from an AMReX
+        // plotfile produced by https://github.com/hgopalan/massconsistent_amr.
+        // The plotfile is expected to contain variables "u", "v", and "w" on a
+        // 3-D Cartesian grid.  The horizontal wind is obtained by column-averaging
+        // u and v over all vertical levels at each (x, y) location, which is then
+        // used in place of the 2-D velocity MultiFab for trajectory integration.
+        // (default: disabled)
+        int use_3d_wind;                     // 1 to read 3-D wind from plt file (default: 0)
+        std::string plt_wind_file;           // path to massconsistent_amr plt directory (default: "")
     } albini_spotting;
 
     // Weise & Biging (1996) fire whirl model parameters

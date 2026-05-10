@@ -117,6 +117,11 @@ add_regression_test(rothermel1991_crown      crown_fire/rothermel1991_crown)
 # ===========================================================================
 add_regression_test(firebrand_spotting       spotting/firebrand_spotting)
 add_regression_test(albini_spotting          spotting/albini_spotting)
+if(Python3_FOUND)
+    add_python_setup_regression_test(albini_spotting_3d_wind
+                                     spotting/albini_spotting_3d_wind
+                                     generate_plt_wind.py)
+endif()
 
 # ===========================================================================
 # terrain/ – terrain and wind-terrain interaction
@@ -236,7 +241,8 @@ message(STATUS "                    fbp_o1a_grassfire, fbp_o1b_grassfire,")
 message(STATUS "                    fbp_s1_slash, fbp_s2_slash, fbp_s3_slash, lautenberger_spread")
 message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
 message(STATUS "                    fmc_seasonal, rothermel1991_crown")
-message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
+message(STATUS "  spotting/       : firebrand_spotting, albini_spotting,")
+message(STATUS "                    albini_spotting_3d_wind")
 message(STATUS "  terrain/        : terrain_wind, balbi_viegas_heatflux,")
 message(STATUS "                    windninja_ridge_canyon, solar_horizon_shading")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
