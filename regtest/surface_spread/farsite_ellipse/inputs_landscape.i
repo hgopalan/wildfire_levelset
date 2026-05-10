@@ -9,10 +9,8 @@ n_cell_y = 50
 max_grid_size = 32
 prob_lo_x = 0.0
 prob_lo_y = 0.0
-prob_lo_z = 0.0
 prob_hi_x = 100.0
 prob_hi_y = 100.0
-prob_hi_z = 1.0
 
 # Time & output
 nsteps = 50
@@ -22,7 +20,6 @@ plot_int = 10
 # Velocity (constant wind from west, typical Santa Ana conditions)
 u_x = 5.0
 u_y = 0.0
-u_z = 0.0
 
 # Initial source - line fire at western edge
 source_type = box

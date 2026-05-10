@@ -2141,6 +2141,35 @@ These four fields are written when the probability-based spotting model is activ
      - Flag (1) at cells that received at least one spot ignition during the
        most recent spotting step; 0 elsewhere.
 
+**Spatial Fuel Moisture Fields**
+
+These five fields are written when the Nelson (2000) diurnal EMC or FARSITE
+``.fms`` spatial scenario file is active; otherwise they contain the global
+Rothermel moisture values uniformly.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 12 66
+
+   * - Field
+     - Units
+     - Description
+   * - ``moisture_d1``
+     - --
+     - 1-hr dead fuel moisture [fraction]
+   * - ``moisture_d10``
+     - --
+     - 10-hr dead fuel moisture [fraction]
+   * - ``moisture_d100``
+     - --
+     - 100-hr dead fuel moisture [fraction]
+   * - ``moisture_lh``
+     - --
+     - Live herbaceous fuel moisture [fraction]
+   * - ``moisture_lw``
+     - --
+     - Live woody fuel moisture [fraction]
+
 References
 ~~~~~~~~~~~
 
@@ -2159,8 +2188,8 @@ References
 Wind Models
 -----------
 
-Six wind modelling approaches are available, ranging from a simple constant
-uniform wind to a fully physics-based mass-consistent terrain-following solver.
+Several wind modelling approaches are available, from a simple constant
+uniform wind to spatially-varying fields and terrain-following feedback models.
 The selection is made through a combination of input parameters as described
 below.
 
@@ -2174,26 +2203,9 @@ entire domain for the whole simulation:
 
    u_x = 2.0   # x-wind component [m/s]
    u_y = 0.5   # y-wind component [m/s]
-   u_z = 0.0   # z-wind component [m/s] (3-D only)
 
-The default is ``u_x = 0.25``, ``u_y = 0.0``, ``u_z = 0.0``.  This is the
+The default is ``u_x = 0.25``, ``u_y = 0.0``.  This is the
 fallback when no wind file or terrain-following solver is used.
-
-Mass-Consistent Wind Solver
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-A stand-alone 3-D terrain-following wind diagnostic executable (``wind_solver``)
-is built alongside ``levelset`` in default 3-D builds.  It constructs a
-mass-consistent wind field by fitting a log-law initial profile to the terrain
-and then solving the anisotropic Poisson equation (Sherman 1978) to enforce
-:math:`\nabla \cdot \mathbf{u} = 0`.
-
-The corrected wind field is written as an AMReX plotfile which can be
-converted to a CSV file for use as ``velocity_file`` input in the fire
-simulation.
-
-See the :ref:`wind_solver` page for the complete model description, input
-parameter reference, and GIS export workflow.
 
 Wind File — Steady (Spatially-Varying)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -2618,192 +2630,60 @@ Parameters:
 Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
 in Fire Spread Prediction.* Colorado State University MS thesis.
 
+Compact Wind Direction Schedule
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Canadian Forest Fire Behaviour Prediction (FBP) System
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A compact three-column CSV schedule (``wind_dir_schedule_file``) updates the
+uniform wind field at every timestep without requiring a full spatial wind grid
+per snapshot:
 
-The Canadian FBP system provides empirical rate-of-spread equations calibrated for
-specific fuel types.  The solver implements five fuel types: O1a (matted grass),
-O1b (standing grass), S1 (Jack/Lodgepole Pine slash), S2 (White Spruce/Balsam slash),
-and S3 (Coastal Cedar/Hemlock/Douglas Fir slash).
+.. code-block:: ini
 
-Select with ``fire_spread_model = fbp_o1a`` (or ``fbp_o1b``, ``fbp_s1``, ``fbp_s2``, ``fbp_s3``).
+   wind_dir_schedule_file = wind_schedule.csv
 
-**Grass fuel types (O1a / O1b)**
+CSV format: ``time_s, speed_ms, dir_deg`` where ``dir_deg`` is the direction
+*from* which the wind blows (270° = westerly wind blowing eastward).  The
+schedule is linearly interpolated with circular direction averaging to avoid
+0°/360° wrap-around artefacts.
 
-The fine-fuel moisture factor follows Van Wagner (1985):
+When this file is set it overrides ``u_x`` / ``u_y`` and the
+``use_time_dependent_wind`` file-grid path.  Compatible with turbulent wind
+perturbation (perturbations are added on top of the scheduled base wind).
 
-.. math::
+**Input parameter**: ``wind_dir_schedule_file = path/to/wind_schedule.csv``
 
-   f_F = 91.9 \exp(-0.1386\,M_f)
-         \left(1 + \frac{M_f^{5.31}}{4.93 \times 10^7}\right)
 
-The wind factor and Initial Spread Index (ISI) are:
+Multiple Weather Stations with Spatial IDW Interpolation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. math::
+A new ``multi_wtr_file`` input enables loading multiple FARSITE ``.wtr`` weather
+station files and producing spatially-varying wind, temperature, and relative
+humidity via inverse-distance-weighting (IDW).
 
-   f_W = \exp(0.05039\,U_{10}), \qquad \text{ISI} = 0.208 \, f_W \, f_F
+Station list CSV format (``multi_wtr_file``)::
 
-where :math:`U_{10}` is the 10-m wind speed (km/h) and :math:`M_f` is the fine fuel moisture content (%).
-The curing factor (CF) accounts for the fraction of dead fuel:
+   # station_id, x_m, y_m, wtr_file
+   1, 330000.0, 3775000.0, station1.wtr
+   2, 335000.0, 3775000.0, station2.wtr
+   3, 332500.0, 3780000.0, station3.wtr
 
-.. math::
-
-   \mathrm{CF} = \Bigl(1 - \exp\!\bigl(-2.1\,\mathrm{PC}/100\bigr)\Bigr)^2
-
-Rate of spread [m/s]:
-
-.. math::
-
-   R = C_c \exp(k_c\,\text{ISI}) \times \mathrm{CF}
-
-Coefficients per fuel type:
-
-* **O1a** (matted grass): :math:`C_c = 190/60,\; k_c = 0.031`
-* **O1b** (standing grass): :math:`C_c = 250/60,\; k_c = 0.035`
-
-**Slash fuel types (S1 / S2 / S3)**
-
-Same ISI computation; :math:`\mathrm{CF} = 1`. Rate of spread [m/s]:
+At each timestep the U and V wind components from each station are IDW-
+interpolated to every grid cell:
 
 .. math::
 
-   R = C_s \exp(k_s\,\text{ISI})
+   V_{\text{cell}} = \frac{\sum_i w_i V_i}{\sum_i w_i},
+   \quad w_i = d_i^{-p}
 
-Coefficients:
-
-* **S1**: :math:`C_s = 75/60,\; k_s = 0.110`
-* **S2**: :math:`C_s = 200/60,\; k_s = 0.062`
-* **S3**: :math:`C_s = 320/60,\; k_s = 0.010`
-
-Parameters: ``fbp.fuel_type``, ``fbp.curing`` (curing [%], O1a/O1b only), ``fbp.moisture`` (dead fine fuel moisture [%]).
-
-Reference: Forestry Canada Fire Danger Group (1992). *Development and Structure of
-the Canadian Forest Fire Behavior Prediction System.*  Information Report ST-X-3.
-
-
-Lautenberger (2013) Physics-Based Fire Spread Model
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Select with ``fire_spread_model = lautenberger``.
-
-The model derives rate of spread from a semi-physical fuel-energy balance
-calibrated against US wildfire data (Lautenberger 2013):
-
-.. math::
-
-   R_0 = A_L \cdot \sigma_m \cdot \exp(-B_L \cdot M_f)
-
-where :math:`\sigma_m` is the fuel SAV ratio [m\ :sup:`-1`] (converted
-from ft\ :sup:`-1`), :math:`M_f` is fuel moisture (fraction), :math:`A_L`
-is a pre-factor [m²/s], and :math:`B_L` is the moisture sensitivity.
-
-Wind and slope corrections are applied linearly:
-
-.. math::
-
-   \phi_W = C_L \cdot U \qquad \phi_S = D_L \cdot \tan\theta
-
-   R = \max\bigl(R_0 \cdot (1 + \phi_W + \phi_S),\; 0\bigr)
+where :math:`d_i` is the distance from the cell to station :math:`i` and
+:math:`p` is the IDW power exponent (default 2.0).
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 15 60
 
    * - Parameter
-     - Default
      - Description
-   * - ``lautenberger.A_L``
-     - ``1.05e-5``
-     - Pre-factor :math:`A_L` [m²/s]
-   * - ``lautenberger.B_L``
-     - ``2.5``
-     - Moisture sensitivity :math:`B_L` [-]
-   * - ``lautenberger.C_L``
-     - ``0.40``
-     - Wind correction :math:`C_L` [(m/s)\ :sup:`-1`]
-   * - ``lautenberger.D_L``
-     - ``0.50``
-     - Slope correction :math:`D_L` [-]
-
-Reference: Lautenberger, C. (2013). *Wildland fire modeling with an Eulerian level
-set method and automated calibration.* Fire Safety Journal, 62, 289–298.
-
-
-Rothermel (1991) Active Crown Fire ROS
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When ``crown.use_rothermel1991_crown = 1``, active-crown-fire cells use a simple
-multiplicative relationship derived by Rothermel (1991):
-
-.. math::
-
-   R_{\text{crown}} = 3.34 \; R_{\text{surface}}
-
-This is applied only in cells where ``crown_activity == 2`` (active crown fire),
-and replaces (or is blended with) the surface ROS.
-
-Parameters: ``crown.use_rothermel1991_crown = 1``.
-
-Reference: Rothermel, R.C. (1991). *Predicting Behavior and Size of Crown Fires
-in the Northern Rocky Mountains.* USDA Forest Service Research Paper INT-438.
-
-
-Van Wagner (1977) Passive-Crown Blending
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When ``crown.use_passive_blend = 1`` the transition from surface to active crown
-fire is smoothed via Van Wagner's (1977) passive crown-fire factor:
-
-.. math::
-
-   \mathrm{CF} = \left(\frac{I_B}{I_o}\right)^{2/3}
-
-The blended ROS is:
-
-.. math::
-
-   R = (1 - \mathrm{CF})\,R_{\text{surface}} + \mathrm{CF}\,R_{\text{crown}}
-
-where :math:`I_B` is the Byram fireline intensity (kW/m) and :math:`I_o` is the
-Van Wagner crown fire initiation threshold (kW/m):
-
-.. math::
-
-   I_o = 0.010\,h_{\text{CBH}}\,(460 + 25.9\,\mathrm{FMC})
-
-Parameters: ``crown.use_passive_blend = 1``, ``crown.CBH``, ``crown.FMC``.
-
-Reference: Van Wagner, C.E. (1977). *Conditions for the start and spread of crown
-fire.* Canadian Journal of Forest Research, 7(1), 23–34.
-
-
-Scott & Reinhardt (2001) Bisection-Based TI and CI
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The full Scott & Reinhardt (2001) Torching Index (TI) and Crowning Index (CI) are
-defined as the minimum 20-ft (6.1 m) open-wind speed (km/h) at which passive torching or
-active crowning can occur.  These are output as the plotfile fields
-``torching_index_kmh`` and ``crowning_index_kmh``.
-
-Enable with ``scott_reinhardt_full.enable = 1``.
-
-**Torching Index** is found by bisection on the wind speed :math:`U` that satisfies:
-
-.. math::
-
-   I_B(U) = I_o
-
-where :math:`I_B(U) = H_l \, w_n \, R(U) / 60` is the Byram fireline intensity
-(kW/m) computed from the Rothermel surface ROS :math:`R(U)` [m/min], net fuel
-load :math:`w_n` [kg/m²], and heat of combustion :math:`H_l` [kJ/kg].
-
-**Crowning Index** is found by bisection on the wind speed :math:`U` that satisfies:
-
-.. math::
-
-   R(U) = R'_{SA} = \frac{3.0}{\mathrm{CBD}} \; \text{[m/min]}
-
-Reference: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing Crown Fire Potential
-by Linking Models of Surface and Crown Fire Behavior.* USDA Forest Service
-Research Paper RMRS-RP-29.
+   * - ``multi_wtr_file``
+     - Path to station list CSV (default: ``""`` = disabled)
+   * - ``multi_wtr_idw_power``
+     - IDW exponent :math:`p` (default: 2.0)
