@@ -1,9 +1,14 @@
 .. _wind_solver:
 
-Terrain-Following Mass-Consistent Wind Solver
-=============================================
+Terrain-Following Mass-Consistent Wind Solver (Deprecated)
+===========================================================
 
-The ``wind_solver`` executable is a stand-alone 3-D wind diagnostic tool that
+.. deprecated::
+   The mass-consistent wind solver has been moved to ``src/deprecated/wind_solver.cpp``
+   and is no longer built by default.  It is retained for reference purposes only.
+   The source file is not compiled as part of the standard build.
+
+The ``wind_solver`` executable was a stand-alone 3-D wind diagnostic tool that
 constructs a terrain-aware, mass-consistent wind field over complex terrain.
 It follows the approach pioneered by QUIC-URB (Röckle 1990, Pardyjak & Brown
 2001) and the mass-consistent models of Sherman (1978) and Mathiesen (1987).

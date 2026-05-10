@@ -15,7 +15,6 @@ cmake_minimum_required(VERSION 3.20)
 enable_testing()
 
 set(LEVELSET_EXE   "${CMAKE_BINARY_DIR}/levelset"    CACHE FILEPATH "Path to levelset executable")
-set(WIND_SOLVER_EXE "${CMAKE_BINARY_DIR}/wind_solver" CACHE FILEPATH "Path to wind_solver executable")
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
@@ -99,7 +98,10 @@ add_regression_test(alexander_lemniscate     surface_spread/alexander_lemniscate
 add_regression_test(ellipse_sdf              surface_spread/ellipse_sdf)
 add_regression_test(reinitialization         surface_spread/reinitialization)
 add_regression_test(fbp_o1a_grassfire        surface_spread/fbp_o1a_grassfire)
+add_regression_test(fbp_o1b_grassfire        surface_spread/fbp_o1b_grassfire)
 add_regression_test(fbp_s1_slash             surface_spread/fbp_s1_slash)
+add_regression_test(fbp_s2_slash             surface_spread/fbp_s2_slash)
+add_regression_test(fbp_s3_slash             surface_spread/fbp_s3_slash)
 add_regression_test(lautenberger_spread      surface_spread/lautenberger_spread)
 
 # ===========================================================================
@@ -227,29 +229,6 @@ if(Python3_FOUND)
 endif()
 
 # ---------------------------------------------------------------------------
-# wind_solver tests
-# ---------------------------------------------------------------------------
-function(add_wind_solver_regression_test TEST_NAME TEST_DIR)
-    set(TEST_INPUT    "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
-    set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
-    file(MAKE_DIRECTORY ${TEST_WORK_DIR})
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv"
-             DESTINATION ${TEST_WORK_DIR})
-    endif()
-    add_test(NAME ${TEST_NAME}
-             COMMAND ${WIND_SOLVER_EXE} ${TEST_INPUT}
-             WORKING_DIRECTORY ${TEST_WORK_DIR})
-    set_tests_properties(${TEST_NAME} PROPERTIES
-                         TIMEOUT 600
-                         LABELS  "regtest;wind_solver")
-endfunction()
-
-if(LEVELSET_BUILD_WIND_SOLVER)
-    add_wind_solver_regression_test(gaussian_hill_wind_solver wind/gaussian_hill_wind_solver)
-endif()
-
-# ---------------------------------------------------------------------------
 # Custom target
 # ---------------------------------------------------------------------------
 add_custom_target(regtest
@@ -265,7 +244,8 @@ message(STATUS "Regression tests (sub-folder organisation):")
 message(STATUS "  surface_spread/ : basic_levelset, farsite_ellipse, rothermel_fuel,")
 message(STATUS "                    anderson_lw, catchpole_demestre, wilson_spread,")
 message(STATUS "                    alexander_lemniscate, ellipse_sdf, reinitialization,")
-message(STATUS "                    fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread")
+message(STATUS "                    fbp_o1a_grassfire, fbp_o1b_grassfire,")
+message(STATUS "                    fbp_s1_slash, fbp_s2_slash, fbp_s3_slash, lautenberger_spread")
 message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
 message(STATUS "                    fmc_seasonal, rothermel1991_crown")
 message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
