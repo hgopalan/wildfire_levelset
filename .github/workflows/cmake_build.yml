@@ -45,7 +45,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      - name: Configure (3D, CPU-only)
+      - name: Configure (2D, CPU-only)
         shell: bash
         run: |
           cmake -S . -B build \
@@ -123,7 +123,7 @@ jobs:
             cmake \
             ninja-build
 
-      - name: Configure (3D, CUDA)
+      - name: Configure (2D, CUDA)
         shell: bash
         run: |
           cmake -S . -B build \
@@ -240,7 +240,7 @@ jobs:
             intel-oneapi-compiler-dpcpp-cpp \
             intel-oneapi-mkl-devel
 
-      - name: Configure (3D, SYCL)
+      - name: Configure (2D, SYCL)
         shell: bash
         run: |
           source /opt/intel/oneapi/setvars.sh
@@ -312,7 +312,7 @@ jobs:
 
       - name: Build AMReX
         run: |
-          cmake --build build --config Release --target amrex_3d -j 4
+          cmake --build build --config Release --target amrex_2d -j 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
