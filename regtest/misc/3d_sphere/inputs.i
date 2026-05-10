@@ -1,5 +1,5 @@
-# 2-D Fire Spread Test
-# Tests: 2-D level-set advection, 2-D FARSITE ellipse, terrain slope, Rothermel
+# 2D Fire Spread Test
+# Tests: 2D level-set advection, 2D FARSITE ellipse, terrain slope, Rothermel
 
 # Grid & domain (unit square)
 n_cell = 64

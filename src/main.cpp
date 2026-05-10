@@ -1,7 +1,7 @@
 #include "wildfire_includes.H"
 
 static_assert(AMREX_SPACEDIM == 2,
-              "wildfire_levelset requires a 2-D AMReX build. "
+              "wildfire_levelset requires a 2D AMReX build. "
               "Configure with -DLEVELSET_DIM_2D=ON (the default).");
 
 
