@@ -52,7 +52,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DLEVELSET_USE_VENDORED_AMREX=ON \
-            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_DIM_2D=ON \
             -DLEVELSET_ENABLE_MPI=OFF \
             -DLEVELSET_ENABLE_EB=OFF
 
@@ -78,12 +78,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Configure (3D, CPU-only)
+      - name: Configure (2D, CPU-only)
         run: |
           cmake -S . -B build `
             -DCMAKE_VERBOSE_MAKEFILE=ON `
             -DLEVELSET_USE_VENDORED_AMREX=ON `
-            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_DIM_2D=ON `
             -DLEVELSET_ENABLE_MPI=OFF `
             -DLEVELSET_ENABLE_EB=OFF `
             -DLEVELSET_BUILD_WIND_SOLVER=ON
@@ -131,7 +131,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -DLEVELSET_USE_VENDORED_AMREX=ON \
-            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_DIM_2D=ON \
             -DLEVELSET_ENABLE_MPI=OFF \
             -DLEVELSET_ENABLE_EB=OFF \
             -DLEVELSET_GPU_BACKEND=CUDA \
@@ -180,7 +180,7 @@ jobs:
           echo 'export PATH=/opt/rocm/llvm/bin:/opt/rocm/bin:$PATH' \
             | sudo tee /etc/profile.d/rocm.sh
 
-      - name: Configure (3D, HIP, gfx90a)
+      - name: Configure (2D, HIP, gfx90a)
         shell: bash
         run: |
           source /etc/profile.d/rocm.sh
@@ -191,7 +191,7 @@ jobs:
             -DCMAKE_C_COMPILER=$(which clang) \
             -DCMAKE_CXX_COMPILER=$(which clang++) \
             -DLEVELSET_USE_VENDORED_AMREX=ON \
-            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_DIM_2D=ON \
             -DLEVELSET_ENABLE_MPI=OFF \
             -DLEVELSET_ENABLE_EB=OFF \
             -DLEVELSET_GPU_BACKEND=HIP \
@@ -251,7 +251,7 @@ jobs:
             -DCMAKE_C_COMPILER=$(which icx) \
             -DCMAKE_CXX_COMPILER=$(which icpx) \
             -DLEVELSET_USE_VENDORED_AMREX=ON \
-            -DLEVELSET_DIM_2D=OFF \
+            -DLEVELSET_DIM_2D=ON \
             -DLEVELSET_ENABLE_MPI=OFF \
             -DLEVELSET_ENABLE_EB=OFF \
             -DLEVELSET_GPU_BACKEND=SYCL \
@@ -293,14 +293,14 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure (3D, CUDA)
+      - name: Configure (2D, CUDA)
         run: |
           cmake -S . -B build `
             -G "Ninja" `
             -DCMAKE_VERBOSE_MAKEFILE=ON `
             -DCMAKE_BUILD_TYPE=Release `
             -DLEVELSET_USE_VENDORED_AMREX=ON `
-            -DLEVELSET_DIM_2D=OFF `
+            -DLEVELSET_DIM_2D=ON `
             -DLEVELSET_ENABLE_MPI=OFF `
             -DLEVELSET_ENABLE_EB=OFF `
             -DLEVELSET_BUILD_WIND_SOLVER=OFF `
