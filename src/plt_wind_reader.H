@@ -191,49 +191,6 @@ static bool parse_plt_header_3d(
 }
 
 // ============================================================================
-// Internal helper: parse a single-line AMReX FAB ASCII header
-//
-// Example line produced by WriteSingleLevelPlotfile:
-//   FAB ((8, (64 11 52 0 1 12 0 1023)),(8,(64 11 52 0 1 12 0 1023))) ((0,0,0) (63,63,31) (0,0,0))
-//
-// We need the box extents and whether data is single or double precision.
-// Returns false if parsing fails.
-// ============================================================================
-static bool parse_fab_header(const std::string& line,
-                             int lo[3], int hi[3],
-                             int& bytes_per_val)
-{
-    // Extract the box substring between the second "(" and the last ")"
-    // We look for the box descriptor: "((lo0,lo1,lo2) (hi0,hi1,hi2) (0,0,0))"
-    // which appears after the format descriptor.
-    std::size_t pos = line.rfind("((");
-    if (pos == std::string::npos) return false;
-    const char* s = line.c_str() + pos;
-    int lo0=0,lo1=0,lo2=0, hi0=0,hi1=0,hi2=0;
-    if (std::sscanf(s, "((%d,%d,%d) (%d,%d,%d)", &lo0,&lo1,&lo2, &hi0,&hi1,&hi2) == 6) {
-        lo[0]=lo0; lo[1]=lo1; lo[2]=lo2;
-        hi[0]=hi0; hi[1]=hi1; hi[2]=hi2;
-    } else if (std::sscanf(s, "((%d,%d) (%d,%d)", &lo0,&lo1, &hi0,&hi1) == 4) {
-        lo[0]=lo0; lo[1]=lo1; lo[2]=0;
-        hi[0]=hi0; hi[1]=hi1; hi[2]=0;
-    } else {
-        return false;
-    }
-
-    // Extract bytes per value (8 = double, 4 = float) from the format descriptor
-    // e.g. "((8, ..." → 8 bytes
-    bytes_per_val = 8;  // default to double
-    std::size_t paren = line.find('(');
-    if (paren != std::string::npos) {
-        int bpv = 8;
-        if (std::sscanf(line.c_str() + paren + 1, "(%d,", &bpv) == 1) {
-            bytes_per_val = bpv;
-        }
-    }
-    return true;
-}
-
-// ============================================================================
 // read_plt_wind_file
 //
 // Opens the AMReX plt directory at `plt_dir`, looks for variable components
@@ -381,11 +338,23 @@ inline bool read_plt_wind_file(const std::string& plt_dir, PltWindData& pwd)
                 continue;
             }
 
-            // Parse box from the line
-            if (!parse_fab_header(fab_line, fi.lo, fi.hi, fi.bytes_per_val)) {
-                // Try the box from the file line itself
-                fi.lo[0]=fi.lo[1]=fi.lo[2]=0;
-                fi.hi[0]=nx-1; fi.hi[1]=ny-1; fi.hi[2]=nz-1;
+            // Parse box from the VisMF-V1 Cell_H line.
+            // Format: "((lo0,lo1,lo2) (hi0,hi1,hi2) (0,0,0)) ncomp  file:offset"
+            // Note: this line does NOT have the FAB binary-format descriptor
+            // "(8,(...))..." that parse_fab_header expects, so we parse directly.
+            {
+                int lo0=0,lo1=0,lo2=0, hi0=0,hi1=0,hi2=0;
+                if (std::sscanf(fab_line.c_str(), "((%d,%d,%d) (%d,%d,%d)",
+                                &lo0,&lo1,&lo2,&hi0,&hi1,&hi2) == 6) {
+                    fi.lo[0]=lo0; fi.lo[1]=lo1; fi.lo[2]=lo2;
+                    fi.hi[0]=hi0; fi.hi[1]=hi1; fi.hi[2]=hi2;
+                } else {
+                    // Fallback: assume full domain box
+                    fi.lo[0]=fi.lo[1]=fi.lo[2]=0;
+                    fi.hi[0]=nx-1; fi.hi[1]=ny-1; fi.hi[2]=nz-1;
+                }
+                // massconsistent_amr always writes double precision (8 bytes)
+                fi.bytes_per_val = 8;
             }
             fabs.push_back(fi);
         }

@@ -170,7 +170,9 @@ and then integrates a 2-D horizontal trajectory through the wind field.  Confirm
 lofting height, landing distance, and diagnostic fields (``albini_Hz``, ``albini_count``,
 ``albini_dist``, ``albini_active``) are computed and written correctly.
 
-**Build**: CPU-only build (Albini spotting requires serial execution).
+**Build**: CPU or GPU builds (GPU-safe: trajectory runs on the host; device
+data is synchronized and copied to host-pinned memory before computation, then
+written back to device).
 
 albini_spotting_3d_wind
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -187,7 +189,7 @@ interpolates onto the fire-model grid for trajectory integration.
 Requires Python 3 to generate the synthetic plt file (handled automatically
 by CTest as a fixture setup step).
 
-**Build**: CPU-only build (Albini spotting requires serial execution).
+**Build**: CPU or GPU builds (GPU-safe).
 
 crown_initiation
 ^^^^^^^^^^^^^^^^
@@ -333,8 +335,8 @@ Build Configurations Summary
      - 3D + EB
      - ``-DLEVELSET_ENABLE_EB=ON``
    * - ``albini_spotting``, ``albini_spotting_3d_wind``
-     - CPU-only
-     - no GPU/OpenMP flags
+     - CPU or GPU
+     - GPU-safe: synchronizes device, runs host-side trajectory
 
 Adding a New Regression Test
 ------------------------------

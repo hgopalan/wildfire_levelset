@@ -31,6 +31,8 @@
 //       y(t + dt) = y(t) + v(x,y) * dt
 //
 // Serial execution is assumed (same constraint as firebrand_spotting.H).
+// In GPU builds the function synchronizes the device, processes data on the
+// CPU host, and copies results back to device (see GPU safety note below).
 // ============================================================================
 
 #ifndef ALBINI_SPOTTING_H
@@ -166,8 +168,12 @@ static bool albini_interp_wind(
 // horizontal wind from the 3-D plt file is used for trajectory integration
 // instead of the 2-D velocity MultiFab.
 //
-// NOTE: This function requires serial execution (no MPI / OMP / GPU),
-//       identical to the constraint in firebrand_spotting.H.
+// GPU safety: All trajectory computation runs on the CPU host.  In GPU builds
+// (AMREX_USE_GPU) the function synchronizes the device stream, creates
+// host-pinned copies of phi, vel, R_mf, and albini_data, performs all
+// computation on the host, then copies results back to device.  In CPU-only
+// builds the host copies are zero-cost views of the same memory.
+// The function is therefore safe to call from any build configuration.
 // ============================================================================
 inline void compute_albini_spotting(
     MultiFab& phi,
@@ -186,10 +192,46 @@ inline void compute_albini_spotting(
         return;
     }
 
-#if defined(AMREX_USE_OMP) || defined(AMREX_USE_GPU)
-    amrex::Abort("Albini spotting requires serial execution. "
-                 "Rebuild with AMReX_OMP=OFF, AMReX_GPU_BACKEND=NONE.");
-#endif
+    // ---- GPU safety: synchronize device work, then operate on host copies ----
+    // Albini trajectory integration is inherently serial (stochastic branching,
+    // dynamic landing zones) and runs on the CPU host.  In GPU builds the
+    // MultiFab data lives on the device; we create explicit host-pinned copies
+    // (using The_Pinned_Arena, which is host-accessible in all build configs)
+    // before the CPU loops and write results back to device afterward.
+    // In CPU-only builds The_Pinned_Arena allocates regular heap memory and
+    // the copies are simple memcpy operations.
+    amrex::Gpu::streamSynchronize();  // flush any pending GPU kernels
+
+    // Host-pinned arena: accessible from CPU in all builds (GPU and CPU-only)
+    amrex::Arena* pinned = amrex::The_Pinned_Arena();
+    amrex::MFInfo host_info;
+    host_info.SetArena(pinned);
+
+    amrex::MultiFab phi_h(phi.boxArray(), phi.DistributionMap(),
+                          phi.nComp(), phi.nGrow(), host_info);
+    amrex::MultiFab::Copy(phi_h, phi, 0, 0, phi.nComp(), phi.nGrow());
+
+    amrex::MultiFab vel_h(vel.boxArray(), vel.DistributionMap(),
+                          vel.nComp(), vel.nGrow(), host_info);
+    amrex::MultiFab::Copy(vel_h, vel, 0, 0, vel.nComp(), vel.nGrow());
+
+    amrex::MultiFab R_h(R_mf.boxArray(), R_mf.DistributionMap(),
+                        R_mf.nComp(), R_mf.nGrow(), host_info);
+    amrex::MultiFab::Copy(R_h, R_mf, 0, 0, R_mf.nComp(), R_mf.nGrow());
+
+    amrex::MultiFab adata_h(albini_data.boxArray(), albini_data.DistributionMap(),
+                            albini_data.nComp(), albini_data.nGrow(), host_info);
+    adata_h.setVal(Real(0.0));
+
+    std::unique_ptr<amrex::MultiFab> fm_h_ptr;
+    if (fuel_model_mf != nullptr) {
+        fm_h_ptr = std::make_unique<amrex::MultiFab>(
+            fuel_model_mf->boxArray(), fuel_model_mf->DistributionMap(),
+            fuel_model_mf->nComp(), 0, host_info);
+        amrex::MultiFab::Copy(*fm_h_ptr, *fuel_model_mf, 0, 0,
+                              fuel_model_mf->nComp(), 0);
+    }
+    amrex::Gpu::streamSynchronize();  // wait for device→host copies
 
     const Real phi_thresh = Real(0.1);
     const auto dx        = geom.CellSize();
@@ -198,9 +240,6 @@ inline void compute_albini_spotting(
 
     const int nx = geom.Domain().length(0);
     const int ny = geom.Domain().length(1);
-
-    // ---- Reset albini_data ----
-    albini_data.setVal(Real(0.0));
 
     // ---- Build flat wind arrays for trajectory integration ----
     // When use_3d_wind = 1 and plt_wind is valid, use the height-averaged
@@ -259,10 +298,10 @@ inline void compute_albini_spotting(
             }
         }
     } else {
-        // Default: copy from the 2-D velocity MultiFab
-        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+        // Default: copy from the 2-D velocity host copy
+        for (MFIter mfi(vel_h); mfi.isValid(); ++mfi) {
             const Box& bx     = mfi.validbox();
-            auto const v_data = vel.const_array(mfi);
+            auto const v_data = vel_h.const_array(mfi);
             const auto lo = lbound(bx);
             const auto hi = ubound(bx);
             for (int j = lo.y; j <= hi.y; ++j) {
@@ -296,16 +335,16 @@ inline void compute_albini_spotting(
     };
     std::vector<FrontCell> front_cells;
 
-    const bool has_fm = (fuel_model_mf != nullptr);
+    const bool has_fm = (fm_h_ptr != nullptr);
 
-    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+    for (MFIter mfi(phi_h); mfi.isValid(); ++mfi) {
         const Box& bx   = mfi.validbox();
-        auto const p    = phi.const_array(mfi);
-        auto const r    = R_mf.const_array(mfi);
-        auto       adata = albini_data.array(mfi);
+        auto const p    = phi_h.const_array(mfi);
+        auto const r    = R_h.const_array(mfi);
+        auto       ad   = adata_h.array(mfi);
 
         Array4<const Real> fm_arr;
-        if (has_fm) fm_arr = fuel_model_mf->const_array(mfi);
+        if (has_fm) fm_arr = fm_h_ptr->const_array(mfi);
 
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
@@ -326,7 +365,7 @@ inline void compute_albini_spotting(
                 }
 
                 // Store lofting height diagnostic
-                adata(i, j, 0, 0) = H_z;
+                ad(i, j, 0, 0) = H_z;
 
                 int fm_code = has_fm ? static_cast<int>(fm_arr(i, j, 0)) : 0;
                 Real x = prob_lo[0] + (i + Real(0.5)) * dx[0];
@@ -498,9 +537,9 @@ inline void compute_albini_spotting(
     // ---- Apply spot ignitions to phi ----
     int radius_cells = static_cast<int>(std::ceil(asp.spot_radius / dx[0])) + 1;
 
-    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+    for (MFIter mfi(phi_h); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto p = phi.array(mfi);
+        auto p = phi_h.array(mfi);
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
 
@@ -528,9 +567,9 @@ inline void compute_albini_spotting(
     }
 
     // ---- Update albini_data diagnostics ----
-    for (MFIter mfi(albini_data); mfi.isValid(); ++mfi) {
+    for (MFIter mfi(adata_h); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto adata = albini_data.array(mfi);
+        auto ad = adata_h.array(mfi);
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
 
@@ -538,19 +577,24 @@ inline void compute_albini_spotting(
             // Update source-cell diagnostics
             if (sp.src_i >= lo.x && sp.src_i <= hi.x &&
                 sp.src_j >= lo.y && sp.src_j <= hi.y) {
-                adata(sp.src_i, sp.src_j, 0, 1) += Real(1.0);            // count
-                adata(sp.src_i, sp.src_j, 0, 2) =
-                    amrex::max(adata(sp.src_i, sp.src_j, 0, 2), sp.distance); // max dist
+                ad(sp.src_i, sp.src_j, 0, 1) += Real(1.0);            // count
+                ad(sp.src_i, sp.src_j, 0, 2) =
+                    amrex::max(ad(sp.src_i, sp.src_j, 0, 2), sp.distance); // max dist
             }
 
             // Mark landing cell as active
             int ic = sp.ic;
             int jc = sp.jc;
             if (ic >= lo.x && ic <= hi.x && jc >= lo.y && jc <= hi.y) {
-                adata(ic, jc, 0, 3) = Real(1.0);
+                ad(ic, jc, 0, 3) = Real(1.0);
             }
         }
     }
+
+    // ---- Copy results from host back to device (no-op in CPU-only builds) ----
+    amrex::MultiFab::Copy(phi,         phi_h,   0, 0, phi.nComp(),         phi.nGrow());
+    amrex::MultiFab::Copy(albini_data, adata_h, 0, 0, albini_data.nComp(), 0);
+    amrex::Gpu::streamSynchronize();
 }
 
 #endif // ALBINI_SPOTTING_H
