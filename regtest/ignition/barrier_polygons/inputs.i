@@ -7,14 +7,11 @@
 # Grid & domain (500 m x 500 m, simple coordinates)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 0.0
 prob_lo_y = 0.0
-prob_lo_z = 0.0
 prob_hi_x = 500.0
 prob_hi_y = 500.0
-prob_hi_z = 1.0
 
 # Simulate 600 s so fire reaches both barriers
 final_time = 600.0
@@ -25,13 +22,11 @@ reinit_int = -1
 # Wind: 3 m/s eastward (fire spreads toward eastern barrier)
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Ignition at western portion (fire starts at (100, 250))
 source_type = sphere
 center_x = 100.0
 center_y = 250.0
-center_z = 0.5
 sphere_radius = 20.0
 
 # Fuel: FM4 chaparral

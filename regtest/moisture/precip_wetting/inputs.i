@@ -5,14 +5,11 @@
 # Grid & domain (500 m x 500 m, UTM Zone 11N)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 330500.0
 prob_hi_y = 3775500.0
-prob_hi_z = 1.0
 
 # Simulate 3 hours; moisture should rise toward saturation
 final_time = 10800.0
@@ -23,13 +20,11 @@ reinit_int = -1
 # Light wind
 u_x = 2.0
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition at domain centre
 source_type = sphere
 center_x = 330250.0
 center_y = 3775250.0
-center_z = 0.5
 sphere_radius = 30.0
 
 # Fuel: FM4 chaparral with moderate initial moisture

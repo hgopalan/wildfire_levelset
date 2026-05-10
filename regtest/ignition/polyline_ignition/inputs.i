@@ -5,14 +5,11 @@
 # Grid & domain (100 m x 50 m, UTM Zone 11N)
 n_cell_x = 64
 n_cell_y = 32
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 330100.0
 prob_hi_y = 3775050.0
-prob_hi_z = 1.0
 
 # Time & output
 nsteps = 80
@@ -23,7 +20,6 @@ reinit_int = 20
 # Wind: 4 m/s northward
 u_x = 0.0
 u_y = 4.0
-u_z = 0.0
 
 # Polyline ignition from CSV file
 source_type = polyline

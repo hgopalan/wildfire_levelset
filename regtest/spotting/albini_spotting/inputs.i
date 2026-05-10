@@ -5,14 +5,11 @@
 # Grid & domain (500 m x 500 m, UTM Zone 11N)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 330500.0
 prob_hi_y = 3775500.0
-prob_hi_z = 1.0
 
 # Time & output
 nsteps = 100
@@ -23,13 +20,11 @@ reinit_int = -1
 # Wind: 5 m/s eastward
 u_x = 5.0
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition at western portion
 source_type = sphere
 center_x = 330100.0
 center_y = 3775250.0
-center_z = 0.5
 sphere_radius = 25.0
 
 # Fuel: FM4 chaparral (high heat content drives strong lofting)

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 set(AMREX_SUBMODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/amrex")
 option(LEVELSET_USE_VENDORED_AMREX "Prefer building the vendored AMReX submodule" ON)
-option(LEVELSET_DIM_2D "Build for 2D instead of 3D" OFF)
+option(LEVELSET_DIM_2D "Build for 2D (only supported dimension)" ON)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
 option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
@@ -48,8 +48,9 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
     set(AMReX_SPACEDIM "2" CACHE STRING "AMReX spatial dimensions for wildfire_levelset" FORCE)
     message(STATUS "Building for 2D (AMReX_SPACEDIM=2)")
   else()
-    set(AMReX_SPACEDIM "3" CACHE STRING "AMReX spatial dimensions for wildfire_levelset" FORCE)
-    message(STATUS "Building for 3D (AMReX_SPACEDIM=3)")
+    message(FATAL_ERROR
+      "3D builds are not supported. Remove -DLEVELSET_DIM_2D=OFF "
+      "(the default is ON). Only AMREX_SPACEDIM=2 is supported by this solver.")
   endif()
   if(LEVELSET_ENABLE_MPI)
     set(AMReX_MPI ON CACHE BOOL "Build AMReX with MPI" FORCE)
