@@ -287,7 +287,7 @@ inline void compute_albini_spotting(
         // in parallel on the GPU, then copy the result to host u_arr/v_arr
         // for the serial stochastic trajectory integration step.
         amrex::Print() << " [GPU kernel]\n";
-        {
+        if (pw_nx >= 2 && pw_ny >= 2) {
             amrex::Gpu::DeviceVector<Real> u_dev(nx * ny);
             amrex::Gpu::DeviceVector<Real> v_dev(nx * ny);
 
@@ -312,8 +312,6 @@ inline void compute_albini_spotting(
 
             amrex::ParallelFor(nx * ny,
                 [=] AMREX_GPU_DEVICE (int n) noexcept {
-                    if (g_pw_nx < 2 || g_pw_ny < 2) { return; }
-
                     const int i  = n % g_nx;
                     const int j  = n / g_nx;
 
@@ -326,9 +324,9 @@ inline void compute_albini_spotting(
                     const Real yj = (yc - g_pw_y0) / g_pw_dy - Real(0.5);
 
                     const int pi = amrex::max(0, amrex::min(
-                        static_cast<int>(::floor(xi)), g_pw_nx - 2));
+                        static_cast<int>(amrex::Math::floor(xi)), g_pw_nx - 2));
                     const int pj = amrex::max(0, amrex::min(
-                        static_cast<int>(::floor(yj)), g_pw_ny - 2));
+                        static_cast<int>(amrex::Math::floor(yj)), g_pw_ny - 2));
 
                     const Real fx = amrex::max(Real(0.0),
                         amrex::min(xi - static_cast<Real>(pi), Real(1.0)));
