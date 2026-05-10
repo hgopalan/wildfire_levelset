@@ -7,8 +7,16 @@ This section describes the mathematical models implemented in the wildfire level
 Fire Spread Models
 ------------------
 
-Three primary fire spread model families are implemented.  Select the active
-model with ``fire_spread_model``.
+Multiple fire spread model families are implemented.  Select the active
+model with ``fire_spread_model``:
+
+* ``rothermel`` — Rothermel (1972) empirical surface fire spread (default)
+* ``balbi`` — Balbi (2009) physics-based radiation-driven spread
+* ``cheney_gould`` — Cheney & Gould (1995/1998) Australian grassland empirical model
+* ``fbp_o1a`` / ``fbp_o1b`` — Canadian FBP grass fuel types (matted / standing)
+* ``fbp_s1`` / ``fbp_s2`` / ``fbp_s3`` — Canadian FBP slash fuel types
+* ``lautenberger`` — Lautenberger (2013) semi-physical Eulerian model
+* ``cruz_crown`` — Cruz et al. active crown fire rate of spread
 
 Rothermel (1972) Fire Spread Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -409,6 +417,144 @@ grasslands and the slope correction is intentionally omitted in this
 implementation. For slope effects, use the Rothermel or Balbi models instead.
 
 
+Canadian Forest Fire Behaviour Prediction (FBP) System
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Canadian FBP system provides empirical rate-of-spread equations calibrated for
+specific fuel types.  The solver implements five fuel types: O1a (matted grass),
+O1b (standing grass), S1 (Jack/Lodgepole Pine slash), S2 (White Spruce/Balsam slash),
+and S3 (Coastal Cedar/Hemlock/Douglas Fir slash).
+
+Select with ``fire_spread_model = fbp_o1a`` (or ``fbp_o1b``, ``fbp_s1``, ``fbp_s2``, ``fbp_s3``).
+
+**Grass fuel types (O1a / O1b)**
+
+The fine-fuel moisture factor follows Van Wagner (1985):
+
+.. math::
+
+   f_F = 91.9 \exp(-0.1386\,M_f)
+         \left(1 + \frac{M_f^{5.31}}{4.93 \times 10^7}\right)
+
+The wind factor and Initial Spread Index (ISI) are:
+
+.. math::
+
+   f_W = \exp(0.05039\,U_{10}), \qquad \text{ISI} = 0.208 \, f_W \, f_F
+
+where :math:`U_{10}` is the 10-m wind speed (km/h) and :math:`M_f` is the fine fuel moisture content (%).
+The curing factor (CF) accounts for the fraction of dead fuel:
+
+.. math::
+
+   \mathrm{CF} = \Bigl(1 - \exp\!\bigl(-2.1\,\mathrm{PC}/100\bigr)\Bigr)^2
+
+Rate of spread [m/s]:
+
+.. math::
+
+   R = C_c \exp(k_c\,\text{ISI}) \times \mathrm{CF}
+
+Coefficients per fuel type:
+
+* **O1a** (matted grass): :math:`C_c = 190/60,\; k_c = 0.031`
+* **O1b** (standing grass): :math:`C_c = 250/60,\; k_c = 0.035`
+
+**Slash fuel types (S1 / S2 / S3)**
+
+Same ISI computation; :math:`\mathrm{CF} = 1`. Rate of spread [m/s]:
+
+.. math::
+
+   R = C_s \exp(k_s\,\text{ISI})
+
+Coefficients:
+
+* **S1**: :math:`C_s = 75/60,\; k_s = 0.110`
+* **S2**: :math:`C_s = 200/60,\; k_s = 0.062`
+* **S3**: :math:`C_s = 320/60,\; k_s = 0.010`
+
+Parameters: ``fbp.fuel_type``, ``fbp.curing`` (curing [%], O1a/O1b only), ``fbp.moisture`` (dead fine fuel moisture [%]).
+
+Reference: Forestry Canada Fire Danger Group (1992). *Development and Structure of
+the Canadian Forest Fire Behavior Prediction System.*  Information Report ST-X-3.
+
+
+Lautenberger (2013) Physics-Based Fire Spread Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Select with ``fire_spread_model = lautenberger``.
+
+The model derives rate of spread from a semi-physical fuel-energy balance
+calibrated against US wildfire data (Lautenberger 2013):
+
+.. math::
+
+   R_0 = A_L \cdot \sigma_m \cdot \exp(-B_L \cdot M_f)
+
+where :math:`\sigma_m` is the fuel SAV ratio [m\ :sup:`-1`] (converted
+from ft\ :sup:`-1`), :math:`M_f` is fuel moisture (fraction), :math:`A_L`
+is a pre-factor [m²/s], and :math:`B_L` is the moisture sensitivity.
+
+Wind and slope corrections are applied linearly:
+
+.. math::
+
+   \phi_W = C_L \cdot U \qquad \phi_S = D_L \cdot \tan\theta
+
+   R = \max\bigl(R_0 \cdot (1 + \phi_W + \phi_S),\; 0\bigr)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``lautenberger.A_L``
+     - ``1.05e-5``
+     - Pre-factor :math:`A_L` [m²/s]
+   * - ``lautenberger.B_L``
+     - ``2.5``
+     - Moisture sensitivity :math:`B_L` [-]
+   * - ``lautenberger.C_L``
+     - ``0.40``
+     - Wind correction :math:`C_L` [(m/s)\ :sup:`-1`]
+   * - ``lautenberger.D_L``
+     - ``0.50``
+     - Slope correction :math:`D_L` [-]
+
+Reference: Lautenberger, C. (2013). *Wildland fire modeling with an Eulerian level
+set method and automated calibration.* Fire Safety Journal, 62, 289–298.
+
+
+ROS Floor (FARSITE Stall Threshold)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A FARSITE-style stall threshold is applied across all spread models: cells where
+the computed ROS is below ``WildfireConst::ROS_MIN_MS`` (1 × 10⁻⁴ m/s) are
+forced to zero.  This prevents numerical drift in extremely low-moisture conditions
+and matches FARSITE's internal practice of not propagating the fire front when
+spread is negligible.
+
+**Parameters**: None (constant in ``constants.H``).
+
+Non-Burnable Cell Masking
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fuel model codes that correspond to non-burnable landscape types are explicitly
+zeroed in the ROS kernel.  This prevents fire from numerically creeping across
+water bodies, bare rock, or urban areas due to floating-point noise in zero-fuel
+cells.
+
+Affected codes (FBFM40 / FBFM13): 91 (Urban/Developed), 92 (Snow/Ice), 93
+(Agriculture), 98 (Open Water), 99 (Bare Ground).
+
+When ``rothermel.landscape_file`` is provided and the per-cell fuel code maps to
+one of these values, the kernel returns ``R = 0`` for that cell without entering
+the wind-slope-fuel computation.
+
+**Parameters**: None.  Automatic when ``rothermel.landscape_file`` is used.
 
 
 Propagation Methods
@@ -720,6 +866,84 @@ For active crown fire spread, the critical wind speed :math:`U_{active}` is:
 where :math:`CBD` is the canopy bulk density (kg/m³).
 
 
+Rothermel (1991) Active Crown Fire ROS
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``crown.use_rothermel1991_crown = 1``, active-crown-fire cells use a simple
+multiplicative relationship derived by Rothermel (1991):
+
+.. math::
+
+   R_{\text{crown}} = 3.34 \; R_{\text{surface}}
+
+This is applied only in cells where ``crown_activity == 2`` (active crown fire),
+and replaces (or is blended with) the surface ROS.
+
+Parameters: ``crown.use_rothermel1991_crown = 1``.
+
+Reference: Rothermel, R.C. (1991). *Predicting Behavior and Size of Crown Fires
+in the Northern Rocky Mountains.* USDA Forest Service Research Paper INT-438.
+
+
+Van Wagner (1977) Passive-Crown Blending
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``crown.use_passive_blend = 1`` the transition from surface to active crown
+fire is smoothed via Van Wagner's (1977) passive crown-fire factor:
+
+.. math::
+
+   \mathrm{CF} = \left(\frac{I_B}{I_o}\right)^{2/3}
+
+The blended ROS is:
+
+.. math::
+
+   R = (1 - \mathrm{CF})\,R_{\text{surface}} + \mathrm{CF}\,R_{\text{crown}}
+
+where :math:`I_B` is the Byram fireline intensity (kW/m) and :math:`I_o` is the
+Van Wagner crown fire initiation threshold (kW/m):
+
+.. math::
+
+   I_o = 0.010\,h_{\text{CBH}}\,(460 + 25.9\,\mathrm{FMC})
+
+Parameters: ``crown.use_passive_blend = 1``, ``crown.CBH``, ``crown.FMC``.
+
+Reference: Van Wagner, C.E. (1977). *Conditions for the start and spread of crown
+fire.* Canadian Journal of Forest Research, 7(1), 23–34.
+
+
+Scott & Reinhardt (2001) Bisection-Based TI and CI
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The full Scott & Reinhardt (2001) Torching Index (TI) and Crowning Index (CI) are
+defined as the minimum 20-ft (6.1 m) open-wind speed (km/h) at which passive torching or
+active crowning can occur.  These are output as the plotfile fields
+``torching_index_kmh`` and ``crowning_index_kmh``.
+
+Enable with ``scott_reinhardt_full.enable = 1``.
+
+**Torching Index** is found by bisection on the wind speed :math:`U` that satisfies:
+
+.. math::
+
+   I_B(U) = I_o
+
+where :math:`I_B(U) = H_l \, w_n \, R(U) / 60` is the Byram fireline intensity
+(kW/m) computed from the Rothermel surface ROS :math:`R(U)` [m/min], net fuel
+load :math:`w_n` [kg/m²], and heat of combustion :math:`H_l` [kJ/kg].
+
+**Crowning Index** is found by bisection on the wind speed :math:`U` that satisfies:
+
+.. math::
+
+   R(U) = R'_{SA} = \frac{3.0}{\mathrm{CBD}} \; \text{[m/min]}
+
+Reference: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing Crown Fire Potential
+by Linking Models of Surface and Crown Fire Behavior.* USDA Forest Service
+Research Paper RMRS-RP-29.
+
 
 Spotting Models
 ---------------
@@ -800,6 +1024,20 @@ Each plot file contains four Albini-specific scalar fields:
 * ``albini_active`` – flag (1) at cells that received a spot ignition.
 
 
+Spotting Suppression Inside Retardant Drop Zones
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Inside active retardant drop zones the spotting probability is scaled by the
+same suppression factor as ROS:
+
+.. math::
+
+   f_{\text{ret}} = 1 - \varepsilon \cdot e^{-(t - t_{\text{drop}}) / \tau_{\text{decay}}}
+
+This ensures that cells covered by retardant do not generate long-range spot
+fires, consistent with FARSITE's suppression model.
+
+**Parameters**: Existing ``retardant_file`` (no new parameters).
 
 
 Model Enhancements
@@ -1013,6 +1251,257 @@ Input Parameters
      - 0
      - 1 to enable induced horizontal inflow term
 
+
+FMC Seasonal / Phenological Schedule
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The foliar moisture content (FMC) used by the Van Wagner (1977) crown fire initiation
+threshold is updated each timestep from a seasonal schedule.  Two modes:
+
+1. **CSV file** (``fmc_schedule.file``): two-column CSV of (day-of-year, fmc_pct).
+2. **Built-in parametric curve** (``fmc_schedule.use_farsite_curve = 1``): piecewise linear
+   phenology with configurable spring green-up and autumn curing breakpoints.
+
+Default breakpoints match Southern California chaparral (Rothermel 1983):
+
++----------------+------------+-------+
+| Phase          | DOY range  | FMC   |
++================+============+=======+
+| Winter dormant | 1–89       | 85 %  |
++----------------+------------+-------+
+| Green-up       | 90–149     | rises |
++----------------+------------+-------+
+| Summer peak    | 150–239    | 140 % |
++----------------+------------+-------+
+| Curing         | 240–300    | falls |
++----------------+------------+-------+
+| Post-cure      | 301–365    | 85 %  |
++----------------+------------+-------+
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``fmc_schedule.enable``
+     - 0
+     - 1 to enable FMC seasonal schedule
+   * - ``fmc_schedule.file``
+     - ""
+     - Path to two-column CSV (doy, fmc_pct)
+   * - ``fmc_schedule.use_farsite_curve``
+     - 0
+     - 1 to use built-in parametric curve
+   * - ``fmc_schedule.start_doy``
+     - 1
+     - Day-of-year at simulation t = 0
+   * - ``fmc_schedule.spring_start``
+     - 90
+     - DOY when green-up begins
+   * - ``fmc_schedule.summer_peak``
+     - 150
+     - DOY when FMC reaches maximum
+   * - ``fmc_schedule.fall_start``
+     - 240
+     - DOY when curing begins
+   * - ``fmc_schedule.fall_end``
+     - 300
+     - DOY when curing ends
+   * - ``fmc_schedule.fmc_min``
+     - 85.0
+     - Dormant / cured FMC [%]
+   * - ``fmc_schedule.fmc_max``
+     - 140.0
+     - Peak green FMC [%]
+
+
+Precipitation-Driven Dead Fuel Moisture Wetting
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``diurnal_moisture.enable = 1`` and a rain rate is specified, dead fuel
+moisture is driven by an exponential wetting / drying model:
+
+* **Wetting** (rain > threshold): :math:`M_\text{new} = M_\text{sat}(1 - e^{-\Delta t / \tau_\text{wet}}) + M_\text{old}\,e^{-\Delta t / \tau_\text{wet}}`
+* **Drying** (no rain): :math:`M_\text{new} = M_\text{EMC} + (M_\text{old} - M_\text{EMC})\,e^{-\Delta t / \tau_\text{dry}}`
+
+Per size-class time constants (Rothermel 1983):
+
++----------+----------+----------+
+| Class    | τ_wet    | τ_dry    |
++==========+==========+==========+
+| 1-hr     | 1 hr     | 4 hr     |
++----------+----------+----------+
+| 10-hr    | 2 hr     | 24 hr    |
++----------+----------+----------+
+| 100-hr   | 4 hr     | 10 days  |
++----------+----------+----------+
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``diurnal_moisture.precip_rain_rate_mm_hr``
+     - 0.0
+     - Constant rain rate [mm/hr]
+   * - ``diurnal_moisture.precip_schedule_file``
+     - ""
+     - CSV of (time_s, rain_mm_hr) for time-varying rain
+   * - ``diurnal_moisture.precip_threshold_mm_hr``
+     - 0.25
+     - Minimum rain rate to trigger wetting [mm/hr]
+   * - ``diurnal_moisture.M_sat``
+     - 1.20
+     - Saturation moisture content [fraction]
+
+
+Per-Cell Live Canopy Moisture from FMS File
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A FARSITE fuel moisture scenario (``.fms``) file can be supplied via ``fms_file`` to
+provide per-fuel-model dead and live moisture values.  These are stored in a spatially-
+varying MultiFab and override the global ``rothermel.M_d1``, …, ``rothermel.M_lw`` on
+a per-cell basis.
+
+**Requires**: A landscape file (``rothermel.landscape_file``) to supply per-cell fuel
+model codes.
+
+**Input parameter**: ``fms_file = path/to/fire.fms``
+
+
+Per-Fuel-Model Burnout (Residence) Time
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a landscape file is active, the residence time for each fuel code is derived
+from the Rothermel (1983) formula:
+
+.. math::
+
+   \tau_i \ [\text{s}] = \frac{\alpha \rho_p}{\sigma_i}
+
+where :math:`\alpha` = 3600 s·ft⁻¹/(lb/ft³), :math:`\rho_p` = 32 lb/ft³, and
+:math:`\sigma_i` = 1739 ft⁻¹.  When no landscape file is active the global
+``farsite.tau_residence`` scalar is used (backward compatible).
+
+**Parameters**: Automatic when ``rothermel.landscape_file`` is present.
+
+
+Live Fuel Moisture Conditioning
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+During the pre-simulation conditioning period (``conditioning.n_days > 0``),
+live fuel moistures (M_lh, M_lw) are ramped linearly from their initial
+values toward equilibrium dead-fuel targets over the conditioning steps,
+matching FARSITE's behaviour:
+
+.. code-block:: text
+
+   M_lh_target = M_d100 × 1.5   (live herbaceous ≈ 150% of 100-hr dead)
+   M_lw_target = M_d100 × 2.0   (live woody     ≈ 200% of 100-hr dead)
+
+**Parameters**: Uses ``conditioning.n_days`` (existing parameter).
+
+
+Burn-Period Controls (Diurnal Active-Spread Window)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``burn_period.enable = 1``, the computed rate-of-spread field is zeroed
+outside the specified local clock window [``start_hour``, ``end_hour``),
+preventing any level-set, FARSITE, or MTT advance during inactive hours.
+All other processes (moisture evolution, spotting diagnostics, ecology metrics)
+continue normally.
+
+Midnight-crossing windows (e.g. ``start_hour = 22``, ``end_hour = 6``)
+are handled correctly.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Description
+   * - ``burn_period.enable``
+     - 1 to enable burn-period gating (default: 0)
+   * - ``burn_period.start_hour``
+     - Local hour (decimal) when fire becomes active (default: 10.0)
+   * - ``burn_period.end_hour``
+     - Local hour (decimal) when fire becomes inactive (default: 20.0)
+   * - ``burn_period.sim_start_hour``
+     - Local clock hour at simulation t=0 (default: 0.0)
+
+
+FARSITE Topographic Horizon Shading
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``solar_radiation.H`` computes per-cell terrain shading from the local surface
+normal (incidence-angle test) and canopy shading from cover fraction.  Neither
+method detects shadows cast by terrain tens or hundreds of cells away.
+
+FARSITE addresses this with a **full topographic horizon scan**: for each cell,
+march 8 compass directions to find the maximum elevation angle to any visible
+terrain point, then shade the cell whenever the solar elevation is below that
+angle.  Enable via ``solar_radiation.use_topographic_horizon = 1``.
+
+**Precomputation (one-time)**
+
+For each locally-owned cell :math:`(i, j)` and each of the 8 compass directions
+:math:`d`, the function ray-marches outward:
+
+.. math::
+
+   \theta_\text{hz}^{(d)}(i,j) =
+   \max_{s=1,\ldots,S}
+   \arctan\!\left(
+     \frac{z(i + s\,\delta i_d,\; j + s\,\delta j_d) - z(i,j)}{s \cdot \Delta_d}
+   \right)
+
+where :math:`\Delta_d` is the physical step distance in direction :math:`d`
+(cell spacing for axis-aligned directions, :math:`\sqrt{\Delta x^2 + \Delta y^2}`
+for diagonals).  The result is stored in an 8-component MultiFab.
+
+**Per-timestep shading check (GPU)**
+
+The GPU kernel interpolates the horizon angle for the current solar azimuth
+between the two bounding compass directions:
+
+.. math::
+
+   d_\text{lo} &= \lfloor \varphi_s / 45°\rfloor \bmod 8 \\
+   d_\text{hi} &= (d_\text{lo} + 1) \bmod 8 \\
+   t &= (\varphi_s / 45° - d_\text{lo}) \\
+   \theta_\text{hz} &= \theta_\text{hz}^{(d_\text{lo})} \cdot (1 - t)
+                     + \theta_\text{hz}^{(d_\text{hi})} \cdot t
+
+A cell is marked as fully shaded (:math:`f = 1`) when
+:math:`\theta_s < \theta_\text{hz}`, where :math:`\theta_s` is the solar
+elevation angle.
+
+The total shade fraction applied to fuel temperature is:
+
+.. code-block:: none
+
+   f = max(f_local_terrain,  f_canopy,  f_topographic_horizon,  cloud_cover)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 12 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``solar_radiation.use_topographic_horizon``
+     - ``0``
+     - Set to ``1`` to enable the FARSITE 8-direction horizon scan.
+   * - ``solar_radiation.horizon_scan_max_dist_m``
+     - ``0.0``
+     - Maximum ray-march distance [m]. ``0`` scans the full domain.
+
+.. warning::
+
+   The topographic horizon scan is **expensive** (one-time O(N³) CPU sweep plus
+   MPI global elevation gather).  Use ``horizon_scan_max_dist_m`` to bound cost
+   on large domains.  Disabled by default.
 
 
 Diagnostic Models
