@@ -303,7 +303,7 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
      -
    * - ``fire_spread_model``
      - rothermel
-     - ROS model: ``rothermel``, ``balbi``, ``cheney_gould``
+     - ROS model: ``rothermel``, ``balbi``, ``cheney_gould``, ``cruz_crown``, ``fbp_o1a``, ``fbp_o1b``, ``fbp_s1``, ``fbp_s2``, ``fbp_s3``, ``lautenberger``
    * - ``propagation_method``
      - levelset
      - Propagation method: ``levelset``, ``farsite``, ``mtt``
@@ -400,6 +400,33 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
    * - ``cheney_gould.curing``
      - 1.0
      - Degree of grass curing [0–1; 1 = fully cured]
+   * - **Canadian FBP System Parameters**
+     -
+     -
+   * - ``fbp.fuel_type``
+     - o1a
+     - FBP fuel type (overridden by fire_spread_model): ``o1a``, ``o1b``, ``s1``, ``s2``, ``s3``
+   * - ``fbp.moisture``
+     - 10.0
+     - Dead fine fuel moisture [%]
+   * - ``fbp.curing``
+     - 80.0
+     - Degree of grass curing [%] (O1a/O1b only)
+   * - **Lautenberger (2013) Parameters**
+     -
+     -
+   * - ``lautenberger.A_L``
+     - 1.05e-5
+     - Pre-exponential ROS coefficient [m²/s]
+   * - ``lautenberger.B_L``
+     - 2.5
+     - Wind speed exponent (dimensionless)
+   * - ``lautenberger.C_L``
+     - 0.40
+     - Moisture sensitivity coefficient [(m/s)⁻¹]
+   * - ``lautenberger.D_L``
+     - 0.50
+     - Slope sensitivity coefficient (dimensionless)
    * - **Wind**
      -
      -
@@ -930,6 +957,13 @@ Fire Model Selection
   - ``rothermel`` – Rothermel (1972) empirical fire spread model (default)
   - ``balbi`` – Balbi (2009) radiation-driven physics-based model
   - ``cheney_gould`` – Cheney & Gould (1995/1998) empirical grassland fire spread model
+  - ``cruz_crown`` – Cruz, Alexander & Wakimoto (2005) algebraic crown fire spread model
+  - ``fbp_o1a`` – Canadian Forest Fire Behaviour Prediction (FBP) System: O1a matted grass
+  - ``fbp_o1b`` – Canadian FBP System: O1b standing grass
+  - ``fbp_s1`` – Canadian FBP System: S1 Jack or Lodgepole Pine slash
+  - ``fbp_s2`` – Canadian FBP System: S2 White Spruce-Balsam slash
+  - ``fbp_s3`` – Canadian FBP System: S3 Coastal Cedar-Hemlock-Douglas-Fir slash
+  - ``lautenberger`` – Lautenberger (2013) semi-empirical firebrand-driven model
 
   Example: ``fire_spread_model = cheney_gould``
 
@@ -1125,6 +1159,60 @@ grasslands.
   0 = completely green]. Values outside [0, 1] are clamped at runtime.
 
   Example: ``cheney_gould.curing = 0.90``
+
+Canadian FBP System Spread Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters are used when ``fire_spread_model`` is one of ``fbp_o1a``,
+``fbp_o1b``, ``fbp_s1``, ``fbp_s2``, or ``fbp_s3``.  The Canadian Forest
+Fire Behaviour Prediction (FBP) System uses empirical equations derived from
+experimental and prescribed-fire data for specific fuel types.
+
+**fbp.fuel_type** (default: "o1a")
+  FBP fuel type string.  Automatically overridden by the ``fire_spread_model``
+  setting (e.g., ``fire_spread_model = fbp_s2`` sets ``fbp.fuel_type = s2``).
+  Valid values: ``o1a``, ``o1b``, ``s1``, ``s2``, ``s3``.
+
+  Example: ``fbp.fuel_type = o1b``
+
+**fbp.moisture** (default: 10.0)
+  Dead fine fuel moisture content [%].  Used in the exponential moisture
+  dampening factor for grass and slash fuel types.
+
+  Example: ``fbp.moisture = 8.0``
+
+**fbp.curing** (default: 80.0)
+  Degree of grass curing [%] (0–100).  Only used for grass fuel types O1a/O1b.
+  Higher curing increases the effective ROS.
+
+  Example: ``fbp.curing = 90.0``
+
+Lautenberger (2013) Semi-Empirical Spread Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters are used when ``fire_spread_model = lautenberger``.  The
+model is a semi-empirical rate-of-spread formula that accounts for wind speed,
+fuel moisture, and slope through four calibration coefficients.
+
+**lautenberger.A_L** (default: 1.05e-5)
+  Pre-exponential rate-of-spread coefficient [m²/s].
+
+  Example: ``lautenberger.A_L = 1.05e-5``
+
+**lautenberger.B_L** (default: 2.5)
+  Wind speed exponent (dimensionless).
+
+  Example: ``lautenberger.B_L = 2.5``
+
+**lautenberger.C_L** (default: 0.40)
+  Moisture sensitivity coefficient [(m/s)⁻¹].
+
+  Example: ``lautenberger.C_L = 0.40``
+
+**lautenberger.D_L** (default: 0.50)
+  Slope sensitivity coefficient (dimensionless).
+
+  Example: ``lautenberger.D_L = 0.50``
 
 Wind Parameters
 ^^^^^^^^^^^^^^^

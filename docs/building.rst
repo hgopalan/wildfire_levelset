@@ -303,8 +303,8 @@ Install the CUDA toolkit (12.6 or later recommended) before configuring::
     cmake --build build --parallel
 
 .. note::
-   The wind solver is currently disabled on CUDA builds (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``
-   is set automatically) because it has unresolved CUDA-compatibility issues.
+   The mass-consistent wind solver has been deprecated and is no longer built.
+   The source is retained in ``src/deprecated/wind_solver.cpp`` for reference.
 
 **Known issues encountered during development**
 
@@ -334,8 +334,7 @@ Windows CUDA builds require Visual Studio 2019 or later (MSVC) with the CUDA too
 Use the ``build_windows_cuda`` CI job as a reference.
 
 .. note::
-   On Windows CUDA builds, the wind solver is disabled (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``)
-   to reduce the build surface.
+   The mass-consistent wind solver has been deprecated and is no longer built.
 
 **Known issues encountered during development**
 
@@ -392,13 +391,11 @@ Configure using the ROCm Clang compilers (sourced from ``/etc/profile.d/rocm.sh`
       -DCMAKE_C_COMPILER=$(which clang) \
       -DCMAKE_CXX_COMPILER=$(which clang++) \
       -DLEVELSET_GPU_BACKEND=HIP \
-      -DLEVELSET_BUILD_WIND_SOLVER=OFF \
       -DAMReX_AMD_ARCH="gfx90a"
     cmake --build build --parallel
 
 .. note::
-   The wind solver is currently disabled on HIP builds
-   (``-DLEVELSET_BUILD_WIND_SOLVER=OFF``).
+   The mass-consistent wind solver has been deprecated and is no longer built.
 
 **Known issues encountered during development**
 
@@ -434,8 +431,7 @@ Configure using the Intel compilers (sourced from ``/opt/intel/oneapi/setvars.sh
       -G Ninja \
       -DCMAKE_C_COMPILER=$(which icx) \
       -DCMAKE_CXX_COMPILER=$(which icpx) \
-      -DLEVELSET_GPU_BACKEND=SYCL \
-      -DLEVELSET_BUILD_WIND_SOLVER=OFF
+      -DLEVELSET_GPU_BACKEND=SYCL
     cmake --build build --parallel
 
 **Known issues encountered during development**

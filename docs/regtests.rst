@@ -271,10 +271,14 @@ landscape.
 **Build**: Default 3D build.  Requires Python 3 with
 ``pip install requests rasterio numpy pyproj elevation``.
 
-gaussian_hill_wind_solver
-^^^^^^^^^^^^^^^^^^^^^^^^^
+gaussian_hill_wind_solver (Deprecated)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Purpose**: Validates the terrain-following mass-consistent wind solver (``wind_solver``
+.. deprecated::
+   The mass-consistent wind solver has been moved to ``src/deprecated/`` and is no longer
+   built.  This regression test is retained for historical reference only.
+
+**Purpose**: Validated the terrain-following mass-consistent wind solver (``wind_solver``
 executable) over a Gaussian hill terrain.
 
 A 10 × 10 × 10 cell Cartesian grid (dx = dy = dz = 30 m) covers a 300 m × 300 m ×
@@ -282,18 +286,14 @@ A 10 × 10 × 10 cell Cartesian grid (dx = dy = dz = 30 m) covers a 300 m × 300
 (150, 150) m (σ = 60 m).  A 10 m/s westerly reference wind at z_ref = 10 m with
 roughness length z₀ = 0.1 m is applied.
 
-Successful completion confirms that:
+Successful completion confirmed that:
 
 * The log-law profile initialisation runs without error.
 * The AMReX MLMG (``MLABecLaplacian``) solver converges to the requested tolerance.
 * The maximum divergence after correction is substantially smaller than before.
 * An AMReX plotfile ``plt_wind_gaussian`` is written.
 
-**Build**: Default 3D build with ``LEVELSET_BUILD_WIND_SOLVER=ON`` (the default).
-
-**Label**: ``regtest;wind_solver`` — can be run selectively::
-
-    ctest -L wind_solver --output-on-failure
+**Build**: This test is no longer active (wind solver deprecated).
 
 Build Configurations Summary
 -----------------------------
@@ -318,9 +318,6 @@ Build Configurations Summary
    * - ``albini_spotting``
      - CPU-only
      - no GPU/OpenMP flags
-   * - ``gaussian_hill_wind_solver``
-     - 3D (default)
-     - ``-DLEVELSET_BUILD_WIND_SOLVER=ON`` (default)
 
 Adding a New Regression Test
 ------------------------------
@@ -451,7 +448,10 @@ grouped by physical category:
 +==================+=========================================================+
 | ``surface_spread`` | basic_levelset, farsite_ellipse, rothermel_fuel,      |
 |                  | anderson_lw, catchpole_demestre, wilson_spread,         |
-|                  | alexander_lemniscate, ellipse_sdf, reinitialization     |
+|                  | alexander_lemniscate, ellipse_sdf, reinitialization,    |
+|                  | fbp_o1a_grassfire, fbp_o1b_grassfire,                   |
+|                  | fbp_s1_slash, fbp_s2_slash, fbp_s3_slash,               |
+|                  | lautenberger_spread                                     |
 +------------------+---------------------------------------------------------+
 | ``crown_fire``   | crown_initiation, cruz_crown_continental_us, fmc_seasonal|
 +------------------+---------------------------------------------------------+
