@@ -57,7 +57,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **ROS stall threshold** — FARSITE-compatible floor (1×10⁻⁴ m/s)
 - **Crown fire** — Van Wagner (1977) initiation + Cruz et al. (2005) + Rothermel (1991) multiplier + passive blend
 - **Per-fuel burnout time** — Rothermel (1983) residence time from SAV / particle density when landscape file is present
-- **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree; optional 3-D wind from [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) plotfiles
+- **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree; optional 3-D wind from [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) plotfiles; **GPU-accelerated 3-D wind interpolation** (CUDA/HIP/SYCL via `amrex::ParallelFor` on device-side `PltWindData::d_u2d`/`d_v2d`) with CPU fallback intact
 - **Retardant suppression** — ROS and spotting probability zeroed inside active drop zones
 - **Terrain effects** — per-cell slope/aspect from FARSITE LCP files or XYZ terrain; FARSITE full topographic horizon scan (8-direction ridge shading)
 - **Wind models** — time-varying, turbulent (OU/spectral), compact direction schedule
