@@ -95,6 +95,7 @@ inline void write_wildfire_plotfile(
     MultiFab& ti_full_mf            = f.ti_full_mf;
     MultiFab& ci_full_mf            = f.ci_full_mf;
     MultiFab& spatial_moisture_mf   = f.spatial_moisture_mf;
+    MultiFab& plume_rise_mf         = f.plume_rise_mf;
 
     const bool has_landscape = !inputs.rothermel.landscape_file.empty();
 
@@ -136,7 +137,8 @@ inline void write_wildfire_plotfile(
         "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
         "reaction_intensity", "residual_fuel", "shade_fraction",
         "torching_index_kmh", "crowning_index_kmh",
-        "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
+        "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw",
+        "plume_rise_m"
 #else
         , "farsite_dx", "farsite_dy", "R",
         "spot_prob", "spot_count", "spot_dist", "spot_active",
@@ -157,7 +159,8 @@ inline void write_wildfire_plotfile(
         "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
         "reaction_intensity", "residual_fuel", "shade_fraction",
         "torching_index_kmh", "crowning_index_kmh",
-        "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw"
+        "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw",
+        "plume_rise_m"
 #endif
     };
 
@@ -188,10 +191,11 @@ inline void write_wildfire_plotfile(
     //   ...+EMISSIONS+11                         : torching_index (1)
     //   ...+EMISSIONS+12                         : crowning_index (1)
     //   ...+EMISSIONS+13                         : spatial_moisture (FMS_MOISTURE_NCOMP)
+    //   ...+EMISSIONS+13+FMS_MOISTURE_NCOMP      : plume_rise_m (1)
     constexpr int D = AMREX_SPACEDIM;
     const int ncomp = 1 + D + D + 1 + 4 + 1 + 1 + 4 + 1 + 5
                     + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP
-                    + 13 + FMS_MOISTURE_NCOMP;
+                    + 13 + FMS_MOISTURE_NCOMP + 1;  // +1 for plume_rise_m
     MultiFab plotmf(ba, dm, ncomp, 0);
 
     int c = 0;
@@ -226,7 +230,8 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, shade_fraction_mf,     0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, ti_full_mf,            0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, ci_full_mf,            0, c, 1,           0); c += 1;
-    MultiFab::Copy(plotmf, spatial_moisture_mf,   0, c, FMS_MOISTURE_NCOMP, 0);
+    MultiFab::Copy(plotmf, spatial_moisture_mf,   0, c, FMS_MOISTURE_NCOMP, 0); c += FMS_MOISTURE_NCOMP;
+    MultiFab::Copy(plotmf, plume_rise_mf,         0, c, 1,           0);
 
     // ---- Write plotfile ----
     char buf[64];
@@ -337,6 +342,12 @@ inline void write_wildfire_plotfile(
             char gjson_buf[64];
             std::snprintf(gjson_buf, sizeof(gjson_buf), "perimeter_%04d.geojson", step);
             write_fire_perimeter_geojson(phi, geom, gjson_buf, step, time);
+        }
+        if (inputs.write_perimeter_kml == 1) {
+            char kml_buf[64];
+            std::snprintf(kml_buf, sizeof(kml_buf), "perimeter_%04d.kml", step);
+            write_fire_perimeter_kml(phi, geom, kml_buf, step, time,
+                                     inputs.kml_utm_zone, inputs.kml_utm_northern);
         }
     }
 }

@@ -89,6 +89,7 @@ int main(int argc, char* argv[])
     MultiFab& cc_mf                 = f.cc_mf;
     MultiFab& canopy_height_mf      = f.canopy_height_mf;
     MultiFab& spatial_moisture_mf   = f.spatial_moisture_mf;
+    MultiFab& plume_rise_mf         = f.plume_rise_mf;
     std::unique_ptr<MultiFab>& terrain_slopes = f.terrain_slopes;
 
     // ---------------- Initialise phi and mark initially-burned cells --------
@@ -610,6 +611,12 @@ int main(int argc, char* argv[])
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
 
+    // ---- Initial smoke plume rise (t=0) ----
+    if (inputs.smoke_plume.enable == 1) {
+        compute_smoke_plume_rise(plume_rise_mf, fireline_intensity_mf,
+                                 vel, inputs.smoke_plume);
+    }
+
     // Scott & Reinhardt (2001) full bisection-based TI/CI (optional, host-only)
     if (inputs.scott_reinhardt_full.enable == 1) {
         compute_full_scott_reinhardt(
@@ -638,6 +645,44 @@ int main(int argc, char* argv[])
     write_wildfire_plotfile(f, ba, dm, geom, inputs, restart_step, time, ftd,
                             /*write_stats=*/false, /*is_final=*/false);
 
+    // ---- Simulation calendar date/time helper ----
+    // Builds a "YYYY-MM-DD HH:MM" string from the sim start date/time + elapsed_s.
+    // Returns empty string when no start date is configured.
+    // Uses sim_start_year/month/day from inputs, falling back to solar_radiation fields.
+    const int   _yr0 = inputs.sim_start_year;
+    const int   _mo0 = inputs.sim_start_month;
+    const int   _dy0 = inputs.sim_start_day;
+    // Start-of-day hour comes from solar_radiation when available
+    const double _hr0 = (inputs.solar_radiation.enable == 1)
+                        ? static_cast<double>(inputs.solar_radiation.sim_start_hour)
+                        : 0.0;
+    const bool _has_datetime = (_yr0 > 0 && _mo0 >= 1 && _mo0 <= 12
+                                 && _dy0 >= 1 && _dy0 <= 31);
+
+    auto sim_datetime_string = [&](double elapsed_s) -> std::string {
+        if (!_has_datetime) return "";
+        // Days per month (non-leap year; approximate for log output)
+        static const int dom[13] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
+        double total_h = _hr0 + elapsed_s / 3600.0;
+        int extra_days = static_cast<int>(std::floor(total_h / 24.0));
+        double frac_h  = total_h - extra_days * 24.0;
+        int hh = static_cast<int>(frac_h);
+        int mm = static_cast<int>((frac_h - hh) * 60.0 + 0.5);
+        if (mm == 60) { mm = 0; ++hh; }
+        if (hh == 24) { hh = 0; ++extra_days; }
+
+        int d = _dy0 + extra_days;
+        int m = _mo0;
+        int y = _yr0;
+        while (m <= 12 && d > dom[m]) { d -= dom[m]; ++m; }
+        while (m > 12) { m -= 12; ++y; }
+
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d",
+                      y, m, d, hh, mm);
+        return buf;
+    };
+
     // ---------------- Time stepping ------------------------
     // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
     const bool use_final_time = (inputs.final_time > 0.0);
@@ -657,7 +702,16 @@ int main(int argc, char* argv[])
         dt = std::min(dt, inputs.final_time - time);
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
-      amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
+      {
+        // Print time with optional calendar datetime
+        const std::string dt_str = sim_datetime_string(static_cast<double>(time));
+        if (dt_str.empty()) {
+            amrex::Print() << "Time:" << time << " with timestep:" << dt_step << "\n";
+        } else {
+            amrex::Print() << "Time:" << time << " (" << dt_str
+                           << ") with timestep:" << dt_step << "\n";
+        }
+      }
       
       // Update time-dependent wind field if enabled
 #if (AMREX_SPACEDIM == 2)
@@ -1074,6 +1128,17 @@ int main(int argc, char* argv[])
       compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                              inputs.rothermel, inputs.emissions);
 
+      // ---- Smoke plume-rise model (Briggs 1965) ----
+      // Computes per-cell final plume-rise height from Byram fireline intensity.
+      if (inputs.smoke_plume.enable == 1) {
+          compute_smoke_plume_rise(plume_rise_mf, fireline_intensity_mf,
+                                   vel, inputs.smoke_plume);
+          // Print domain maximum plume rise for situational awareness
+          const Real max_plume = plume_rise_mf.max(0);
+          if (max_plume > Real(0.0))
+              amrex::Print() << "  Max smoke plume rise: " << max_plume << " m\n";
+      }
+
       // Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992)
       // Scales R_mf by alpha = 1 - exp(-r_fire / L_acc) to account for the
       // slower spread of small fires before quasi-steady-state is reached.
@@ -1162,7 +1227,10 @@ int main(int argc, char* argv[])
 	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
 	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step,
 	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
+	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
+	                           (inputs.fuel_depletion.adjust_spotting_reentry == 1)
+	                               ? &residual_fuel_mf : nullptr,
+	                           inputs.fuel_depletion.spotting_fuel_threshold);
 	}
 	// Albini (1983) firebrand spotting with 2-D trajectory integration
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {
@@ -1171,7 +1239,10 @@ int main(int argc, char* argv[])
 	                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
 	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
 	                          (inputs.albini_spotting.use_3d_wind == 1 && albini_plt_wind.valid)
-	                              ? &albini_plt_wind : nullptr);
+	                              ? &albini_plt_wind : nullptr,
+	                          (inputs.fuel_depletion.adjust_spotting_reentry == 1)
+	                              ? &residual_fuel_mf : nullptr,
+	                          inputs.fuel_depletion.spotting_fuel_threshold);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether
@@ -1323,6 +1394,13 @@ int main(int argc, char* argv[])
               std::snprintf(iso_gj_buf, sizeof(iso_gj_buf),
                             "isochrone_%06d.geojson", iso_i);
               write_fire_perimeter_geojson(phi, geom, iso_gj_buf, iso_i, time);
+            }
+            if (inputs.write_perimeter_kml == 1) {
+              char iso_kml_buf[128];
+              std::snprintf(iso_kml_buf, sizeof(iso_kml_buf),
+                            "isochrone_%06d.kml", iso_i);
+              write_fire_perimeter_kml(phi, geom, iso_kml_buf, iso_i, time,
+                                       inputs.kml_utm_zone, inputs.kml_utm_northern);
             }
           }
           last_isochrone_idx = cur_iso_idx;

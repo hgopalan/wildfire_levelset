@@ -113,6 +113,9 @@ struct WildfireFields {
     //   0 M_d1, 1 M_d10, 2 M_d100, 3 M_lh, 4 M_lw  (fractions)
     MultiFab spatial_moisture_mf;
 
+    // ---- Smoke plume rise (Briggs 1965) ----
+    MultiFab plume_rise_mf;     // Plume-rise height [m] per fire-front cell (1 comp)
+
     // ---- Terrain slopes helper (2 comps: slope_x, slope_y) ----
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
@@ -173,6 +176,8 @@ struct WildfireFields {
         , canopy_height_mf     (ba, dm, 1,                 0)
         // Spatial moisture
         , spatial_moisture_mf  (ba, dm, FMS_MOISTURE_NCOMP, 0)
+        // Plume rise
+        , plume_rise_mf        (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
     {
@@ -211,6 +216,7 @@ struct WildfireFields {
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_d100), 2, 1, 0);
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lh),   3, 1, 0);
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lw),   4, 1, 0);
+        plume_rise_mf.setVal(Real(0.0));
     }
 };
 

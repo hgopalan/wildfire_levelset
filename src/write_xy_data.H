@@ -6,6 +6,7 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_Geometry.H>
 #include <fstream>
+#include <iomanip>
 #include <string>
 #include <vector>
 #include <map>
@@ -13,6 +14,10 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace amrex;
 
@@ -554,6 +559,246 @@ inline void write_fire_perimeter_geojson(const MultiFab& phi,
     out << "}\n";
     out.close();
     amrex::Print() << "Wrote fire perimeter GeoJSON (" << perim_pts.size()
+                   << " points) to " << filename << "\n";
+}
+
+// ============================================================================
+// UTM → WGS-84 conversion (inverse Transverse Mercator)
+//
+// Converts UTM easting/northing [m] to WGS-84 geographic coordinates.
+// Returns {lat_deg, lon_deg}.
+//
+// zone_number : UTM zone number 1-60.
+// northern    : true for northern hemisphere, false for southern.
+//
+// Based on the standard WGS-84 inverse TM algorithm (Redfearn 1948 series).
+// Accurate to < 1 mm within a UTM zone.
+// ============================================================================
+namespace {
+
+inline std::pair<double,double> utm_to_latlon_wgs84(
+    double easting, double northing, int zone_number, bool northern)
+{
+    // WGS-84 ellipsoid constants
+    constexpr double a    = 6378137.0;
+    constexpr double f    = 1.0 / 298.257223563;
+    constexpr double b    = a * (1.0 - f);
+    constexpr double e2   = 1.0 - (b / a) * (b / a);
+    constexpr double ep2  = e2 / (1.0 - e2);
+    constexpr double k0   = 0.9996;
+    constexpr double E0   = 500000.0;
+    constexpr double N0S  = 10000000.0;  // southern-hemisphere false northing
+
+    const double x = easting - E0;
+    const double y = northern ? northing : northing - N0S;
+
+    const double e4 = e2 * e2;
+    const double e6 = e4 * e2;
+
+    // Compute footpoint latitude
+    const double m  = y / k0;
+    const double mu = m / (a * (1.0 - e2 / 4.0 - 3.0 * e4 / 64.0 - 5.0 * e6 / 256.0));
+
+    const double e1 = (1.0 - std::sqrt(1.0 - e2)) / (1.0 + std::sqrt(1.0 - e2));
+    const double lat1 = mu
+        + (3.0 * e1 / 2.0 - 27.0 * e1 * e1 * e1 / 32.0) * std::sin(2.0 * mu)
+        + (21.0 * e1 * e1 / 16.0 - 55.0 * e1 * e1 * e1 * e1 / 32.0) * std::sin(4.0 * mu)
+        + (151.0 * e1 * e1 * e1 / 96.0) * std::sin(6.0 * mu)
+        + (1097.0 * e1 * e1 * e1 * e1 / 512.0) * std::sin(8.0 * mu);
+
+    const double sinL1 = std::sin(lat1);
+    const double cosL1 = std::cos(lat1);
+    const double tanL1 = sinL1 / cosL1;
+
+    const double N1 = a / std::sqrt(1.0 - e2 * sinL1 * sinL1);
+    const double T1 = tanL1 * tanL1;
+    const double C1 = ep2 * cosL1 * cosL1;
+    const double R1 = a * (1.0 - e2) / std::pow(1.0 - e2 * sinL1 * sinL1, 1.5);
+    const double D  = x / (N1 * k0);
+
+    const double lat = lat1 - (N1 * tanL1 / R1) * (
+          D * D / 2.0
+        - (5.0 + 3.0 * T1 + 10.0 * C1 - 4.0 * C1 * C1 - 9.0 * ep2)
+          * D * D * D * D / 24.0
+        + (61.0 + 90.0 * T1 + 298.0 * C1 + 45.0 * T1 * T1 - 252.0 * ep2
+           - 3.0 * C1 * C1)
+          * D * D * D * D * D * D / 720.0);
+
+    const double lon0 = ((zone_number - 1) * 6.0 - 180.0 + 3.0) * (M_PI / 180.0);
+    const double lon  = lon0 + (
+          D
+        - (1.0 + 2.0 * T1 + C1) * D * D * D / 6.0
+        + (5.0 - 2.0 * C1 + 28.0 * T1 - 3.0 * C1 * C1 + 8.0 * ep2 + 24.0 * T1 * T1)
+          * D * D * D * D * D / 120.0) / cosL1;
+
+    return {lat * 180.0 / M_PI, lon * 180.0 / M_PI};
+}
+
+} // anonymous namespace
+
+// ============================================================================
+// write_fire_perimeter_kml
+// ============================================================================
+// Writes the fire perimeter as a KML (Keyhole Markup Language) document
+// suitable for opening in Google Earth or other GIS tools that support KML.
+// Coordinates are optionally converted from UTM [m] to WGS-84 lon/lat using
+// the utm_zone and utm_northern parameters.
+//
+// Parameters:
+//   phi           – level-set field (perimeter cells are phi < 0 on boundary)
+//   geom          – AMReX Geometry
+//   filename      – output file path (e.g. "perimeter_0010.kml")
+//   step          – timestep index (written as KML description)
+//   time_s        – simulation time [s] (written as KML description)
+//   utm_zone      – UTM zone number 1-60; 0 = write raw UTM coords (not WGS-84)
+//   utm_northern  – 1 = northern hemisphere, 0 = southern
+// ============================================================================
+inline void write_fire_perimeter_kml(const MultiFab& phi,
+                                     const Geometry& geom,
+                                     const std::string& filename,
+                                     int  step,
+                                     Real time_s,
+                                     int  utm_zone,
+                                     int  utm_northern)
+{
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    Gpu::streamSynchronize();
+
+    std::vector<std::pair<Real, Real>> perim_pts;
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx  = mfi.validbox();
+        auto const phi_arr = phi.array(mfi);
+        const IntVect lo   = bx.smallEnd();
+        const IntVect hi   = bx.bigEnd();
+
+        amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+            if (phi_arr(i, j, k, 0) >= Real(0.0)) return;
+            bool on_perim = false;
+            if (i > lo[0]) on_perim |= (phi_arr(i-1, j, k, 0) >= Real(0.0));
+            if (i < hi[0]) on_perim |= (phi_arr(i+1, j, k, 0) >= Real(0.0));
+            if (j > lo[1]) on_perim |= (phi_arr(i, j-1, k, 0) >= Real(0.0));
+            if (j < hi[1]) on_perim |= (phi_arr(i, j+1, k, 0) >= Real(0.0));
+            if (on_perim) {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+                perim_pts.push_back({x, y});
+            }
+        });
+    }
+
+#ifdef AMREX_USE_MPI
+    {
+        std::vector<int> counts(ParallelDescriptor::NProcs());
+        int local_n = static_cast<int>(perim_pts.size());
+        MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                      ParallelDescriptor::Communicator());
+        std::vector<int> displ(ParallelDescriptor::NProcs());
+        int total = 0;
+        for (int r = 0; r < ParallelDescriptor::NProcs(); ++r) {
+            displ[r] = total; total += counts[r];
+            counts[r] *= 2;  displ[r] *= 2;
+        }
+        std::vector<Real> ldata;
+        ldata.reserve(2 * local_n);
+        for (auto& pt : perim_pts) { ldata.push_back(pt.first); ldata.push_back(pt.second); }
+        std::vector<Real> all;
+        if (ParallelDescriptor::IOProcessor()) all.resize(total * 2);
+        MPI_Gatherv(ldata.data(), ldata.size(),
+                    ParallelDescriptor::Mpi_typemap<Real>::type(),
+                    all.data(), counts.data(), displ.data(),
+                    ParallelDescriptor::Mpi_typemap<Real>::type(),
+                    ParallelDescriptor::IOProcessorNumber(),
+                    ParallelDescriptor::Communicator());
+        if (ParallelDescriptor::IOProcessor()) {
+            perim_pts.clear();
+            for (size_t k = 0; k + 1 < all.size(); k += 2)
+                perim_pts.push_back({all[k], all[k+1]});
+        }
+    }
+#endif
+
+    if (!ParallelDescriptor::IOProcessor()) return;
+    if (perim_pts.empty()) {
+        amrex::Print() << "write_fire_perimeter_kml: no perimeter cells\n";
+        return;
+    }
+
+    // Sort by angle around centroid
+    Real cx = 0, cy = 0;
+    for (auto& p : perim_pts) { cx += p.first; cy += p.second; }
+    cx /= static_cast<Real>(perim_pts.size());
+    cy /= static_cast<Real>(perim_pts.size());
+    std::sort(perim_pts.begin(), perim_pts.end(),
+        [cx, cy](const std::pair<Real,Real>& a, const std::pair<Real,Real>& b) {
+            return std::atan2(a.second - cy, a.first - cx) <
+                   std::atan2(b.second - cy, b.first - cx);
+        });
+
+    // Convert UTM → WGS-84 when zone is specified
+    const bool do_convert = (utm_zone >= 1 && utm_zone <= 60);
+    const bool northern   = (utm_northern != 0);
+
+    std::ofstream out(filename);
+    if (!out.is_open()) amrex::Abort("Cannot open perimeter KML: " + filename);
+
+    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    out << "<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n";
+    out << "<Document>\n";
+    out << "  <name>Fire Perimeter</name>\n";
+    out << "  <description>Step " << step
+        << " | Time " << std::fixed << std::setprecision(1)
+        << static_cast<double>(time_s) / 3600.0 << " h</description>\n";
+    out << "  <Style id=\"firePerimeter\">\n";
+    out << "    <LineStyle><color>ff0000ff</color><width>3</width></LineStyle>\n";
+    out << "    <PolyStyle><color>660000ff</color></PolyStyle>\n";
+    out << "  </Style>\n";
+    out << "  <Placemark>\n";
+    out << "    <styleUrl>#firePerimeter</styleUrl>\n";
+    out << "    <name>Fire Perimeter t=" << std::fixed << std::setprecision(2)
+        << static_cast<double>(time_s) / 3600.0 << " h</name>\n";
+    out << "    <Polygon><outerBoundaryIs><LinearRing><coordinates>\n";
+
+    for (size_t k = 0; k < perim_pts.size(); ++k) {
+        double lon, lat;
+        if (do_convert) {
+            auto [la, lo] = utm_to_latlon_wgs84(
+                static_cast<double>(perim_pts[k].first),
+                static_cast<double>(perim_pts[k].second),
+                utm_zone, northern);
+            lat = la; lon = lo;
+        } else {
+            lon = static_cast<double>(perim_pts[k].first);
+            lat = static_cast<double>(perim_pts[k].second);
+        }
+        out << "      " << std::fixed << std::setprecision(7)
+            << lon << "," << lat << ",0\n";
+    }
+    // Close the ring with the first point
+    {
+        double lon, lat;
+        if (do_convert) {
+            auto [la, lo] = utm_to_latlon_wgs84(
+                static_cast<double>(perim_pts[0].first),
+                static_cast<double>(perim_pts[0].second),
+                utm_zone, northern);
+            lat = la; lon = lo;
+        } else {
+            lon = static_cast<double>(perim_pts[0].first);
+            lat = static_cast<double>(perim_pts[0].second);
+        }
+        out << "      " << std::fixed << std::setprecision(7)
+            << lon << "," << lat << ",0\n";
+    }
+
+    out << "    </coordinates></LinearRing></outerBoundaryIs></Polygon>\n";
+    out << "  </Placemark>\n";
+    out << "</Document>\n";
+    out << "</kml>\n";
+    out.close();
+    amrex::Print() << "Wrote fire perimeter KML (" << perim_pts.size()
                    << " points) to " << filename << "\n";
 }
 

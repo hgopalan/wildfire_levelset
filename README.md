@@ -71,6 +71,10 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Full TI/CI bisection** — exact Scott & Reinhardt (2001) Torching/Crowning Index
 - **Fire emissions** — CO₂, CO, PM₂.₅ (WRF-Fire convention)
 - **MTT propagation** — Minimum Travel Time Dijkstra fast-marching
+- **Smoke plume-rise model** — Briggs (1965/1969) buoyancy-dominated plume rise per fire-front cell; written to plotfile as `plume_rise_m`; domain maximum printed in logs (`smoke_plume.enable`)
+- **KML perimeter export** — Google Earth–compatible `.kml` file alongside CSV/GeoJSON at every plotfile step; full UTM → WGS-84 conversion (`write_perimeter_kml`, `kml_utm_zone`)
+- **Simulation date/time display** — calendar date/time (YYYY-MM-DD HH:MM) shown in per-step log output and HTML fire report when `sim_datetime.year/month/day` or `solar_radiation` start date is set
+- **Post-fire fuel adjustment for re-entry spots** — firebrand spot fires landing in previously-burned cells have their ignition probability scaled by residual fuel fraction; spots below a configurable threshold are suppressed (`fuel_depletion.adjust_spotting_reentry`)
 - **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
 
 ## Ensemble / FSim-Style Probabilistic Simulation
@@ -116,10 +120,10 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)* |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |
-| `ignition/` | barrier_polygons, fire_perimeter_output, polygon_ignition, polyline_ignition |
+| `ignition/` | barrier_polygons, fire_perimeter_output, polygon_ignition, polyline_ignition, **kml_perimeter** *(new)* |
 | `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
 | `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci |
-| `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask** *(new)* |
+| `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask**, **smoke_plume_rise** *(new)*, **reentry_spotting** *(new)* |
 
 The `albini_spotting_3d_wind` test requires a Python pre-step to generate the synthetic plt wind file:
 
@@ -152,6 +156,7 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 - Albini, F.A. (1979). Spot fire distance from burning trees — a predictive model. USDA For. Serv. Gen. Tech. Rep. INT-56.
 - Albini, F.A. (1983). Potential spotting distance from wind-driven surface fires. USDA For. Serv. Res. Pap. INT-309.
 - Andrews, P.L. (2018). The Rothermel surface fire spread model and associated developments. USDA For. Serv. Gen. Tech. Rep. RMRS-GTR-371.
+- Briggs, G.A. (1965). A plume rise model compared with observations. JAPCA 15(9):433–438.
 - Byram, G.M. (1959). Combustion of forest fuels. In: Davis, K.P. (ed.) Forest Fire: Control and Use. McGraw-Hill.
 - Cheney, N.P. & Gould, J.S. (1995). Fire growth in grassland fuels. Int. J. Wildland Fire 5(4):237–247.
 - Cruz, M.G., Alexander, M.E. & Wakimoto, R.H. (2005). Development and testing of models for predicting crown fire rate of spread in conifer forest stands. Can. J. For. Res. 35:1626–1639.
@@ -163,6 +168,58 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 - Rothermel, R.C. (1991). Predicting behavior and size of crown fires in the Northern Rocky Mountains. USDA For. Serv. Res. Pap. INT-438.
 - Scott, J.H. & Reinhardt, E.D. (2001). Assessing crown fire potential by linking models of surface and crown fire behavior. USDA For. Serv. Res. Pap. RMRS-RP-29.
 - Van Wagner, C.E. (1977). Conditions for the start and spread of crown fire. Can. J. For. Res. 7:23–34.
+
+## Feature Difficulty Table
+
+The table below classifies implemented features by implementation complexity.
+
+### Easy Features
+
+| Feature | Input key(s) | Status |
+|---|---|---|
+| Simulation date/time in logs & report | `sim_datetime.year/month/day` | ✅ Implemented |
+| KML perimeter export | `write_perimeter_kml`, `kml_utm_zone`, `kml_utm_northern` | ✅ Implemented |
+| Plotfile variable filter | `plot_vars` | ✅ Implemented |
+| Burn-period gating (diurnal spread window) | `burn_period.*` | ✅ Implemented |
+| Fire stats CSV | `fire_stats_file` | ✅ Implemented |
+| Perimeter CSV/GeoJSON export | `write_perimeter_csv`, `write_perimeter_geojson` | ✅ Implemented |
+| Fire HTML report | `fire_report_file` | ✅ Implemented |
+| Custom fuel model override | `custom_fuel.*` | ✅ Implemented |
+| Wind direction schedule | `wind_dir_schedule_file` | ✅ Implemented |
+| Conditional weather / ERC table | `conditional_weather_file` | ✅ Implemented |
+
+### Medium Features
+
+| Feature | Input key(s) | Status |
+|---|---|---|
+| Smoke plume-rise model (Briggs 1965) | `smoke_plume.*` | ✅ Implemented |
+| Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` | ✅ Implemented |
+| Post-fire fuel depletion tracking | `fuel_depletion.*` | ✅ Implemented |
+| Solar radiation / terrain shading | `solar_radiation.*` | ✅ Implemented |
+| Precipitation fuel wetting | `diurnal_moisture.*`, `precip_*` | ✅ Implemented |
+| FMC seasonal phenology | `fmc_schedule.*` | ✅ Implemented |
+| Live herbaceous curing schedule | `herb_moisture_schedule.*` | ✅ Implemented |
+| Aerial retardant drop suppression | `retardant_drop.*` | ✅ Implemented |
+| Ground suppression lines (dozer/hand crew) | `suppression_file` | ✅ Implemented |
+| Fire acceleration model (Rothermel 1983) | `acceleration.*` | ✅ Implemented |
+| CCFR active crown fire criterion | `crown.use_ccfr` | ✅ Implemented |
+| WAF formula selection (Andrews/BehavePlus) | `rothermel.waf_formula` | ✅ Implemented |
+| Ensemble burn probability driver | `tools/ensemble_burn_probability.py` | ✅ Implemented |
+
+### Hard Features
+
+| Feature | Input key(s) | Status |
+|---|---|---|
+| GPU-accelerated 3-D wind for Albini spotting | `albini_spotting.use_3d_wind` | ✅ Implemented |
+| Full Scott-Reinhardt TI/CI bisection | `scott_reinhardt_full.*` | ✅ Implemented |
+| FARSITE topographic horizon scan | `solar_radiation.use_topographic_horizon` | ✅ Implemented |
+| Multi-station IDW weather interpolation | `multi_wtr_file` | ✅ Implemented |
+| Crown-ellipse scaling (active crown fire) | `farsite.scale_ellipse_with_crown` | ✅ Implemented |
+| Eruptive fire model (Viegas 2004) | `viegas.*` | ✅ Implemented |
+| LANDFIRE LCP landscape integration | `rothermel.landscape_file` | ✅ Implemented |
+| Non-burnable cell masking | automatic from LCP codes 91–99 | ✅ Implemented |
+| MTT (Minimum Travel Time) propagation | `propagation_method = mtt` | ✅ Implemented |
+| Slope/wind interaction cross-term | `rothermel.use_slope_wind_cross` | ✅ Implemented |
 
 ## License
 

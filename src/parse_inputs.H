@@ -641,6 +641,14 @@ struct InputParameters {
         int enable;              // 1 to track per-cell fuel depletion (default: 0)
         amrex::Real tau_burnout; // fine-fuel burnout time constant [s] (default: 3600.0)
         int couple_to_ros;       // 1 to scale ROS by residual fuel in re-entry cells (default: 0)
+        // Post-fire fuel adjustment for re-entry spot fires.
+        // When adjust_spotting_reentry = 1, firebrand spot fires landing in cells
+        // that have been previously burned (arrival_time >= 0) have their
+        // catching probability (P_catch) scaled by residual_fuel_mf so that spots
+        // landing in fuel-depleted areas are less likely to ignite.
+        // Applies to both the basic firebrand spotting and the Albini spotting model.
+        int adjust_spotting_reentry; // 1 to scale P_catch by residual fuel (default: 0)
+        amrex::Real spotting_fuel_threshold; // residual fuel fraction below which spots cannot ignite (default: 0.05)
     } fuel_depletion;
 
     // ---- Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992) ----
@@ -953,7 +961,43 @@ struct InputParameters {
     //   moisture_d100        – 100-hr dead fuel moisture [fraction]
     //   moisture_lh          – live herbaceous moisture [fraction]
     //   moisture_lw          – live woody moisture [fraction]
+    //   plume_rise_m         – Briggs (1965) smoke plume-rise height [m]
     std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
+
+    // ---- Smoke plume-rise model (Briggs 1965 / 1969) ----
+    // Computes the effective smoke plume-rise height Δh [m] above the fire
+    // front using the Briggs (1965/1969) buoyancy-dominated formula.
+    // The result is written to every plotfile as "plume_rise_m".
+    // Input prefix: "smoke_plume."
+    struct SmokePlumeParams {
+        int  enable;           // 1 to enable plume-rise computation (default: 0)
+        amrex::Real T_a;       // ambient temperature [K]  (default: 303.15 = 30 °C)
+        amrex::Real rho_a;     // air density [kg/m³]      (default: 1.20)
+        amrex::Real Cp_a;      // specific heat [J/(kg·K)] (default: 1005.0)
+    } smoke_plume;
+
+    // ---- KML perimeter export ----
+    // When write_perimeter_kml = 1, a .kml file is written alongside the CSV
+    // and GeoJSON perimeter files at every plotfile step and for isochrones.
+    // Coordinates are converted from simulation UTM [m] to WGS-84 lon/lat
+    // using the UTM zone number below.  When kml_utm_zone = 0, no conversion
+    // is applied and the raw UTM coordinates are written (not valid WGS-84).
+    // The KML file can be opened directly in Google Earth.
+    int write_perimeter_kml;   // 1 to write perimeter_NNNN.kml (default: 0)
+    int kml_utm_zone;          // UTM zone number 1-60; 0 = raw coords (default: 0)
+    int kml_utm_northern;      // 1 = northern hemisphere, 0 = southern (default: 1)
+
+    // ---- Simulation start date/time (for log and report display) ----
+    // When non-zero, these provide the calendar start date that is combined
+    // with solar_radiation.sim_start_hour to display human-readable datetime
+    // strings in per-step log output and the HTML fire report.
+    // If all three are 0 (default), the values from solar_radiation.year/
+    // month/day are used when solar_radiation.enable = 1; otherwise
+    // datetime display in logs and report is omitted.
+    // Input prefix: "sim_datetime."
+    int sim_start_year;        // simulation start calendar year  (default: 0 → auto)
+    int sim_start_month;       // simulation start calendar month (default: 0 → auto)
+    int sim_start_day;         // simulation start calendar day   (default: 0 → auto)
 
 };
 
