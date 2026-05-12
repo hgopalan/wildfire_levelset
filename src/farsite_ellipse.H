@@ -478,6 +478,7 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
              <<" "<<farsite_spread.norminf(2) 
 #endif  
               <<"\n";
+  amrex::Print()<<" Spread Rate (m/s) = "<<R_mf.norminf(0)<<std::endl;
   // -------------------------------------------------------------------------
   // Synchronize so the GPU kernel results are visible on the host before
   // we read phi and farsite_spread in the collection loop below.
