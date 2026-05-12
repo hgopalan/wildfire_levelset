@@ -194,11 +194,18 @@ inline void compute_mtt_arrival_times(MultiFab& arrival_time_mf,
         if (t_curr > h_t[n_curr] + Real(1e-12)) continue;
 
         // Decode flat index to (i,j,k)
+        // In 2-D, lo/hi are 2-element IntVects; lo[2] is out-of-bounds.
+        // k is always the single z-layer (index 0 relative to lo[2] = 0).
         long tmp = n_curr;
         int i = lo[0] + static_cast<int>(tmp % nx);
         tmp /= nx;
         int j = lo[1] + static_cast<int>(tmp % ny);
+#if (AMREX_SPACEDIM == 3)
         int k = lo[2] + static_cast<int>(tmp / ny);
+#else
+        int k = 0;
+        amrex::ignore_unused(tmp);
+#endif
 
         const Real R_curr = h_R[n_curr];
 

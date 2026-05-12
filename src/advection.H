@@ -47,6 +47,9 @@ inline void build_rhs_weno5z(const MultiFab& phi,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+    // Slope/wind cross-term
+    const int  use_sw_cross = rc.use_slope_wind_cross;
+    const Real k_sw_cross   = rc.k_slope_wind_cross;
 
     // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R from Rothermel (1972)
     // or from a pre-computed R MultiFab (e.g. Balbi model).
@@ -108,7 +111,9 @@ inline void build_rhs_weno5z(const MultiFab& phi,
                 }
 
                 // Rate of spread [ft/min] → simulation units
-                R = std::max(R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+                // Optional slope/wind cross-term: R = R₀(1 + φ_w + φ_s + k×φ_w×φ_s)
+                Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
+                R = std::max(R0 * (1.0 + phi_w + phi_s + cross), 0.0) * ros_conv;
             }
 
             // Final RHS (keeps your WENO5 & RK3 integrators intact)

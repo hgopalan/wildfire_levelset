@@ -637,6 +637,25 @@ inline void compute_albini_spotting(
         return;
     }
 
+    // ---- Catching (ignition) probability filter ----
+    // Each successfully landed firebrand ignites the receiving fuel only with
+    // probability asp.P_catch (Anderson 1970 / Rothermel 1972 concept).
+    // P_catch = 1.0 (default) → always ignite; original behaviour preserved.
+    if (asp.P_catch < Real(1.0)) {
+        const Real P_c = std::max(Real(0.0), std::min(Real(1.0), asp.P_catch));
+        std::uniform_real_distribution<Real> catch_roll(Real(0.0), Real(1.0));
+        spots.erase(
+            std::remove_if(spots.begin(), spots.end(),
+                           [&](const LandingSpot&) { return catch_roll(gen) >= P_c; }),
+            spots.end());
+        amrex::Print() << "  After P_catch=" << P_c << " filter: "
+                       << spots.size() << " Albini brands caught fire\n";
+    }
+
+    if (spots.empty()) {
+        return;
+    }
+
     // ---- Apply spot ignitions to phi ----
     int radius_cells = static_cast<int>(std::ceil(asp.spot_radius / dx[0])) + 1;
 

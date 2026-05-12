@@ -1346,6 +1346,8 @@ int main(int argc, char* argv[])
           write_wildfire_plotfile(f, ba, dm, geom, inputs, final_step, time, ftd,
                                   /*write_stats=*/true, /*is_final=*/true);
       }
+      // ---- Write HTML fire report (end of run) ----
+      write_fire_report_html(inputs, static_cast<double>(time), final_step);
     }
   amrex::Finalize();
   return 0;

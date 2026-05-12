@@ -119,5 +119,6 @@ using namespace amrex;
 // ---- Project headers: output ----
 #include "write_xy_data.H"
 #include "plot_results.H"
+#include "fire_report.H"
 
 #endif // WILDFIRE_INCLUDES_H
