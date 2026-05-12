@@ -1496,14 +1496,15 @@ void parse_inputs(InputParameters& p)
         Print() << "  source=" << p.satellite.source;
         if (p.satellite.source == "goes")
             Print() << "  product=" << p.satellite.goes_product
-                    << "  bucket=" << p.satellite.goes_bucket;
+                    << "  bucket=" << p.satellite.goes_bucket << "\n";
         else if (p.satellite.source == "viirs")
-            Print() << "  FIRMS API  api_key=***";
+            Print() << "  FIRMS API  api_key=***\n";
         else if (p.satellite.source == "file")
             Print() << "  file=" << (p.satellite.local_file.empty()
                                      ? p.satellite.local_cache_file
-                                     : p.satellite.local_file);
-        Print() << "\n";
+                                     : p.satellite.local_file) << "\n";
+        else
+            Print() << "\n";
         Print() << "  bbox=[" << p.satellite.bbox_lon_min
                 << "," << p.satellite.bbox_lon_max
                 << "] lon  [" << p.satellite.bbox_lat_min

@@ -236,11 +236,12 @@ parse_detection_csv(const std::string& filepath,
     std::string line;
     while (std::getline(fin, line)) {
         if (line.empty()) continue;
-        // Skip comment lines and header lines
+        // Skip comment lines (starting with '#') and header rows.
+        // A valid data line must start with a digit, '+', '-', or '.'.
         char first = line[0];
-        if (first == '#' || first == 'l' || first == 'L' ||
-            first == 'l' || first == 'a' || first == 'A' ||
-            first == 'l' || first == 'L') continue;
+        if (first == '#') continue;
+        if (!std::isdigit(static_cast<unsigned char>(first)) &&
+            first != '+' && first != '-' && first != '.') continue;
         // Replace commas with spaces
         for (char& c : line) if (c == ',') c = ' ';
         std::istringstream iss(line);

@@ -48,7 +48,7 @@ sphere_radius = 1.0
 
 # ---- Satellite assimilation ---------------------------------------------
 satellite.enable                = 1
-satellite.source                = file
+satellite.source                = "file"
 satellite.local_file            = fire_detections.csv
 satellite.bbox_lon_min          = -120.5
 satellite.bbox_lon_max          = -119.5
