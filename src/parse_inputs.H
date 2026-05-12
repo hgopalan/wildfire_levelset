@@ -4,6 +4,10 @@
 #include <AMReX_ParmParse.H>
 #include <string>
 
+// SatelliteParams is defined in satellite_assimilation.H, included here so
+// InputParameters can embed it as a member.
+#include "satellite_assimilation.H"
+
 struct RothermelParams {
     // --- Fuel (NFFL Model 4 / Southern California chaparral defaults) ---
     amrex::Real w0;           // oven-dry total fuel load [lb/ft²]        default: 0.230
@@ -998,6 +1002,11 @@ struct InputParameters {
     int sim_start_year;        // simulation start calendar year  (default: 0 → auto)
     int sim_start_month;       // simulation start calendar month (default: 0 → auto)
     int sim_start_day;         // simulation start calendar day   (default: 0 → auto)
+
+    // ---- Real-time satellite fire detection assimilation ----
+    // Full configuration is documented in satellite_assimilation.H.
+    // Input prefix: "satellite."
+    SatelliteParams satellite;
 
 };
 
