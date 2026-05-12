@@ -629,6 +629,26 @@ int main(int argc, char* argv[])
     if (!barrier_cells.empty())
         apply_barrier_polygons(phi, barrier_cells, geom);
 
+    // ---- Satellite fire detection assimilation (initial condition) --------
+    // When satellite.enable = 1 and satellite.use_as_ic = 1, fetch active-fire
+    // detections at t=0 and apply them as additional ignition points before the
+    // first plotfile write.  The SatelliteState tracks the last fetch time so
+    // the mid-simulation re-fetch interval is measured from t=0.
+    SatelliteState sat_state;
+    if (inputs.satellite.enable == 1 && inputs.satellite.use_as_ic == 1) {
+        auto sat_pts = fetch_satellite_fire_points(inputs.satellite, Real(0.0));
+        if (!sat_pts.empty()) {
+            apply_satellite_fire_points(phi, geom, sat_pts,
+                                        inputs.satellite.detection_radius_m,
+                                        /*suppress_if_burning=*/false);
+            fill_boundary_extrap(phi, geom);
+            amrex::Print() << "SatelliteAssimilation: applied "
+                           << sat_pts.size()
+                           << " detection(s) as initial condition.\n";
+        }
+        sat_state.last_fetch_time = Real(0.0);
+    }
+
     // ---------------- Initialize fire statistics CSV -------------------
     if (!inputs.fire_stats_file.empty())
         write_fire_stats_header(inputs.fire_stats_file);
@@ -1332,6 +1352,30 @@ int main(int argc, char* argv[])
           apply_scheduled_ignitions(phi, geom, ignition_sched,
                                     time, time - dt_step, use_indicator);
           fill_boundary_extrap(phi, geom);
+      }
+
+      // ---- Satellite fire detection assimilation (mid-simulation re-marking) ----
+      // When satellite.enable = 1 and satellite.use_mid_sim = 1, fetch new
+      // active-fire detections at every fetch_interval_s simulation seconds and
+      // merge them into phi.  Already-burning cells are preserved when
+      // satellite.suppress_if_burning = 1 (default), preventing the satellite
+      // from extinguishing the simulated fire front.
+      if (inputs.satellite.enable == 1 && inputs.satellite.use_mid_sim == 1) {
+          const Real elapsed_since_fetch = time - sat_state.last_fetch_time;
+          if (elapsed_since_fetch >= inputs.satellite.fetch_interval_s) {
+              auto sat_pts = fetch_satellite_fire_points(inputs.satellite,
+                                                         static_cast<Real>(time));
+              if (!sat_pts.empty()) {
+                  apply_satellite_fire_points(phi, geom, sat_pts,
+                                              inputs.satellite.detection_radius_m,
+                                              inputs.satellite.suppress_if_burning == 1);
+                  fill_boundary_extrap(phi, geom);
+                  amrex::Print() << "SatelliteAssimilation: applied "
+                                 << sat_pts.size()
+                                 << " detection(s) at t=" << time << " s.\n";
+              }
+              sat_state.last_fetch_time = time;
+          }
       }
 
       // --- Write checkpoint if requested

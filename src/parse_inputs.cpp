@@ -1419,4 +1419,107 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Real-time satellite fire detection assimilation --------
+    p.satellite.enable               = 0;
+    p.satellite.source               = "file";
+    p.satellite.goes_product         = "ABI-L2-FDCF";
+    p.satellite.goes_bucket          = "noaa-goes18";
+    p.satellite.viirs_url_base       = "https://firms.modaps.eosdis.nasa.gov/api/area/csv";
+    p.satellite.api_key              = "";
+    p.satellite.bbox_lon_min         = -120.0;
+    p.satellite.bbox_lon_max         = -114.0;
+    p.satellite.bbox_lat_min         =   33.0;
+    p.satellite.bbox_lat_max         =   42.0;
+    p.satellite.utm_zone             = 10;
+    p.satellite.utm_northern         = 1;
+    p.satellite.prob_lo_easting_m    = 0.0;
+    p.satellite.prob_lo_northing_m   = 0.0;
+    p.satellite.fetch_interval_s     = amrex::Real(600.0);
+    p.satellite.use_as_ic            = 1;
+    p.satellite.use_mid_sim          = 1;
+    p.satellite.confidence_threshold = 50;
+    p.satellite.detection_radius_m   = amrex::Real(375.0);
+    p.satellite.local_cache_file     = "";
+    p.satellite.local_file           = "";
+    p.satellite.suppress_if_burning  = 1;
+
+    pp.query("satellite.enable",               p.satellite.enable);
+    pp.query("satellite.source",               p.satellite.source);
+    pp.query("satellite.goes_product",         p.satellite.goes_product);
+    pp.query("satellite.goes_bucket",          p.satellite.goes_bucket);
+    pp.query("satellite.viirs_url_base",       p.satellite.viirs_url_base);
+    pp.query("satellite.api_key",              p.satellite.api_key);
+    pp.query("satellite.bbox_lon_min",         p.satellite.bbox_lon_min);
+    pp.query("satellite.bbox_lon_max",         p.satellite.bbox_lon_max);
+    pp.query("satellite.bbox_lat_min",         p.satellite.bbox_lat_min);
+    pp.query("satellite.bbox_lat_max",         p.satellite.bbox_lat_max);
+    pp.query("satellite.utm_zone",             p.satellite.utm_zone);
+    pp.query("satellite.utm_northern",         p.satellite.utm_northern);
+    pp.query("satellite.prob_lo_easting_m",    p.satellite.prob_lo_easting_m);
+    pp.query("satellite.prob_lo_northing_m",   p.satellite.prob_lo_northing_m);
+    pp.query("satellite.fetch_interval_s",     p.satellite.fetch_interval_s);
+    pp.query("satellite.use_as_ic",            p.satellite.use_as_ic);
+    pp.query("satellite.use_mid_sim",          p.satellite.use_mid_sim);
+    pp.query("satellite.confidence_threshold", p.satellite.confidence_threshold);
+    pp.query("satellite.detection_radius_m",   p.satellite.detection_radius_m);
+    pp.query("satellite.local_cache_file",     p.satellite.local_cache_file);
+    pp.query("satellite.local_file",           p.satellite.local_file);
+    pp.query("satellite.suppress_if_burning",  p.satellite.suppress_if_burning);
+
+    if (p.satellite.enable == 1) {
+        // Validate
+        if (p.satellite.source != "file"  &&
+            p.satellite.source != "goes"  &&
+            p.satellite.source != "viirs") {
+            amrex::Abort("satellite.source must be one of: file, goes, viirs");
+        }
+        if (p.satellite.source == "viirs" && p.satellite.api_key.empty()) {
+            amrex::Abort("satellite.source='viirs' requires satellite.api_key to be set. "
+                         "Obtain a free map key at "
+                         "https://firms.modaps.eosdis.nasa.gov/api/map_key/");
+        }
+        if (p.satellite.source == "file" && p.satellite.local_file.empty() &&
+            p.satellite.local_cache_file.empty()) {
+            amrex::Abort("satellite.source='file' requires satellite.local_file "
+                         "(or satellite.local_cache_file) to be set");
+        }
+        if (p.satellite.utm_zone < 1 || p.satellite.utm_zone > 60)
+            amrex::Abort("satellite.utm_zone must be 1-60");
+        if (p.satellite.confidence_threshold < 0 || p.satellite.confidence_threshold > 100)
+            amrex::Abort("satellite.confidence_threshold must be in [0, 100]");
+        if (p.satellite.detection_radius_m <= 0.0)
+            amrex::Abort("satellite.detection_radius_m must be > 0 m");
+        if (p.satellite.fetch_interval_s <= 0.0)
+            amrex::Abort("satellite.fetch_interval_s must be > 0 s");
+
+        Print() << "Satellite fire detection assimilation enabled:\n";
+        Print() << "  source=" << p.satellite.source;
+        if (p.satellite.source == "goes")
+            Print() << "  product=" << p.satellite.goes_product
+                    << "  bucket=" << p.satellite.goes_bucket;
+        else if (p.satellite.source == "viirs")
+            Print() << "  FIRMS API  api_key=***";
+        else if (p.satellite.source == "file")
+            Print() << "  file=" << (p.satellite.local_file.empty()
+                                     ? p.satellite.local_cache_file
+                                     : p.satellite.local_file);
+        Print() << "\n";
+        Print() << "  bbox=[" << p.satellite.bbox_lon_min
+                << "," << p.satellite.bbox_lon_max
+                << "] lon  [" << p.satellite.bbox_lat_min
+                << "," << p.satellite.bbox_lat_max << "] lat\n";
+        Print() << "  UTM zone " << p.satellite.utm_zone
+                << (p.satellite.utm_northern ? "N" : "S")
+                << "  prob_lo_easting="  << p.satellite.prob_lo_easting_m  << " m"
+                << "  prob_lo_northing=" << p.satellite.prob_lo_northing_m << " m\n";
+        Print() << "  confidence_threshold=" << p.satellite.confidence_threshold << " %"
+                << "  detection_radius=" << p.satellite.detection_radius_m << " m"
+                << "  fetch_interval=" << p.satellite.fetch_interval_s << " s\n";
+        Print() << "  use_as_ic=" << p.satellite.use_as_ic
+                << "  use_mid_sim=" << p.satellite.use_mid_sim
+                << "  suppress_if_burning=" << p.satellite.suppress_if_burning << "\n";
+        if (!p.satellite.local_cache_file.empty())
+            Print() << "  local_cache_file=" << p.satellite.local_cache_file << "\n";
+    }
+
 }

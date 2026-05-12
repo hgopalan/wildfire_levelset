@@ -102,6 +102,7 @@ using namespace amrex;
 #include "wind_dir_schedule.H"
 #include "barrier_polygons.H"
 #include "retardant_drop.H"
+#include "satellite_assimilation.H"
 
 // ---- Project headers: weather inputs ----
 #include "wtr_weather.H"
