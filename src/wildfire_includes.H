@@ -120,5 +120,7 @@ using namespace amrex;
 #include "write_xy_data.H"
 #include "plot_results.H"
 #include "fire_report.H"
+#include "smoke_plume_rise.H"
+#include "sim_datetime.H"
 
 #endif // WILDFIRE_INCLUDES_H

@@ -1349,4 +1349,74 @@ void parse_inputs(InputParameters& p)
         Print() << "  Simulation start hour: " << p.burn_period.sim_start_hour << ":00\n";
     }
 
+    // -------- Smoke plume-rise model (Briggs 1965 / 1969) --------
+    p.smoke_plume.enable = 0;        pp.query("smoke_plume.enable", p.smoke_plume.enable);
+    p.smoke_plume.T_a    = 303.15;   pp.query("smoke_plume.T_a",    p.smoke_plume.T_a);
+    p.smoke_plume.rho_a  = 1.20;     pp.query("smoke_plume.rho_a",  p.smoke_plume.rho_a);
+    p.smoke_plume.Cp_a   = 1005.0;   pp.query("smoke_plume.Cp_a",   p.smoke_plume.Cp_a);
+    if (p.smoke_plume.enable == 1) {
+        if (p.smoke_plume.T_a <= 0.0)
+            amrex::Abort("smoke_plume.T_a must be > 0 K");
+        if (p.smoke_plume.rho_a <= 0.0)
+            amrex::Abort("smoke_plume.rho_a must be > 0 kg/m³");
+        if (p.smoke_plume.Cp_a <= 0.0)
+            amrex::Abort("smoke_plume.Cp_a must be > 0 J/(kg·K)");
+        Print() << "Smoke plume-rise model (Briggs 1965) enabled:\n"
+                << "  T_a=" << p.smoke_plume.T_a << " K"
+                << "  rho_a=" << p.smoke_plume.rho_a << " kg/m3"
+                << "  Cp_a=" << p.smoke_plume.Cp_a << " J/(kg·K)\n";
+    }
+
+    // -------- KML perimeter export --------
+    p.write_perimeter_kml = 0;   pp.query("write_perimeter_kml",  p.write_perimeter_kml);
+    p.kml_utm_zone        = 0;   pp.query("kml_utm_zone",         p.kml_utm_zone);
+    p.kml_utm_northern    = 1;   pp.query("kml_utm_northern",     p.kml_utm_northern);
+    if (p.write_perimeter_kml == 1) {
+        if (p.kml_utm_zone < 0 || p.kml_utm_zone > 60)
+            amrex::Abort("kml_utm_zone must be 0 (raw) or 1-60");
+        if (p.kml_utm_zone == 0) {
+            Print() << "KML perimeter export enabled (raw UTM coordinates; set kml_utm_zone for WGS-84)\n";
+        } else {
+            Print() << "KML perimeter export enabled: UTM Zone " << p.kml_utm_zone
+                    << (p.kml_utm_northern ? "N" : "S") << " → WGS-84\n";
+        }
+    }
+
+    // -------- Simulation start date/time (for log and HTML report) --------
+    p.sim_start_year  = 0;  pp.query("sim_datetime.year",  p.sim_start_year);
+    p.sim_start_month = 0;  pp.query("sim_datetime.month", p.sim_start_month);
+    p.sim_start_day   = 0;  pp.query("sim_datetime.day",   p.sim_start_day);
+    // Fallback: inherit from solar_radiation fields when they are set
+    if (p.sim_start_year == 0 && p.solar_radiation.enable == 1) {
+        p.sim_start_year  = p.solar_radiation.year;
+        p.sim_start_month = p.solar_radiation.month;
+        p.sim_start_day   = p.solar_radiation.day;
+    }
+    if (p.sim_start_year > 0) {
+        Print() << "Simulation calendar start: "
+                << p.sim_start_year << "-"
+                << p.sim_start_month << "-"
+                << p.sim_start_day << "\n";
+    }
+
+    // -------- Post-fire fuel adjustment for re-entry spots --------
+    // New fields within the existing fuel_depletion block
+    p.fuel_depletion.adjust_spotting_reentry = 0;
+    pp.query("fuel_depletion.adjust_spotting_reentry",
+             p.fuel_depletion.adjust_spotting_reentry);
+    p.fuel_depletion.spotting_fuel_threshold = 0.05;
+    pp.query("fuel_depletion.spotting_fuel_threshold",
+             p.fuel_depletion.spotting_fuel_threshold);
+    if (p.fuel_depletion.adjust_spotting_reentry == 1) {
+        if (p.fuel_depletion.enable == 0) {
+            Print() << "WARNING: fuel_depletion.adjust_spotting_reentry=1 requires "
+                       "fuel_depletion.enable=1; re-entry spotting adjustment disabled.\n";
+            p.fuel_depletion.adjust_spotting_reentry = 0;
+        } else {
+            Print() << "Post-fire fuel adjustment for re-entry spots enabled:\n"
+                    << "  P_catch scaled by residual fuel; no ignition below f_residual="
+                    << p.fuel_depletion.spotting_fuel_threshold << "\n";
+        }
+    }
+
 }

@@ -163,6 +163,7 @@ endif()
 add_regression_test(fire_perimeter_output    ignition/fire_perimeter_output)
 add_regression_test(polygon_ignition         ignition/polygon_ignition)
 add_regression_test(polyline_ignition        ignition/polyline_ignition)
+add_regression_test(kml_perimeter            ignition/kml_perimeter)
 if(Python3_FOUND)
     set(_perim_work "${CMAKE_CURRENT_BINARY_DIR}/ignition/fire_perimeter_output")
     add_test(NAME fire_perimeter_output_validate
@@ -173,6 +174,16 @@ if(Python3_FOUND)
                          TIMEOUT 60
                          LABELS  "regtest"
                          DEPENDS fire_perimeter_output)
+
+    set(_kml_work "${CMAKE_CURRENT_BINARY_DIR}/ignition/kml_perimeter")
+    add_test(NAME kml_perimeter_validate
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/ignition/kml_perimeter/validate.py
+             WORKING_DIRECTORY ${_kml_work})
+    set_tests_properties(kml_perimeter_validate PROPERTIES
+                         TIMEOUT 60
+                         LABELS  "regtest"
+                         DEPENDS kml_perimeter)
 endif()
 
 # ===========================================================================
@@ -197,6 +208,8 @@ add_regression_test(sphere_2d                misc/3d_sphere)
 add_regression_test(eb_implicit              misc/eb_implicit)
 add_regression_test(mtt_propagation          misc/mtt_propagation)
 add_regression_test(bulk_fuel_consumption    misc/bulk_fuel_consumption)
+add_regression_test(smoke_plume_rise         misc/smoke_plume_rise)
+add_regression_test(reentry_spotting         misc/reentry_spotting)
 
 if(Python3_FOUND)
     add_python_setup_regression_test(landfire_farsite misc/landfire_farsite create_landscape.py)
@@ -254,12 +267,13 @@ message(STATUS "                    precip_wetting, spatial_moisture_output,")
 message(STATUS "                    wtr_diurnal, wtr_rain_wetting")
 message(STATUS "  fuel/           : fuel_adj_file")
 message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
-message(STATUS "                    polygon_ignition, polyline_ignition")
+message(STATUS "                    polygon_ignition, polyline_ignition, kml_perimeter")
 message(STATUS "  wind/           : time_dependent_wind, turb_wind, wind_dir_schedule,")
 message(STATUS "                    waf_andrews, waf_behaviorplus")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci")
 message(STATUS "  misc/           : sphere_2d, eb_implicit, mtt_propagation,")
-message(STATUS "                    bulk_fuel_consumption, timing_benchmark,")
+message(STATUS "                    bulk_fuel_consumption, smoke_plume_rise,")
+message(STATUS "                    reentry_spotting, timing_benchmark,")
 message(STATUS "                    landfire_farsite, nonburnable_mask")
 message(STATUS "")
 message(STATUS "All tests use 2-D (AMReX_SPACEDIM=2) builds only.")

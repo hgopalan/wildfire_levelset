@@ -201,9 +201,11 @@ inline void compute_albini_spotting(
     const RothermelParams& rp,
     const InputParameters::AlbiniSpottingParams& asp,
     int step,
-    const MultiFab* fuel_model_mf  = nullptr,  // per-cell fuel model code (optional)
-    const std::string* fuel_system = nullptr,   // "13" or "40" (optional)
-    const PltWindData* plt_wind    = nullptr)   // 3-D wind from massconsistent_amr (optional)
+    const MultiFab* fuel_model_mf   = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system  = nullptr,   // "13" or "40" (optional)
+    const PltWindData* plt_wind     = nullptr,   // 3-D wind from massconsistent_amr (optional)
+    const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
+    Real reentry_fuel_threshold      = Real(0.05)) // min fuel fraction to allow ignition
 {
     if (asp.enable == 0) {
         return;
@@ -650,6 +652,42 @@ inline void compute_albini_spotting(
             spots.end());
         amrex::Print() << "  After P_catch=" << P_c << " filter: "
                        << spots.size() << " Albini brands caught fire\n";
+    }
+
+    // ---- Post-fire re-entry fuel adjustment ----
+    // When residual_fuel_mf is provided, remove or reduce Albini spot fires
+    // that land in previously-burned cells with insufficient residual fuel.
+    if (residual_fuel_mf != nullptr && !spots.empty()) {
+        // Make a host copy of the residual fuel MultiFab
+        amrex::MultiFab rf_h(residual_fuel_mf->boxArray(),
+                             residual_fuel_mf->DistributionMap(),
+                             1, 0, host_info);
+        amrex::MultiFab::Copy(rf_h, *residual_fuel_mf, 0, 0, 1, 0);
+        amrex::Gpu::streamSynchronize();
+
+        std::uniform_real_distribution<Real> fuel_roll(Real(0.0), Real(1.0));
+        const size_t prev_size = spots.size();
+        spots.erase(
+            std::remove_if(spots.begin(), spots.end(),
+                [&](const LandingSpot& sp) -> bool {
+                    // Look up residual fuel at landing cell
+                    Real f_res = Real(1.0);
+                    for (MFIter mfi(rf_h); mfi.isValid(); ++mfi) {
+                        const Box& bx = mfi.validbox();
+                        if (bx.contains(IntVect(sp.ic, sp.jc, 0))) {
+                            f_res = rf_h.array(mfi)(sp.ic, sp.jc, 0);
+                            break;
+                        }
+                    }
+                    // Remove if below absolute threshold
+                    if (f_res < reentry_fuel_threshold) return true;
+                    // Scale P_ignite by residual fuel fraction
+                    return (fuel_roll(gen) >= f_res);
+                }),
+            spots.end());
+        if (spots.size() < prev_size)
+            amrex::Print() << "  Re-entry fuel filter: " << spots.size()
+                           << " of " << prev_size << " Albini brands in fueled area\n";
     }
 
     if (spots.empty()) {
