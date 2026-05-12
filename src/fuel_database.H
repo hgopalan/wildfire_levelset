@@ -120,14 +120,14 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     database["FM4"] = {
         "FM4", "Chaparral (6 ft)",
         0.230,    // w0 [lb/ft²]
-        2000.0,   // sigma [ft⁻¹]
+        1739.0,   // sigma [ft⁻¹]  (Rothermel 1972 Table A-1)
         6.0,      // delta [ft]
         0.20,     // M_x
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
         32.0,     // rho_p [lb/ft³]
-        0.230, 2000.0,   // w_d1, sigma_d1
+        0.230, 1739.0,   // w_d1, sigma_d1  (Rothermel 1972: σ₁ = 1739 ft⁻¹)
         0.184,           // w_d10
         0.092,           // w_d100
         0.230, 1500.0,   // w_lh, sigma_lh
@@ -137,14 +137,14 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
     database["FM5"] = {
         "FM5", "Brush (2 ft)",
         0.046,    // w0 [lb/ft²]
-        2000.0,   // sigma [ft⁻¹]
+        1739.0,   // sigma [ft⁻¹]  (Rothermel 1972 Table A-1)
         2.0,      // delta [ft]
         0.20,     // M_x
         8000.0,   // h_heat [BTU/lb]
         0.0555,   // S_T
         0.010,    // S_e
         32.0,     // rho_p [lb/ft³]
-        0.046, 2000.0,   // w_d1, sigma_d1
+        0.046, 1739.0,   // w_d1, sigma_d1  (Rothermel 1972: σ₁ = 1739 ft⁻¹)
         0.023,           // w_d10
         0.0,             // w_d100
         0.092, 1500.0,   // w_lh, sigma_lh
