@@ -91,7 +91,7 @@ now also supports:
 Quick example combining all new features:
 ```bash
 python3 tools/ensemble_burn_probability.py \
-    --exe ./build/levelset \
+    --exe ./wildfire_levelset \
     --inputs my_scenario/inputs.i \
     --n-runs 200 \
     --ignition-prob-csv ignition_risk.csv \

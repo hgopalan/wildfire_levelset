@@ -315,7 +315,8 @@ def generate_samples(
         *ignition_weights*.
     ignition_weights : list of float, optional
         Non-negative probability weights parallel to *ignition_points*.
-        Normalised internally; uniform weighting is used if ``None``.
+        Normalised internally.  Uniform weighting is used when this is
+        ``None`` or when all provided weights are non-positive.
     containment_prob : float, optional
         Bernoulli success probability for suppression activation in [0, 1].
         Each sample independently draws a boolean ``containment_active``
@@ -341,12 +342,17 @@ def generate_samples(
         wts = ignition_weights if ignition_weights else [1.0] * len(ignition_points)
         total = sum(wts)
         if total <= 0.0:
+            # All weights non-positive or no weights supplied: fall back to uniform.
             wts = [1.0] * len(ignition_points)
             total = float(len(ignition_points))
         cum = 0.0
         for w in wts:
             cum += w / total
             cum_weights.append(cum)
+        # Force the last entry to exactly 1.0 to prevent floating-point
+        # rounding from causing a missed match in the selection loop.
+        if cum_weights:
+            cum_weights[-1] = 1.0
 
     samples = []
     for row in raw:
@@ -355,12 +361,13 @@ def generate_samples(
         dir_offset   = dir_sigma * row[1]          # [deg]
         moist_offset = moisture_sigma * row[2]      # [fraction]
 
-        # Ignition location (weighted random selection from raster)
+        # Ignition location (weighted random selection from raster).
+        # cum_weights is guaranteed to end with 1.0, so u <= 1.0 always matches.
         ign_x: Optional[float] = None
         ign_y: Optional[float] = None
         if use_ignition:
             u = rng.random()
-            idx = 0
+            idx = len(cum_weights) - 1  # fallback: last entry
             for k, cw in enumerate(cum_weights):
                 if u <= cw:
                     idx = k
@@ -784,6 +791,8 @@ def accumulate_crown_fire(
             if key in visited:
                 continue
             visited.add(key)
+            # Coordinates are rounded to 2 decimal places to match the
+            # precision used in _read_plotfile_field when building the dict keys.
             cf_val = cf_dict.get((round(x, 2), round(y, 2)), 0.0)
             if cf_val > crown_threshold:
                 counts[key] = counts.get(key, 0) + 1
@@ -1405,7 +1414,8 @@ def main(argv=None):
         print(f"ERROR: suppression file not found: {suppression_file}", file=sys.stderr)
         sys.exit(1)
     if containment_prob < 0.0 or containment_prob > 1.0:
-        print("ERROR: --containment-prob must be in [0, 1].", file=sys.stderr)
+        print(f"ERROR: --containment-prob={containment_prob} must be in [0, 1].",
+              file=sys.stderr)
         sys.exit(1)
 
     # Validate and resolve MPI launcher when MPI is requested
