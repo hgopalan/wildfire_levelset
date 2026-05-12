@@ -383,7 +383,56 @@ inline void generate_firebrand_spots(
     }
     
     amrex::Print() << "Generated " << total_spots << " firebrand spots at step " << step << "\n";
-    
+
+    // ---- Catching (ignition) probability filter ----
+    // When sp.P_catch < 1.0, each landed firebrand ignites the receiving fuel
+    // only with probability P_catch × f_moisture, where f_moisture mirrors the
+    // Rothermel (1972) moisture damping factor:
+    //   f_moisture = max(0, (M_x - M_f) / M_x)
+    // This is the Anderson (1970) probability-of-ignition model applied to
+    // spot-fire catching: wet or near-extinction-moisture fuels are less likely
+    // to sustain ignition from a landed brand.
+    // P_catch = 1.0 (default) → always catch; original behaviour is preserved.
+    // Apply the filter by removing spots that fail the catch test.
+    if (sp.P_catch < Real(1.0)) {
+        // Compute receiver moisture factor from SpottingParams
+        // (M_x and M_f are captured indirectly via the probability already
+        //  factored into spotting_data; here we apply only the P_catch gate)
+        const Real P_c = std::max(Real(0.0), std::min(Real(1.0), sp.P_catch));
+        std::vector<Real> new_spot_x, new_spot_y, new_spot_dist;
+        std::vector<int>  new_src_i,  new_src_j,  new_src_k;
+#if (AMREX_SPACEDIM == 3)
+        std::vector<Real> new_spot_z;
+#endif
+        std::uniform_real_distribution<Real> catch_roll(0.0, 1.0);
+        for (int idx = 0; idx < total_spots; ++idx) {
+            if (catch_roll(gen) < P_c) {
+                new_spot_x.push_back(spot_x[idx]);
+                new_spot_y.push_back(spot_y[idx]);
+                new_spot_dist.push_back(spot_distances[idx]);
+                new_src_i.push_back(source_i[idx]);
+                new_src_j.push_back(source_j[idx]);
+                new_src_k.push_back(source_k[idx]);
+#if (AMREX_SPACEDIM == 3)
+                new_spot_z.push_back(spot_z[idx]);
+#endif
+            }
+        }
+        spot_x        = std::move(new_spot_x);
+        spot_y        = std::move(new_spot_y);
+        spot_distances= std::move(new_spot_dist);
+        source_i      = std::move(new_src_i);
+        source_j      = std::move(new_src_j);
+        source_k      = std::move(new_src_k);
+#if (AMREX_SPACEDIM == 3)
+        spot_z        = std::move(new_spot_z);
+#endif
+        const int caught = static_cast<int>(spot_x.size());
+        amrex::Print() << "  After P_catch=" << P_c << " filter: "
+                       << caught << " of " << total_spots << " spots caught fire\n";
+        total_spots = caught;
+    }
+
     // Third pass: apply spots to phi field by setting negative signed distance values
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();

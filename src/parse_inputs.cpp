@@ -167,6 +167,13 @@ void parse_inputs(InputParameters& p)
         Print() << "Live herbaceous curing transfer enabled: threshold="
                 << p.rothermel.herb_curing_threshold * 100.0 << " % M_lh\n";
     }
+    // Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982)
+    p.rothermel.use_slope_wind_cross = 0;    pp.query("rothermel.use_slope_wind_cross", p.rothermel.use_slope_wind_cross);
+    p.rothermel.k_slope_wind_cross   = 1.0;  pp.query("rothermel.k_slope_wind_cross",   p.rothermel.k_slope_wind_cross);
+    if (p.rothermel.use_slope_wind_cross == 1) {
+        Print() << "Slope/wind cross-term enabled: R = R₀(1 + φ_w + φ_s + "
+                << p.rothermel.k_slope_wind_cross << " × φ_w × φ_s)\n";
+    }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
@@ -262,7 +269,8 @@ void parse_inputs(InputParameters& p)
     p.spotting.spot_radius = 0.02;               pp.query("spotting.spot_radius", p.spotting.spot_radius);
     p.spotting.random_seed = 0;                  pp.query("spotting.random_seed", p.spotting.random_seed);
     p.spotting.check_interval = 5;               pp.query("spotting.check_interval", p.spotting.check_interval);
-    
+    p.spotting.P_catch = 1.0;                    pp.query("spotting.P_catch", p.spotting.P_catch);
+
     // Validate spotting parameters
     if (p.spotting.enable == 1) {
         if (p.spotting.P_base < 0.0 || p.spotting.P_base > 1.0) {
@@ -273,6 +281,13 @@ void parse_inputs(InputParameters& p)
         }
         if (p.spotting.distance_model != "lognormal" && p.spotting.distance_model != "exponential") {
             amrex::Abort("spotting.distance_model must be either 'lognormal' or 'exponential'");
+        }
+        if (p.spotting.P_catch < 0.0 || p.spotting.P_catch > 1.0) {
+            amrex::Abort("spotting.P_catch must be between 0.0 and 1.0");
+        }
+        if (p.spotting.P_catch < 1.0) {
+            Print() << "Spotting P_catch (catching probability) = "
+                    << p.spotting.P_catch << "\n";
         }
     }
 
@@ -490,6 +505,7 @@ void parse_inputs(InputParameters& p)
     p.albini_spotting.n_traj_steps       = 100;      pp.query("albini_spotting.n_traj_steps",       p.albini_spotting.n_traj_steps);
     p.albini_spotting.use_3d_wind        = 0;        pp.query("albini_spotting.use_3d_wind",        p.albini_spotting.use_3d_wind);
     p.albini_spotting.plt_wind_file      = "";       pp.query("albini_spotting.plt_wind_file",      p.albini_spotting.plt_wind_file);
+    p.albini_spotting.P_catch            = 1.0;      pp.query("albini_spotting.P_catch",            p.albini_spotting.P_catch);
 
     // Validate Albini spotting parameters
     if (p.albini_spotting.enable == 1) {
@@ -508,9 +524,16 @@ void parse_inputs(InputParameters& p)
         if (p.albini_spotting.use_3d_wind == 1 && p.albini_spotting.plt_wind_file.empty()) {
             amrex::Abort("albini_spotting.use_3d_wind = 1 requires albini_spotting.plt_wind_file to be set");
         }
+        if (p.albini_spotting.P_catch < 0.0 || p.albini_spotting.P_catch > 1.0) {
+            amrex::Abort("albini_spotting.P_catch must be between 0.0 and 1.0");
+        }
         if (p.albini_spotting.use_3d_wind == 1) {
             Print() << "Albini spotting: using 3-D wind from plt file: "
                     << p.albini_spotting.plt_wind_file << "\n";
+        }
+        if (p.albini_spotting.P_catch < 1.0) {
+            Print() << "Albini spotting P_catch (catching probability) = "
+                    << p.albini_spotting.P_catch << "\n";
         }
     }
 
@@ -754,6 +777,17 @@ void parse_inputs(InputParameters& p)
     // -------- Fire statistics time series --------
     p.fire_stats_file = "fire_stats.csv";
     pp.query("fire_stats_file", p.fire_stats_file);
+
+    // -------- Automatic HTML report generation --------
+    p.fire_report_file = "";
+    pp.query("fire_report_file", p.fire_report_file);
+    if (!p.fire_report_file.empty()) {
+        Print() << "HTML fire report will be written to: " << p.fire_report_file << "\n";
+        if (p.fire_stats_file.empty()) {
+            Print() << "  WARNING: fire_report_file is set but fire_stats_file is empty; "
+                       "no time-series data will appear in the report.\n";
+        }
+    }
 
     // -------- Timed isochrone output --------
     p.isochrone_interval_s = 0.0;

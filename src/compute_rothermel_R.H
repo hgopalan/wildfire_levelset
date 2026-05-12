@@ -47,6 +47,9 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+    // Slope/wind cross-term
+    const int  use_sw_cross  = rc.use_slope_wind_cross;
+    const Real k_sw_cross    = rc.k_slope_wind_cross;
     // Andrews (2018) wind adjustment defaults (global fuel)
     const Real waf_default      = rc.waf;
     const Real U_max_default    = rc.U_max_ftmin;
@@ -233,7 +236,9 @@ inline void compute_rothermel_R(MultiFab& R_mf,
 
             // Rate of spread [ft/min] → simulation units
             // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
-            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            // Optional slope/wind cross-term: R = R₀(1 + φ_w + φ_s + k×φ_w×φ_s)
+            Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
+            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s + cross), 0.0) * ros_conv;
             R(i,j,k) = (R_raw >= WildfireConst::ROS_MIN_MS) ? R_raw : Real(0.0);
         });
     }

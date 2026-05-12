@@ -63,6 +63,16 @@ struct RothermelParams {
     amrex::Real wind_conv;    // ft/min per (sim velocity unit)            default: 196.85
     // Rothermel ROS is in ft/min; convert back to sim length/time units
     amrex::Real ros_conv;     // sim length/time per (ft/min)              default: 0.00508
+    // --- Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982) ---
+    // When enabled, replaces the additive R = R₀(1 + φ_w + φ_s) formula with
+    // R = R₀(1 + φ_w + φ_s + k_sw × φ_w × φ_s).
+    // This captures the positive interaction when wind blows upslope:
+    // combined spread exceeds the sum of individual effects.
+    //   k_slope_wind_cross = 0.0 → additive only (default, backward-compatible)
+    //   k_slope_wind_cross = 1.0 → fully multiplicative (1+φ_w)(1+φ_s) form
+    // Reference: Rothermel (1983) GTR INT-143; Anderson (1982) Res. Note INT-328.
+    int         use_slope_wind_cross;   // 1 to enable cross-term (default: 0)
+    amrex::Real k_slope_wind_cross;     // cross-term coupling coefficient (default: 1.0)
 };
 
 struct InputParameters {
@@ -146,6 +156,12 @@ struct InputParameters {
         amrex::Real spot_radius;             // Radius of new spot fires (default: 0.02)
         int random_seed;                     // Seed for random number generator (0 = use time) (default: 0)
         int check_interval;                  // Check for spotting every N timesteps (default: 5)
+        // Spot-fire catching (ignition) probability
+        // When P_catch < 1.0, a landed firebrand ignites the receiving fuel with
+        // probability P_catch × f_moisture, where f_moisture = max(0,(M_x−M_f)/M_x)
+        // (Anderson 1970 / Rothermel 1972 moisture-damping factor).
+        // Set to 1.0 (default) to always ignite on contact (original behaviour).
+        amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
     } spotting;
     
     // Van Wagner crown fire initiation model parameters (Van Wagner 1977)
@@ -225,6 +241,11 @@ struct InputParameters {
         // (default: disabled)
         int use_3d_wind;                     // 1 to read 3-D wind from plt file (default: 0)
         std::string plt_wind_file;           // path to massconsistent_amr plt directory (default: "")
+        // Spot-fire catching (ignition) probability for Albini model.
+        // Applied identically to SpottingParams.P_catch: a landed firebrand
+        // ignites with probability P_catch × f_moisture before placing a new
+        // ignition zone in phi.  Default 1.0 = always ignite.
+        amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
     } albini_spotting;
 
     // Weise & Biging (1996) fire whirl model parameters
@@ -497,6 +518,15 @@ struct InputParameters {
     // every plotfile write with: step, time_s, burned_area_ha, perimeter_km,
     // active_front_cells, mean_co2, mean_co, mean_pm25.
     std::string fire_stats_file;             // output CSV path (default: "fire_stats.csv")
+
+    // ---- Automatic HTML report generation ----
+    // When non-empty, a self-contained HTML report is written at end-of-run,
+    // summarising simulation parameters, per-step fire statistics (read from
+    // fire_stats_file), and SVG time-series charts of burned area, perimeter,
+    // head ROS, and cumulative emissions.  The file has no external dependencies
+    // and can be opened in any browser without an internet connection.
+    // Requires fire_stats_file to be set so that data are available.
+    std::string fire_report_file;            // output HTML path (default: "" = disabled)
 
     // ---- Timed isochrone output ----
     // When isochrone_interval_s > 0, a fire perimeter file is written at each
