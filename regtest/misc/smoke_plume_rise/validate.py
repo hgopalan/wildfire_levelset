@@ -35,8 +35,13 @@ if log_candidates:
     else:
         vals = [float(v) for v in matches]
         max_val = max(vals)
-        if max_val <= 0.0:
+        import math
+        if not all(math.isfinite(v) for v in vals):
+            errors.append(f"smoke plume rise contains non-finite values: {vals}")
+        elif max_val <= 0.0:
             errors.append(f"smoke plume rise values are all zero or negative: {vals}")
+        elif max_val > 10000.0:
+            errors.append(f"smoke plume rise max {max_val:.1f} m exceeds 10 000 m (likely NaN/Inf)")
         else:
             print(f"  Max plume rise logged: {max_val:.1f} m  ✓")
 else:

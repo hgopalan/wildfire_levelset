@@ -15,10 +15,6 @@
 #include <limits>
 #include <cmath>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 using namespace amrex;
 
 // ======================= Write all negative phi cells as x-y file ================
@@ -579,7 +575,8 @@ namespace {
 inline std::pair<double,double> utm_to_latlon_wgs84(
     double easting, double northing, int zone_number, bool northern)
 {
-    // WGS-84 ellipsoid constants
+    // WGS-84 ellipsoid constants — all double precision for accuracy
+    constexpr double WGS84_PI = 3.14159265358979323846;
     constexpr double a    = 6378137.0;
     constexpr double f    = 1.0 / 298.257223563;
     constexpr double b    = a * (1.0 - f);
@@ -624,14 +621,14 @@ inline std::pair<double,double> utm_to_latlon_wgs84(
            - 3.0 * C1 * C1)
           * D * D * D * D * D * D / 720.0);
 
-    const double lon0 = ((zone_number - 1) * 6.0 - 180.0 + 3.0) * (M_PI / 180.0);
+    const double lon0 = ((zone_number - 1) * 6.0 - 180.0 + 3.0) * (WGS84_PI / 180.0);
     const double lon  = lon0 + (
           D
         - (1.0 + 2.0 * T1 + C1) * D * D * D / 6.0
         + (5.0 - 2.0 * C1 + 28.0 * T1 - 3.0 * C1 * C1 + 8.0 * ep2 + 24.0 * T1 * T1)
           * D * D * D * D * D / 120.0) / cosL1;
 
-    return {lat * 180.0 / M_PI, lon * 180.0 / M_PI};
+    return {lat * 180.0 / WGS84_PI, lon * 180.0 / WGS84_PI};
 }
 
 } // anonymous namespace

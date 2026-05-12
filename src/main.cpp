@@ -646,41 +646,18 @@ int main(int argc, char* argv[])
                             /*write_stats=*/false, /*is_final=*/false);
 
     // ---- Simulation calendar date/time helper ----
-    // Builds a "YYYY-MM-DD HH:MM" string from the sim start date/time + elapsed_s.
-    // Returns empty string when no start date is configured.
-    // Uses sim_start_year/month/day from inputs, falling back to solar_radiation fields.
+    // Uses sim_datetime.H shared helper for "YYYY-MM-DD HH:MM" formatting.
+    // Inputs: sim_start_year/month/day from inputs (falls back to solar_radiation).
     const int   _yr0 = inputs.sim_start_year;
     const int   _mo0 = inputs.sim_start_month;
     const int   _dy0 = inputs.sim_start_day;
-    // Start-of-day hour comes from solar_radiation when available
     const double _hr0 = (inputs.solar_radiation.enable == 1)
                         ? static_cast<double>(inputs.solar_radiation.sim_start_hour)
                         : 0.0;
-    const bool _has_datetime = (_yr0 > 0 && _mo0 >= 1 && _mo0 <= 12
-                                 && _dy0 >= 1 && _dy0 <= 31);
 
     auto sim_datetime_string = [&](double elapsed_s) -> std::string {
-        if (!_has_datetime) return "";
-        // Days per month (non-leap year; approximate for log output)
-        static const int dom[13] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
-        double total_h = _hr0 + elapsed_s / 3600.0;
-        int extra_days = static_cast<int>(std::floor(total_h / 24.0));
-        double frac_h  = total_h - extra_days * 24.0;
-        int hh = static_cast<int>(frac_h);
-        int mm = static_cast<int>((frac_h - hh) * 60.0 + 0.5);
-        if (mm == 60) { mm = 0; ++hh; }
-        if (hh == 24) { hh = 0; ++extra_days; }
-
-        int d = _dy0 + extra_days;
-        int m = _mo0;
-        int y = _yr0;
-        while (m <= 12 && d > dom[m]) { d -= dom[m]; ++m; }
-        while (m > 12) { m -= 12; ++y; }
-
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d",
-                      y, m, d, hh, mm);
-        return buf;
+        return WildfireDatetime::elapsed_to_datetime(
+            _yr0, _mo0, _dy0, _hr0, elapsed_s);
     };
 
     // ---------------- Time stepping ------------------------

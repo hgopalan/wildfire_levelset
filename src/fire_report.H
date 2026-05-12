@@ -25,6 +25,7 @@
 #define FIRE_REPORT_H
 
 #include "parse_inputs.H"
+#include "sim_datetime.H"
 
 #include <AMReX.H>
 #include <AMReX_ParallelDescriptor.H>
@@ -269,28 +270,16 @@ inline void write_fire_report_html(const InputParameters& inputs,
         const double start_h = (inputs.solar_radiation.enable == 1)
                                ? static_cast<double>(inputs.solar_radiation.sim_start_hour)
                                : 0.0;
-        char dt_buf[32];
-        std::snprintf(dt_buf, sizeof(dt_buf), "%04d-%02d-%02d %04.1f h",
-                      inputs.sim_start_year, inputs.sim_start_month,
-                      inputs.sim_start_day, start_h);
-        html << " | Start: " << dt_buf;
-        // Compute and show end datetime
-        double total_h = start_h + final_time_s / 3600.0;
-        int extra_days = static_cast<int>(std::floor(total_h / 24.0));
-        double frac_h  = total_h - extra_days * 24.0;
-        int hh = static_cast<int>(frac_h);
-        int mm = static_cast<int>((frac_h - hh) * 60.0 + 0.5);
-        if (mm == 60) { mm = 0; ++hh; }
-        if (hh == 24) { hh = 0; ++extra_days; }
-        static const int dom[13] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
-        int d = inputs.sim_start_day + extra_days, mo = inputs.sim_start_month;
-        int y = inputs.sim_start_year;
-        while (mo <= 12 && d > dom[mo]) { d -= dom[mo]; ++mo; }
-        while (mo > 12) { mo -= 12; ++y; }
-        char et_buf[32];
-        std::snprintf(et_buf, sizeof(et_buf), "%04d-%02d-%02d %02d:%02d",
-                      y, mo, d, hh, mm);
-        html << " | End: " << et_buf;
+        // Format start datetime
+        const std::string start_str = WildfireDatetime::elapsed_to_datetime(
+            inputs.sim_start_year, inputs.sim_start_month,
+            inputs.sim_start_day, start_h, 0.0);
+        // Format end datetime
+        const std::string end_str = WildfireDatetime::elapsed_to_datetime(
+            inputs.sim_start_year, inputs.sim_start_month,
+            inputs.sim_start_day, start_h, final_time_s);
+        html << " | Start: " << start_str;
+        html << " | End: "   << end_str;
     }
     html << R"(</p>
 </header>
