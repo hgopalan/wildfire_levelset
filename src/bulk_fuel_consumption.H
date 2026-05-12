@@ -144,7 +144,7 @@ amrex::Real compute_per_class_fuel_consumption_frac(
     amrex::Real w_d100,
     amrex::Real w_lh,   amrex::Real sigma_lh,
     amrex::Real w_lw,   amrex::Real sigma_lw,
-    amrex::Real w0,     amrex::Real sigma,
+    amrex::Real /*w0*/,  amrex::Real sigma,
     amrex::Real rho_p)
 {
     using namespace amrex;

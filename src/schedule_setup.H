@@ -44,8 +44,8 @@ inline ScheduleData setup_schedules(
     MultiFab& vel,
     MultiFab& phi,
     const Geometry& geom,
-    const BoxArray& ba,
-    const DistributionMapping& dm,
+    const BoxArray& /*ba*/,
+    const DistributionMapping& /*dm*/,
     bool use_indicator)
 {
     ScheduleData sd;

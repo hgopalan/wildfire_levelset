@@ -69,12 +69,8 @@ int main(int argc, char* argv[])
     MultiFab& ecology_mf            = f.ecology_mf;
     MultiFab& emissions_mf          = f.emissions_mf;
     MultiFab& arrival_time_mf       = f.arrival_time_mf;
-    MultiFab& burnout_time_mf       = f.burnout_time_mf;
     MultiFab& residual_fuel_mf      = f.residual_fuel_mf;
-    MultiFab& heat_per_unit_area_mf = f.heat_per_unit_area_mf;
     MultiFab& heat_flux_mf          = f.heat_flux_mf;
-    MultiFab& reaction_intensity_mf = f.reaction_intensity_mf;
-    MultiFab& vorticity_mf          = f.vorticity_mf;
     MultiFab& ti_full_mf            = f.ti_full_mf;
     MultiFab& ci_full_mf            = f.ci_full_mf;
     MultiFab& weise_data            = f.weise_data;
@@ -194,10 +190,6 @@ int main(int argc, char* argv[])
     Gpu::DeviceVector<RothermelComputed>& d_fuel_table   = ftd.d_fuel_table;
     const RothermelComputed*&             d_fuel_table_ptr= ftd.d_fuel_table_ptr;
     int&                                  fuel_table_size = ftd.fuel_table_size;
-    Gpu::DeviceVector<FuelResidenceTime>& d_tau_table    = ftd.d_tau_table;
-    const FuelResidenceTime*&             d_tau_table_ptr = ftd.d_tau_table_ptr;
-    int&                                  tau_table_size  = ftd.tau_table_size;
-    Gpu::DeviceVector<BalbiComputed>&     d_balbi_table   = ftd.d_balbi_table;
     const BalbiComputed*&                 d_balbi_table_ptr=ftd.d_balbi_table_ptr;
     int&                                  balbi_table_size= ftd.balbi_table_size;
     BalbiComputed&                        bc_global_default=ftd.bc_global_default;

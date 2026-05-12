@@ -674,7 +674,7 @@ inline void compute_albini_spotting(
                     Real f_res = Real(1.0);
                     for (MFIter mfi(rf_h); mfi.isValid(); ++mfi) {
                         const Box& bx = mfi.validbox();
-                        if (bx.contains(IntVect(sp.ic, sp.jc, 0))) {
+                        if (bx.contains(IntVect(sp.ic, sp.jc))) {
                             f_res = rf_h.array(mfi)(sp.ic, sp.jc, 0);
                             break;
                         }
