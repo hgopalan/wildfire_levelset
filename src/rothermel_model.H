@@ -336,8 +336,12 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     // -----------------------------------------------------------------------
     // Andrews (2018) wind adjustments
     // -----------------------------------------------------------------------
-    // Wind Adjustment Factor: converts 20-ft open wind to midflame wind
-    rc.waf = compute_waf_unsheltered(rp.delta);
+    // Wind Adjustment Factor: use the formula selected by waf_formula
+    if (rp.waf_formula == "behaviorplus") {
+        rc.waf = compute_waf_behaviorplus(rp.delta);
+    } else {
+        rc.waf = compute_waf_unsheltered(rp.delta);
+    }
     // Maximum effective wind speed: prevents unrealistically large phi_w
     rc.U_max_ftmin = compute_max_ews_ftmin(I_R, rc.C, rc.B, rc.beta_ratio_E);
 

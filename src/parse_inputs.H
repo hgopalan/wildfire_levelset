@@ -43,6 +43,16 @@ struct RothermelParams {
     // --- Andrews (2018) wind adjustments ---
     int use_waf;              // 1: apply Wind Adjustment Factor (converts 20-ft→midflame wind)  default: 0
     int use_wind_limit;       // 1: apply maximum effective wind speed (MEWS) limit              default: 0
+    // WAF formula selection (only relevant when use_waf = 1):
+    //   "andrews"      (default) – logarithmic Albini & Baughman (1979) formula for open fuels;
+    //                              FARSITE sheltered formula for closed-canopy fuels.
+    //   "behaviorplus"           – BehavePlus linear formula (WAF = 0.36 + 0.004 × h_in) for
+    //                              open/shrub fuels; exponential canopy attenuation for forest fuels.
+    std::string waf_formula;  // WAF formula: "andrews" (default) or "behaviorplus"
+    // Canopy attenuation coefficient for the BehavePlus exponential canopy WAF.
+    // Larger values produce stronger wind sheltering under a closed canopy.
+    // Only used when waf_formula = "behaviorplus" and canopy data are available.
+    amrex::Real waf_canopy_alpha; // canopy attenuation coefficient α_c (default: 1.5)
     // --- Live herbaceous fuel curing transfer ---
     // When M_lh < herb_curing_threshold, a fraction of the live herbaceous
     // load is treated as 1-hr dead fuel (FARSITE curing model).

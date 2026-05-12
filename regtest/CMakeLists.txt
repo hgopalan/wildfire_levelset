@@ -179,6 +179,8 @@ endif()
 add_regression_test(time_dependent_wind      wind/time_dependent_wind)
 add_regression_test(turb_wind                wind/turb_wind)
 add_regression_test(wind_dir_schedule        wind/wind_dir_schedule)
+add_regression_test(waf_andrews              wind/waf_andrews)
+add_regression_test(waf_behaviorplus         wind/waf_behaviorplus)
 
 # ===========================================================================
 # diagnostics/ – fire ecology, emissions, Scott-Reinhardt TI/CI
@@ -250,7 +252,8 @@ message(STATUS "                    precip_wetting, spatial_moisture_output")
 message(STATUS "  fuel/           : fuel_adj_file")
 message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
 message(STATUS "                    polygon_ignition, polyline_ignition")
-message(STATUS "  wind/           : time_dependent_wind, turb_wind, wind_dir_schedule")
+message(STATUS "  wind/           : time_dependent_wind, turb_wind, wind_dir_schedule,")
+message(STATUS "                    waf_andrews, waf_behaviorplus")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci")
 message(STATUS "  misc/           : sphere_2d, eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, timing_benchmark,")

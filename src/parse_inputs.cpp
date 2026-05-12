@@ -152,6 +152,13 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
     p.rothermel.use_waf         = 0;    pp.query("rothermel.use_waf",         p.rothermel.use_waf);
     p.rothermel.use_wind_limit  = 0;    pp.query("rothermel.use_wind_limit",  p.rothermel.use_wind_limit);
+    p.rothermel.waf_formula     = "andrews";
+    pp.query("rothermel.waf_formula", p.rothermel.waf_formula);
+    if (p.rothermel.waf_formula != "andrews" && p.rothermel.waf_formula != "behaviorplus") {
+        amrex::Abort("rothermel.waf_formula must be 'andrews' or 'behaviorplus'");
+    }
+    p.rothermel.waf_canopy_alpha = 1.5;
+    pp.query("rothermel.waf_canopy_alpha", p.rothermel.waf_canopy_alpha);
     p.rothermel.herb_curing_threshold = 0.0;   // 0.0 = disabled
     pp.query("rothermel.herb_curing_threshold", p.rothermel.herb_curing_threshold);
     if (p.rothermel.herb_curing_threshold > 0.0) {
@@ -459,8 +466,14 @@ void parse_inputs(InputParameters& p)
     // Print Andrews (2018) wind adjustment settings
     if (p.rothermel.use_waf == 1 || p.rothermel.use_wind_limit == 1) {
         Print() << "Andrews (2018) wind adjustments enabled:";
-        if (p.rothermel.use_waf == 1)
-            Print() << " WAF (20-ft→midflame)";
+        if (p.rothermel.use_waf == 1) {
+            if (p.rothermel.waf_formula == "behaviorplus") {
+                Print() << " WAF (BehavePlus linear: 0.36+0.004*h_in";
+                Print() << "; canopy alpha=" << p.rothermel.waf_canopy_alpha << ")";
+            } else {
+                Print() << " WAF (Andrews logarithmic, 20-ft→midflame)";
+            }
+        }
         if (p.rothermel.use_wind_limit == 1)
             Print() << " MEWS-limit";
         Print() << "\n";
