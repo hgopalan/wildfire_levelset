@@ -272,7 +272,8 @@ def compute_rothermel(fm: dict,
     A_dead = A_d1 + A_d10 + A_d100
     A_live = A_lh + A_lw
 
-    S_T = fm["S_T"];  M_x = fm["M_x"]
+    S_T = fm["S_T"]
+    M_x = fm["M_x"]
 
     # Dead moisture damping (Eq. 29)
     rm_dead    = 0.0
