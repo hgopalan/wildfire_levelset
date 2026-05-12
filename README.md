@@ -73,6 +73,36 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **MTT propagation** — Minimum Travel Time Dijkstra fast-marching
 - **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
 
+## Ensemble / FSim-Style Probabilistic Simulation
+
+`tools/ensemble_burn_probability.py` implements an FSim-style Monte Carlo
+driver.  Beyond the original wind-speed / direction / moisture perturbations it
+now also supports:
+
+| Feature | Flag | Description |
+|---|---|---|
+| **Probabilistic ignition locations** | `--ignition-prob-csv` | Weighted random draw of ignition centre from a GIS raster (CSV with `x_m`, `y_m`, `weight`). |
+| **Containment probability** | `--containment-prob P` `--suppression-file F` | Bernoulli draw per run: enables/disables suppression schedule with probability P. |
+| **Crown fire probability map** | `--crown-fire-prob` `--crown-fire-out F` | Accumulates P(crown fire) per cell from the `crown_fraction` plotfile field. |
+| **Burn probability map** | `--out` | P_burn per cell (existing). |
+| **Flame-length exceedance** | `--fl-thresholds` | P(FL > M) per cell for each threshold (existing). |
+| **Area exceedance CCDF** | `--area-exceedance` | P(burned area ≥ A) curve across runs (existing). |
+
+Quick example combining all new features:
+```bash
+python3 tools/ensemble_burn_probability.py \
+    --exe ./wildfire_levelset \
+    --inputs my_scenario/inputs.i \
+    --n-runs 200 \
+    --ignition-prob-csv ignition_risk.csv \
+    --containment-prob 0.35 \
+    --suppression-file suppression_lines.csv \
+    --crown-fire-prob \
+    --area-exceedance \
+    --fl-thresholds 1.0 2.0 4.0 \
+    --seed 42
+```
+
 ## Regression Tests
 
 Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N coordinates
@@ -84,7 +114,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
 | `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)* |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)* |
-| `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, **spatial_moisture_output** *(new)* |
+| `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |
 | `ignition/` | barrier_polygons, fire_perimeter_output, polygon_ignition, polyline_ignition |
 | `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
@@ -107,6 +137,14 @@ cd build && ctest -L regtest --output-on-failure
 ## Tools
 
 Python utilities in `tools/` for terrain download, weather file parsing, GIS export, and ensemble analysis.
+
+Key ensemble tools:
+- `ensemble_burn_probability.py` – FSim-style Monte Carlo driver (burn probability, crown fire probability, ignition sampling, containment probability, area exceedance, flame-length exceedance)
+- `plot_burn_probability.py` – Visualise burn probability maps (PNG/GeoTIFF)
+- `values_at_risk.py` – FSPro-style values-at-risk overlay on burn probability maps
+- `fire_size_summary.py` – Fire area / perimeter / emissions statistics vs. time
+- `ignition_probability_table.py` – Anderson (1970) / Rothermel (1983) P_ignition worksheet
+
 See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html).
 
 ## References
