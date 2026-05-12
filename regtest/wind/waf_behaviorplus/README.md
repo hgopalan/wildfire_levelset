@@ -42,7 +42,7 @@ default 1.5).  This test exercises the open-fuel formula only (no landscape file
 | Formula | WAF | Midflame wind (5 m/s input) |
 |---------|-----|-----------------------------|
 | Andrews logarithmic | 0.36 | 1.80 m/s |
-| BehavePlus linear | 0.65 | 3.24 m/s |
+| BehavePlus linear | 0.648 | 3.24 m/s |
 
 The BehavePlus formula gives a higher midflame wind for deep fuel beds, producing
 a faster spread rate than the Andrews formula at the same ambient wind speed.
