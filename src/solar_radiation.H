@@ -125,7 +125,6 @@ inline SolarPosition compute_solar_position(
     using std::fmod; using std::sqrt;
 
     constexpr amrex::Real DEG2RAD = WildfireConst::PI / amrex::Real(180.0);
-    constexpr amrex::Real RAD2DEG = amrex::Real(180.0) / WildfireConst::PI;
 
     // ---- Day of year ----
     // Follows the formula of Spencer (1971) / ASHRAE via days in each month.

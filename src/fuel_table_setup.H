@@ -41,7 +41,7 @@ struct FuelTableData {
 // Build all lookup tables and pre-computed coefficients.
 // inputs may be modified (fuel adjustment applied to global params when no LCP).
 inline FuelTableData setup_fuel_tables(InputParameters& inputs,
-                                       const MultiFab& fuel_model_mf)
+                                       const MultiFab& /*fuel_model_mf*/)
 {
     FuelTableData ftd;
 

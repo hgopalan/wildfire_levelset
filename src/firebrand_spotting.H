@@ -451,16 +451,15 @@ inline void generate_firebrand_spots(
             // Find the landing cell indices
             int li = static_cast<int>(std::floor((spot_x[idx] - prob_lo[0]) / gdx[0]));
             int lj = static_cast<int>(std::floor((spot_y[idx] - prob_lo[1]) / gdx[1]));
-            int lk = 0;
 
             // Look up residual fuel at the landing cell (only on IO processor for serial code)
             Real f_res = Real(1.0);
             if (ParallelDescriptor::IOProcessor()) {
                 for (MFIter mfi(*residual_fuel_mf); mfi.isValid(); ++mfi) {
                     const Box& bx = mfi.validbox();
-                    if (bx.contains(IntVect(li, lj, lk))) {
+                    if (bx.contains(IntVect(li, lj))) {
                         auto const rf = residual_fuel_mf->array(mfi);
-                        f_res = rf(li, lj, lk);
+                        f_res = rf(li, lj, 0);
                         break;
                     }
                 }

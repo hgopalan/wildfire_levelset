@@ -67,7 +67,7 @@ inline std::string elapsed_to_datetime(int year, int month, int day,
         if (m > 12) { m = 1; ++y; }
     }
 
-    char buf[32];
+    char buf[64];
     std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d",
                   y, m, d, hh, mm);
     return buf;
