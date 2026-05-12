@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 """
-ensemble_burn_probability.py – FSPro-style ensemble burn probability driver
+ensemble_burn_probability.py – FSim-style ensemble burn probability driver
 for wildfire_levelset.
 
-Runs the solver N times with perturbed wind speed, wind direction, and dead
-fuel moisture, then accumulates per-cell burn counts from the final-step
-``phi_negative_NNNN.dat`` output files and writes a probability map.
+Runs the solver N times with perturbed wind speed, wind direction, dead-fuel
+moisture, stochastic ignition locations, and probabilistic suppression
+activation, then accumulates per-cell burn and crown-fire counts from each
+run's output and writes probability maps.
 
 Workflow
 --------
 1. Read a template ``inputs.i`` file.
 2. Generate N parameter samples (Latin hypercube by default, or random).
+   Samples cover: wind speed factor, wind direction offset, moisture offset,
+   ignition location (when ``--ignition-prob-csv`` is supplied), and a
+   Bernoulli suppression draw (when ``--containment-prob`` is supplied).
 3. For each sample:
    a. Create a scratch run directory.
    b. Write a modified ``inputs.i`` with the perturbed parameters.
+      – Ignition location: ``center_x`` / ``center_y`` are overridden with the
+        sampled location drawn from the ignition-probability raster.
+      – Suppression: ``suppression_file`` is set (or blanked) based on a
+        Bernoulli draw with probability ``--containment-prob``.
    c. Run the solver executable (serial or MPI).
    d. Read the final ``phi_negative_NNNN.dat`` (all phi < 0 cell centres).
+   e. Optionally read ``crown_fraction`` from the final AMReX plotfile.
 4. Aggregate per-cell burn counts on a regular grid.
 5. Write ``burn_probability.csv`` (X, Y, P_burn columns) and optional GeoJSON.
+6. Optionally write ``crown_fire_probability.csv`` (X, Y, P_crown), the
+   fraction of runs in which each cell showed active crown fire (crown_fraction
+   > 0).
 
 Additional outputs (Cap 7 – Exceedance probability curves)
 -----------------------------------------------------------
@@ -35,15 +47,50 @@ Additional outputs (Cap 7 – Exceedance probability curves)
 
 Perturbation model
 ------------------
-Three independent parameters are perturbed:
-  • wind speed factor  (multiplicative, lognormal)
-  • wind direction     (additive offset, normal)
-  • 1-hr dead fuel moisture offset (additive, normal)
+Five independent random dimensions are drawn per ensemble member:
 
-The distributions are parameterised by their mean (= 1.0 for speed factor,
-0.0 for direction and moisture offset) and a standard deviation.  The samples
-are generated using a Latin hypercube or, if ``scipy`` is unavailable, simple
-uniform random sampling.
+  • wind speed factor  (multiplicative, lognormal; sigma via ``--wind-speed-sigma``)
+  • wind direction     (additive offset [deg], normal; sigma via ``--wind-dir-sigma``)
+  • 1-hr dead fuel moisture offset (additive [fraction], normal; sigma via
+    ``--moisture-sigma``)
+  • ignition location  (discrete weighted draw from ``--ignition-prob-csv``; skipped
+    when the CSV is not provided)
+  • containment active (Bernoulli with p = ``--containment-prob``; skipped when 0)
+
+The first three are drawn using a Latin-hypercube scheme (or plain random
+when ``--sampler random`` is specified).  The ignition location is sampled
+independently from the probability raster.  The Bernoulli suppression draw is
+independent of the LHS scheme.
+
+Ignition probability raster (``--ignition-prob-csv``)
+------------------------------------------------------
+A CSV file with a header row containing at least three columns named
+``x_m``, ``y_m``, and ``weight`` (case-insensitive).  Each row specifies
+a candidate ignition point in simulation coordinates [m] and its relative
+probability weight.  For each ensemble member, one point is drawn by weighted
+random sampling without replacement (i.e. a multinomial draw), and the
+``center_x`` / ``center_y`` parameters in the perturbed ``inputs.i`` are
+replaced with that point.  The ``sphere_radius`` (ignition patch size) is
+left unchanged.
+
+Containment probability (``--containment-prob``)
+-------------------------------------------------
+Each ensemble member independently draws a Bernoulli sample.  When the draw
+is successful (probability p), the ``suppression_file`` parameter in the
+perturbed ``inputs.i`` is set to the path given by ``--suppression-file``
+(which must be a valid suppression-schedule CSV as described in
+``src/suppression_resources.H``).  When the draw fails, ``suppression_file``
+is blanked (suppression disabled).  This mirrors FSim's probabilistic
+containment module, where each scenario independently has a chance of being
+contained.
+
+Crown fire probability (``--crown-fire-prob``)
+-----------------------------------------------
+When this flag is set, the ``crown_fraction`` scalar field is read from the
+final AMReX plotfile of each run (requires ``plot_int > 0`` in ``inputs.i``).
+Cells where crown_fraction > 0 are counted as "crown fire" for that run, and
+the fraction of runs showing crown fire at each cell is written to
+``crown_fire_probability.csv`` (columns: X, Y, P_crown).
 
 MPI launch
 ----------
@@ -66,33 +113,47 @@ Usage examples
       --wind-dir-sigma 15.0 \\
       --moisture-sigma 0.02
 
+  # Probabilistic ignition locations from a raster
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 100 \\
+      --ignition-prob-csv ignition_risk.csv
+
+  # Containment probability: each run has 30% chance of suppression being active
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 100 \\
+      --containment-prob 0.30 \\
+      --suppression-file suppression_lines.csv
+
+  # Crown fire probability output (requires plot_int > 0)
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 50 \\
+      --crown-fire-prob \\
+      --crown-fire-out crown_fire_probability.csv
+
+  # Full FSim workflow combining all three new features
+  python3 tools/ensemble_burn_probability.py \\
+      --exe ./wildfire_levelset \\
+      --inputs inputs.i \\
+      --n-runs 200 \\
+      --ignition-prob-csv ignition_risk.csv \\
+      --containment-prob 0.40 \\
+      --suppression-file suppression_lines.csv \\
+      --crown-fire-prob \\
+      --area-exceedance \\
+      --fl-thresholds 1.0 2.0 4.0
+
   # MPI: each ensemble member uses 4 MPI ranks
   python3 tools/ensemble_burn_probability.py \\
       --exe ./wildfire_levelset \\
       --inputs inputs.i \\
       --n-runs 50 \\
       --mpi-ranks 4
-
-  # MPI with mpiexec launcher and 8 ranks per member, 2 members in parallel
-  python3 tools/ensemble_burn_probability.py \\
-      --exe ./wildfire_levelset \\
-      --inputs inputs.i \\
-      --n-runs 100 \\
-      --mpirun mpiexec \\
-      --mpi-ranks 8 \\
-      --jobs 2
-
-  # More runs, georeferenced probability map
-  python3 tools/ensemble_burn_probability.py \\
-      --exe ./wildfire_levelset \\
-      --inputs inputs.i \\
-      --n-runs 200 \\
-      --wind-speed-sigma 0.30 \\
-      --wind-dir-sigma 20.0 \\
-      --moisture-sigma 0.03 \\
-      --resolution 30 \\
-      --out burn_probability.csv \\
-      --geojson burn_probability.geojson
 
   # Area exceedance CCDF (Cap 7)
   python3 tools/ensemble_burn_probability.py \\
@@ -118,9 +179,21 @@ Options
   --mpirun CMD            MPI launcher command (default: mpirun)
   --mpi-args ARGS         Extra space-separated arguments inserted after the
                           launcher but before "-n N" (default: "")
-  --wind-speed-sigma S    Std dev of multiplicative wind-speed factor (default: 0.20)
-  --wind-dir-sigma D      Std dev of additive wind-direction offset [deg] (default: 15.0)
-  --moisture-sigma M      Std dev of additive M_d1 offset [fraction] (default: 0.02)
+  --wind-speed-sigma S    Std dev of lognormal wind-speed multiplier (default: 0.20)
+  --wind-dir-sigma D      Std dev of wind-direction offset [deg] (default: 15.0)
+  --moisture-sigma M      Std dev of M_d1 offset [fraction] (default: 0.02)
+  --ignition-prob-csv F   CSV raster of ignition probability weights
+                          (columns: x_m, y_m, weight).  When supplied, each
+                          ensemble member draws a random ignition location
+                          proportional to the weight column.
+  --containment-prob P    Probability [0–1] that suppression is active in each
+                          run.  Requires --suppression-file. (default: 0)
+  --suppression-file F    Suppression schedule CSV (suppression_resources.H
+                          format).  Activated per run via --containment-prob.
+  --crown-fire-prob       Accumulate P(crown fire) per cell from crown_fraction
+                          field in plotfiles (requires plot_int > 0).
+  --crown-fire-out F      Output CSV for crown fire probability map
+                          (default: crown_fire_probability.csv)
   --resolution R          Grid spacing for probability accumulation [m] (default: auto)
   --out FILE              Output burn probability CSV (default: burn_probability.csv)
   --geojson FILE          Optional GeoJSON probability raster output
@@ -140,6 +213,8 @@ References
     Environmental Modelling & Software, 26(10), 1352-1359.
   Iman, R.L. & Conover, W.J. (1980). Small sample sensitivity analysis
     techniques for computer models. Communications in Statistics, A9(17).
+  Calkin, D.E., et al. (2011). A real-time risk assessment tool supporting
+    wildland fire decision-making. J. For. 109(5):274-280.
 """
 
 from __future__ import annotations
@@ -213,12 +288,65 @@ def generate_samples(
     moisture_sigma: float,
     sampler: str,
     rng: random.Random,
-) -> List[Dict[str, float]]:
-    """Generate n parameter samples as a list of dicts."""
+    ignition_points: Optional[List[Tuple[float, float]]] = None,
+    ignition_weights: Optional[List[float]] = None,
+    containment_prob: float = 0.0,
+) -> List[Dict]:
+    """Generate n parameter samples as a list of dicts.
+
+    Parameters
+    ----------
+    n : int
+        Number of ensemble members.
+    speed_sigma : float
+        Standard deviation of the lognormal wind-speed multiplier.
+    dir_sigma : float
+        Standard deviation of the additive wind-direction offset [deg].
+    moisture_sigma : float
+        Standard deviation of the additive 1-hr dead fuel moisture offset
+        [fraction of oven-dry weight].
+    sampler : str
+        ``"lhs"`` for Latin-hypercube or ``"random"`` for plain Gaussian draws.
+    rng : random.Random
+        Seeded random-number generator instance (ensures reproducibility).
+    ignition_points : list of (x_m, y_m) tuples, optional
+        Candidate ignition locations in simulation coordinates [m].  When
+        provided, each sample draws one location proportional to
+        *ignition_weights*.
+    ignition_weights : list of float, optional
+        Non-negative probability weights parallel to *ignition_points*.
+        Normalised internally; uniform weighting is used if ``None``.
+    containment_prob : float, optional
+        Bernoulli success probability for suppression activation in [0, 1].
+        Each sample independently draws a boolean ``containment_active``
+        flag.  Default 0 (suppression always off).
+
+    Returns
+    -------
+    list[dict]
+        One dict per ensemble member with keys:
+        ``speed_factor``, ``dir_offset``, ``moist_offset``,
+        ``ignition_x`` (float or None), ``ignition_y`` (float or None),
+        ``containment_active`` (bool).
+    """
     if sampler == "lhs":
         raw = lhs_normal(n, 3, rng)
     else:
         raw = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(n)]
+
+    # Build normalised cumulative weight table for ignition sampling
+    use_ignition = (ignition_points is not None and len(ignition_points) > 0)
+    cum_weights: List[float] = []
+    if use_ignition:
+        wts = ignition_weights if ignition_weights else [1.0] * len(ignition_points)
+        total = sum(wts)
+        if total <= 0.0:
+            wts = [1.0] * len(ignition_points)
+            total = float(len(ignition_points))
+        cum = 0.0
+        for w in wts:
+            cum += w / total
+            cum_weights.append(cum)
 
     samples = []
     for row in raw:
@@ -226,12 +354,116 @@ def generate_samples(
         speed_factor = math.exp(speed_sigma * row[0])
         dir_offset   = dir_sigma * row[1]          # [deg]
         moist_offset = moisture_sigma * row[2]      # [fraction]
+
+        # Ignition location (weighted random selection from raster)
+        ign_x: Optional[float] = None
+        ign_y: Optional[float] = None
+        if use_ignition:
+            u = rng.random()
+            idx = 0
+            for k, cw in enumerate(cum_weights):
+                if u <= cw:
+                    idx = k
+                    break
+            ign_x, ign_y = ignition_points[idx]
+
+        # Bernoulli suppression draw
+        containment_active = (containment_prob > 0.0) and (rng.random() < containment_prob)
+
         samples.append({
-            "speed_factor": speed_factor,
-            "dir_offset": dir_offset,
-            "moist_offset": moist_offset,
+            "speed_factor":      speed_factor,
+            "dir_offset":        dir_offset,
+            "moist_offset":      moist_offset,
+            "ignition_x":        ign_x,
+            "ignition_y":        ign_y,
+            "containment_active": containment_active,
         })
     return samples
+
+
+# ---------------------------------------------------------------------------
+# Ignition probability raster loader
+# ---------------------------------------------------------------------------
+
+def load_ignition_prob_csv(
+    csv_path: str,
+) -> Tuple[List[Tuple[float, float]], List[float]]:
+    """Load an ignition probability raster from a CSV file.
+
+    The CSV must have a header row.  Column names are matched
+    case-insensitively; the following aliases are accepted:
+
+    * position columns: ``x_m`` / ``x`` / ``easting``,
+      ``y_m`` / ``y`` / ``northing``
+    * weight column: ``weight`` / ``prob`` / ``p`` / ``probability``
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the ignition probability CSV file.
+
+    Returns
+    -------
+    points : list of (x_m, y_m) tuples
+        Candidate ignition centre coordinates in simulation units [m].
+    weights : list of float
+        Non-negative weight (relative probability) for each point.
+        Rows with weight ≤ 0 are silently dropped.
+
+    Raises
+    ------
+    SystemExit
+        When the file cannot be found, parsed, or has no valid rows.
+    """
+    import csv as _csv
+
+    _X_NAMES     = {"x_m", "x", "easting"}
+    _Y_NAMES     = {"y_m", "y", "northing"}
+    _W_NAMES     = {"weight", "prob", "p", "probability"}
+
+    if not os.path.isfile(csv_path):
+        print(f"ERROR: ignition-prob-csv not found: {csv_path}", file=sys.stderr)
+        sys.exit(1)
+
+    points: List[Tuple[float, float]] = []
+    weights: List[float] = []
+
+    with open(csv_path, newline="") as fh:
+        reader = _csv.DictReader(fh)
+        if reader.fieldnames is None:
+            print("ERROR: ignition-prob-csv has no header row.", file=sys.stderr)
+            sys.exit(1)
+
+        # Locate columns by alias matching
+        header_lower = {col.strip().lower(): col for col in reader.fieldnames}
+        x_col = next((header_lower[n] for n in _X_NAMES if n in header_lower), None)
+        y_col = next((header_lower[n] for n in _Y_NAMES if n in header_lower), None)
+        w_col = next((header_lower[n] for n in _W_NAMES if n in header_lower), None)
+
+        if x_col is None or y_col is None:
+            print("ERROR: ignition-prob-csv must have x_m/x/easting and "
+                  "y_m/y/northing columns.", file=sys.stderr)
+            sys.exit(1)
+
+        for row in reader:
+            try:
+                x = float(row[x_col])
+                y = float(row[y_col])
+                w = float(row[w_col]) if w_col else 1.0
+            except (ValueError, KeyError):
+                continue
+            if w <= 0.0:
+                continue
+            points.append((x, y))
+            weights.append(w)
+
+    if not points:
+        print("ERROR: ignition-prob-csv has no valid (positive-weight) rows.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Loaded {len(points)} ignition candidate points from '{csv_path}'")
+    return points, weights
 
 
 # ---------------------------------------------------------------------------
@@ -268,9 +500,34 @@ def _get_float(lines: List[str], key: str) -> Optional[float]:
 
 def make_perturbed_inputs(
     template_lines: List[str],
-    sample: Dict[str, float],
+    sample: Dict,
+    suppression_file: str = "",
 ) -> List[str]:
-    """Return a modified copy of template_lines with perturbed parameters."""
+    """Return a modified copy of template_lines with perturbed parameters.
+
+    Applies wind speed perturbation, wind direction offset, fuel moisture
+    offset, ignition location override, and suppression file activation
+    according to the values in *sample*.
+
+    Parameters
+    ----------
+    template_lines : list[str]
+        Lines of the template ``inputs.i`` file.
+    sample : dict
+        Parameter sample dict as returned by :func:`generate_samples`.
+        Expected keys: ``speed_factor``, ``dir_offset``, ``moist_offset``,
+        ``ignition_x`` (float or None), ``ignition_y`` (float or None),
+        ``containment_active`` (bool).
+    suppression_file : str, optional
+        Path to the suppression schedule CSV.  Written to ``suppression_file``
+        in the perturbed inputs when ``sample["containment_active"]`` is True
+        and *suppression_file* is non-empty.  Cleared (blanked) otherwise.
+
+    Returns
+    -------
+    list[str]
+        Modified lines ready to be written as a new ``inputs.i`` file.
+    """
     lines = list(template_lines)
 
     # Read current wind
@@ -292,6 +549,18 @@ def make_perturbed_inputs(
     m_d1 = (_get_float(lines, "rothermel.M_d1") or 0.08) + sample["moist_offset"]
     m_d1 = max(_MIN_MOISTURE, min(_MAX_MOISTURE, m_d1))
     lines = _set_param(lines, "rothermel.M_d1", f"{m_d1:.4f}")
+
+    # Override ignition location when the sample provides one (Step 2)
+    if sample.get("ignition_x") is not None:
+        lines = _set_param(lines, "center_x", f"{sample['ignition_x']:.2f}")
+        lines = _set_param(lines, "center_y", f"{sample['ignition_y']:.2f}")
+
+    # Enable or disable suppression based on Bernoulli draw (Step 3)
+    if suppression_file:
+        if sample.get("containment_active"):
+            lines = _set_param(lines, "suppression_file", suppression_file)
+        else:
+            lines = _set_param(lines, "suppression_file", '""')
 
     return lines
 
@@ -457,8 +726,110 @@ def _read_plotfile_field(run_dir: str, field: str) -> Dict[Tuple[float, float], 
 
 
 # ---------------------------------------------------------------------------
-# Grid accumulation
+# Crown fire accumulation (Step 4)
 # ---------------------------------------------------------------------------
+
+def accumulate_crown_fire(
+    all_cf_data: List[Optional[Dict[Tuple[float, float], float]]],
+    all_points: List[List[Tuple[float, float]]],
+    resolution: float,
+    crown_threshold: float = 0.0,
+) -> Tuple[Dict[Tuple[int, int], int], float, float]:
+    """Accumulate per-cell crown fire occurrence counts.
+
+    For each ensemble run that produced a ``crown_fraction`` plotfile field,
+    counts how many runs show active crown fire (crown_fraction >
+    *crown_threshold*) at each grid cell.
+
+    Parameters
+    ----------
+    all_cf_data : list of dicts or None
+        Per-run crown_fraction field dicts ``{(x, y): value}`` as returned by
+        :func:`_read_plotfile_field`, or ``None`` for runs that did not produce
+        a plotfile.
+    all_points : list of list of (x, y) tuples
+        Per-run lists of burned cell centres (used to establish the grid
+        origin).
+    resolution : float
+        Grid cell size [m] for snapping burned points.
+    crown_threshold : float, optional
+        Crown fraction value above which a cell is classified as active
+        crown fire.  Default 0 (any non-zero crown fraction counts).
+
+    Returns
+    -------
+    counts : dict mapping (ix, iy) → int
+        Number of runs with crown fire at each grid cell.
+    x_min : float
+        X-coordinate of the grid origin [m].
+    y_min : float
+        Y-coordinate of the grid origin [m].
+    """
+    xs = [p[0] for run in all_points for p in run]
+    ys = [p[1] for run in all_points for p in run]
+    if not xs:
+        return {}, 0.0, 0.0
+
+    x_min, y_min = min(xs), min(ys)
+    counts: Dict[Tuple[int, int], int] = {}
+
+    for run_pts, cf_dict in zip(all_points, all_cf_data):
+        if cf_dict is None:
+            continue
+        visited: set = set()
+        for x, y in run_pts:
+            ix = int((x - x_min) / resolution)
+            iy = int((y - y_min) / resolution)
+            key = (ix, iy)
+            if key in visited:
+                continue
+            visited.add(key)
+            cf_val = cf_dict.get((round(x, 2), round(y, 2)), 0.0)
+            if cf_val > crown_threshold:
+                counts[key] = counts.get(key, 0) + 1
+
+    return counts, x_min, y_min
+
+
+def write_crown_fire_probability_csv(
+    out_path: str,
+    counts: Dict[Tuple[int, int], int],
+    n_runs: int,
+    x_origin: float,
+    y_origin: float,
+    resolution: float,
+) -> None:
+    """Write crown fire probability CSV: X, Y, P_crown.
+
+    Each row gives the fraction of ensemble members in which a grid cell
+    showed active crown fire (crown_fraction > 0 in the plotfile).
+
+    Parameters
+    ----------
+    out_path : str
+        Destination CSV file path.
+    counts : dict
+        Per-cell crown fire occurrence counts from
+        :func:`accumulate_crown_fire`.
+    n_runs : int
+        Total number of successful ensemble runs (denominator).
+    x_origin : float
+        X-coordinate of the grid origin [m].
+    y_origin : float
+        Y-coordinate of the grid origin [m].
+    resolution : float
+        Grid cell size [m].
+    """
+    with open(out_path, "w") as fh:
+        fh.write("# Ensemble crown fire probability map\n")
+        fh.write(f"# n_runs = {n_runs}  resolution = {resolution} m\n")
+        fh.write("X,Y,P_crown\n")
+        for (ix, iy), cnt in sorted(counts.items()):
+            x = x_origin + (ix + 0.5) * resolution
+            y = y_origin + (iy + 0.5) * resolution
+            p = cnt / n_runs
+            fh.write(f"{x:.2f},{y:.2f},{p:.4f}\n")
+    print(f"Wrote crown fire probability CSV: {out_path}  ({len(counts)} cells)")
 
 def accumulate_on_grid(
     all_points: List[List[Tuple[float, float]]],
@@ -787,7 +1158,7 @@ def run_member(
     run_id: int,
     exe: str,
     template_lines: List[str],
-    sample: Dict[str, float],
+    sample: Dict,
     work_dir: str,
     keep: bool,
     mpi_ranks: int = 0,
@@ -795,10 +1166,17 @@ def run_member(
     mpi_extra_args: Optional[List[str]] = None,
     csv_files: Optional[List[str]] = None,
     read_flame_length: bool = False,
-) -> Optional[Tuple[List[Tuple[float, float]], Optional[Dict[Tuple[float, float], float]]]]:
+    read_crown_fire: bool = False,
+    suppression_file: str = "",
+) -> Optional[Tuple[
+    List[Tuple[float, float]],
+    Optional[Dict[Tuple[float, float], float]],
+    Optional[Dict[Tuple[float, float], float]],
+]]:
     """Execute one ensemble member.
 
-    Returns (burned_points, flame_length_dict) or None on failure.
+    Returns ``(burned_points, flame_length_dict, crown_fire_dict)`` or
+    ``None`` on failure.
 
     Parameters
     ----------
@@ -809,7 +1187,8 @@ def run_member(
     template_lines : list[str]
         Lines of the template inputs.i file.
     sample : dict
-        Perturbed parameter values for this member.
+        Perturbed parameter values for this member, as returned by
+        :func:`generate_samples`.
     work_dir : str
         Base directory for per-run scratch directories.
     keep : bool
@@ -827,6 +1206,14 @@ def run_member(
         If True, read the ``flame_length`` field from the final plotfile and
         return it as a dict {(x, y): fl_m}.  Requires plot_int > 0 in
         the template inputs file (default: False).
+    read_crown_fire : bool, optional
+        If True, read the ``crown_fraction`` field from the final plotfile and
+        return it as a dict {(x, y): crown_fraction}.  Requires plot_int > 0
+        in the template inputs file (default: False).
+    suppression_file : str, optional
+        Absolute or relative path to the suppression schedule CSV.  Passed to
+        :func:`make_perturbed_inputs` to enable/disable per-run suppression
+        according to the ``containment_active`` flag in *sample*.
     """
     if mpi_extra_args is None:
         mpi_extra_args = []
@@ -841,7 +1228,7 @@ def run_member(
     for csv_file in csv_files:
         shutil.copy2(csv_file, run_dir)
 
-    perturbed = make_perturbed_inputs(template_lines, sample)
+    perturbed = make_perturbed_inputs(template_lines, sample, suppression_file)
     inputs_path = os.path.join(run_dir, "inputs.i")
     with open(inputs_path, "w") as f:
         f.writelines(perturbed)
@@ -864,13 +1251,23 @@ def run_member(
         fl_dict: Optional[Dict[Tuple[float, float], float]] = None
         if read_flame_length:
             fl_dict = _read_plotfile_field(run_dir, "flame_length")
+        cf_dict: Optional[Dict[Tuple[float, float], float]] = None
+        if read_crown_fire:
+            cf_dict = _read_plotfile_field(run_dir, "crown_fraction")
         launch_info = (f"mpi×{mpi_ranks}" if mpi_ranks > 0 else "serial")
+        supp_info = (" [suppressed]" if sample.get("containment_active") else "")
+        ign_info = (
+            f"  ign=({sample['ignition_x']:.0f},{sample['ignition_y']:.0f})"
+            if sample.get("ignition_x") is not None else ""
+        )
         print(f"  Run {run_id:4d} [{launch_info}]: speed×{sample['speed_factor']:.2f}  "
-              f"dir+{sample['dir_offset']:.1f}°  M_d1+{sample['moist_offset']:.3f}  "
-              f"→ {len(pts)} burned cells"
-              + (f"  FL cells: {len(fl_dict)}" if fl_dict is not None else ""),
+              f"dir+{sample['dir_offset']:.1f}°  M_d1+{sample['moist_offset']:.3f}"
+              f"{ign_info}{supp_info}  → {len(pts)} burned cells"
+              + (f"  FL cells: {len(fl_dict)}" if fl_dict is not None else "")
+              + (f"  CF cells: {sum(1 for v in cf_dict.values() if v > 0)}"
+                 if cf_dict is not None else ""),
               flush=True)
-        return pts, fl_dict
+        return pts, fl_dict, cf_dict
     except subprocess.TimeoutExpired:
         print(f"  WARNING: run {run_id} timed out", flush=True)
         return None
@@ -892,7 +1289,7 @@ def run_member(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="FSPro-style ensemble burn probability driver for wildfire_levelset.",
+        description="FSim-style ensemble burn probability driver for wildfire_levelset.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--exe",              default="./wildfire_levelset",
@@ -916,6 +1313,28 @@ def main(argv=None):
                         help="Std dev of wind-direction offset [deg] (default: 15.0)")
     parser.add_argument("--moisture-sigma",   type=float, default=0.02,
                         help="Std dev of M_d1 offset [fraction] (default: 0.02)")
+    # ---- Step 2: ignition locations ----
+    parser.add_argument("--ignition-prob-csv", default=None, metavar="FILE",
+                        help="CSV raster of ignition probability weights "
+                             "(columns: x_m, y_m, weight).  Each ensemble member "
+                             "draws a random ignition location proportional to the "
+                             "weight column, replacing center_x/center_y.")
+    # ---- Step 3: containment ----
+    parser.add_argument("--containment-prob", type=float, default=0.0, metavar="P",
+                        help="Probability [0–1] that suppression is active in each "
+                             "run (Bernoulli draw per member).  Requires "
+                             "--suppression-file. (default: 0)")
+    parser.add_argument("--suppression-file", default="", metavar="FILE",
+                        help="Suppression schedule CSV (suppression_resources.H "
+                             "format).  Activated per-run via --containment-prob.")
+    # ---- Step 4: crown fire probability ----
+    parser.add_argument("--crown-fire-prob",  action="store_true",
+                        help="Accumulate P(crown fire) per cell from the "
+                             "crown_fraction plotfile field (requires plot_int > 0).")
+    parser.add_argument("--crown-fire-out",   default="crown_fire_probability.csv",
+                        metavar="FILE",
+                        help="Output CSV for crown fire probability map "
+                             "(default: crown_fire_probability.csv)")
     parser.add_argument("--resolution",       type=float, default=None,
                         help="Grid resolution for probability map [m] (default: auto)")
     parser.add_argument("--out",              default="burn_probability.csv",
@@ -960,6 +1379,7 @@ def main(argv=None):
 
     fl_thresholds: List[float] = sorted(args.fl_thresholds) if args.fl_thresholds else []
     do_fl = len(fl_thresholds) > 0
+    do_crown = args.crown_fire_prob
 
     # Validate
     if not os.path.isfile(args.inputs):
@@ -967,6 +1387,25 @@ def main(argv=None):
         sys.exit(1)
     if not os.path.isfile(args.exe):
         print(f"ERROR: solver executable not found: {args.exe}", file=sys.stderr)
+        sys.exit(1)
+
+    # Step 2: load ignition probability raster (optional)
+    ign_points: Optional[List[Tuple[float, float]]] = None
+    ign_weights: Optional[List[float]] = None
+    if args.ignition_prob_csv:
+        ign_points, ign_weights = load_ignition_prob_csv(args.ignition_prob_csv)
+
+    # Step 3: validate containment options
+    containment_prob = float(args.containment_prob)
+    suppression_file = args.suppression_file.strip()
+    if containment_prob > 0.0 and not suppression_file:
+        print("ERROR: --containment-prob requires --suppression-file.", file=sys.stderr)
+        sys.exit(1)
+    if suppression_file and not os.path.isfile(suppression_file):
+        print(f"ERROR: suppression file not found: {suppression_file}", file=sys.stderr)
+        sys.exit(1)
+    if containment_prob < 0.0 or containment_prob > 1.0:
+        print("ERROR: --containment-prob must be in [0, 1].", file=sys.stderr)
         sys.exit(1)
 
     # Validate and resolve MPI launcher when MPI is requested
@@ -992,6 +1431,13 @@ def main(argv=None):
         print(f"Flame length exceedance thresholds [m]: {fl_thresholds}")
     if args.area_exceedance:
         print(f"Area exceedance CCDF: enabled → {args.area_exceedance_out}")
+    if do_crown:
+        print(f"Crown fire probability map: enabled → {args.crown_fire_out}")
+    if ign_points is not None:
+        print(f"Probabilistic ignition: {len(ign_points)} candidate locations")
+    if containment_prob > 0.0:
+        print(f"Containment probability: {containment_prob:.2f}  "
+              f"suppression file: {suppression_file}")
 
     with open(args.inputs) as f:
         template_lines = f.readlines()
@@ -1006,6 +1452,9 @@ def main(argv=None):
         args.moisture_sigma,
         args.sampler,
         rng,
+        ignition_points=ign_points,
+        ignition_weights=ign_weights,
+        containment_prob=containment_prob,
     )
 
     work_dir = args.work_dir or tempfile.mkdtemp(prefix="ensemble_")
@@ -1019,6 +1468,7 @@ def main(argv=None):
 
     all_points: List[List[Tuple[float, float]]] = []
     all_fl_data: List[Optional[Dict[Tuple[float, float], float]]] = []
+    all_cf_data: List[Optional[Dict[Tuple[float, float], float]]] = []
     failed = 0
 
     if args.jobs > 1:
@@ -1026,26 +1476,30 @@ def main(argv=None):
             futures = {
                 pool.submit(run_member, i, args.exe, template_lines,
                             samples[i], work_dir, args.keep_runs,
-                            mpi_ranks, mpirun_cmd, mpi_extra, csv_files, do_fl): i
+                            mpi_ranks, mpirun_cmd, mpi_extra, csv_files,
+                            do_fl, do_crown, suppression_file): i
                 for i in range(args.n_runs)
             }
             for fut in as_completed(futures):
                 result = fut.result()
                 if result is not None:
-                    pts, fl_dict = result
+                    pts, fl_dict, cf_dict = result
                     all_points.append(pts)
                     all_fl_data.append(fl_dict)
+                    all_cf_data.append(cf_dict)
                 else:
                     failed += 1
     else:
         for i, sample in enumerate(samples):
             result = run_member(i, args.exe, template_lines, sample,
                                 work_dir, args.keep_runs,
-                                mpi_ranks, mpirun_cmd, mpi_extra, csv_files, do_fl)
+                                mpi_ranks, mpirun_cmd, mpi_extra, csv_files,
+                                do_fl, do_crown, suppression_file)
             if result is not None:
-                pts, fl_dict = result
+                pts, fl_dict, cf_dict = result
                 all_points.append(pts)
                 all_fl_data.append(fl_dict)
+                all_cf_data.append(cf_dict)
             else:
                 failed += 1
 
@@ -1097,6 +1551,22 @@ def main(argv=None):
             )
     elif do_fl:
         print("WARNING: --fl-thresholds requested but no flame_length data was read "
+              "(ensure plot_int > 0 in inputs.i).", file=sys.stderr)
+
+    # ---- Step 4: Crown fire probability map ----
+    if do_crown and any(cf is not None for cf in all_cf_data):
+        print("\nComputing crown fire probability map ...")
+        cf_counts, cf_x0, cf_y0 = accumulate_crown_fire(
+            all_cf_data, all_points, resolution
+        )
+        if cf_counts:
+            write_crown_fire_probability_csv(
+                args.crown_fire_out, cf_counts, n_success, cf_x0, cf_y0, resolution
+            )
+        else:
+            print("  No crown fire cells found across all ensemble members.")
+    elif do_crown:
+        print("WARNING: --crown-fire-prob requested but no crown_fraction data was read "
               "(ensure plot_int > 0 in inputs.i).", file=sys.stderr)
 
     # ---- Cap 7: Area exceedance CCDF ----
