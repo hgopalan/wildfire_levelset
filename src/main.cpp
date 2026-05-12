@@ -1152,7 +1152,8 @@ int main(int argc, char* argv[])
 	// --- Step 4: Merge to new perimeter
 	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
+	// Pass R_mf so the ellipse uses the ROS from the configured firespread model.
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, R_mf, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
 	// Update dt for next step using CFL condition (original FARSITE method).
 	dt = compute_dt(R_mf, geom, inputs.cfl);
 	
