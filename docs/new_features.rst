@@ -8,8 +8,86 @@ update.  All new C++ headers live in ``src/`` and are included automatically by 
    :depth: 2
    :local:
 
-Scott & Reinhardt (2001) Torching / Crowning Index Diagnostics
----------------------------------------------------------------
+WAF Formula Selection (Andrews vs. BehavePlus)
+-----------------------------------------------
+
+**Header**: ``src/andrews_model.H``
+
+The Wind Adjustment Factor (WAF) formula used when ``rothermel.use_waf = 1`` is now
+selectable via ``rothermel.waf_formula``.  Two fuel-model–aware formulas are provided:
+
+**"andrews"** (default) — logarithmic Albini & Baughman (1979)
+
+  *Open / shrub fuel beds* (unsheltered):
+
+  .. math::
+
+     \text{WAF} = \frac{1.83}{\ln\!\left(\dfrac{20 + 0.36\,h}{0.13\,h}\right)}
+
+  *Forest / closed-canopy fuel beds* (sheltered, FARSITE-style):
+
+  .. math::
+
+     \text{WAF}_\text{sheltered} = \frac{0.555}{\sqrt{f_c\,h_c}\,
+       \ln\!\left(\dfrac{20 + 0.36\,h_c}{0.13\,h_c}\right)}
+
+  The sheltered formula is applied automatically when canopy cover fraction
+  :math:`f_c \geq 0.5` and canopy height :math:`h_c >` fuel depth :math:`h`.
+
+**"behaviorplus"** — BehavePlus linear / exponential
+
+  *Open / shrub fuel beds* (unsheltered):
+
+  .. math::
+
+     \text{WAF} = 0.36 + 0.004\,h_\text{in}   \quad [h_\text{in} = 12 h_\text{ft}]
+
+  This linear approximation is used by BehavePlus for grass, shrub, and open
+  timber-litter fuel models.
+
+  *Forest / closed-canopy fuel beds* (sheltered):
+
+  .. math::
+
+     \text{WAF}_\text{canopy} = (0.36 + 0.004\,h_{c,\text{in}}) \times
+       \exp(-\alpha_c\,f_c)
+
+  The exponential Beer–Lambert term accounts for the wind speed attenuation
+  through the canopy column.  The attenuation strength is controlled by
+  ``rothermel.waf_canopy_alpha`` (:math:`\alpha_c`, default 1.5).
+
+**Input parameters** (prefix ``rothermel.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``use_waf``
+     - 0
+     - 1 to enable Wind Adjustment Factor
+   * - ``waf_formula``
+     - ``"andrews"``
+     - Formula: ``"andrews"`` or ``"behaviorplus"``
+   * - ``waf_canopy_alpha``
+     - 1.5
+     - Canopy attenuation coefficient α_c for BehavePlus exponential canopy WAF
+
+**Example — BehavePlus open/shrub WAF**::
+
+    rothermel.use_waf       = 1
+    rothermel.waf_formula   = behaviorplus
+
+**Example — BehavePlus with custom canopy attenuation**::
+
+    rothermel.use_waf          = 1
+    rothermel.waf_formula      = behaviorplus
+    rothermel.waf_canopy_alpha = 2.0   # stronger sheltering
+
+**Tests**: ``regtest/wind/waf_andrews/``, ``regtest/wind/waf_behaviorplus/``
+
+
 
 **Header**: ``src/fire_ecology_model.H``
 

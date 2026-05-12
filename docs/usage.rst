@@ -390,7 +390,18 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
      - Live woody SAV [ft⁻¹] (override)
    * - ``rothermel.use_waf``
      - 0
-     - Enable per-cell Wind Adjustment Factor from canopy height (1=yes)
+     - Enable Wind Adjustment Factor (1=yes): converts 20-ft→midflame wind
+   * - ``rothermel.waf_formula``
+     - ``"andrews"``
+     - WAF formula: ``"andrews"`` (logarithmic Albini & Baughman 1979) or
+       ``"behaviorplus"`` (linear 0.36 + 0.004×h_in for open/shrub fuels;
+       exponential canopy attenuation for forest fuels)
+   * - ``rothermel.waf_canopy_alpha``
+     - 1.5
+     - Canopy attenuation coefficient α_c for the BehavePlus exponential canopy
+       WAF: WAF_canopy = WAF_open × exp(−α_c × f_c).  Larger values give
+       stronger wind sheltering.  Only used when ``waf_formula = "behaviorplus"``
+       and canopy cover data are available.
    * - **Cheney & Gould Grassland Parameters**
      -
      -

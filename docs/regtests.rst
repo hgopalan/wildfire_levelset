@@ -438,6 +438,62 @@ Key parameters::
 Confirms that the wind vector changes direction and magnitude at each timestep,
 and that the fire footprint reflects the wind rotation.
 
+waf_andrews (wind/)
+^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the Andrews (2018) logarithmic Wind Adjustment Factor (WAF)
+together with the Maximum Effective Wind Speed (MEWS) cap.
+
+The WAF converts the 20-ft reference wind to midflame height using
+Albini & Baughman (1979):
+
+.. math::
+
+   \text{WAF} = \frac{1.83}{\ln\!\left(\dfrac{20 + 0.36\,h}{0.13\,h}\right)}
+
+For FM4 chaparral (:math:`h = 6` ft): WAF ≈ 0.36; the 5 m/s ambient wind is
+reduced to ≈ 1.8 m/s at midflame height.
+
+Key parameters::
+
+    rothermel.use_waf        = 1
+    rothermel.waf_formula    = andrews
+    rothermel.use_wind_limit = 1
+
+Confirms that the solver runs with ``waf_formula = "andrews"`` and that fire
+spread is slower than without WAF, consistent with midflame wind sheltering.
+
+**Build**: 2D build (``-DLEVELSET_DIM_2D=ON``).
+
+waf_behaviorplus (wind/)
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the BehavePlus linear Wind Adjustment Factor for open and
+shrub fuel models.
+
+The BehavePlus linear formula:
+
+.. math::
+
+   \text{WAF} = 0.36 + 0.004\,h_\text{in}   \quad [h_\text{in} = 12 h_\text{ft}]
+
+gives WAF = 0.648 for FM4 (:math:`h = 72` in).  Compare with the Andrews
+logarithmic formula (WAF ≈ 0.36 for the same fuel): the BehavePlus formula
+produces higher midflame wind and therefore faster ROS for deep fuel beds.
+
+Key parameters::
+
+    rothermel.use_waf          = 1
+    rothermel.waf_formula      = behaviorplus
+    rothermel.waf_canopy_alpha = 1.5
+    rothermel.use_wind_limit   = 1
+
+Confirms that the solver runs with ``waf_formula = "behaviorplus"``, that the
+WAF value is computed from the linear formula, and that the fire spread rate
+is higher than the ``waf_andrews`` test for the same ambient wind.
+
+**Build**: 2D build (``-DLEVELSET_DIM_2D=ON``).
+
 scott_reinhardt_indices (diagnostics/)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -488,7 +544,8 @@ grouped by physical category:
 | ``ignition``     | barrier_polygons, fire_perimeter_output,                |
 |                  | polygon_ignition, polyline_ignition                     |
 +------------------+---------------------------------------------------------+
-| ``wind``         | time_dependent_wind, turb_wind, wind_dir_schedule       |
+| ``wind``         | time_dependent_wind, turb_wind, wind_dir_schedule,      |
+|                  | waf_andrews, waf_behaviorplus                           |
 +------------------+---------------------------------------------------------+
 | ``diagnostics``  | scott_reinhardt_indices                                 |
 +------------------+---------------------------------------------------------+

@@ -1104,7 +1104,16 @@ Wind Adjustment Factor (WAF)
 
 The Rothermel model requires wind speed at *midflame height*, but field
 measurements and WRF/NWP output are typically at 20 ft (6.1 m) above open
-terrain.  The WAF converts 20-ft open wind to midflame height:
+terrain.  The WAF converts 20-ft open wind to midflame height.
+
+Two formulas are available, selected via ``rothermel.waf_formula``:
+
+**Andrews logarithmic formula** (``waf_formula = "andrews"``, default)
+
+Derived from Albini & Baughman (1979).  Used for all fuel types; the sheltered
+(closed-canopy) variant is applied automatically when canopy data are available.
+
+*Unsheltered (open / shrub fuel beds)*:
 
 .. math::
 
@@ -1113,8 +1122,58 @@ terrain.  The WAF converts 20-ft open wind to midflame height:
 where :math:`h` is the fuel bed depth [ft].  Typical values: 0.42 for FM4
 (:math:`h = 2` ft), 0.35 for FM9 (:math:`h = 3` ft).
 
-Enable via ``rothermel.use_waf = 1``.  When a landscape file is active, WAF is
-computed per cell using each fuel model's depth.
+*Sheltered (closed-canopy, FARSITE-style)*:
+
+When canopy cover fraction :math:`f_c \geq 0.5` and canopy height
+:math:`h_c > h`:
+
+.. math::
+
+   \text{WAF}_\text{sheltered} =
+     \frac{0.555}{\sqrt{f_c \, h_c}
+     \ln\!\left(\dfrac{20 + 0.36\,h_c}{0.13\,h_c}\right)}
+
+**BehavePlus linear formula** (``waf_formula = "behaviorplus"``)
+
+A simpler linear approximation used in BehavePlus for open and shrub fuel models:
+
+.. math::
+
+   \text{WAF} = 0.36 + 0.004\,h_\text{in}
+
+where :math:`h_\text{in} = 12 \times h_\text{ft}` is the fuel bed depth in
+inches.  Typical values for common fuels:
+
++----------+---------+---------+---------------+
+| Fuel     | h [ft]  | h [in]  | WAF (linear)  |
++==========+=========+=========+===============+
+| FM1      | 1.0     | 12      | 0.408         |
++----------+---------+---------+---------------+
+| FM2/FM3  | 2.5     | 30      | 0.480         |
++----------+---------+---------+---------------+
+| FM4      | 6.0     | 72      | 0.648         |
++----------+---------+---------+---------------+
+| FM6      | 2.5     | 30      | 0.480         |
++----------+---------+---------+---------------+
+| FM9      | 0.2     | 2.4     | 0.370         |
++----------+---------+---------+---------------+
+
+For closed-canopy (sheltered) cells the BehavePlus path uses an exponential
+Beer–Lambert-style canopy attenuation:
+
+.. math::
+
+   \text{WAF}_\text{canopy} =
+     \text{WAF}_\text{open}(h_c) \times \exp(-\alpha_c \, f_c)
+
+where :math:`\alpha_c` is the canopy attenuation coefficient
+(``rothermel.waf_canopy_alpha``, default 1.5) and :math:`f_c` is the canopy
+cover fraction.  At :math:`f_c = 1` and :math:`\alpha_c = 1.5` the canopy
+reduces the midflame wind to about 22 % of the above-canopy value.
+
+Enable via ``rothermel.use_waf = 1``.  When a landscape file is active and
+provides canopy cover and canopy height data, WAF is computed per cell using
+each fuel model's depth and the local canopy structure.
 
 Maximum Effective Wind Speed (MEWS)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1142,6 +1201,13 @@ Andrews, P.L. (2018). *The Rothermel Surface Fire Spread Model and Associated
 Developments: A Comprehensive Explanation.* Gen. Tech. Rep. RMRS-GTR-371.
 USDA Forest Service.
 https://doi.org/10.2737/RMRS-GTR-371
+
+Albini, F.A. & Baughman, R.G. (1979). *Estimating Windspeeds for Predicting
+Wildland Fire Behavior.* USDA For. Serv. Res. Pap. INT-221.
+
+Massman, W.J. (1987). A comparative study of some mathematical models of the
+mean wind structure and aerodynamic drag of plant canopies.
+*Boundary-Layer Meteorology*, 40(1–2), 179–197.
 
 
 

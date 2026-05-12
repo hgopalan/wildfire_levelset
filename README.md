@@ -49,6 +49,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 ## Core Capabilities
 
 - **Rothermel (1972)** surface fire spread — Anderson 13 and Scott-Burgan 40 fuel databases
+- **WAF formula selection** — Andrews (2018) logarithmic WAF or BehavePlus linear WAF (`rothermel.waf_formula`); exponential Beer–Lambert canopy sheltering for forest fuels (`rothermel.waf_canopy_alpha`)
 - **FARSITE elliptical expansion** (Richards 1990) + Anderson (1983) L/W ratio
 - **Alternative spread models**: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005)
 - **Canadian FBP System** — O1a/O1b grass and S1/S2/S3 slash fuel types
@@ -86,7 +87,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, **spatial_moisture_output** *(new)* |
 | `fuel/` | fuel_adj_file |
 | `ignition/` | barrier_polygons, fire_perimeter_output, polygon_ignition, polyline_ignition |
-| `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule |
+| `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
 | `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask** *(new)* |
 
