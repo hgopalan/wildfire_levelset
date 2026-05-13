@@ -174,54 +174,11 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 
 The table below classifies implemented features by implementation complexity.
 
-### Easy Features
 
-| Feature | Input key(s) | Status |
-|---|---|---|
-| Simulation date/time in logs & report | `sim_datetime.year/month/day` | ✅ Implemented |
-| KML perimeter export | `write_perimeter_kml`, `kml_utm_zone`, `kml_utm_northern` | ✅ Implemented |
-| Plotfile variable filter | `plot_vars` | ✅ Implemented |
-| Burn-period gating (diurnal spread window) | `burn_period.*` | ✅ Implemented |
-| Fire stats CSV | `fire_stats_file` | ✅ Implemented |
-| Perimeter CSV/GeoJSON export | `write_perimeter_csv`, `write_perimeter_geojson` | ✅ Implemented |
-| Fire HTML report | `fire_report_file` | ✅ Implemented |
-| Custom fuel model override | `custom_fuel.*` | ✅ Implemented |
-| Wind direction schedule | `wind_dir_schedule_file` | ✅ Implemented |
-| Conditional weather / ERC table | `conditional_weather_file` | ✅ Implemented |
 
-### Medium Features
 
-| Feature | Input key(s) | Status |
-|---|---|---|
-| Smoke plume-rise model (Briggs 1965) | `smoke_plume.*` | ✅ Implemented |
-| Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` | ✅ Implemented |
-| Post-fire fuel depletion tracking | `fuel_depletion.*` | ✅ Implemented |
-| Solar radiation / terrain shading | `solar_radiation.*` | ✅ Implemented |
-| Precipitation fuel wetting | `diurnal_moisture.*`, `precip_*` | ✅ Implemented |
-| FMC seasonal phenology | `fmc_schedule.*` | ✅ Implemented |
-| Live herbaceous curing schedule | `herb_moisture_schedule.*` | ✅ Implemented |
-| Aerial retardant drop suppression | `retardant_drop.*` | ✅ Implemented |
-| Ground suppression lines (dozer/hand crew) | `suppression_file` | ✅ Implemented |
-| Fire acceleration model (Rothermel 1983) | `acceleration.*` | ✅ Implemented |
-| CCFR active crown fire criterion | `crown.use_ccfr` | ✅ Implemented |
-| WAF formula selection (Andrews/BehavePlus) | `rothermel.waf_formula` | ✅ Implemented |
-| Ensemble burn probability driver | `tools/ensemble_burn_probability.py` | ✅ Implemented |
 
-### Hard Features
 
-| Feature | Input key(s) | Status |
-|---|---|---|
-| GPU-accelerated 3-D wind for Albini spotting | `albini_spotting.use_3d_wind` | ✅ Implemented |
-| Full Scott-Reinhardt TI/CI bisection | `scott_reinhardt_full.*` | ✅ Implemented |
-| FARSITE topographic horizon scan | `solar_radiation.use_topographic_horizon` | ✅ Implemented |
-| Multi-station IDW weather interpolation | `multi_wtr_file` | ✅ Implemented |
-| Crown-ellipse scaling (active crown fire) | `farsite.scale_ellipse_with_crown` | ✅ Implemented |
-| Eruptive fire model (Viegas 2004) | `viegas.*` | ✅ Implemented |
-| LANDFIRE LCP landscape integration | `rothermel.landscape_file` | ✅ Implemented |
-| Non-burnable cell masking | automatic from LCP codes 91–99 | ✅ Implemented |
-| MTT (Minimum Travel Time) propagation | `propagation_method = mtt` | ✅ Implemented |
-| Slope/wind interaction cross-term | `rothermel.use_slope_wind_cross` | ✅ Implemented |
-| Real-time satellite fire detection assimilation | `satellite.*` | ✅ Implemented |
 
 ## Satellite Fire Detection Assimilation
 
