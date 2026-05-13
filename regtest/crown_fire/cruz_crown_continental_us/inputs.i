@@ -5,14 +5,11 @@
 # Grid & domain (2000 m x 2000 m, UTM Zone 11N)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 332000.0
 prob_hi_y = 3777000.0
-prob_hi_z = 1.0
 
 # Simulation: 30 min crown fire spread
 final_time = 1800.0
