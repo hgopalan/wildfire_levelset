@@ -780,6 +780,9 @@ Input Parameters (prefix ``satellite.``)
    * - ``api_key``
      - ``""``
      - NASA FIRMS map key (required for ``source="viirs"``)
+   * - ``viirs_url_base``
+     - ``"https://firms.modaps.eosdis.nasa.gov/api/area/csv"``
+     - Base URL for the NASA FIRMS REST API (override for proxies or mirrors)
    * - ``goes_product``
      - ``"ABI-L2-FDCF"``
      - GOES ABI fire product name
