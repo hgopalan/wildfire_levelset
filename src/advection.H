@@ -74,8 +74,12 @@ inline void build_rhs_weno5z(const MultiFab& phi,
         }
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            // |∇φ| using your existing Godunov/WENO5 routine (structure preserved)
-            Real grad_norm = godunov_norm_grad_phi(p, i, j, k, gdx);
+            // Terrain slope components at this cell (zero on flat terrain)
+            Real sx = use_terrain ? s(i,j,k,0) : Real(0.0);
+            Real sy = use_terrain ? s(i,j,k,1) : Real(0.0);
+
+            // |∇φ| using Godunov/WENO3 with terrain-corrected arc-length spacings
+            Real grad_norm = godunov_norm_grad_phi(p, i, j, k, gdx, sx, sy);
 
             // Laplacian Δφ
             Real lap = laplacian_phi(p, i, j, k);

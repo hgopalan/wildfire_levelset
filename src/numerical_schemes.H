@@ -40,17 +40,36 @@ Real weno3_reconstruct(Real fm1, Real f0, Real fp1)
 
 // ================================================================
 // Godunov |grad phi| operator — WENO3 with WENO1 fallback when phi is unbounded
+//
+// When terrain is present the grid spacing in each horizontal direction is
+// replaced by the terrain arc-length:
+//   eff_dx = dx[0] * sqrt(1 + slope_x^2)
+//   eff_dy = dx[1] * sqrt(1 + slope_y^2)
+// so that the gradient is computed on the terrain surface rather than on the
+// flat Cartesian plane.  The default values slope_x = slope_y = 0 reproduce
+// the original flat-terrain behaviour and are used by reinitialization.
 // ================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real godunov_norm_grad_phi(const Array4<Real const>& phi,
                            int i, int j, int k,
-                           const GpuArray<Real,AMREX_SPACEDIM>& dx)
+                           const GpuArray<Real,AMREX_SPACEDIM>& dx,
+                           Real slope_x = Real(0.0),
+                           Real slope_y = Real(0.0))
 {
-    // Grid-aware epsilon for regularization
+    // Terrain-corrected arc-length spacings.
+    // On a slope dz/dx = slope_x, a horizontal step dx corresponds to a
+    // surface distance ds_x = dx * sqrt(1 + slope_x^2); the surface gradient
+    // component is therefore (Delta phi) / ds_x.
+    // Computed unconditionally — sqrt(1 + 0^2) = 1 — to avoid branch
+    // divergence in GPU warps when most cells have non-zero slope.
+    const Real eff_dx = dx[0] * std::sqrt(Real(1.0) + slope_x * slope_x);
+    const Real eff_dy = dx[1] * std::sqrt(Real(1.0) + slope_y * slope_y);
+
+    // Grid-aware epsilon for regularization (use smallest effective spacing)
 #if (AMREX_SPACEDIM == 3)
-    Real eps = Real(1.0e-8) * amrex::min(dx[0], amrex::min(dx[1], dx[2]));
+    Real eps = Real(1.0e-8) * amrex::min(eff_dx, amrex::min(eff_dy, dx[2]));
 #else
-    Real eps = Real(1.0e-8) * amrex::min(dx[0], dx[1]);
+    Real eps = Real(1.0e-8) * amrex::min(eff_dx, eff_dy);
 #endif
 
     // ----------------------------------------------------------------
@@ -83,20 +102,20 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
 
     if (fallback) {
         // ---- WENO1: plain first-order one-sided differences ----
-        px_right = (phi(i+1,j,k) - phi(i,  j,k)) / dx[0];   // D+x
-        px_left  = (phi(i,  j,k) - phi(i-1,j,k)) / dx[0];   // D-x
-        py_right = (phi(i,j+1,k) - phi(i,j,  k)) / dx[1];   // D+y
-        py_left  = (phi(i,j,  k) - phi(i,j-1,k)) / dx[1];   // D-y
+        px_right = (phi(i+1,j,k) - phi(i,  j,k)) / eff_dx;   // D+x
+        px_left  = (phi(i,  j,k) - phi(i-1,j,k)) / eff_dx;   // D-x
+        py_right = (phi(i,j+1,k) - phi(i,j,  k)) / eff_dy;   // D+y
+        py_left  = (phi(i,j,  k) - phi(i,j-1,k)) / eff_dy;   // D-y
 #if (AMREX_SPACEDIM==3)
         pz_right = (phi(i,j,k+1) - phi(i,j,k  )) / dx[2];   // D+z
         pz_left  = (phi(i,j,k  ) - phi(i,j,k-1)) / dx[2];   // D-z
 #endif
     } else {
         // ---- WENO3: blended high-order reconstruction ----
-        px_right = weno3_reconstruct(phi(i-1,j,k), phi(i,j,k), phi(i+1,j,k)) / dx[0];
-        px_left  = weno3_reconstruct(phi(i-2,j,k), phi(i-1,j,k), phi(i,j,k)) / dx[0];
-        py_right = weno3_reconstruct(phi(i,j-1,k), phi(i,j,k), phi(i,j+1,k)) / dx[1];
-        py_left  = weno3_reconstruct(phi(i,j-2,k), phi(i,j-1,k), phi(i,j,k)) / dx[1];
+        px_right = weno3_reconstruct(phi(i-1,j,k), phi(i,j,k), phi(i+1,j,k)) / eff_dx;
+        px_left  = weno3_reconstruct(phi(i-2,j,k), phi(i-1,j,k), phi(i,j,k)) / eff_dx;
+        py_right = weno3_reconstruct(phi(i,j-1,k), phi(i,j,k), phi(i,j+1,k)) / eff_dy;
+        py_left  = weno3_reconstruct(phi(i,j-2,k), phi(i,j-1,k), phi(i,j,k)) / eff_dy;
 #if (AMREX_SPACEDIM==3)
         pz_right = weno3_reconstruct(phi(i,j,k-1), phi(i,j,k), phi(i,j,k+1)) / dx[2];
         pz_left  = weno3_reconstruct(phi(i,j,k-2), phi(i,j,k-1), phi(i,j,k)) / dx[2];
