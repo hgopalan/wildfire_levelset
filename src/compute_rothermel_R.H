@@ -263,7 +263,7 @@ inline void compute_rothermel_R(MultiFab& R_mf,
                 Real tan_phi = std::sqrt(slope_x*slope_x + slope_y*slope_y);
                 Real U_mag   = std::sqrt(ux*ux + uy*uy);
 
-                if (phi_w > Real(0.0) && tan_phi > Real(0.0)) {
+                if (phi_w > Real(0.0) && U_mag > Real(0.0) && tan_phi > Real(0.0)) {
                     // Both wind and slope present: true vectorial sum
                     Real wind_hat_x  = ux / U_mag;
                     Real wind_hat_y  = uy / U_mag;

@@ -129,7 +129,7 @@ inline void build_rhs_weno5z(const MultiFab& phi,
                     Real slope_y = s(i,j,k,1);
                     Real tan_phi = std::sqrt(slope_x*slope_x + slope_y*slope_y);
                     Real U_mag   = std::sqrt(ux*ux + uy*uy);
-                    if (phi_w > Real(0.0) && tan_phi > Real(0.0)) {
+                    if (phi_w > Real(0.0) && U_mag > Real(0.0) && tan_phi > Real(0.0)) {
                         Real wind_hat_x  = ux / U_mag;
                         Real wind_hat_y  = uy / U_mag;
                         Real slope_hat_x = slope_x / tan_phi;

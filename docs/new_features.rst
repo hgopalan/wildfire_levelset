@@ -824,7 +824,7 @@ This is now available as an option with ``rothermel.use_slope_wind_vectors = 1``
    * - FARSITE vectorial (mode A)
      - :math:`R = R_0(1 + |\varphi_w\hat{u} + \varphi_s\hat{n}|)`
 
-Modes B and C require ``rothermel.terrain_file`` (or a landscape file) to
+Modes A (vectorial) and B (cross-term) require ``rothermel.terrain_file`` (or a landscape file) to
 supply per-cell slope vectors.  When terrain is not provided the vectorial
 mode falls back to scalar additive.  Modes B and C (cross-term) and A
 (vectorial) cannot be active simultaneously; setting both raises an error at
