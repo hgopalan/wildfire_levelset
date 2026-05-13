@@ -191,6 +191,30 @@ by CTest as a fixture setup step).
 
 **Build**: CPU or GPU builds (GPU-safe).
 
+ember_cascade_flux
+^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the flux-based ember cascade model (``ember_cascade_flux.H``)
+driven by a synthetic 3-D wind plotfile.
+
+Physical scenario: a chaparral ignition (FM4, 7 % moisture) on a 600 m × 600 m
+domain burns under a 6 m/s westerly wind.  ``generate_plt_wind.py`` creates a
+synthetic plt wind directory (8×8×4 grid, u = 6 m/s, v = 1 m/s) that the
+model reads via ``plt_wind_reader.H``.
+
+The test confirms that:
+
+* The Albini (1983) plume height is computed per fire-front cell.
+* The Gaussian landing-flux field is non-zero downwind of the fire.
+* The plotfile variables ``ember_cascade_flux`` and ``ember_cascade_ignition``
+  are written to every output step.
+* The model produces spot-fire ignitions (``ember_cascade_ignition`` > 0)
+  after the fire front reaches sufficient intensity.
+
+Requires Python 3 for the setup step (same pattern as ``albini_spotting_3d_wind``).
+
+**Build**: CPU or GPU builds (GPU-safe).
+
 crown_initiation
 ^^^^^^^^^^^^^^^^
 
@@ -556,7 +580,8 @@ grouped by physical category:
 | ``crown_fire``   | crown_initiation, cruz_crown_continental_us, fmc_seasonal|
 +------------------+---------------------------------------------------------+
 | ``spotting``     | firebrand_spotting, albini_spotting,                    |
-|                  | albini_spotting_3d_wind                                 |
+|                  | albini_spotting_3d_wind,                                |
+|                  | **ember_cascade_flux** *(new)*                          |
 +------------------+---------------------------------------------------------+
 | ``terrain``      | terrain_wind, balbi_viegas_heatflux,                    |
 |                  | windninja_ridge_canyon,                                 |

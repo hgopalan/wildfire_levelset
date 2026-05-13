@@ -55,6 +55,8 @@ struct WildfireFields {
     MultiFab spotting_data;
     // albini_data: 4 comps (lofting H_z, firebrand count, max distance, active flag)
     MultiFab albini_data;
+    // ember_cascade_mf: 2 comps (landing flux density [embers/m²/s], ignition flag)
+    MultiFab ember_cascade_mf;
 
     // ---- Fire-spread rate ----
     MultiFab R_mf;                  // Rate of spread [m/s] (1 comp)
@@ -166,6 +168,7 @@ struct WildfireFields {
         // Spotting
         , spotting_data        (ba, dm, 4,                 0)
         , albini_data          (ba, dm, 4,                 0)
+        , ember_cascade_mf     (ba, dm, 2,                 0)
         // Fire spread
         , R_mf                 (ba, dm, 1,                 0)
         , fuel_consumption_mf  (ba, dm, 1,                 0)
@@ -222,6 +225,7 @@ struct WildfireFields {
         fuel_consumption_mf  .setVal(Real(0.0));
         crown_fire_fraction_mf.setVal(Real(0.0));
         albini_data          .setVal(Real(0.0));
+        ember_cascade_mf     .setVal(Real(0.0));
         fireline_intensity_mf.setVal(Real(0.0));
         flame_length_mf      .setVal(Real(0.0));
         ecology_mf           .setVal(Real(0.0));

@@ -327,6 +327,40 @@ python3 tools/fire_size_summary.py fire_stats.csv --csv summary_min.csv
 
 ---
 
+### `ember_cascade_analysis.py` — Ember Cascade Post-Processing
+
+Post-processing tool for the flux-based ember cascade model
+(`ember_cascade.enable = 1`).  Reads the `ember_cascade_flux` and
+`ember_cascade_ignition` fields from AMReX plotfiles and produces per-step
+summary statistics (max / mean landing flux, number of active cells, number of
+spot-fire ignitions), optional CSV export, and optional visualisation of the
+Gaussian landing-flux map alongside the fire perimeter contour.
+
+The reader is dependency-free for AMReX plotfiles — it parses the ASCII
+`Header` and binary `Cell_D_*` FAB files directly without the AMReX Python
+bindings.
+
+```bash
+# Summarise ember cascade activity across all steps
+python3 tools/ember_cascade_analysis.py --plt-dir .
+
+# Export statistics to CSV
+python3 tools/ember_cascade_analysis.py --plt-dir . --csv ember_cascade.csv
+
+# Visualise landing-flux density map at step 50
+python3 tools/ember_cascade_analysis.py --plt-dir . --plot 0050 \
+    --output flux_step50.png
+
+# Analyse selected steps only
+python3 tools/ember_cascade_analysis.py --plt-dir . --steps 0010 0050 0100
+```
+
+**Solver prerequisite**: `ember_cascade.enable = 1` in `inputs.i`.
+
+**Dependencies**: `numpy` (required); `matplotlib` (optional, for `--plot`).
+
+---
+
 ### `behavior_matrix.py` — Fuel Condition Fire Behavior Matrix
 
 BehavePlus-style Rothermel (1972) fire behavior matrix tool.  Computes rate of
@@ -427,7 +461,7 @@ pip install numpy netCDF4 pyproj rasterio elevation requests scipy matplotlib sh
 | `elevation` | `srtm_terrain_reader.py` (SRTM download) |
 | `requests` | `landscape_writer.py` (LANDFIRE API) |
 | `scipy` | `wrf_wind_reader.py` (IDW interpolation), `ensemble_burn_probability.py` (LHS) |
-| `matplotlib` | `plotfile_to_geotiff.py`, `isochrone_extractor.py`, `plot_burn_probability.py`, `fire_size_summary.py` (all optional) |
+| `matplotlib` | `plotfile_to_geotiff.py`, `isochrone_extractor.py`, `plot_burn_probability.py`, `fire_size_summary.py`, `ember_cascade_analysis.py` (all optional) |
 | `shapely` | `perimeter_to_shapefile.py` (convex hull) |
 | `pyshp` | `perimeter_to_shapefile.py` (shapefile writing, **required**) |
 

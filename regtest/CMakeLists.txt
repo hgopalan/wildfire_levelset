@@ -121,6 +121,9 @@ if(Python3_FOUND)
     add_python_setup_regression_test(albini_spotting_3d_wind
                                      spotting/albini_spotting_3d_wind
                                      generate_plt_wind.py)
+    add_python_setup_regression_test(ember_cascade_flux
+                                     spotting/ember_cascade_flux
+                                     generate_plt_wind.py)
 endif()
 
 # ===========================================================================

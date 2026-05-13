@@ -635,6 +635,68 @@ struct InputParameters {
         amrex::Real rho_p;       // particle density [lb/ft³]                 (-1 = inherit)
     } custom_fuel;
 
+    // ---- Flux-based ember cascade model (plume-rise driven) ----
+    // Models dense firebrand showers released by a rising smoke plume using a
+    // continuous landing-flux approach.  Rather than tracking individual brands
+    // (as in the Albini trajectory model), every fire-front cell emits a source
+    // flux of embers proportional to its Byram fireline intensity.  Each source
+    // contributes a 2-D Gaussian footprint downwind (centred at the wind-advected
+    // mean landing position, spread by turbulent diffusion from the plume), and
+    // the total landing flux density [embers/m²/s] is accumulated across all
+    // active sources.  Cells where the integrated landing density exceeds a
+    // threshold ignition density are marked as spot fires.
+    //
+    // Plume lofting height (Albini 1983):
+    //   H_z = 12.2 × I_B^(1/3)   [I_B in kW/m, H_z in m]
+    //
+    // Source flux per unit fire-line length [embers/m/s]:
+    //   F_src = k_flux × (I_B / I_B_ref)^flux_exp
+    //
+    // Flight time and mean landing displacement:
+    //   t_f = H_z / terminal_velocity   [s]
+    //   dx  = u × t_f,   dy = v × t_f  [m]
+    //
+    // Gaussian spread (turbulent diffusion from plume):
+    //   sigma = sigma_base + k_sigma × H_z   [m]
+    //
+    // Landing flux density at a cell (x, y):
+    //   F_land += F_src × (cell_area / (2π σ²)) × exp(-(Δx² + Δy²) / (2σ²))
+    //
+    // Ignition:
+    //   cells where F_land × dt_check / N_min_density > uniform[0,1]
+    //   are ignited (stochastic Poisson arrival with P = 1−exp(−λ), λ =
+    //   F_land × dt_check / N_min_density).
+    //
+    // 3-D wind: when require_3d_wind = 1 the height-averaged horizontal wind
+    // from an AMReX massconsistent_amr plt file is used for the mean transport
+    // displacement.  An assertion aborts the run if no valid plt file is
+    // provided (plt_wind_file must be non-empty).
+    //
+    // Input prefix: "ember_cascade."
+    struct EmberCascadeParams {
+        int enable;                   // 1 to enable flux-based cascade (default: 0)
+        amrex::Real I_B_min;          // minimum Byram fireline intensity [kW/m] to emit embers (default: 10.0)
+        amrex::Real terminal_velocity;// firebrand terminal descent velocity [m/s] (default: 1.0)
+        amrex::Real k_flux;           // ember source flux coefficient [embers/m/s] (default: 1.0)
+        amrex::Real I_B_ref;          // reference intensity [kW/m] for flux scaling (default: 100.0)
+        amrex::Real flux_exp;         // intensity exponent for source flux (default: 1.0)
+        amrex::Real sigma_base;       // minimum Gaussian spread radius [m] (default: 50.0)
+        amrex::Real k_sigma;          // spread scale factor × H_z [m/m] (default: 0.1)
+        amrex::Real n_sigma_cutoff;   // Gaussian kernel truncation: contributions beyond
+                                      // n_sigma_cutoff × sigma from the mean are ignored (default: 4.0)
+        amrex::Real N_min_density;    // minimum ember density for ignition [embers/m²/s] (default: 1.0e-3)
+        amrex::Real spot_radius;      // radius of new spot-fire ignition zone [m] (default: 5.0)
+        int check_interval;           // run cascade check every N timesteps (default: 5)
+        int random_seed;              // RNG seed; 0 = use system time (default: 0)
+        // ---- 3-D wind from massconsistent_amr ----
+        // When require_3d_wind = 1 the height-averaged horizontal wind from a
+        // massconsistent_amr plt file is used.  If plt_wind_file is empty or
+        // the file cannot be read the run aborts with an error message.
+        int require_3d_wind;          // 1 = abort if no 3-D plt wind provided (default: 0)
+        int use_3d_wind;              // 1 to load 3-D plt wind for transport (default: 0)
+        std::string plt_wind_file;    // path to massconsistent_amr plt directory (default: "")
+    } ember_cascade;
+
     // ---- Feature 8: Albini (1979) torching-tree spotting model ----
     // Triggered by passive or active crown fire (crown_activity >= min_crown_activity).
     // Uses flame length from Byram's formula and canopy height to estimate lofting
