@@ -1,5 +1,6 @@
 #include "wildfire_includes.H"
 
+static_assert(AMREX_SPACEDIM == 2, "This solver is 2-D only (AMREX_SPACEDIM must equal 2).");
 
 // ======================= Main ================================================
 // 
@@ -21,16 +22,6 @@ int main(int argc, char* argv[])
     parse_inputs(inputs);
 
     // ---------------- Geometry setup -----------------------
-#if (AMREX_SPACEDIM == 3)
-    IntVect dom_lo(0, 0, 0);
-    IntVect dom_hi(inputs.n_cell_x-1, inputs.n_cell_y-1, inputs.n_cell_z-1);
-    Box domain(dom_lo, dom_hi);
-
-    RealBox rb({inputs.plo_x, inputs.plo_y, inputs.plo_z},
-	       {inputs.phi_x, inputs.phi_y, inputs.phi_z});
-        
-    Array<int,AMREX_SPACEDIM> is_periodic{0, 0, 0};
-#else
     IntVect dom_lo(0, 0);
     IntVect dom_hi(inputs.n_cell_x-1, inputs.n_cell_y-1);
     Box domain(dom_lo, dom_hi);
@@ -39,7 +30,6 @@ int main(int argc, char* argv[])
 	       {inputs.phi_x, inputs.phi_y});
         
     Array<int,AMREX_SPACEDIM> is_periodic{0, 0};
-#endif
     Geometry geom(domain, &rb, 0, is_periodic.data());
 
         // ---------------- Grids & distribution -----------------
@@ -1155,11 +1145,7 @@ int main(int argc, char* argv[])
 	// --- Coarse level: dtau and iters from coarse dx ---
 	{
 	  const auto dx = geom.CellSize();
-#if (AMREX_SPACEDIM == 3)
-	  Real dx_min   = std::min({dx[0], dx[1], dx[2]});
-#else
 	  Real dx_min   = std::min(dx[0], dx[1]);
-#endif
 	  Real dtau     = 0.1 * dx_min;               // CFL = 0.5 for forward-Euler + Godunov
 	  int  niters   = static_cast<int>(std::ceil(WildfireFields::ng_phi / 0.5)); // = 6 for ng_phi=3
 	  reinitialize_phi(phi, geom, niters, dtau);
