@@ -289,7 +289,6 @@ def plot_flux_map(plt_path, output_path=None):
 
     # Left panel: landing flux density
     ax = axes[0]
-    import numpy as np
     flux_plot = np.where(flux > 0, flux, np.nan)
     vmax = np.nanmax(flux_plot) if np.any(np.isfinite(flux_plot)) else 1.0
     im = ax.imshow(flux_plot, origin="lower", extent=extent,

@@ -1223,7 +1223,9 @@ if no valid 3-D wind file is provided.
      - Path to massconsistent_amr plt directory
 
 **References**:
-Albini (1983); Sardoy, Consalvi, Porterie & Fernandez-Pello (2007).
+Albini, F.A. (1983). *Potential spotting distance from wind-driven surface fires.*
+USDA Forest Service Research Paper INT-309.
+Sardoy, N., Consalvi, J.L., Porterie, B. & Fernandez-Pello, A.C. (2007).
 *Modeling transport and combustion of firebrands from burning trees.*
 Combustion and Flame 150(3):151–169.
 

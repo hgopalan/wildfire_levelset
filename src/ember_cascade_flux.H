@@ -309,7 +309,9 @@ inline void compute_ember_cascade_flux(
                         const Real xc_l = prob_lo[0] + (il + Real(0.5)) * dx[0];
                         const Real dx2  = xc_l - xc_mean;
                         const Real r2   = dx2 * dx2 + dy2 * dy2;
-                        // Gaussian kernel × cell area gives embers/s landing in this cell
+                        // gauss_norm = F_src / (2π σ²) is the Gaussian flux density
+                        // [embers/m²/s] at the landing point.  Multiply by cell_area
+                        // [m²] to obtain the total landing rate [embers/s] in this cell.
                         flux_field[jl * nx + il] +=
                             gauss_norm * std::exp(-r2 * inv_2s2) * cell_area;
                     }
