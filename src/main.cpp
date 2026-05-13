@@ -489,7 +489,7 @@ int main(int argc, char* argv[])
                                has_spatial_crown ? &cc_mf : nullptr,
                                has_spatial_crown ? &canopy_height_mf : nullptr);
       }
-      //dt = compute_dt(R_mf, geom, inputs.cfl);
+      dt = compute_dt(R_mf, geom, inputs.cfl, inputs.farsite.length_to_width_ratio);
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
@@ -1208,8 +1208,8 @@ int main(int argc, char* argv[])
 	// orientation and ROS also reflect the terrain-corrected wind.
 	// Pass R_mf so the ellipse uses the ROS from the configured firespread model.
 	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, R_mf, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
-	// Update dt for next step using CFL condition (original FARSITE method).
-	//dt = compute_dt(R_mf, geom, inputs.cfl);
+	// Update dt for next step using FARSITE CFL condition (ellipse-scaled).
+	dt = compute_dt(R_mf, geom, inputs.cfl, inputs.farsite.length_to_width_ratio);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
