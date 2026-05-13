@@ -488,6 +488,7 @@ FIRE_VARS = {
     "aspect",
     "fuel_model",
     "fuel_consumption",
+    "residual_fuel",
     "crown_fraction",
     "arrival_time",
     "reaction_intensity",

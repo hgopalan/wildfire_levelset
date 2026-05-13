@@ -48,6 +48,8 @@ struct RothermelComputed {
     // Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982)
     int         use_slope_wind_cross; // 1 to enable φ_w × φ_s cross-term
     amrex::Real k_slope_wind_cross;   // cross-term coupling coefficient
+    // FARSITE-style vectorial slope/wind combination
+    int         use_slope_wind_vectors; // 1 = vectorial mode (mutually exclusive with cross-term)
 };
 
 // ============================================================================
@@ -349,8 +351,9 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     rc.U_max_ftmin = compute_max_ews_ftmin(I_R, rc.C, rc.B, rc.beta_ratio_E);
 
     // Slope/wind cross-term settings
-    rc.use_slope_wind_cross = rp.use_slope_wind_cross;
-    rc.k_slope_wind_cross   = rp.k_slope_wind_cross;
+    rc.use_slope_wind_cross   = rp.use_slope_wind_cross;
+    rc.k_slope_wind_cross     = rp.k_slope_wind_cross;
+    rc.use_slope_wind_vectors = rp.use_slope_wind_vectors;
 
     return rc;
 }

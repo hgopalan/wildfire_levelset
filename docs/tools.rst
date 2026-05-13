@@ -61,6 +61,8 @@ Overview
      - Van Wagner (1977) crown fire initiation and active-crown ROS worksheet
    * - ``ignition_probability_table.py``
      - Anderson (1970) probability of ignition lookup tables
+   * - Satellite Assimilation (``src/satellite_assimilation.H``)
+     - Ingest GOES / VIIRS / CSV active-fire detections into the level-set initial condition or mid-simulation
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.
@@ -248,6 +250,13 @@ Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter conto
 import into QGIS, ArcGIS, or other GIS tools.  Multi-level AMR plotfiles (``finest_level > 0``)
 are supported; finer-level data is composited onto the Level 0 base grid.
 
+**Default fire-behaviour variables** exported when no ``-v`` filter is given:
+
+``phi``, ``R``, ``fireline_intensity``, ``flame_length``, ``elevation``,
+``slope``, ``aspect``, ``fuel_model``, ``fuel_consumption``,
+``residual_fuel`` *(post-frontal burnout fraction)*, ``crown_fraction``,
+``arrival_time``, ``reaction_intensity``, ``wind_speed``, ``wind_direction``.
+
 **Typical usage**
 
 .. code-block:: bash
@@ -258,6 +267,11 @@ are supported; finer-level data is composited onto the Level 0 base grid.
    # Export specific variables with UTM georeference
    python3 tools/plotfile_to_geotiff.py plt0100 \
        -v phi R fireline_intensity flame_length \
+       --utm-origin 450000 4200000 --epsg 32613 --outdir gis_out
+
+   # Post-frontal fuel state rasters
+   python3 tools/plotfile_to_geotiff.py plt0100 \
+       -v residual_fuel fuel_consumption arrival_time \
        --utm-origin 450000 4200000 --epsg 32613 --outdir gis_out
 
    # Batch-convert all plt#### directories
@@ -656,3 +670,203 @@ Three independent parameters are perturbed:
 * ``burn_probability.geojson`` — optional GeoJSON probability field (when ``--geojson`` is given)
 
 **Dependencies**: none required; ``scipy`` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
+
+Satellite Fire Detection Assimilation
+---------------------------------------
+
+**C++ module**: ``src/satellite_assimilation.H``
+
+The satellite assimilation module ingests real-time active-fire detections from
+GOES, VIIRS, or a pre-prepared CSV file, and merges them into the fire level-set
+field ``phi`` as new ignition disks at the detected locations.  Detections can
+be applied as the initial condition at ``t = 0``, re-applied during the
+simulation at a configurable interval, or both.
+
+Data Sources
+~~~~~~~~~~~~
+
+Three source modes are supported:
+
+* **"file"** (recommended for HPC / offline) — reads a pre-downloaded
+  lon/lat/confidence CSV.  Format::
+
+      # longitude_deg, latitude_deg, confidence_pct
+      -119.42, 37.85, 75
+      -119.40, 37.86, 80
+
+  Generate this file from NASA FIRMS with any of the workflows below.
+
+* **"viirs"** — fetches the most-recent VIIRS-SNPP NRT active-fire CSV from
+  the NASA FIRMS REST API.  Requires a free map key (register at
+  https://firms.modaps.eosdis.nasa.gov/api/map_key/) and internet
+  connectivity from the compute node.
+
+* **"goes"** — downloads the latest NOAA GOES-16/17/18 ABI fire-detection
+  granule from the public AWS S3 bucket and converts it to CSV using the
+  optional ``satellite_goes_to_csv.py`` helper (requires ``netCDF4``).
+  Falls back to the local cache if the helper is unavailable or the
+  download fails.  Network errors are non-fatal.
+
+Preparing a Detection CSV with Python (FIRMS)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A minimal Python snippet to download VIIRS NRT detections for a bounding
+box and write the expected three-column CSV:
+
+.. code-block:: python
+
+   import csv, urllib.request
+
+   MAP_KEY   = "YOUR_FIRMS_MAP_KEY"     # register at firms.modaps.eosdis.nasa.gov
+   BBOX      = "-120,33,-114,42"        # lon_min,lat_min,lon_max,lat_max
+   DAYS      = 1
+   URL       = (f"https://firms.modaps.eosdis.nasa.gov/api/area/csv"
+                f"/{MAP_KEY}/VIIRS_SNPP_NRT/{BBOX}/{DAYS}")
+
+   with urllib.request.urlopen(URL) as resp:
+       reader = csv.DictReader(resp.read().decode().splitlines())
+       with open("fire_detections.csv", "w", newline="") as fh:
+           fh.write("# longitude_deg,latitude_deg,confidence_pct\n")
+           for row in reader:
+               fh.write(f"{row['longitude']},{row['latitude']},{row['confidence']}\n")
+
+Save the script and run it before the solver::
+
+   python3 prepare_detections.py
+   ./wildfire_levelset inputs.i
+
+Coordinate Alignment
+~~~~~~~~~~~~~~~~~~~~
+
+Detections arrive in WGS-84 lon/lat degrees.  The module converts them to
+UTM easting and northing [m] using a compact Karney (2011) Transverse
+Mercator projection.  The simulation domain origin (``prob_lo_x``,
+``prob_lo_y``) must be aligned with the UTM origin so that::
+
+   sim_x = UTM_easting  - prob_lo_easting_m
+   sim_y = UTM_northing - prob_lo_northing_m
+
+Example for a domain spanning UTM zone 11N easting [500 000, 560 000] m and
+northing [3 700 000, 3 760 000] m::
+
+   geometry.prob_lo = 500000  3700000
+   geometry.prob_hi = 560000  3760000
+
+   satellite.utm_zone           = 11
+   satellite.utm_northern       = 1
+   satellite.prob_lo_easting_m  = 500000
+   satellite.prob_lo_northing_m = 3700000
+
+Input Parameters (prefix ``satellite.``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 10 52
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to activate the module
+   * - ``source``
+     - ``"file"``
+     - Detection source: ``"file"``, ``"viirs"``, or ``"goes"``
+   * - ``local_file``
+     - ``""``
+     - Path to pre-downloaded CSV (required for ``source="file"``)
+   * - ``api_key``
+     - ``""``
+     - NASA FIRMS map key (required for ``source="viirs"``)
+   * - ``goes_product``
+     - ``"ABI-L2-FDCF"``
+     - GOES ABI fire product name
+   * - ``goes_bucket``
+     - ``"noaa-goes18"``
+     - AWS S3 bucket (``noaa-goes16``, ``noaa-goes17``, or ``noaa-goes18``)
+   * - ``bbox_lon_min``
+     - \-180.0
+     - Bounding box minimum longitude [deg]
+   * - ``bbox_lon_max``
+     - 180.0
+     - Bounding box maximum longitude [deg]
+   * - ``bbox_lat_min``
+     - \-90.0
+     - Bounding box minimum latitude [deg]
+   * - ``bbox_lat_max``
+     - 90.0
+     - Bounding box maximum latitude [deg]
+   * - ``utm_zone``
+     - 10
+     - UTM zone number 1–60
+   * - ``utm_northern``
+     - 1
+     - 1 = northern hemisphere; 0 = southern
+   * - ``prob_lo_easting_m``
+     - 0.0
+     - UTM easting of ``prob_lo_x`` [m]
+   * - ``prob_lo_northing_m``
+     - 0.0
+     - UTM northing of ``prob_lo_y`` [m]
+   * - ``fetch_interval_s``
+     - 600.0
+     - Re-fetch interval during simulation [s]
+   * - ``use_as_ic``
+     - 1
+     - 1 to apply detections as initial condition at ``t = 0``
+   * - ``use_mid_sim``
+     - 1
+     - 1 to re-apply new detections during the simulation run
+   * - ``confidence_threshold``
+     - 50
+     - Minimum detection confidence [%]
+   * - ``detection_radius_m``
+     - 375.0
+     - Radius of the ignition disk placed at each detection [m]
+   * - ``local_cache_file``
+     - ``""``
+     - Path for caching fetched data; used as fallback on network failure
+   * - ``suppress_if_burning``
+     - 1
+     - 1 = skip cells already burning (prevent extinguishing front)
+
+Example — offline file-based assimilation::
+
+   satellite.enable              = 1
+   satellite.source              = file
+   satellite.local_file          = fire_detections.csv
+   satellite.utm_zone            = 11
+   satellite.utm_northern        = 1
+   satellite.prob_lo_easting_m   = 500000
+   satellite.prob_lo_northing_m  = 3700000
+   satellite.confidence_threshold = 60
+   satellite.detection_radius_m  = 375.0
+   satellite.use_as_ic           = 1
+   satellite.use_mid_sim         = 0
+
+Example — live VIIRS re-assimilation every 10 minutes::
+
+   satellite.enable              = 1
+   satellite.source              = viirs
+   satellite.api_key             = ABCDEF123456
+   satellite.bbox_lon_min        = -120.0
+   satellite.bbox_lon_max        = -114.0
+   satellite.bbox_lat_min        = 33.0
+   satellite.bbox_lat_max        = 42.0
+   satellite.utm_zone            = 11
+   satellite.utm_northern        = 1
+   satellite.prob_lo_easting_m   = 500000
+   satellite.prob_lo_northing_m  = 3700000
+   satellite.fetch_interval_s    = 600.0
+   satellite.use_as_ic           = 1
+   satellite.use_mid_sim         = 1
+   satellite.local_cache_file    = satellite_cache.csv
+
+**Test**: ``regtest/ignition/satellite_assimilation/`` (uses
+``create_detections.py`` to generate a synthetic detection CSV).
+
+**Dependencies**: ``curl`` system command (for VIIRS / GOES live modes);
+``netCDF4`` Python package plus ``satellite_goes_to_csv.py`` helper script
+(for GOES NetCDF conversion only; not required for ``"file"`` or ``"viirs"``
+modes).

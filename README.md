@@ -76,6 +76,9 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Simulation date/time display** — calendar date/time (YYYY-MM-DD HH:MM) shown in per-step log output and HTML fire report when `sim_datetime.year/month/day` or `solar_radiation` start date is set
 - **Post-fire fuel adjustment for re-entry spots** — firebrand spot fires landing in previously-burned cells have their ignition probability scaled by residual fuel fraction; spots below a configurable threshold are suppressed (`fuel_depletion.adjust_spotting_reentry`)
 - **Real-time satellite fire detection assimilation** — ingests GOES-16/17/18 (NOAA, public AWS S3) or VIIRS (NASA FIRMS REST API) active-fire detections; applied as initial conditions and/or mid-simulation re-marking events with configurable confidence threshold, detection radius, and UTM coordinate projection (`satellite.*`)
+- **Vectorial slope/wind combination** — FARSITE-style vector sum of φ_w and φ_s before computing ROS, capturing alignment effects; selectable via `rothermel.use_slope_wind_vectors = 1` (separate from the existing additive cross-term option `use_slope_wind_cross`)
+- **Burn-period (daytime burning window) gate** — zeroes R_mf outside a configurable local clock window, pausing all spread paths during inactive hours while moisture and diagnostics continue; mirrors FARSITE / FSPro burn-period concept (`burn_period.enable`)
+- **Post-frontal fuel consumption raster** — `residual_fuel` (exponential burnout fraction behind the fire front) and `fuel_consumption` (per-class consumption during FARSITE spread) written to every plotfile and included in the default GeoTIFF export set
 - **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
 
 ## Ensemble / FSim-Style Probabilistic Simulation
@@ -141,7 +144,7 @@ cd build && ctest -L regtest --output-on-failure
 
 ## Tools
 
-Python utilities in `tools/` for terrain download, weather file parsing, GIS export, and ensemble analysis.
+Python utilities in `tools/` for terrain download, weather file parsing, GIS export, ensemble analysis, and satellite detection preparation.
 
 Key ensemble tools:
 - `ensemble_burn_probability.py` – FSim-style Monte Carlo driver (burn probability, crown fire probability, ignition sampling, containment probability, area exceedance, flame-length exceedance)
@@ -149,6 +152,7 @@ Key ensemble tools:
 - `values_at_risk.py` – FSPro-style values-at-risk overlay on burn probability maps
 - `fire_size_summary.py` – Fire area / perimeter / emissions statistics vs. time
 - `ignition_probability_table.py` – Anderson (1970) / Rothermel (1983) P_ignition worksheet
+- `plotfile_to_geotiff.py` – Export solver plotfiles to GeoTIFF; default export now includes `residual_fuel` (post-frontal burnout raster) and `fuel_consumption`
 
 See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html).
 
