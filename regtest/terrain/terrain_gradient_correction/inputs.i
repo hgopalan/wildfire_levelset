@@ -31,8 +31,8 @@ sphere_y    = 3775500.0
 sphere_z    = 0.0
 sphere_r    = 50.0
 
-# Steep terrain (Gaussian hill H=200m, sigma=100m)
-# At r=sigma the slope magnitude is ~1.21 (≈50°), giving a 57% larger
+# Steep terrain (Gaussian hill H=200m, σ=100m)
+# At r=σ the slope magnitude is ~1.21 (≈50°), giving a 57% larger
 # effective grid spacing so the surface gradient differs significantly
 # from the flat-Cartesian value.
 rothermel.terrain_file = steep_gaussian_terrain.csv
