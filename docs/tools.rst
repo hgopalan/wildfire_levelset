@@ -63,6 +63,10 @@ Overview
      - Anderson (1970) probability of ignition lookup tables
    * - ``satellite_goes_to_csv.py`` / Satellite Fire Detection Assimilation
      - Convert GOES NetCDF fire-detection granules to CSV; ingest GOES / VIIRS / CSV active-fire detections into the level-set initial condition or mid-simulation
+   * - ``ember_cascade_analysis.py``
+     - Post-process ``ember_cascade_flux`` / ``ember_cascade_ignition`` fields from
+       AMReX plotfiles: summary statistics table, CSV export, and landing-flux
+       density map visualisation (requires ``numpy``; ``matplotlib`` for plots)
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.
@@ -874,3 +878,35 @@ Example — live VIIRS re-assimilation every 10 minutes::
 ``netCDF4`` Python package plus ``satellite_goes_to_csv.py`` helper script
 (for GOES NetCDF conversion only; not required for ``"file"`` or ``"viirs"``
 modes).
+
+
+``ember_cascade_analysis.py`` — Ember Cascade Post-Processing
+--------------------------------------------------------------
+
+Post-processing tool for the flux-based ember cascade model
+(``ember_cascade.enable = 1``).  Reads the ``ember_cascade_flux`` and
+``ember_cascade_ignition`` fields from AMReX plotfiles and produces:
+
+* A per-step summary table (max / mean landing flux, number of active cells,
+  number of spot-fire ignitions).
+* An optional CSV export for further analysis.
+* Optional visualisation of the Gaussian landing-flux map alongside the fire
+  perimeter contour.
+
+The reader is dependency-free for plain AMReX plotfiles — it parses the ASCII
+``Header`` and binary ``Cell_D_*`` FAB files directly without requiring the
+AMReX Python bindings.
+
+.. code-block:: bash
+
+   # Summarise all steps
+   python3 tools/ember_cascade_analysis.py --plt-dir .
+
+   # Export statistics to CSV
+   python3 tools/ember_cascade_analysis.py --plt-dir . --csv ember.csv
+
+   # Visualise landing flux map at step 50
+   python3 tools/ember_cascade_analysis.py --plt-dir . --plot 0050 \
+       --output flux_step50.png
+
+**Dependencies**: ``numpy`` (required); ``matplotlib`` (optional, for ``--plot``).

@@ -1066,6 +1066,168 @@ Each plot file contains four Albini-specific scalar fields:
 * ``albini_active`` – flag (1) at cells that received a spot ignition.
 
 
+Flux-Based Ember Cascade Model (``ember_cascade.*``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The flux-based ember cascade model complements the single-brand Albini trajectory
+approach by treating dense firebrand showers as a **continuous landing-flux
+field** rather than tracking individual particles.  It is appropriate when fire
+intensity is high enough to generate large, simultaneous ember cascades from the
+convective plume — a regime where the Monte-Carlo single-brand treatment becomes
+computationally or physically inadequate (Sardoy et al. 2007).
+
+**Stage 1 – Plume lofting height (Albini 1983)**
+
+Same as the trajectory model:
+
+.. math::
+
+   H_z \;[\text{m}] = 12.2 \; I_B^{1/3}
+
+where :math:`I_B` [kW/m] is the Byram fireline intensity.  Cells with
+:math:`I_B < I_{B,\min}` produce no embers.
+
+**Stage 2 – Ember source flux**
+
+The volumetric firebrand production rate per unit fire-line length is
+parameterised as a power-law of intensity:
+
+.. math::
+
+   F_{\text{src}} \;[\text{embers/m/s}] = k_{\text{flux}} \left(\frac{I_B}{I_{B,\text{ref}}}\right)^{\alpha}
+
+where ``k_flux``, ``I_B_ref``, and ``flux_exp`` (:math:`\alpha`) are user
+parameters.
+
+**Stage 3 – Wind-advected Gaussian landing kernel**
+
+Flight time and mean transport displacement:
+
+.. math::
+
+   t_f = \frac{H_z}{v_t}, \quad
+   \delta x = u \, t_f, \quad
+   \delta y = v \, t_f
+
+Turbulent diffusion from the plume broadens the ember cloud:
+
+.. math::
+
+   \sigma = \sigma_{\text{base}} + k_\sigma \, H_z
+
+The landing-flux density at cell :math:`(x, y)` from source :math:`s` is:
+
+.. math::
+
+   \delta F_{\text{land}}(x,y)
+     = F_{\text{src},s}
+       \cdot \frac{A_{\text{cell}}}{2\pi\sigma_s^2}
+       \cdot \exp\!\left(-\frac{(\Delta x_s)^2 + (\Delta y_s)^2}{2\sigma_s^2}\right)
+
+where :math:`\Delta x_s = x - (x_s + \delta x_s)`.  Only cells within
+:math:`n_{\sigma,\text{cut}} \times \sigma_s` of the mean landing centre
+receive contributions (Gaussian truncation for efficiency).  The total landing
+flux is the sum over all active source cells:
+
+.. math::
+
+   F_{\text{land}}(x,y) = \sum_s \delta F_{\text{land},s}(x,y)
+
+**Stage 4 – Stochastic Poisson ignition**
+
+During each check interval of duration :math:`\Delta t_{\text{check}}`, each
+cell is treated as an independent Poisson receiver:
+
+.. math::
+
+   \lambda = \frac{F_{\text{land}} \, \Delta t_{\text{check}}}{N_{\text{min}}}
+
+   P_{\text{ign}} = 1 - e^{-\lambda}
+
+A uniform random draw on :math:`[0,1]` is compared against :math:`P_{\text{ign}}`;
+cells that pass receive a spot-fire ignition of radius ``spot_radius``.
+``N_min_density`` [embers/m²/s] controls the ignition sensitivity.
+
+**3-D wind transport**
+
+When ``ember_cascade.use_3d_wind = 1`` (or ``require_3d_wind = 1``), the
+height-averaged horizontal wind from a
+`massconsistent_amr <https://github.com/hgopalan/massconsistent_amr>`_ plotfile
+is used for :math:`(u, v)` in the transport displacement.  Setting
+``require_3d_wind = 1`` causes the simulation to abort with a diagnostic message
+if no valid 3-D wind file is provided.
+
+**Diagnostic output fields**
+
+* ``ember_cascade_flux`` – accumulated ember landing-flux density
+  :math:`F_{\text{land}}` [embers/m²/s] at each cell.
+* ``ember_cascade_ignition`` – flag (1.0) at cells that received a spot-fire
+  ignition during the most recent check interval.
+
+**Input parameters** (prefix ``ember_cascade.``):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 10 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to activate flux-based ember cascade model
+   * - ``I_B_min``
+     - 10.0
+     - Minimum Byram fireline intensity [kW/m] to emit embers
+   * - ``terminal_velocity``
+     - 1.0
+     - Firebrand terminal descent velocity [m/s]
+   * - ``k_flux``
+     - 1.0
+     - Ember source flux coefficient
+   * - ``I_B_ref``
+     - 100.0
+     - Reference intensity [kW/m] for flux scaling
+   * - ``flux_exp``
+     - 1.0
+     - Intensity exponent :math:`\alpha`
+   * - ``sigma_base``
+     - 50.0
+     - Minimum Gaussian spread radius [m]
+   * - ``k_sigma``
+     - 0.1
+     - Spread growth per metre of plume height [m/m]
+   * - ``n_sigma_cutoff``
+     - 4.0
+     - Gaussian kernel truncation (multiples of :math:`\sigma`)
+   * - ``N_min_density``
+     - 1.0×10⁻³
+     - Ignition threshold [embers/m²/s]
+   * - ``spot_radius``
+     - 5.0
+     - New ignition zone radius [m]
+   * - ``check_interval``
+     - 5
+     - Run cascade check every N timesteps
+   * - ``random_seed``
+     - 0
+     - RNG seed (0 = system time)
+   * - ``use_3d_wind``
+     - 0
+     - 1 to use height-averaged wind from plt file
+   * - ``require_3d_wind``
+     - 0
+     - 1 to abort if no valid 3-D plt wind data provided
+   * - ``plt_wind_file``
+     - *(empty)*
+     - Path to massconsistent_amr plt directory
+
+**References**:
+Albini (1983); Sardoy, Consalvi, Porterie & Fernandez-Pello (2007).
+*Modeling transport and combustion of firebrands from burning trees.*
+Combustion and Flame 150(3):151–169.
+
+
 Spotting Suppression Inside Retardant Drop Zones
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

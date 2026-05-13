@@ -59,6 +59,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Crown fire** — Van Wagner (1977) initiation + Cruz et al. (2005) + Rothermel (1991) multiplier + passive blend
 - **Per-fuel burnout time** — Rothermel (1983) residence time from SAV / particle density when landscape file is present
 - **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree; optional 3-D wind from [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) plotfiles; **GPU-accelerated 3-D wind interpolation** (CUDA/HIP/SYCL via `amrex::ParallelFor` on device-side `PltWindData::d_u2d`/`d_v2d`) with CPU fallback intact
+- **Flux-based ember cascade** — dense firebrand shower from convective plume modelled as a continuous Gaussian landing-flux field (Sardoy et al. 2007 approach); Albini (1983) plume height, wind-advected mean transport, turbulent-diffusion spread, Poisson ignition threshold; optional 3-D wind from massconsistent_amr with `require_3d_wind` assertion (`ember_cascade.*`)
 - **Retardant suppression** — ROS and spotting probability zeroed inside active drop zones
 - **Terrain effects** — per-cell slope/aspect from FARSITE LCP files or XYZ terrain; FARSITE full topographic horizon scan (8-direction ridge shading)
 - **Wind models** — time-varying, turbulent (OU/spectral), compact direction schedule
@@ -120,7 +121,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 |---|---|
 | `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread |
 | `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
-| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)* |
+| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)* |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)*, **terrain_gradient_correction** *(new)* |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |
@@ -129,10 +130,13 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask**, **smoke_plume_rise** *(new)*, **reentry_spotting** *(new)* |
 
-The `albini_spotting_3d_wind` test requires a Python pre-step to generate the synthetic plt wind file:
+The `albini_spotting_3d_wind` and `ember_cascade_flux` tests require a Python pre-step to generate the synthetic plt wind file:
 
 ```bash
 cd regtest/spotting/albini_spotting_3d_wind
+python3 generate_plt_wind.py   # creates plt_wind_3d/ directory
+
+cd ../ember_cascade_flux
 python3 generate_plt_wind.py   # creates plt_wind_3d/ directory
 ```
 
