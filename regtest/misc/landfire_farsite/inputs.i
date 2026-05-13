@@ -7,14 +7,11 @@
 # Grid & domain (300 m x 300 m, UTM Zone 11N, matches synthetic landscape)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 330300.0
 prob_hi_y = 3775300.0
-prob_hi_z = 1.0
 
 # Time & output
 nsteps = 80

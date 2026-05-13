@@ -1,5 +1,6 @@
 #include "wildfire_includes.H"
 
+static_assert(AMREX_SPACEDIM == 2, "wildfire_levelset must be compiled in 2D (AMReX_SPACEDIM=2). The wind solver has been moved to a separate repository.");
 
 // ======================= Main ================================================
 // 

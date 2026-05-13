@@ -7,10 +7,8 @@ n_cell = 64
 max_grid_size = 32
 prob_lo_x = 0.0
 prob_lo_y = 0.0
-prob_lo_z = 0.0
 prob_hi_x = 1.0
 prob_hi_y = 1.0
-prob_hi_z = 1.0
 
 # Time & output
 nsteps = 100
