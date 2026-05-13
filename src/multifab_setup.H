@@ -78,6 +78,11 @@ struct WildfireFields {
     MultiFab arrival_time_mf;  // Simulation time of first ignition [s]; -1 = unburned
     MultiFab burnout_time_mf;  // arrival_time + tau_residence [s]; -1 = unburned
     MultiFab residual_fuel_mf; // Residual fuel fraction [-]; 1 = fully loaded
+    // ROS at the moment each cell first ignited [m/s]; -1 = unburned.
+    // Frozen at ignition time – not modified by later burn-period gates,
+    // retardant, or crown-fire overrides, providing a persistent spatial
+    // record of how fast the fire was spreading when it reached each cell.
+    MultiFab ros_at_arrival_mf;
 
     // ---- Energy diagnostics ----
     MultiFab heat_per_unit_area_mf; // I_R × tau_residence [BTU/ft²]
@@ -175,6 +180,7 @@ struct WildfireFields {
         , arrival_time_mf      (ba, dm, 1,                 0)
         , burnout_time_mf      (ba, dm, 1,                 0)
         , residual_fuel_mf     (ba, dm, 1,                 0)
+        , ros_at_arrival_mf    (ba, dm, 1,                 0)
         // Energy
         , heat_per_unit_area_mf(ba, dm, 1,                 0)
         , heat_flux_mf         (ba, dm, 1,                 0)
@@ -223,6 +229,7 @@ struct WildfireFields {
         arrival_time_mf      .setVal(Real(-1.0)); // -1 = not yet burned
         burnout_time_mf      .setVal(Real(-1.0)); // -1 = not yet burned
         residual_fuel_mf     .setVal(Real(1.0));  //  1 = fully loaded
+        ros_at_arrival_mf    .setVal(Real(-1.0)); // -1 = not yet burned
         heat_per_unit_area_mf.setVal(Real(0.0));
         heat_flux_mf         .setVal(Real(0.0));
         reaction_intensity_mf.setVal(Real(0.0));

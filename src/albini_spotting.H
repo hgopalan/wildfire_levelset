@@ -562,10 +562,10 @@ inline void compute_albini_spotting(
     // Stores landing locations (x, y) and source index
     struct LandingSpot {
         Real x, y;         // landing position (physical)
-        Real src_x, src_y; // source fire-front cell position (physical)
         int  src_i, src_j;
         int  ic, jc;       // grid indices of the landing cell
         Real distance;
+        Real src_x, src_y; // source fire-front cell position (physical); for lineage
     };
     std::vector<LandingSpot> spots;
 
@@ -631,7 +631,7 @@ inline void compute_albini_spotting(
 
         int ic = static_cast<int>(std::floor((px - prob_lo[0]) / dx[0]));
         int jc = static_cast<int>(std::floor((py - prob_lo[1]) / dx[1]));
-        spots.push_back({px, py, fc.x, fc.y, fc.i, fc.j, ic, jc, dist});
+        spots.push_back({px, py, fc.i, fc.j, ic, jc, dist, fc.x, fc.y});
     }
 
     amrex::Print() << "Albini spotting: generated " << spots.size()

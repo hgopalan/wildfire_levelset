@@ -92,6 +92,7 @@ int main(int argc, char* argv[])
     MultiFab& spread_dir_mf         = f.spread_dir_mf;
     MultiFab& spot_catch_prob_mf    = f.spot_catch_prob_mf;
     MultiFab& spotting_lineage_mf   = f.spotting_lineage_mf;
+    MultiFab& ros_at_arrival_mf     = f.ros_at_arrival_mf;
 
     // ---------------- Initialise phi and mark initially-burned cells --------
     bool use_indicator = (inputs.propagation_method == "farsite");
@@ -1197,7 +1198,10 @@ int main(int argc, char* argv[])
       // used for fire propagation this timestep.
       //   spread_dir_mf[0] = R_mf × (ux / |u|)  [m/s in x]
       //   spread_dir_mf[1] = R_mf × (uy / |u|)  [m/s in y]
+      // Cells with negligible wind (|u| < min_wind_mag) are set to zero to
+      // avoid division by near-zero values.
       {
+          constexpr Real min_wind_mag = Real(1.0e-10); // [m/s] – negligible wind guard
           for (MFIter mfi(spread_dir_mf); mfi.isValid(); ++mfi) {
               const Box& bx = mfi.validbox();
               auto const v  = vel_for_model.const_array(mfi);
@@ -1208,7 +1212,7 @@ int main(int argc, char* argv[])
                   Real uy = v(i, j, k, 1);
                   Real wind_mag = std::sqrt(ux * ux + uy * uy);
                   Real R_val = R(i, j, k);
-                  if (wind_mag > Real(1.0e-10)) {
+                  if (wind_mag > min_wind_mag) {
                       sd(i, j, k, 0) = R_val * ux / wind_mag;
                       sd(i, j, k, 1) = R_val * uy / wind_mag;
                   } else {
@@ -1336,15 +1340,21 @@ int main(int argc, char* argv[])
       time += dt_step;
 
       // --- Update arrival time: mark cells that first became burned this step
+      // Also freeze the instantaneous ROS (ros_at_arrival_mf) at the moment
+      // each cell first ignites so the spatial spread-rate record persists
+      // through later burn-period gates, retardant drops, and crown overrides.
       {
         const Real cur_time = time;
         for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
           const Box& bx = mfi.validbox();
-          auto const p  = phi.const_array(mfi);
-          auto       at = arrival_time_mf.array(mfi);
+          auto const p   = phi.const_array(mfi);
+          auto const R   = R_mf.const_array(mfi);
+          auto       at  = arrival_time_mf.array(mfi);
+          auto       rar = ros_at_arrival_mf.array(mfi);
           ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             if (p(i, j, k) < Real(0.0) && at(i, j, k) < Real(0.0)) {
-              at(i, j, k) = cur_time;
+              at(i, j, k)  = cur_time;
+              rar(i, j, k) = R(i, j, k);  // freeze ROS at time of arrival
             }
           });
         }
@@ -1486,6 +1496,8 @@ int main(int argc, char* argv[])
       }
       // ---- Write HTML fire report (end of run) ----
       write_fire_report_html(inputs, static_cast<double>(time), final_step);
+      // ---- Write ASCII fire size summary (mirrors tools/fire_size_summary.py) ----
+      write_fire_size_summary_text(inputs.fire_stats_file);
     }
   amrex::Finalize();
   return 0;
