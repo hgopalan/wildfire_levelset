@@ -96,6 +96,9 @@ inline void write_wildfire_plotfile(
     MultiFab& ci_full_mf            = f.ci_full_mf;
     MultiFab& spatial_moisture_mf   = f.spatial_moisture_mf;
     MultiFab& plume_rise_mf         = f.plume_rise_mf;
+    MultiFab& spread_dir_mf         = f.spread_dir_mf;
+    MultiFab& spot_catch_prob_mf    = f.spot_catch_prob_mf;
+    MultiFab& spotting_lineage_mf   = f.spotting_lineage_mf;
 
     const bool has_landscape = !inputs.rothermel.landscape_file.empty();
 
@@ -138,7 +141,10 @@ inline void write_wildfire_plotfile(
         "reaction_intensity", "residual_fuel", "shade_fraction",
         "torching_index_kmh", "crowning_index_kmh",
         "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw",
-        "plume_rise_m"
+        "plume_rise_m",
+        "spread_dir_x", "spread_dir_y",
+        "spot_catch_prob",
+        "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y"
 #else
         , "farsite_dx", "farsite_dy", "R",
         "spot_prob", "spot_count", "spot_dist", "spot_active",
@@ -160,7 +166,10 @@ inline void write_wildfire_plotfile(
         "reaction_intensity", "residual_fuel", "shade_fraction",
         "torching_index_kmh", "crowning_index_kmh",
         "moisture_d1", "moisture_d10", "moisture_d100", "moisture_lh", "moisture_lw",
-        "plume_rise_m"
+        "plume_rise_m",
+        "spread_dir_x", "spread_dir_y",
+        "spot_catch_prob",
+        "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y"
 #endif
     };
 
@@ -192,10 +201,14 @@ inline void write_wildfire_plotfile(
     //   ...+EMISSIONS+12                         : crowning_index (1)
     //   ...+EMISSIONS+13                         : spatial_moisture (FMS_MOISTURE_NCOMP)
     //   ...+EMISSIONS+13+FMS_MOISTURE_NCOMP      : plume_rise_m (1)
+    //   ...+EMISSIONS+14+FMS_MOISTURE_NCOMP      : spread_dir (2)
+    //   ...+EMISSIONS+16+FMS_MOISTURE_NCOMP      : spot_catch_prob (1)
+    //   ...+EMISSIONS+17+FMS_MOISTURE_NCOMP      : spotting_lineage (SPOT_LINEAGE_NCOMP)
     constexpr int D = AMREX_SPACEDIM;
     const int ncomp = 1 + D + D + 1 + 4 + 1 + 1 + 4 + 1 + 5
                     + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP
-                    + 13 + FMS_MOISTURE_NCOMP + 1;  // +1 for plume_rise_m
+                    + 13 + FMS_MOISTURE_NCOMP + 1  // +1 for plume_rise_m
+                    + 2 + 1 + SPOT_LINEAGE_NCOMP;  // spread_dir(2), spot_catch_prob(1), lineage(4)
     MultiFab plotmf(ba, dm, ncomp, 0);
 
     int c = 0;
@@ -231,7 +244,10 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, ti_full_mf,            0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, ci_full_mf,            0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, spatial_moisture_mf,   0, c, FMS_MOISTURE_NCOMP, 0); c += FMS_MOISTURE_NCOMP;
-    MultiFab::Copy(plotmf, plume_rise_mf,         0, c, 1,           0);
+    MultiFab::Copy(plotmf, plume_rise_mf,         0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, spread_dir_mf,         0, c, 2,           0); c += 2;
+    MultiFab::Copy(plotmf, spot_catch_prob_mf,    0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, spotting_lineage_mf,   0, c, SPOT_LINEAGE_NCOMP, 0);
 
     // ---- Write plotfile ----
     char buf[64];

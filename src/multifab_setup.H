@@ -32,6 +32,12 @@ using namespace amrex;
 // (Defined here because it is not exported from viegas_model.H.)
 static constexpr int VIEGAS_NCOMP = 5;
 
+// Number of spotfire-lineage components:
+//   0 firebrand_src_x, 1 firebrand_src_y  (from generate_firebrand_spots)
+//   2 albini_src_x,    3 albini_src_y      (from compute_albini_spotting)
+// Sentinel -1.0 = no brand has landed in this cell.
+static constexpr int SPOT_LINEAGE_NCOMP = 4;
+
 struct WildfireFields {
 
     // ---- Ghost-cell depth for the level-set field ----
@@ -116,6 +122,25 @@ struct WildfireFields {
     // ---- Smoke plume rise (Briggs 1965) ----
     MultiFab plume_rise_mf;     // Plume-rise height [m] per fire-front cell (1 comp)
 
+    // ---- Spread direction raster (2 comps: spread_vel_x, spread_vel_y) ----
+    // Stores the fire spread velocity vector at each cell:
+    //   spread_vel = R_mf × (wind_unit_vector)  [m/s in x and y]
+    // Computed from effective wind and finalized R_mf each timestep.
+    MultiFab spread_dir_mf;
+
+    // ---- Spot-fire catching (ignition) probability raster (1 comp) ----
+    // P_catch_local = P_catch × max(0, (M_x − M_f_local) / M_x)
+    // Spatially varies when spatial fuel-moisture data are available.
+    MultiFab spot_catch_prob_mf;
+
+    // ---- Spotfire lineage (SPOT_LINEAGE_NCOMP = 4 comps) ----
+    //   0 firebrand_src_x  – x-coord [m] of the source fire cell (firebrand model)
+    //   1 firebrand_src_y  – y-coord [m] of the source fire cell (firebrand model)
+    //   2 albini_src_x     – x-coord [m] of the source fire cell (Albini model)
+    //   3 albini_src_y     – y-coord [m] of the source fire cell (Albini model)
+    // Sentinel -1.0 indicates no brand has landed in that cell for that model.
+    MultiFab spotting_lineage_mf;
+
     // ---- Terrain slopes helper (2 comps: slope_x, slope_y) ----
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
@@ -178,6 +203,12 @@ struct WildfireFields {
         , spatial_moisture_mf  (ba, dm, FMS_MOISTURE_NCOMP, 0)
         // Plume rise
         , plume_rise_mf        (ba, dm, 1,                 0)
+        // Spread direction raster
+        , spread_dir_mf        (ba, dm, 2,                 0)
+        // Spot catching probability
+        , spot_catch_prob_mf   (ba, dm, 1,                 0)
+        // Spotfire lineage
+        , spotting_lineage_mf  (ba, dm, SPOT_LINEAGE_NCOMP, 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
     {
@@ -217,6 +248,11 @@ struct WildfireFields {
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lh),   3, 1, 0);
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lw),   4, 1, 0);
         plume_rise_mf.setVal(Real(0.0));
+        // Spread direction and spot catching probability
+        spread_dir_mf      .setVal(Real(0.0));
+        spot_catch_prob_mf .setVal(Real(0.0));
+        // Spotfire lineage: sentinel -1 = no brand has landed
+        spotting_lineage_mf.setVal(Real(-1.0));
     }
 };
 

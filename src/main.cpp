@@ -88,6 +88,11 @@ int main(int argc, char* argv[])
     MultiFab& plume_rise_mf         = f.plume_rise_mf;
     std::unique_ptr<MultiFab>& terrain_slopes = f.terrain_slopes;
 
+    // New diagnostic fields
+    MultiFab& spread_dir_mf         = f.spread_dir_mf;
+    MultiFab& spot_catch_prob_mf    = f.spot_catch_prob_mf;
+    MultiFab& spotting_lineage_mf   = f.spotting_lineage_mf;
+
     // ---------------- Initialise phi and mark initially-burned cells --------
     bool use_indicator = (inputs.propagation_method == "farsite");
     Real time = 0.0;
@@ -1186,6 +1191,34 @@ int main(int argc, char* argv[])
           }
       }
 
+      // ---- Spread direction raster: R_mf × normalized wind unit vector ----
+      // Computed after all R_mf modifications (crown, acceleration, retardant,
+      // burn-period gate) so the raster faithfully represents the conditions
+      // used for fire propagation this timestep.
+      //   spread_dir_mf[0] = R_mf × (ux / |u|)  [m/s in x]
+      //   spread_dir_mf[1] = R_mf × (uy / |u|)  [m/s in y]
+      {
+          for (MFIter mfi(spread_dir_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto const v  = vel_for_model.const_array(mfi);
+              auto const R  = R_mf.const_array(mfi);
+              auto sd = spread_dir_mf.array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+                  Real ux = v(i, j, k, 0);
+                  Real uy = v(i, j, k, 1);
+                  Real wind_mag = std::sqrt(ux * ux + uy * uy);
+                  Real R_val = R(i, j, k);
+                  if (wind_mag > Real(1.0e-10)) {
+                      sd(i, j, k, 0) = R_val * ux / wind_mag;
+                      sd(i, j, k, 1) = R_val * uy / wind_mag;
+                  } else {
+                      sd(i, j, k, 0) = Real(0.0);
+                      sd(i, j, k, 1) = Real(0.0);
+                  }
+              });
+          }
+      }
+
       if (use_levelset) {
 	// Traditional level set advection.
 	// Pass pre-computed R_mf when a wind-terrain model or non-Rothermel spread
@@ -1219,7 +1252,8 @@ int main(int argc, char* argv[])
 	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
 	                           (inputs.fuel_depletion.adjust_spotting_reentry == 1)
 	                               ? &residual_fuel_mf : nullptr,
-	                           inputs.fuel_depletion.spotting_fuel_threshold);
+	                           inputs.fuel_depletion.spotting_fuel_threshold,
+	                           &spotting_lineage_mf);
 	}
 	// Albini (1983) firebrand spotting with 2-D trajectory integration
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {
@@ -1231,7 +1265,8 @@ int main(int argc, char* argv[])
 	                              ? &albini_plt_wind : nullptr,
 	                          (inputs.fuel_depletion.adjust_spotting_reentry == 1)
 	                              ? &residual_fuel_mf : nullptr,
-	                          inputs.fuel_depletion.spotting_fuel_threshold);
+	                          inputs.fuel_depletion.spotting_fuel_threshold,
+	                          &spotting_lineage_mf);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether
@@ -1249,6 +1284,18 @@ int main(int argc, char* argv[])
 	                   << " m  scaled(U=" << wind_speed_ms << " m/s)="
 	                   << d_max_scaled << " m\n";
 	  }
+	}
+
+	// ---- Spot-fire catching probability raster ----
+	// Computed whenever at least one spotting model is active.  Uses the
+	// first-active model's P_catch (firebrand takes priority over Albini).
+	if (inputs.spotting.enable == 1 || inputs.albini_spotting.enable == 1) {
+	    const Real P_catch_use = (inputs.spotting.enable == 1)
+	        ? static_cast<Real>(inputs.spotting.P_catch)
+	        : static_cast<Real>(inputs.albini_spotting.P_catch);
+	    compute_spot_catch_probability(spot_catch_prob_mf, inputs.rothermel,
+	                                   P_catch_use,
+	                                   has_spatial_moisture ? &spatial_moisture_mf : nullptr);
 	}
 	
 	// --- Step 6: Simulate post-frontal burnout
