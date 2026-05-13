@@ -176,85 +176,11 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 
 ## Satellite Fire Detection Assimilation
 
-Active-fire detections from operational satellites can be ingested to
-constrain the initial fire perimeter or to correct the simulated perimeter
-during a running simulation.
-
-### Supported sources
-
-| Source | Key | Description |
-|--------|-----|-------------|
-| `file` | — | Pre-downloaded CSV `(lon_deg, lat_deg, confidence_pct)` — no network required. |
-| `viirs` | NASA FIRMS map key | VIIRS-SNPP or VIIRS-NOAA20 via the [NASA FIRMS REST API](https://firms.modaps.eosdis.nasa.gov/api/). |
-| `goes` | — (public S3) | GOES-16/17/18 ABI-L2-FDC Full-Disk or CONUS product from the [NOAA AWS bucket](https://registry.opendata.aws/noaa-goes/). Requires `python3 satellite_goes_to_csv.py` helper for NetCDF → CSV conversion. |
-
-### Quick start (file mode)
-
-```ini
-# inputs.i
-satellite.enable                = 1
-satellite.source                = file
-satellite.local_file            = fire_detections.csv
-satellite.bbox_lon_min          = -120.5
-satellite.bbox_lon_max          = -119.5
-satellite.bbox_lat_min          =   37.0
-satellite.bbox_lat_max          =   38.0
-satellite.utm_zone              = 10
-satellite.utm_northern          = 1
-satellite.prob_lo_easting_m     = 570000.0    # UTM easting of prob_lo_x
-satellite.prob_lo_northing_m    = 4100000.0   # UTM northing of prob_lo_y
-satellite.detection_radius_m    = 375.0       # VIIRS 375-m pixel
-satellite.confidence_threshold  = 50          # [%]
-satellite.use_as_ic             = 1           # apply at t=0
-satellite.use_mid_sim           = 1           # re-apply every fetch_interval_s
-satellite.fetch_interval_s      = 600.0       # [s]
-satellite.suppress_if_burning   = 1           # don't overwrite active fire front
-```
-
-Detection CSV format (lon/lat, comma-separated):
-
-```
-# lon_deg,lat_deg,confidence_pct
--119.97,37.045,85
--119.90,37.090,75
-```
-
-### Quick start (VIIRS real-time)
-
-Obtain a free map key from <https://firms.modaps.eosdis.nasa.gov/api/map_key/>, then:
-
-```ini
-satellite.enable    = 1
-satellite.source    = viirs
-satellite.api_key   = YOUR_FIRMS_MAP_KEY
-satellite.bbox_lon_min = -120.5
-satellite.bbox_lon_max = -119.5
-satellite.bbox_lat_min =   37.0
-satellite.bbox_lat_max =   38.0
-satellite.utm_zone  = 10
-satellite.utm_northern = 1
-satellite.prob_lo_easting_m  = 570000.0
-satellite.prob_lo_northing_m = 4100000.0
-satellite.local_cache_file   = viirs_cache.csv   # optional reproducibility cache
-```
-
-### Coordinate alignment
-
-The simulation domain origin (`prob_lo_x`, `prob_lo_y`) must correspond to
-a known UTM easting/northing pair.  Set those values in
-`satellite.prob_lo_easting_m` and `satellite.prob_lo_northing_m` so that:
-
-```
-sim_x = UTM_easting  - prob_lo_easting_m
-sim_y = UTM_northing - prob_lo_northing_m
-```
-
-### HPC / offline use
-
-Set `satellite.source = file` and point `satellite.local_file` to a
-pre-downloaded detection CSV.  No network access is required.  If a
-real-time fetch fails, a warning is printed and the assimilation step is
-skipped — the simulation never aborts due to network errors.
+Active-fire detections from GOES-16/17/18 (public NOAA AWS S3), VIIRS (NASA FIRMS REST API),
+or a pre-downloaded CSV can be ingested to constrain the initial fire perimeter or to correct
+the simulated perimeter during a running simulation.  Enable with `satellite.enable = 1` and
+set `satellite.source` to `file`, `viirs`, or `goes`.  See the
+[Python Tools documentation](docs/tools.rst) for the full parameter reference and usage examples.
 
 ## License
 

@@ -61,8 +61,8 @@ Overview
      - Van Wagner (1977) crown fire initiation and active-crown ROS worksheet
    * - ``ignition_probability_table.py``
      - Anderson (1970) probability of ignition lookup tables
-   * - Satellite Assimilation (``src/satellite_assimilation.H``)
-     - Ingest GOES / VIIRS / CSV active-fire detections into the level-set initial condition or mid-simulation
+   * - ``satellite_goes_to_csv.py`` / Satellite Fire Detection Assimilation
+     - Convert GOES NetCDF fire-detection granules to CSV; ingest GOES / VIIRS / CSV active-fire detections into the level-set initial condition or mid-simulation
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.
@@ -671,10 +671,11 @@ Three independent parameters are perturbed:
 
 **Dependencies**: none required; ``scipy`` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
 
-Satellite Fire Detection Assimilation
----------------------------------------
+``satellite_goes_to_csv.py`` / Satellite Fire Detection Assimilation
+----------------------------------------------------------------------
 
 **C++ module**: ``src/satellite_assimilation.H``
+**Python helper**: ``tools/satellite_goes_to_csv.py`` (GOES NetCDF → CSV converter)
 
 The satellite assimilation module ingests real-time active-fire detections from
 GOES, VIIRS, or a pre-prepared CSV file, and merges them into the fire level-set
@@ -779,6 +780,9 @@ Input Parameters (prefix ``satellite.``)
    * - ``api_key``
      - ``""``
      - NASA FIRMS map key (required for ``source="viirs"``)
+   * - ``viirs_url_base``
+     - ``"https://firms.modaps.eosdis.nasa.gov/api/area/csv"``
+     - Base URL for the NASA FIRMS REST API (override for proxies or mirrors)
    * - ``goes_product``
      - ``"ABI-L2-FDCF"``
      - GOES ABI fire product name
