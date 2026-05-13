@@ -31,7 +31,6 @@ wind_time_spacing = 3600.0
 source_type = sphere
 center_x = 200.0
 center_y = 500.0
-center_z = 0.5
 sphere_radius = 40.0
 
 # Fuel: FM4 chaparral

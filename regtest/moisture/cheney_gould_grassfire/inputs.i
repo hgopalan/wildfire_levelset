@@ -20,13 +20,11 @@ reinit_int = 20
 # Wind: 10 m/s eastward (36 km/h 10-m open wind)
 u_x = 10.0
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition at domain centre
 source_type = sphere
 center_x = 330500.0
 center_y = 3775500.0
-center_z = 0.5
 sphere_radius = 40.0
 
 # Cheney & Gould grassland fire spread model

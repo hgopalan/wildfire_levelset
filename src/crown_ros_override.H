@@ -43,7 +43,7 @@ inline Real apply_crown_ros_override(
     const MultiFab& cbd_mf,
     const InputParameters::CrownInitiationParams& crown,
     const InputParameters::CruzCrownParams& cruz_crown,
-    const CruzCrownComputed& ccc_global)
+    const CruzCrownComputed& /*ccc_global*/)
 {
     const Real CBD_global = Real(crown.CBD);
     const Real FMC_global = Real(crown.FMC);
@@ -59,7 +59,6 @@ inline Real apply_crown_ros_override(
     const bool use_passive  = (crown.use_passive_blend == 1);
     const Real CBH          = Real(crown.CBH);
     const Real I_o          = Real(0.010) * CBH * (Real(460.0) + Real(25.9) * FMC_global);
-    const CruzCrownComputed ccc = use_cruz ? ccc_global : CruzCrownComputed{};
     const Real MC10         = Real(cruz_crown.MC10);
 
     for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {

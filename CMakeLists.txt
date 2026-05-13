@@ -2,12 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 set(AMREX_SUBMODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/amrex")
 option(LEVELSET_USE_VENDORED_AMREX "Prefer building the vendored AMReX submodule" ON)
-option(LEVELSET_DIM_2D "Build for 2D instead of 3D" ON)
+option(LEVELSET_DIM_2D "Build for 2D (only supported dimension)" ON)
 option(LEVELSET_ENABLE_EB "Enable AMReX Embedded Boundary support" OFF)
 option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
-# The wind solver has been moved to a separate repository.  It is no longer
-# built here.  wildfire_levelset compiles only in 2D.
 option(LEVELSET_BUILD_LEVELSET "Build the levelset fire-spread solver" ON)
 set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
     "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
@@ -50,7 +48,9 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
     set(AMReX_SPACEDIM "2" CACHE STRING "AMReX spatial dimensions for wildfire_levelset" FORCE)
     message(STATUS "Building for 2D (AMReX_SPACEDIM=2)")
   else()
-    message(FATAL_ERROR "wildfire_levelset only supports 2D builds. Do not set LEVELSET_DIM_2D=OFF.")
+    message(FATAL_ERROR
+      "3D builds are not supported. Remove -DLEVELSET_DIM_2D=OFF "
+      "(the default is ON). Only AMREX_SPACEDIM=2 is supported by this solver.")
   endif()
   if(LEVELSET_ENABLE_MPI)
     set(AMReX_MPI ON CACHE BOOL "Build AMReX with MPI" FORCE)
@@ -61,6 +61,7 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
   set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
+  # Linear solvers are not required by the levelset fire-spread solver.
   set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
   set(AMReX_PARTICLES OFF CACHE BOOL "Build AMReX without particle support" FORCE)
   set(AMReX_INSTALL OFF CACHE BOOL "Disable AMReX install rules when used as a subproject" FORCE)

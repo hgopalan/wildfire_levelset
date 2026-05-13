@@ -1,6 +1,9 @@
 #include "wildfire_includes.H"
 
-static_assert(AMREX_SPACEDIM == 2, "wildfire_levelset must be compiled in 2D (AMReX_SPACEDIM=2). The wind solver has been moved to a separate repository.");
+static_assert(AMREX_SPACEDIM == 2,
+              "wildfire_levelset requires a 2D AMReX build. "
+              "Configure with -DLEVELSET_DIM_2D=ON (the default).");
+
 
 // ======================= Main ================================================
 // 
@@ -66,12 +69,8 @@ int main(int argc, char* argv[])
     MultiFab& ecology_mf            = f.ecology_mf;
     MultiFab& emissions_mf          = f.emissions_mf;
     MultiFab& arrival_time_mf       = f.arrival_time_mf;
-    MultiFab& burnout_time_mf       = f.burnout_time_mf;
     MultiFab& residual_fuel_mf      = f.residual_fuel_mf;
-    MultiFab& heat_per_unit_area_mf = f.heat_per_unit_area_mf;
     MultiFab& heat_flux_mf          = f.heat_flux_mf;
-    MultiFab& reaction_intensity_mf = f.reaction_intensity_mf;
-    MultiFab& vorticity_mf          = f.vorticity_mf;
     MultiFab& ti_full_mf            = f.ti_full_mf;
     MultiFab& ci_full_mf            = f.ci_full_mf;
     MultiFab& weise_data            = f.weise_data;
@@ -86,6 +85,7 @@ int main(int argc, char* argv[])
     MultiFab& cc_mf                 = f.cc_mf;
     MultiFab& canopy_height_mf      = f.canopy_height_mf;
     MultiFab& spatial_moisture_mf   = f.spatial_moisture_mf;
+    MultiFab& plume_rise_mf         = f.plume_rise_mf;
     std::unique_ptr<MultiFab>& terrain_slopes = f.terrain_slopes;
 
     // ---------------- Initialise phi and mark initially-burned cells --------
@@ -149,6 +149,20 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ---- 3-D wind from massconsistent_amr plt file ----
+    // When albini_spotting.use_3d_wind = 1, read the plt file once before the
+    // time loop.  The PltWindData struct stores flat 1-D GPU arrays of
+    // (x, y, z, u, v, w) and a precomputed height-averaged 2-D wind field.
+    PltWindData albini_plt_wind;
+    if (inputs.albini_spotting.enable == 1 &&
+        inputs.albini_spotting.use_3d_wind == 1 &&
+        !inputs.albini_spotting.plt_wind_file.empty()) {
+        if (!read_plt_wind_file(inputs.albini_spotting.plt_wind_file, albini_plt_wind)) {
+            amrex::Abort("Failed to read 3-D wind plt file for Albini spotting: "
+                         + inputs.albini_spotting.plt_wind_file);
+        }
+    }
+
     // ---- Terrain, landscape, crown layers, and spatial moisture ------------
     bool has_spatial_crown    = false;
     bool has_spatial_moisture = false;
@@ -176,10 +190,6 @@ int main(int argc, char* argv[])
     Gpu::DeviceVector<RothermelComputed>& d_fuel_table   = ftd.d_fuel_table;
     const RothermelComputed*&             d_fuel_table_ptr= ftd.d_fuel_table_ptr;
     int&                                  fuel_table_size = ftd.fuel_table_size;
-    Gpu::DeviceVector<FuelResidenceTime>& d_tau_table    = ftd.d_tau_table;
-    const FuelResidenceTime*&             d_tau_table_ptr = ftd.d_tau_table_ptr;
-    int&                                  tau_table_size  = ftd.tau_table_size;
-    Gpu::DeviceVector<BalbiComputed>&     d_balbi_table   = ftd.d_balbi_table;
     const BalbiComputed*&                 d_balbi_table_ptr=ftd.d_balbi_table_ptr;
     int&                                  balbi_table_size= ftd.balbi_table_size;
     BalbiComputed&                        bc_global_default=ftd.bc_global_default;
@@ -444,6 +454,42 @@ int main(int argc, char* argv[])
         fill_boundary_extrap(phi, geom);
       }
       } else {
+      // FARSITE: compute initial ROS field and CFL-based dt (same as levelset/MTT paths).
+      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      if (heat_flux_active) {
+          apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
+      }
+      const MultiFab& vel_for_farsite_init = (wind_terrain_modifies_vel || heat_flux_active)
+                                              ? vel_effective : vel;
+      if (inputs.fire_spread_model == "balbi") {
+          compute_balbi_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel, inputs.balbi,
+                           terrain_slopes.get(),
+                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                           d_balbi_table_ptr, balbi_table_size,
+                           heat_flux_active ? &heat_flux_mf : nullptr,
+                           heat_flux_active ? &inputs.heat_flux : nullptr);
+      } else if (inputs.fire_spread_model == "cheney_gould") {
+          compute_cheney_gould_R(R_mf, vel_for_farsite_init, inputs.cheney_gould);
+      } else if (inputs.fire_spread_model == "cruz_crown") {
+          compute_cruz_crown_R(R_mf, vel_for_farsite_init, inputs.cruz_crown);
+      } else if (inputs.fire_spread_model == "fbp_o1a" ||
+                 inputs.fire_spread_model == "fbp_o1b" ||
+                 inputs.fire_spread_model == "fbp_s1"  ||
+                 inputs.fire_spread_model == "fbp_s2"  ||
+                 inputs.fire_spread_model == "fbp_s3") {
+          compute_fbp_R(R_mf, vel_for_farsite_init, inputs.fbp);
+      } else if (inputs.fire_spread_model == "lautenberger") {
+          compute_lautenberger_R(R_mf, vel_for_farsite_init, inputs.rothermel, inputs.lautenberger,
+                                  terrain_slopes.get());
+      } else {
+          compute_rothermel_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel,
+                               terrain_slopes.get(),
+                               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                               d_fuel_table_ptr, fuel_table_size,
+                               has_spatial_crown ? &cc_mf : nullptr,
+                               has_spatial_crown ? &canopy_height_mf : nullptr);
+      }
+      //dt = compute_dt(R_mf, geom, inputs.cfl);
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
@@ -557,6 +603,12 @@ int main(int argc, char* argv[])
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
 
+    // ---- Initial smoke plume rise (t=0) ----
+    if (inputs.smoke_plume.enable == 1) {
+        compute_smoke_plume_rise(plume_rise_mf, fireline_intensity_mf,
+                                 vel, inputs.smoke_plume);
+    }
+
     // Scott & Reinhardt (2001) full bisection-based TI/CI (optional, host-only)
     if (inputs.scott_reinhardt_full.enable == 1) {
         compute_full_scott_reinhardt(
@@ -577,6 +629,26 @@ int main(int argc, char* argv[])
     if (!barrier_cells.empty())
         apply_barrier_polygons(phi, barrier_cells, geom);
 
+    // ---- Satellite fire detection assimilation (initial condition) --------
+    // When satellite.enable = 1 and satellite.use_as_ic = 1, fetch active-fire
+    // detections at t=0 and apply them as additional ignition points before the
+    // first plotfile write.  The SatelliteState tracks the last fetch time so
+    // the mid-simulation re-fetch interval is measured from t=0.
+    SatelliteState sat_state;
+    if (inputs.satellite.enable == 1 && inputs.satellite.use_as_ic == 1) {
+        auto sat_pts = fetch_satellite_fire_points(inputs.satellite, Real(0.0));
+        if (!sat_pts.empty()) {
+            apply_satellite_fire_points(phi, geom, sat_pts,
+                                        inputs.satellite.detection_radius_m,
+                                        /*suppress_if_burning=*/false);
+            fill_boundary_extrap(phi, geom);
+            amrex::Print() << "SatelliteAssimilation: applied "
+                           << sat_pts.size()
+                           << " detection(s) as initial condition.\n";
+        }
+        sat_state.last_fetch_time = Real(0.0);
+    }
+
     // ---------------- Initialize fire statistics CSV -------------------
     if (!inputs.fire_stats_file.empty())
         write_fire_stats_header(inputs.fire_stats_file);
@@ -584,6 +656,21 @@ int main(int argc, char* argv[])
     // ---------------- Write initial plotfile ---------------
     write_wildfire_plotfile(f, ba, dm, geom, inputs, restart_step, time, ftd,
                             /*write_stats=*/false, /*is_final=*/false);
+
+    // ---- Simulation calendar date/time helper ----
+    // Uses sim_datetime.H shared helper for "YYYY-MM-DD HH:MM" formatting.
+    // Inputs: sim_start_year/month/day from inputs (falls back to solar_radiation).
+    const int   _yr0 = inputs.sim_start_year;
+    const int   _mo0 = inputs.sim_start_month;
+    const int   _dy0 = inputs.sim_start_day;
+    const double _hr0 = (inputs.solar_radiation.enable == 1)
+                        ? static_cast<double>(inputs.solar_radiation.sim_start_hour)
+                        : 0.0;
+
+    auto sim_datetime_string = [&](double elapsed_s) -> std::string {
+        return WildfireDatetime::elapsed_to_datetime(
+            _yr0, _mo0, _dy0, _hr0, elapsed_s);
+    };
 
     // ---------------- Time stepping ------------------------
     // Run until final_time (if > 0) or nsteps steps (backward-compatible fallback)
@@ -604,7 +691,16 @@ int main(int argc, char* argv[])
         dt = std::min(dt, inputs.final_time - time);
       fill_boundary_extrap(phi, geom);
       const Real dt_step = dt;
-      amrex::Print() << "Time:"<< time << " with timestep:" << dt_step <<std::endl;
+      {
+        // Print time with optional calendar datetime
+        const std::string dt_str = sim_datetime_string(static_cast<double>(time));
+        if (dt_str.empty()) {
+            amrex::Print() << "Time:" << time << " with timestep:" << dt_step << "\n";
+        } else {
+            amrex::Print() << "Time:" << time << " (" << dt_str
+                           << ") with timestep:" << dt_step << "\n";
+        }
+      }
       
       // Update time-dependent wind field if enabled
 #if (AMREX_SPACEDIM == 2)
@@ -1021,6 +1117,17 @@ int main(int argc, char* argv[])
       compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                              inputs.rothermel, inputs.emissions);
 
+      // ---- Smoke plume-rise model (Briggs 1965) ----
+      // Computes per-cell final plume-rise height from Byram fireline intensity.
+      if (inputs.smoke_plume.enable == 1) {
+          compute_smoke_plume_rise(plume_rise_mf, fireline_intensity_mf,
+                                   vel, inputs.smoke_plume);
+          // Print domain maximum plume rise for situational awareness
+          const Real max_plume = plume_rise_mf.max(0);
+          if (max_plume > Real(0.0))
+              amrex::Print() << "  Max smoke plume rise: " << max_plume << " m\n";
+      }
+
       // Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992)
       // Scales R_mf by alpha = 1 - exp(-r_fire / L_acc) to account for the
       // slower spread of small fires before quasi-steady-state is reached.
@@ -1099,21 +1206,32 @@ int main(int argc, char* argv[])
 	// --- Step 4: Merge to new perimeter
 	// For wind-terrain models, pass vel_for_model so FARSITE ellipse
 	// orientation and ROS also reflect the terrain-corrected wind.
-	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
+	// Pass R_mf so the ellipse uses the ROS from the configured firespread model.
+	compute_farsite_spread(phi, vel_for_model, farsite_spread, geom, dt_step, inputs.rothermel, inputs.farsite, inputs.crown, R_mf, terrain_slopes.get(), &fuel_consumption_mf, &crown_fire_fraction_mf, has_spatial_crown ? &cc_mf : nullptr, has_spatial_crown ? &canopy_height_mf : nullptr, ccc_ptr);
+	// Update dt for next step using CFL condition (original FARSITE method).
+	//dt = compute_dt(R_mf, geom, inputs.cfl);
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
 	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
 	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step,
 	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
+	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
+	                           (inputs.fuel_depletion.adjust_spotting_reentry == 1)
+	                               ? &residual_fuel_mf : nullptr,
+	                           inputs.fuel_depletion.spotting_fuel_threshold);
 	}
 	// Albini (1983) firebrand spotting with 2-D trajectory integration
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {
 	  compute_albini_spotting(phi, albini_data, vel, R_mf, geom,
 	                          inputs.rothermel, inputs.albini_spotting, step,
 	                          !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr);
+	                          !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
+	                          (inputs.albini_spotting.use_3d_wind == 1 && albini_plt_wind.valid)
+	                              ? &albini_plt_wind : nullptr,
+	                          (inputs.fuel_depletion.adjust_spotting_reentry == 1)
+	                              ? &residual_fuel_mf : nullptr,
+	                          inputs.fuel_depletion.spotting_fuel_threshold);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether
@@ -1236,6 +1354,30 @@ int main(int argc, char* argv[])
           fill_boundary_extrap(phi, geom);
       }
 
+      // ---- Satellite fire detection assimilation (mid-simulation re-marking) ----
+      // When satellite.enable = 1 and satellite.use_mid_sim = 1, fetch new
+      // active-fire detections at every fetch_interval_s simulation seconds and
+      // merge them into phi.  Already-burning cells are preserved when
+      // satellite.suppress_if_burning = 1 (default), preventing the satellite
+      // from extinguishing the simulated fire front.
+      if (inputs.satellite.enable == 1 && inputs.satellite.use_mid_sim == 1) {
+          const Real elapsed_since_fetch = time - sat_state.last_fetch_time;
+          if (elapsed_since_fetch >= inputs.satellite.fetch_interval_s) {
+              auto sat_pts = fetch_satellite_fire_points(inputs.satellite,
+                                                         static_cast<Real>(time));
+              if (!sat_pts.empty()) {
+                  apply_satellite_fire_points(phi, geom, sat_pts,
+                                              inputs.satellite.detection_radius_m,
+                                              inputs.satellite.suppress_if_burning == 1);
+                  fill_boundary_extrap(phi, geom);
+                  amrex::Print() << "SatelliteAssimilation: applied "
+                                 << sat_pts.size()
+                                 << " detection(s) at t=" << time << " s.\n";
+              }
+              sat_state.last_fetch_time = time;
+          }
+      }
+
       // --- Write checkpoint if requested
       if (inputs.chk_int > 0 && ((step - restart_step) % inputs.chk_int == 0)) {
         char chk_buf[64];
@@ -1266,6 +1408,13 @@ int main(int argc, char* argv[])
                             "isochrone_%06d.geojson", iso_i);
               write_fire_perimeter_geojson(phi, geom, iso_gj_buf, iso_i, time);
             }
+            if (inputs.write_perimeter_kml == 1) {
+              char iso_kml_buf[128];
+              std::snprintf(iso_kml_buf, sizeof(iso_kml_buf),
+                            "isochrone_%06d.kml", iso_i);
+              write_fire_perimeter_kml(phi, geom, iso_kml_buf, iso_i, time,
+                                       inputs.kml_utm_zone, inputs.kml_utm_northern);
+            }
           }
           last_isochrone_idx = cur_iso_idx;
         }
@@ -1288,6 +1437,8 @@ int main(int argc, char* argv[])
           write_wildfire_plotfile(f, ba, dm, geom, inputs, final_step, time, ftd,
                                   /*write_stats=*/true, /*is_final=*/true);
       }
+      // ---- Write HTML fire report (end of run) ----
+      write_fire_report_html(inputs, static_cast<double>(time), final_step);
     }
   amrex::Finalize();
   return 0;

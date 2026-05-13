@@ -29,7 +29,6 @@ reinit_int = -1
 # Wind: 3 m/s eastward
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Box ignition on the canyon floor (x-centred, y-middle strip)
 source_type = box

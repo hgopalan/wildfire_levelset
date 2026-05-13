@@ -20,7 +20,6 @@ reinit_int = 20
 # Constant wind field
 u_x = 0.25
 u_y = 0.1
-u_z = 0.0
 
 # EB ellipsoid initial condition
 # phi = 0 on the ellipsoid surface; phi < 0 inside (burning region)

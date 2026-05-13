@@ -20,13 +20,11 @@ reinit_int = -1
 # Initial wind (overridden each step by schedule)
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition at domain centre
 source_type = sphere
 center_x = 330250.0
 center_y = 3775250.0
-center_z = 0.5
 sphere_radius = 30.0
 
 # Fuel: FM4 chaparral

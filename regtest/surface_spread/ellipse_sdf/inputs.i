@@ -18,16 +18,13 @@ reinit_int = 20
 # Constant wind field
 u_x = 0.25
 u_y = 0.0
-u_z = 0.0
 
 # Elliptical initial condition (off-centre to show advection)
 source_type = ellipse
 ellipse_center_x = 0.4
 ellipse_center_y = 0.5
-ellipse_center_z = 0.5
 ellipse_radius_x = 0.25
 ellipse_radius_y = 0.15
-ellipse_radius_z = 0.10
 
 # Level-set propagation
 propagation_method = levelset

@@ -19,13 +19,11 @@ reinit_int = -1
 # Wind ~10 mph = 4.47 m/s → expected L/W ≈ 2.5
 u_x = 4.47
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition
 source_type = sphere
 center_x = 0.5
 center_y = 0.5
-center_z = 0.5
 sphere_radius = 0.1
 
 # FARSITE with Anderson L/W

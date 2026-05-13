@@ -22,7 +22,6 @@ reinit_int = -1
 # Wind: 5 m/s eastward (typical Santa Ana conditions)
 u_x = 5.0
 u_y = 0.0
-u_z = 0.0
 
 # Box ignition at western edge
 source_type = box

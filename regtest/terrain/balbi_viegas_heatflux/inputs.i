@@ -25,7 +25,6 @@ velocity_file = gaussian_hill_wind.csv
 source_type = sphere
 center_x = 330250.0
 center_y = 3775500.0
-center_z = 0.5
 sphere_radius = 40.0
 
 # Terrain (Gaussian hill)

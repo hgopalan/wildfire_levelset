@@ -4,6 +4,10 @@
 #include <AMReX_ParmParse.H>
 #include <string>
 
+// SatelliteParams is defined in satellite_assimilation.H, included here so
+// InputParameters can embed it as a member.
+#include "satellite_assimilation.H"
+
 struct RothermelParams {
     // --- Fuel (NFFL Model 4 / Southern California chaparral defaults) ---
     amrex::Real w0;           // oven-dry total fuel load [lb/ft²]        default: 0.230
@@ -43,6 +47,16 @@ struct RothermelParams {
     // --- Andrews (2018) wind adjustments ---
     int use_waf;              // 1: apply Wind Adjustment Factor (converts 20-ft→midflame wind)  default: 0
     int use_wind_limit;       // 1: apply maximum effective wind speed (MEWS) limit              default: 0
+    // WAF formula selection (only relevant when use_waf = 1):
+    //   "andrews"      (default) – logarithmic Albini & Baughman (1979) formula for open fuels;
+    //                              FARSITE sheltered formula for closed-canopy fuels.
+    //   "behaviorplus"           – BehavePlus linear formula (WAF = 0.36 + 0.004 × h_in) for
+    //                              open/shrub fuels; exponential canopy attenuation for forest fuels.
+    std::string waf_formula;  // WAF formula: "andrews" (default) or "behaviorplus"
+    // Canopy attenuation coefficient for the BehavePlus exponential canopy WAF.
+    // Larger values produce stronger wind sheltering under a closed canopy.
+    // Only used when waf_formula = "behaviorplus" and canopy data are available.
+    amrex::Real waf_canopy_alpha; // canopy attenuation coefficient α_c (default: 1.5)
     // --- Live herbaceous fuel curing transfer ---
     // When M_lh < herb_curing_threshold, a fraction of the live herbaceous
     // load is treated as 1-hr dead fuel (FARSITE curing model).
@@ -53,6 +67,16 @@ struct RothermelParams {
     amrex::Real wind_conv;    // ft/min per (sim velocity unit)            default: 196.85
     // Rothermel ROS is in ft/min; convert back to sim length/time units
     amrex::Real ros_conv;     // sim length/time per (ft/min)              default: 0.00508
+    // --- Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982) ---
+    // When enabled, replaces the additive R = R₀(1 + φ_w + φ_s) formula with
+    // R = R₀(1 + φ_w + φ_s + k_sw × φ_w × φ_s).
+    // This captures the positive interaction when wind blows upslope:
+    // combined spread exceeds the sum of individual effects.
+    //   k_slope_wind_cross = 0.0 → additive only (default, backward-compatible)
+    //   k_slope_wind_cross = 1.0 → fully multiplicative (1+φ_w)(1+φ_s) form
+    // Reference: Rothermel (1983) GTR INT-143; Anderson (1982) Res. Note INT-328.
+    int         use_slope_wind_cross;   // 1 to enable cross-term (default: 0)
+    amrex::Real k_slope_wind_cross;     // cross-term coupling coefficient (default: 1.0)
 };
 
 struct InputParameters {
@@ -136,6 +160,12 @@ struct InputParameters {
         amrex::Real spot_radius;             // Radius of new spot fires (default: 0.02)
         int random_seed;                     // Seed for random number generator (0 = use time) (default: 0)
         int check_interval;                  // Check for spotting every N timesteps (default: 5)
+        // Spot-fire catching (ignition) probability
+        // When P_catch < 1.0, a landed firebrand ignites the receiving fuel with
+        // probability P_catch × f_moisture, where f_moisture = max(0,(M_x−M_f)/M_x)
+        // (Anderson 1970 / Rothermel 1972 moisture-damping factor).
+        // Set to 1.0 (default) to always ignite on contact (original behaviour).
+        amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
     } spotting;
     
     // Van Wagner crown fire initiation model parameters (Van Wagner 1977)
@@ -204,6 +234,22 @@ struct InputParameters {
         int random_seed;                     // Seed for RNG (0 = use system time) (default: 0)
         int check_interval;                  // Run spotting check every N timesteps (default: 5)
         int n_traj_steps;                    // Number of forward-Euler steps for 2-D trajectory (default: 100)
+        // ---- 3-D wind from massconsistent_amr ----
+        // When use_3d_wind = 1 and plt_wind_file is non-empty, the horizontal
+        // wind used for firebrand trajectory integration is read from an AMReX
+        // plotfile produced by https://github.com/hgopalan/massconsistent_amr.
+        // The plotfile is expected to contain variables "u", "v", and "w" on a
+        // 3-D Cartesian grid.  The horizontal wind is obtained by column-averaging
+        // u and v over all vertical levels at each (x, y) location, which is then
+        // used in place of the 2-D velocity MultiFab for trajectory integration.
+        // (default: disabled)
+        int use_3d_wind;                     // 1 to read 3-D wind from plt file (default: 0)
+        std::string plt_wind_file;           // path to massconsistent_amr plt directory (default: "")
+        // Spot-fire catching (ignition) probability for Albini model.
+        // Applied identically to SpottingParams.P_catch: a landed firebrand
+        // ignites with probability P_catch × f_moisture before placing a new
+        // ignition zone in phi.  Default 1.0 = always ignite.
+        amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
     } albini_spotting;
 
     // Weise & Biging (1996) fire whirl model parameters
@@ -477,6 +523,15 @@ struct InputParameters {
     // active_front_cells, mean_co2, mean_co, mean_pm25.
     std::string fire_stats_file;             // output CSV path (default: "fire_stats.csv")
 
+    // ---- Automatic HTML report generation ----
+    // When non-empty, a self-contained HTML report is written at end-of-run,
+    // summarising simulation parameters, per-step fire statistics (read from
+    // fire_stats_file), and SVG time-series charts of burned area, perimeter,
+    // head ROS, and cumulative emissions.  The file has no external dependencies
+    // and can be opened in any browser without an internet connection.
+    // Requires fire_stats_file to be set so that data are available.
+    std::string fire_report_file;            // output HTML path (default: "" = disabled)
+
     // ---- Timed isochrone output ----
     // When isochrone_interval_s > 0, a fire perimeter file is written at each
     // simulation clock-time that is an exact multiple of isochrone_interval_s.
@@ -590,6 +645,14 @@ struct InputParameters {
         int enable;              // 1 to track per-cell fuel depletion (default: 0)
         amrex::Real tau_burnout; // fine-fuel burnout time constant [s] (default: 3600.0)
         int couple_to_ros;       // 1 to scale ROS by residual fuel in re-entry cells (default: 0)
+        // Post-fire fuel adjustment for re-entry spot fires.
+        // When adjust_spotting_reentry = 1, firebrand spot fires landing in cells
+        // that have been previously burned (arrival_time >= 0) have their
+        // catching probability (P_catch) scaled by residual_fuel_mf so that spots
+        // landing in fuel-depleted areas are less likely to ignite.
+        // Applies to both the basic firebrand spotting and the Albini spotting model.
+        int adjust_spotting_reentry; // 1 to scale P_catch by residual fuel (default: 0)
+        amrex::Real spotting_fuel_threshold; // residual fuel fraction below which spots cannot ignite (default: 0.05)
     } fuel_depletion;
 
     // ---- Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992) ----
@@ -902,7 +965,48 @@ struct InputParameters {
     //   moisture_d100        – 100-hr dead fuel moisture [fraction]
     //   moisture_lh          – live herbaceous moisture [fraction]
     //   moisture_lw          – live woody moisture [fraction]
+    //   plume_rise_m         – Briggs (1965) smoke plume-rise height [m]
     std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
+
+    // ---- Smoke plume-rise model (Briggs 1965 / 1969) ----
+    // Computes the effective smoke plume-rise height Δh [m] above the fire
+    // front using the Briggs (1965/1969) buoyancy-dominated formula.
+    // The result is written to every plotfile as "plume_rise_m".
+    // Input prefix: "smoke_plume."
+    struct SmokePlumeParams {
+        int  enable;           // 1 to enable plume-rise computation (default: 0)
+        amrex::Real T_a;       // ambient temperature [K]  (default: 303.15 = 30 °C)
+        amrex::Real rho_a;     // air density [kg/m³]      (default: 1.20)
+        amrex::Real Cp_a;      // specific heat [J/(kg·K)] (default: 1005.0)
+    } smoke_plume;
+
+    // ---- KML perimeter export ----
+    // When write_perimeter_kml = 1, a .kml file is written alongside the CSV
+    // and GeoJSON perimeter files at every plotfile step and for isochrones.
+    // Coordinates are converted from simulation UTM [m] to WGS-84 lon/lat
+    // using the UTM zone number below.  When kml_utm_zone = 0, no conversion
+    // is applied and the raw UTM coordinates are written (not valid WGS-84).
+    // The KML file can be opened directly in Google Earth.
+    int write_perimeter_kml;   // 1 to write perimeter_NNNN.kml (default: 0)
+    int kml_utm_zone;          // UTM zone number 1-60; 0 = raw coords (default: 0)
+    int kml_utm_northern;      // 1 = northern hemisphere, 0 = southern (default: 1)
+
+    // ---- Simulation start date/time (for log and report display) ----
+    // When non-zero, these provide the calendar start date that is combined
+    // with solar_radiation.sim_start_hour to display human-readable datetime
+    // strings in per-step log output and the HTML fire report.
+    // If all three are 0 (default), the values from solar_radiation.year/
+    // month/day are used when solar_radiation.enable = 1; otherwise
+    // datetime display in logs and report is omitted.
+    // Input prefix: "sim_datetime."
+    int sim_start_year;        // simulation start calendar year  (default: 0 → auto)
+    int sim_start_month;       // simulation start calendar month (default: 0 → auto)
+    int sim_start_day;         // simulation start calendar day   (default: 0 → auto)
+
+    // ---- Real-time satellite fire detection assimilation ----
+    // Full configuration is documented in satellite_assimilation.H.
+    // Input prefix: "satellite."
+    SatelliteParams satellite;
 
 };
 

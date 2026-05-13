@@ -18,7 +18,6 @@ reinit_int = -1
 # Constant wind field
 u_x = 0.25
 u_y = 0.0
-u_z = 0.0
 
 # Box (line fire) ignition at western edge
 source_type = box

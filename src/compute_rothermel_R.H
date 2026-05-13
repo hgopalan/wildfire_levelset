@@ -47,11 +47,17 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+    // Slope/wind cross-term
+    const int  use_sw_cross  = rc.use_slope_wind_cross;
+    const Real k_sw_cross    = rc.k_slope_wind_cross;
     // Andrews (2018) wind adjustment defaults (global fuel)
     const Real waf_default      = rc.waf;
     const Real U_max_default    = rc.U_max_ftmin;
     const int  use_waf_flag     = rp.use_waf;
     const int  use_wind_limit_flag = rp.use_wind_limit;
+    // WAF formula selection (0 = Andrews logarithmic, 1 = BehavePlus linear/exponential)
+    const int  waf_formula_id   = (rp.waf_formula == "behaviorplus") ? 1 : 0;
+    const Real waf_canopy_alpha = rp.waf_canopy_alpha;
     // Global fuel bed depth [ft] used as WAF baseline when no canopy height is available
     const Real delta_ft_global = rp.delta;
 
@@ -169,24 +175,35 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             if (use_waf_flag == 1) {
                 Real waf_cell;
                 if (use_canopy_ht_waf) {
-                    // Per-cell WAF using sheltered or unsheltered formula based on
-                    // local canopy cover fraction and canopy height.
-                    // Sheltered WAF (FARSITE Albini & Baughman 1979):
-                    //   WAF = 0.555 / (sqrt(f_c * h_c) * ln((20+0.36*h_c)/(0.13*h_c)))
-                    // Unsheltered WAF (Andrews 2018):
-                    //   WAF = 1.83 / ln((20+0.36*delta)/(0.13*delta))
-                    // Switch to sheltered when cc >= shelter_threshold (default 50%)
-                    // and canopy height > fuel depth.
+                    // Per-cell WAF using the selected formula (Andrews or BehavePlus)
+                    // based on local canopy cover fraction and canopy height.
+                    //
+                    // Andrews path (waf_formula_id == 0):
+                    //   Unsheltered: WAF = 1.83 / ln((20+0.36*h)/(0.13*h))
+                    //   Sheltered:   WAF = 0.555 / (sqrt(f_c*h_c)*ln((20+0.36*h_c)/(0.13*h_c)))
+                    //
+                    // BehavePlus path (waf_formula_id == 1):
+                    //   Unsheltered: WAF = 0.36 + 0.004 * h_in
+                    //   Sheltered:   WAF = (0.36 + 0.004*h_c_in) * exp(-alpha_c * f_c)
+                    //
+                    // Switch to sheltered when cc >= 0.5 and canopy height > fuel depth.
                     const Real cc_frac = amrex::max(Real(0.0),
                                          amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
                     const Real canopy_ht_ft = cht_arr(i,j,k) / Real(0.3048); // m → ft
                     waf_cell = compute_waf_per_cell(cc_frac, canopy_ht_ft, delta_ft,
-                                                    Real(0.5) /* shelter_threshold */);
+                                                    Real(0.5) /* shelter_threshold */,
+                                                    waf_formula_id, waf_canopy_alpha);
                 } else if (use_cc_waf) {
-                    // Fallback: global WAF blended with canopy-cover fraction
+                    // Fallback: only canopy cover fraction is available (no canopy height).
+                    // Andrews path: linearly blend global WAF toward 1.0 with cover fraction.
+                    // BehavePlus path: apply exponential canopy attenuation to open WAF.
                     const Real cc_frac = amrex::max(Real(0.0),
                                          amrex::min(Real(100.0), cc_arr(i,j,k))) / Real(100.0);
-                    waf_cell = Real(1.0) - cc_frac * (Real(1.0) - cell_waf);
+                    if (waf_formula_id == 1) {
+                        waf_cell = compute_waf_canopy_exp(cell_waf, cc_frac, waf_canopy_alpha);
+                    } else {
+                        waf_cell = Real(1.0) - cc_frac * (Real(1.0) - cell_waf);
+                    }
                 } else {
                     waf_cell = cell_waf;
                 }
@@ -219,7 +236,9 @@ inline void compute_rothermel_R(MultiFab& R_mf,
 
             // Rate of spread [ft/min] → simulation units
             // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
-            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s), 0.0) * ros_conv;
+            // Optional slope/wind cross-term: R = R₀(1 + φ_w + φ_s + k×φ_w×φ_s)
+            Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
+            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s + cross), 0.0) * ros_conv;
             R(i,j,k) = (R_raw >= WildfireConst::ROS_MIN_MS) ? R_raw : Real(0.0);
         });
     }

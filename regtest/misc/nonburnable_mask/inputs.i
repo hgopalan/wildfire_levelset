@@ -25,13 +25,11 @@ reinit_int = -1
 # Wind: eastward toward non-burnable zone
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Ignition on the left side of the domain
 source_type = sphere
 center_x = 330060.0
 center_y = 3775200.0
-center_z = 0.5
 sphere_radius = 20.0
 
 # Landscape file created by create_landscape.py:

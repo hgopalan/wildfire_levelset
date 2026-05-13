@@ -19,13 +19,11 @@ reinit_int = -1
 # Moderate wind
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Small ignition at domain centre
 source_type = sphere
 center_x = 330300.0
 center_y = 3775300.0
-center_z = 0.5
 sphere_radius = 10.0
 
 # Surface spread model

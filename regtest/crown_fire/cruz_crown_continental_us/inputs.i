@@ -20,13 +20,11 @@ reinit_int = -1
 # Wind: 6 m/s eastward (21.6 km/h), typical Diablo/Santa Ana conditions
 u_x = 6.0
 u_y = 0.0
-u_z = 0.0
 
 # Point ignition at domain centre
 source_type = sphere
 center_x = 331000.0
 center_y = 3776000.0
-center_z = 0.5
 sphere_radius = 30.0
 
 # Cruz et al. (2005) crown fire spread model

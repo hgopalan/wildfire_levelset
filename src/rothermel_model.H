@@ -45,6 +45,9 @@ struct RothermelComputed {
     amrex::Real ros_conv;        // Unit conversion for ROS
     amrex::Real waf;             // Wind Adjustment Factor (Andrews 2018): 20-ft→midflame
     amrex::Real U_max_ftmin;     // Maximum effective wind speed [ft/min] (Andrews 2018)
+    // Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982)
+    int         use_slope_wind_cross; // 1 to enable φ_w × φ_s cross-term
+    amrex::Real k_slope_wind_cross;   // cross-term coupling coefficient
 };
 
 // ============================================================================
@@ -134,18 +137,55 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     // -----------------------------------------------------------------------
     // Characteristic SAV, bulk density, and packing ratio
     // -----------------------------------------------------------------------
-    Real sigma_c;   // characteristic (load-weighted) SAV [ft⁻¹]
+    Real sigma_c;   // characteristic (A-factor weighted) SAV [ft⁻¹]
     Real rho_b;     // oven-dry bulk density [lb/ft³]
     Real beta;      // packing ratio [-]
 
+    // A-factors: A_i = w_i * sigma_i * exp(-138/sigma_i).
+    // Declared before the first multiclass block so they can be reused
+    // in the moisture-damping block below without recomputing exp() calls.
+    // Remain 0 on the single-class path where they are not needed.
+    Real mc_A_d1 = 0.0, mc_A_d10 = 0.0, mc_A_d100 = 0.0;
+    Real mc_A_lh = 0.0, mc_A_lw  = 0.0;
+
     if (use_multiclass) {
-        // Load-weighted mean SAV across all size classes (Rothermel 1972 Eq. 16)
         const Real w_total = total_per_class;
-        sigma_c = (rp.w_d1   * rp.sigma_d1
-                 + rp.w_d10  * SIGMA_D10
-                 + rp.w_d100 * SIGMA_D100
-                 + rp.w_lh   * rp.sigma_lh
-                 + rp.w_lw   * rp.sigma_lw) / w_total;
+
+        // Compute A-factors for each size class.  The exponential term
+        // exp(-138/sigma_i) naturally downweights coarse dead fuels:
+        //   10-hr (sigma=109): exp(-138/109) ≈ 0.28
+        //   100-hr (sigma=30): exp(-138/30)  ≈ 0.01
+        // so they contribute very little to the characteristic SAV, consistent
+        // with the BEHAVE / FARSITE / BehavePlus implementation.  A simple
+        // load-weighted average (Eq. 16 read naively) would be dominated by
+        // the large mass of coarse dead fuel, pulling sigma_c far below the
+        // tabulated reference values (e.g. 1739 ft⁻¹ for FM4) and inflating
+        // the wind coefficient C and thereby phi_w.
+        mc_A_d1   = (rp.w_d1   > 0.0 && rp.sigma_d1 > 0.0)
+                    ? rp.w_d1   * rp.sigma_d1  * std::exp(-138.0 / rp.sigma_d1) : 0.0;
+        mc_A_d10  = (rp.w_d10  > 0.0)
+                    ? rp.w_d10  * SIGMA_D10    * std::exp(-138.0 / SIGMA_D10)   : 0.0;
+        mc_A_d100 = (rp.w_d100 > 0.0)
+                    ? rp.w_d100 * SIGMA_D100   * std::exp(-138.0 / SIGMA_D100)  : 0.0;
+        mc_A_lh   = (rp.w_lh   > 0.0 && rp.sigma_lh > 0.0)
+                    ? rp.w_lh   * rp.sigma_lh  * std::exp(-138.0 / rp.sigma_lh) : 0.0;
+        mc_A_lw   = (rp.w_lw   > 0.0 && rp.sigma_lw > 0.0)
+                    ? rp.w_lw   * rp.sigma_lw  * std::exp(-138.0 / rp.sigma_lw) : 0.0;
+
+        const Real A_sigma_tot = mc_A_d1 + mc_A_d10 + mc_A_d100 + mc_A_lh + mc_A_lw;
+
+        // A-factor weighted characteristic SAV (BEHAVE / FARSITE formulation).
+        // Falls back to load-weighted if all A-factors are zero (degenerate).
+        if (A_sigma_tot > 0.0) {
+            sigma_c = (mc_A_d1   * rp.sigma_d1
+                     + mc_A_d10  * SIGMA_D10
+                     + mc_A_d100 * SIGMA_D100
+                     + mc_A_lh   * rp.sigma_lh
+                     + mc_A_lw   * rp.sigma_lw) / A_sigma_tot;
+        } else {
+            sigma_c = (rp.w_d1 * rp.sigma_d1 + rp.w_d10 * SIGMA_D10 + rp.w_d100 * SIGMA_D100
+                     + rp.w_lh * rp.sigma_lh  + rp.w_lw * rp.sigma_lw) / w_total;
+        }
         rho_b = w_total / rp.delta;
     } else {
         sigma_c = rp.sigma;
@@ -170,23 +210,12 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     Real I_R;
 
     if (use_multiclass) {
-        // Per-class weighting factors: A_i = w_i * sigma_i * exp(-138/sigma_i)
-        // These weight each class's contribution to the composite moisture ratio.
-        const Real A_d1   = (rp.w_d1   > 0.0)
-                            ? rp.w_d1   * rp.sigma_d1  * std::exp(-138.0 / rp.sigma_d1)
-                            : 0.0;
-        const Real A_d10  = (rp.w_d10  > 0.0)
-                            ? rp.w_d10  * SIGMA_D10    * std::exp(-138.0 / SIGMA_D10)
-                            : 0.0;
-        const Real A_d100 = (rp.w_d100 > 0.0)
-                            ? rp.w_d100 * SIGMA_D100   * std::exp(-138.0 / SIGMA_D100)
-                            : 0.0;
-        const Real A_lh   = (rp.w_lh   > 0.0 && rp.sigma_lh > 0.0)
-                            ? rp.w_lh   * rp.sigma_lh  * std::exp(-138.0 / rp.sigma_lh)
-                            : 0.0;
-        const Real A_lw   = (rp.w_lw   > 0.0 && rp.sigma_lw > 0.0)
-                            ? rp.w_lw   * rp.sigma_lw  * std::exp(-138.0 / rp.sigma_lw)
-                            : 0.0;
+        // Reuse A-factors computed above for sigma_c (avoids duplicate exp() calls).
+        const Real A_d1   = mc_A_d1;
+        const Real A_d10  = mc_A_d10;
+        const Real A_d100 = mc_A_d100;
+        const Real A_lh   = mc_A_lh;
+        const Real A_lw   = mc_A_lw;
 
         const Real A_dead = A_d1 + A_d10 + A_d100;
         const Real A_live = A_lh + A_lw;
@@ -310,10 +339,18 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     // -----------------------------------------------------------------------
     // Andrews (2018) wind adjustments
     // -----------------------------------------------------------------------
-    // Wind Adjustment Factor: converts 20-ft open wind to midflame wind
-    rc.waf = compute_waf_unsheltered(rp.delta);
+    // Wind Adjustment Factor: use the formula selected by waf_formula
+    if (rp.waf_formula == "behaviorplus") {
+        rc.waf = compute_waf_behaviorplus(rp.delta);
+    } else {
+        rc.waf = compute_waf_unsheltered(rp.delta);
+    }
     // Maximum effective wind speed: prevents unrealistically large phi_w
     rc.U_max_ftmin = compute_max_ews_ftmin(I_R, rc.C, rc.B, rc.beta_ratio_E);
+
+    // Slope/wind cross-term settings
+    rc.use_slope_wind_cross = rp.use_slope_wind_cross;
+    rc.k_slope_wind_cross   = rp.k_slope_wind_cross;
 
     return rc;
 }

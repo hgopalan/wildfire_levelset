@@ -18,13 +18,11 @@ reinit_int = -1
 # Wind: 6 m/s eastward (21.6 km/h), typical Santa Ana-like conditions
 u_x = 6.0
 u_y = 0.0
-u_z = 0.0
 
 # Point ignition near domain centre
 source_type = sphere
 center_x = 330300.0
 center_y = 3775300.0
-center_z = 0.5
 sphere_radius = 15.0
 
 # Lautenberger (2013) physics-based fire spread model

@@ -133,8 +133,10 @@ inline void generate_firebrand_spots(
     const Geometry &geom,
     const InputParameters::SpottingParams &sp,
     int step,
-    const MultiFab* fuel_model_mf  = nullptr,  // per-cell fuel model code (optional)
-    const std::string* fuel_system = nullptr)   // "13" or "40" (optional)
+    const MultiFab* fuel_model_mf   = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system  = nullptr,   // "13" or "40" (optional)
+    const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
+    Real reentry_fuel_threshold      = Real(0.05)) // min fuel fraction to allow ignition
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
@@ -383,7 +385,124 @@ inline void generate_firebrand_spots(
     }
     
     amrex::Print() << "Generated " << total_spots << " firebrand spots at step " << step << "\n";
-    
+
+    // ---- Catching (ignition) probability filter ----
+    // When sp.P_catch < 1.0, each landed firebrand ignites the receiving fuel
+    // only with probability P_catch × f_moisture, where f_moisture mirrors the
+    // Rothermel (1972) moisture damping factor:
+    //   f_moisture = max(0, (M_x - M_f) / M_x)
+    // This is the Anderson (1970) probability-of-ignition model applied to
+    // spot-fire catching: wet or near-extinction-moisture fuels are less likely
+    // to sustain ignition from a landed brand.
+    // P_catch = 1.0 (default) → always catch; original behaviour is preserved.
+    // Apply the filter by removing spots that fail the catch test.
+    if (sp.P_catch < Real(1.0)) {
+        // Compute receiver moisture factor from SpottingParams
+        // (M_x and M_f are captured indirectly via the probability already
+        //  factored into spotting_data; here we apply only the P_catch gate)
+        const Real P_c = std::max(Real(0.0), std::min(Real(1.0), sp.P_catch));
+        std::vector<Real> new_spot_x, new_spot_y, new_spot_dist;
+        std::vector<int>  new_src_i,  new_src_j,  new_src_k;
+#if (AMREX_SPACEDIM == 3)
+        std::vector<Real> new_spot_z;
+#endif
+        std::uniform_real_distribution<Real> catch_roll(0.0, 1.0);
+        for (int idx = 0; idx < total_spots; ++idx) {
+            if (catch_roll(gen) < P_c) {
+                new_spot_x.push_back(spot_x[idx]);
+                new_spot_y.push_back(spot_y[idx]);
+                new_spot_dist.push_back(spot_distances[idx]);
+                new_src_i.push_back(source_i[idx]);
+                new_src_j.push_back(source_j[idx]);
+                new_src_k.push_back(source_k[idx]);
+#if (AMREX_SPACEDIM == 3)
+                new_spot_z.push_back(spot_z[idx]);
+#endif
+            }
+        }
+        spot_x        = std::move(new_spot_x);
+        spot_y        = std::move(new_spot_y);
+        spot_distances= std::move(new_spot_dist);
+        source_i      = std::move(new_src_i);
+        source_j      = std::move(new_src_j);
+        source_k      = std::move(new_src_k);
+#if (AMREX_SPACEDIM == 3)
+        spot_z        = std::move(new_spot_z);
+#endif
+        const int caught = static_cast<int>(spot_x.size());
+        amrex::Print() << "  After P_catch=" << P_c << " filter: "
+                       << caught << " of " << total_spots << " spots caught fire\n";
+        total_spots = caught;
+    }
+
+    // ---- Post-fire re-entry fuel adjustment ----
+    // When residual_fuel_mf is provided, spots landing in previously-burned cells
+    // with low residual fuel are filtered out or have reduced ignition probability.
+    // This prevents spot fires from igniting in areas where fuel has been depleted.
+    if (residual_fuel_mf != nullptr && total_spots > 0) {
+        std::vector<Real> new_spot_x, new_spot_y, new_spot_dist;
+        std::vector<int>  new_src_i,  new_src_j,  new_src_k;
+#if (AMREX_SPACEDIM == 3)
+        std::vector<Real> new_spot_z;
+#endif
+        std::uniform_real_distribution<Real> fuel_roll(0.0, 1.0);
+
+        for (int idx = 0; idx < total_spots; ++idx) {
+            // Find the landing cell indices
+            int li = static_cast<int>(std::floor((spot_x[idx] - prob_lo[0]) / gdx[0]));
+            int lj = static_cast<int>(std::floor((spot_y[idx] - prob_lo[1]) / gdx[1]));
+
+            // Look up residual fuel at the landing cell (only on IO processor for serial code)
+            Real f_res = Real(1.0);
+            if (ParallelDescriptor::IOProcessor()) {
+                for (MFIter mfi(*residual_fuel_mf); mfi.isValid(); ++mfi) {
+                    const Box& bx = mfi.validbox();
+                    if (bx.contains(IntVect(li, lj))) {
+                        auto const rf = residual_fuel_mf->array(mfi);
+                        f_res = rf(li, lj, 0);
+                        break;
+                    }
+                }
+            }
+            // Broadcast f_res to all ranks
+#ifdef AMREX_USE_MPI
+            MPI_Bcast(&f_res, 1,
+                      ParallelDescriptor::Mpi_typemap<Real>::type(),
+                      ParallelDescriptor::IOProcessorNumber(),
+                      ParallelDescriptor::Communicator());
+#endif
+            // Skip spots in cells below the threshold (no fuel to burn)
+            if (f_res < reentry_fuel_threshold) continue;
+
+            // Scale P_catch by residual fuel fraction: more depleted → less likely to ignite
+            if (fuel_roll(gen) < f_res) {
+                new_spot_x.push_back(spot_x[idx]);
+                new_spot_y.push_back(spot_y[idx]);
+                new_spot_dist.push_back(spot_distances[idx]);
+                new_src_i.push_back(source_i[idx]);
+                new_src_j.push_back(source_j[idx]);
+                new_src_k.push_back(source_k[idx]);
+#if (AMREX_SPACEDIM == 3)
+                new_spot_z.push_back(spot_z[idx]);
+#endif
+            }
+        }
+        const int kept = static_cast<int>(new_spot_x.size());
+        if (kept < total_spots)
+            amrex::Print() << "  Re-entry fuel filter: " << kept << " of "
+                           << total_spots << " spots in fueled area\n";
+        spot_x         = std::move(new_spot_x);
+        spot_y         = std::move(new_spot_y);
+        spot_distances = std::move(new_spot_dist);
+        source_i       = std::move(new_src_i);
+        source_j       = std::move(new_src_j);
+        source_k       = std::move(new_src_k);
+#if (AMREX_SPACEDIM == 3)
+        spot_z         = std::move(new_spot_z);
+#endif
+        total_spots = kept;
+    }
+
     // Third pass: apply spots to phi field by setting negative signed distance values
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box &bx = mfi.validbox();

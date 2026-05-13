@@ -20,7 +20,6 @@ plot_int = 10
 # Velocity (constant wind from west, typical Santa Ana conditions)
 u_x = 5.0
 u_y = 0.0
-u_z = 0.0
 
 # Initial source - line fire at western edge
 source_type = box

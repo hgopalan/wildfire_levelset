@@ -11,7 +11,7 @@
 //
 // The model:
 // 1. Finds locations where phi ≈ 0 (fire front)
-// 2. Uses Rothermel (1972) to compute base rate of spread (ROS)
+// 2. Uses the pre-computed ROS field (R_mf) from the configured firespread model
 // 3. Applies Van Wagner crown initiation if enabled
 // 4. Applies Richards' elliptical expansion with coefficients:
 //    - a: head fire coefficient (downwind, maximum spread)
@@ -45,7 +45,8 @@ constexpr Real PHI_RESET_MULTIPLIER = -1.0;
 // ============================================================================
 // Find locations where phi is close to 0 (fire front) and compute
 // ellipse-based spread using Richards' (1990) model with coefficients a, b, c
-// combined with Rothermel (1972) ROS
+// combined with the pre-computed ROS field R_mf (which may come from any
+// configured fire-spread model: Rothermel, Balbi, FBP, Cheney-Gould, etc.).
 // Optionally applies Van Wagner (1977) crown fire initiation with either
 //   Van Wagner 3/CBD proxy (use_cruz_crown=0) or Cruz et al. (2005) active
 //   crown ROS (use_cruz_crown=1, requires ccc to be pre-computed).
@@ -59,7 +60,8 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
                                    const RothermelParams &rp,
                                    const InputParameters::FARSITEParams &fp,
                                    const InputParameters::CrownInitiationParams &cp,
-                                   const MultiFab *slopes = nullptr,
+                                   const MultiFab &R_mf,
+                                   const MultiFab * /*slopes*/ = nullptr,
                                    MultiFab *fuel_consumption = nullptr,
                                    MultiFab *crown_fire_fraction = nullptr,
                                    const MultiFab *canopy_cover_mf = nullptr,
@@ -103,16 +105,10 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   Real coeff_c = fp.coeff_c; // backing fire coefficient
 
   // Compute Rothermel (1972) fire spread parameters
+  // (used for crown fire intensity, WAF, and wind-unit conversion only;
+  //  the base ROS comes from the pre-computed R_mf field)
   const RothermelComputed rc = compute_rothermel_params(rp);
-  const Real R0 = rc.R0;
-  const Real I_R = rc.I_R; // Reaction intensity for fuel consumption
-  const Real C = rc.C;
-  const Real B = rc.B;
-  const Real beta_ratio_E = rc.beta_ratio_E;
-  const Real phi_s_const =
-      rc.phi_s; // Constant phi_s for backward compatibility
-  const Real beta =
-      rc.beta; // Packing ratio for terrain-based phi_s calculation
+  const Real I_R = rc.I_R; // Reaction intensity for crown fire intensity
   const Real wind_conv = rc.wind_conv;
   const Real ros_conv = rc.ros_conv;
   // Andrews (2018) wind adjustments
@@ -193,13 +189,7 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
     auto const p = phi.const_array(mfi);
     auto const v = vel.const_array(mfi);
     auto spread = farsite_spread.array(mfi);
-
-    // Get slopes array if terrain file was provided
-    const bool use_terrain = (slopes != nullptr);
-    Array4<const Real> s;
-    if (use_terrain) {
-      s = slopes->const_array(mfi);
-    }
+    auto const R_arr = R_mf.const_array(mfi);
     
     // Get fuel consumption array if provided
     const bool compute_fuel_consumption = (fuel_consumption != nullptr && use_fuel_consumption == 1);
@@ -317,26 +307,12 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
           U_ftmin = std::min(U_ftmin, U_max_default);
       }
 
-      // Wind factor φ_w (Rothermel Eq. 47)
-      Real phi_w =
-          (U_ftmin > 0.0) ? C * std::pow(U_ftmin, B) * beta_ratio_E : 0.0;
-
-      // Slope factor φ_s: use terrain-based if available, otherwise constant
-      Real phi_s;
-      if (use_terrain) {
-        // Using full Rothermel Eq. 51: φ_s = 5.275 * β^(-0.3) * tan²(φ)
-        Real slope_x = s(i, j, k, 0);
-        Real slope_y = s(i, j, k, 1);
-        Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
-        phi_s = std::max(Real(5.275) * std::pow(beta, Real(-0.3)) * tan_phi_sq,
-                         Real(0.0));
-      } else {
-        phi_s = phi_s_const;
-      }
-
-      // Rate of spread using full Rothermel model [ft/min] → simulation units
-      Real R_surface_ftmin = std::max(R0 * (1.0 + phi_w + phi_s), 0.0);
-      Real R_surface = R_surface_ftmin * ros_conv;
+      // Wind factor and slope factor are already baked into R_mf by the
+      // configured firespread model (Rothermel, Balbi, FBP, etc.).
+      // Read the pre-computed surface ROS [simulation units, m/s] directly.
+      Real R_surface = R_arr(i, j, k);
+      // Convert to ft/min for crown fire fireline-intensity computation.
+      Real R_surface_ftmin = R_surface / ros_conv;
       
       // Apply Van Wagner crown fire initiation if enabled
       Real R_head = R_surface;  // Default: surface fire rate
@@ -502,6 +478,7 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
              <<" "<<farsite_spread.norminf(2) 
 #endif  
               <<"\n";
+  amrex::Print()<<" Spread Rate (m/s) = "<<R_mf.norminf(0)<<std::endl;
   // -------------------------------------------------------------------------
   // Synchronize so the GPU kernel results are visible on the host before
   // we read phi and farsite_spread in the collection loop below.

@@ -18,13 +18,11 @@ reinit_int = -1
 # Wind: 7 m/s eastward (25.2 km/h), strong fire-weather conditions
 u_x = 7.0
 u_y = 0.0
-u_z = 0.0
 
 # Point ignition near domain centre
 source_type = sphere
 center_x = 330300.0
 center_y = 3775300.0
-center_z = 0.5
 sphere_radius = 20.0
 
 # Rothermel surface spread model (base for crown multiplier)

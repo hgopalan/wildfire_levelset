@@ -21,13 +21,11 @@ reinit_int = -1
 # Strong wind to generate high fireline intensity and trigger crown activity
 u_x = 8.0
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition at domain centre
 source_type = sphere
 center_x = 330250.0
 center_y = 3775250.0
-center_z = 0.5
 sphere_radius = 30.0
 
 # Fuel: FM10 Timber Litter (higher intensity than grass fuels)

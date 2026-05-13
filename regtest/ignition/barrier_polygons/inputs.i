@@ -22,13 +22,11 @@ reinit_int = -1
 # Wind: 3 m/s eastward (fire spreads toward eastern barrier)
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Ignition at western portion (fire starts at (100, 250))
 source_type = sphere
 center_x = 100.0
 center_y = 250.0
-center_z = 0.5
 sphere_radius = 20.0
 
 # Fuel: FM4 chaparral

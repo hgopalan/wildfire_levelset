@@ -152,6 +152,13 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.ros_conv",  p.rothermel.ros_conv);
     p.rothermel.use_waf         = 0;    pp.query("rothermel.use_waf",         p.rothermel.use_waf);
     p.rothermel.use_wind_limit  = 0;    pp.query("rothermel.use_wind_limit",  p.rothermel.use_wind_limit);
+    p.rothermel.waf_formula     = "andrews";
+    pp.query("rothermel.waf_formula", p.rothermel.waf_formula);
+    if (p.rothermel.waf_formula != "andrews" && p.rothermel.waf_formula != "behaviorplus") {
+        amrex::Abort("rothermel.waf_formula must be 'andrews' or 'behaviorplus'");
+    }
+    p.rothermel.waf_canopy_alpha = 1.5;
+    pp.query("rothermel.waf_canopy_alpha", p.rothermel.waf_canopy_alpha);
     p.rothermel.herb_curing_threshold = 0.0;   // 0.0 = disabled
     pp.query("rothermel.herb_curing_threshold", p.rothermel.herb_curing_threshold);
     if (p.rothermel.herb_curing_threshold > 0.0) {
@@ -159,6 +166,13 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("rothermel.herb_curing_threshold must be between 0.0 and 1.0");
         Print() << "Live herbaceous curing transfer enabled: threshold="
                 << p.rothermel.herb_curing_threshold * 100.0 << " % M_lh\n";
+    }
+    // Slope/wind interaction cross-term (Rothermel 1983 / Anderson 1982)
+    p.rothermel.use_slope_wind_cross = 0;    pp.query("rothermel.use_slope_wind_cross", p.rothermel.use_slope_wind_cross);
+    p.rothermel.k_slope_wind_cross   = 1.0;  pp.query("rothermel.k_slope_wind_cross",   p.rothermel.k_slope_wind_cross);
+    if (p.rothermel.use_slope_wind_cross == 1) {
+        Print() << "Slope/wind cross-term enabled: R = R₀(1 + φ_w + φ_s + "
+                << p.rothermel.k_slope_wind_cross << " × φ_w × φ_s)\n";
     }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
@@ -255,7 +269,8 @@ void parse_inputs(InputParameters& p)
     p.spotting.spot_radius = 0.02;               pp.query("spotting.spot_radius", p.spotting.spot_radius);
     p.spotting.random_seed = 0;                  pp.query("spotting.random_seed", p.spotting.random_seed);
     p.spotting.check_interval = 5;               pp.query("spotting.check_interval", p.spotting.check_interval);
-    
+    p.spotting.P_catch = 1.0;                    pp.query("spotting.P_catch", p.spotting.P_catch);
+
     // Validate spotting parameters
     if (p.spotting.enable == 1) {
         if (p.spotting.P_base < 0.0 || p.spotting.P_base > 1.0) {
@@ -266,6 +281,13 @@ void parse_inputs(InputParameters& p)
         }
         if (p.spotting.distance_model != "lognormal" && p.spotting.distance_model != "exponential") {
             amrex::Abort("spotting.distance_model must be either 'lognormal' or 'exponential'");
+        }
+        if (p.spotting.P_catch < 0.0 || p.spotting.P_catch > 1.0) {
+            amrex::Abort("spotting.P_catch must be between 0.0 and 1.0");
+        }
+        if (p.spotting.P_catch < 1.0) {
+            Print() << "Spotting P_catch (catching probability) = "
+                    << p.spotting.P_catch << "\n";
         }
     }
 
@@ -459,8 +481,14 @@ void parse_inputs(InputParameters& p)
     // Print Andrews (2018) wind adjustment settings
     if (p.rothermel.use_waf == 1 || p.rothermel.use_wind_limit == 1) {
         Print() << "Andrews (2018) wind adjustments enabled:";
-        if (p.rothermel.use_waf == 1)
-            Print() << " WAF (20-ft→midflame)";
+        if (p.rothermel.use_waf == 1) {
+            if (p.rothermel.waf_formula == "behaviorplus") {
+                Print() << " WAF (BehavePlus linear: 0.36+0.004*h_in";
+                Print() << "; canopy alpha=" << p.rothermel.waf_canopy_alpha << ")";
+            } else {
+                Print() << " WAF (Andrews logarithmic, 20-ft→midflame)";
+            }
+        }
         if (p.rothermel.use_wind_limit == 1)
             Print() << " MEWS-limit";
         Print() << "\n";
@@ -475,6 +503,9 @@ void parse_inputs(InputParameters& p)
     p.albini_spotting.random_seed        = 0;        pp.query("albini_spotting.random_seed",        p.albini_spotting.random_seed);
     p.albini_spotting.check_interval     = 5;        pp.query("albini_spotting.check_interval",     p.albini_spotting.check_interval);
     p.albini_spotting.n_traj_steps       = 100;      pp.query("albini_spotting.n_traj_steps",       p.albini_spotting.n_traj_steps);
+    p.albini_spotting.use_3d_wind        = 0;        pp.query("albini_spotting.use_3d_wind",        p.albini_spotting.use_3d_wind);
+    p.albini_spotting.plt_wind_file      = "";       pp.query("albini_spotting.plt_wind_file",      p.albini_spotting.plt_wind_file);
+    p.albini_spotting.P_catch            = 1.0;      pp.query("albini_spotting.P_catch",            p.albini_spotting.P_catch);
 
     // Validate Albini spotting parameters
     if (p.albini_spotting.enable == 1) {
@@ -489,6 +520,20 @@ void parse_inputs(InputParameters& p)
         }
         if (p.albini_spotting.n_traj_steps < 1) {
             amrex::Abort("albini_spotting.n_traj_steps must be at least 1");
+        }
+        if (p.albini_spotting.use_3d_wind == 1 && p.albini_spotting.plt_wind_file.empty()) {
+            amrex::Abort("albini_spotting.use_3d_wind = 1 requires albini_spotting.plt_wind_file to be set");
+        }
+        if (p.albini_spotting.P_catch < 0.0 || p.albini_spotting.P_catch > 1.0) {
+            amrex::Abort("albini_spotting.P_catch must be between 0.0 and 1.0");
+        }
+        if (p.albini_spotting.use_3d_wind == 1) {
+            Print() << "Albini spotting: using 3-D wind from plt file: "
+                    << p.albini_spotting.plt_wind_file << "\n";
+        }
+        if (p.albini_spotting.P_catch < 1.0) {
+            Print() << "Albini spotting P_catch (catching probability) = "
+                    << p.albini_spotting.P_catch << "\n";
         }
     }
 
@@ -732,6 +777,17 @@ void parse_inputs(InputParameters& p)
     // -------- Fire statistics time series --------
     p.fire_stats_file = "fire_stats.csv";
     pp.query("fire_stats_file", p.fire_stats_file);
+
+    // -------- Automatic HTML report generation --------
+    p.fire_report_file = "";
+    pp.query("fire_report_file", p.fire_report_file);
+    if (!p.fire_report_file.empty()) {
+        Print() << "HTML fire report will be written to: " << p.fire_report_file << "\n";
+        if (p.fire_stats_file.empty()) {
+            Print() << "  WARNING: fire_report_file is set but fire_stats_file is empty; "
+                       "no time-series data will appear in the report.\n";
+        }
+    }
 
     // -------- Timed isochrone output --------
     p.isochrone_interval_s = 0.0;
@@ -1291,6 +1347,180 @@ void parse_inputs(InputParameters& p)
         if (p.burn_period.start_hour > p.burn_period.end_hour)
             Print() << "  (window crosses midnight)\n";
         Print() << "  Simulation start hour: " << p.burn_period.sim_start_hour << ":00\n";
+    }
+
+    // -------- Smoke plume-rise model (Briggs 1965 / 1969) --------
+    p.smoke_plume.enable = 0;        pp.query("smoke_plume.enable", p.smoke_plume.enable);
+    p.smoke_plume.T_a    = 303.15;   pp.query("smoke_plume.T_a",    p.smoke_plume.T_a);
+    p.smoke_plume.rho_a  = 1.20;     pp.query("smoke_plume.rho_a",  p.smoke_plume.rho_a);
+    p.smoke_plume.Cp_a   = 1005.0;   pp.query("smoke_plume.Cp_a",   p.smoke_plume.Cp_a);
+    if (p.smoke_plume.enable == 1) {
+        if (p.smoke_plume.T_a <= 0.0)
+            amrex::Abort("smoke_plume.T_a must be > 0 K");
+        if (p.smoke_plume.rho_a <= 0.0)
+            amrex::Abort("smoke_plume.rho_a must be > 0 kg/m³");
+        if (p.smoke_plume.Cp_a <= 0.0)
+            amrex::Abort("smoke_plume.Cp_a must be > 0 J/(kg·K)");
+        Print() << "Smoke plume-rise model (Briggs 1965) enabled:\n"
+                << "  T_a=" << p.smoke_plume.T_a << " K"
+                << "  rho_a=" << p.smoke_plume.rho_a << " kg/m3"
+                << "  Cp_a=" << p.smoke_plume.Cp_a << " J/(kg·K)\n";
+    }
+
+    // -------- KML perimeter export --------
+    p.write_perimeter_kml = 0;   pp.query("write_perimeter_kml",  p.write_perimeter_kml);
+    p.kml_utm_zone        = 0;   pp.query("kml_utm_zone",         p.kml_utm_zone);
+    p.kml_utm_northern    = 1;   pp.query("kml_utm_northern",     p.kml_utm_northern);
+    if (p.write_perimeter_kml == 1) {
+        if (p.kml_utm_zone < 0 || p.kml_utm_zone > 60)
+            amrex::Abort("kml_utm_zone must be 0 (raw) or 1-60");
+        if (p.kml_utm_zone == 0) {
+            Print() << "KML perimeter export enabled (raw UTM coordinates; set kml_utm_zone for WGS-84)\n";
+        } else {
+            Print() << "KML perimeter export enabled: UTM Zone " << p.kml_utm_zone
+                    << (p.kml_utm_northern ? "N" : "S") << " → WGS-84\n";
+        }
+    }
+
+    // -------- Simulation start date/time (for log and HTML report) --------
+    p.sim_start_year  = 0;  pp.query("sim_datetime.year",  p.sim_start_year);
+    p.sim_start_month = 0;  pp.query("sim_datetime.month", p.sim_start_month);
+    p.sim_start_day   = 0;  pp.query("sim_datetime.day",   p.sim_start_day);
+    // Fallback: inherit from solar_radiation fields when they are set
+    if (p.sim_start_year == 0 && p.solar_radiation.enable == 1) {
+        p.sim_start_year  = p.solar_radiation.year;
+        p.sim_start_month = p.solar_radiation.month;
+        p.sim_start_day   = p.solar_radiation.day;
+    }
+    if (p.sim_start_year > 0) {
+        Print() << "Simulation calendar start: "
+                << p.sim_start_year << "-"
+                << p.sim_start_month << "-"
+                << p.sim_start_day << "\n";
+    }
+
+    // -------- Post-fire fuel adjustment for re-entry spots --------
+    // New fields within the existing fuel_depletion block
+    p.fuel_depletion.adjust_spotting_reentry = 0;
+    pp.query("fuel_depletion.adjust_spotting_reentry",
+             p.fuel_depletion.adjust_spotting_reentry);
+    p.fuel_depletion.spotting_fuel_threshold = 0.05;
+    pp.query("fuel_depletion.spotting_fuel_threshold",
+             p.fuel_depletion.spotting_fuel_threshold);
+    if (p.fuel_depletion.adjust_spotting_reentry == 1) {
+        if (p.fuel_depletion.enable == 0) {
+            Print() << "WARNING: fuel_depletion.adjust_spotting_reentry=1 requires "
+                       "fuel_depletion.enable=1; re-entry spotting adjustment disabled.\n";
+            p.fuel_depletion.adjust_spotting_reentry = 0;
+        } else {
+            Print() << "Post-fire fuel adjustment for re-entry spots enabled:\n"
+                    << "  P_catch scaled by residual fuel; no ignition below f_residual="
+                    << p.fuel_depletion.spotting_fuel_threshold << "\n";
+        }
+    }
+
+    // -------- Real-time satellite fire detection assimilation --------
+    p.satellite.enable               = 0;
+    p.satellite.source               = "file";
+    p.satellite.goes_product         = "ABI-L2-FDCF";
+    p.satellite.goes_bucket          = "noaa-goes18";
+    p.satellite.viirs_url_base       = "https://firms.modaps.eosdis.nasa.gov/api/area/csv";
+    p.satellite.api_key              = "";
+    p.satellite.bbox_lon_min         = -120.0;
+    p.satellite.bbox_lon_max         = -114.0;
+    p.satellite.bbox_lat_min         =   33.0;
+    p.satellite.bbox_lat_max         =   42.0;
+    p.satellite.utm_zone             = 10;
+    p.satellite.utm_northern         = 1;
+    p.satellite.prob_lo_easting_m    = 0.0;
+    p.satellite.prob_lo_northing_m   = 0.0;
+    p.satellite.fetch_interval_s     = amrex::Real(600.0);
+    p.satellite.use_as_ic            = 1;
+    p.satellite.use_mid_sim          = 1;
+    p.satellite.confidence_threshold = 50;
+    p.satellite.detection_radius_m   = amrex::Real(375.0);
+    p.satellite.local_cache_file     = "";
+    p.satellite.local_file           = "";
+    p.satellite.suppress_if_burning  = 1;
+
+    pp.query("satellite.enable",               p.satellite.enable);
+    pp.query("satellite.source",               p.satellite.source);
+    pp.query("satellite.goes_product",         p.satellite.goes_product);
+    pp.query("satellite.goes_bucket",          p.satellite.goes_bucket);
+    pp.query("satellite.viirs_url_base",       p.satellite.viirs_url_base);
+    pp.query("satellite.api_key",              p.satellite.api_key);
+    pp.query("satellite.bbox_lon_min",         p.satellite.bbox_lon_min);
+    pp.query("satellite.bbox_lon_max",         p.satellite.bbox_lon_max);
+    pp.query("satellite.bbox_lat_min",         p.satellite.bbox_lat_min);
+    pp.query("satellite.bbox_lat_max",         p.satellite.bbox_lat_max);
+    pp.query("satellite.utm_zone",             p.satellite.utm_zone);
+    pp.query("satellite.utm_northern",         p.satellite.utm_northern);
+    pp.query("satellite.prob_lo_easting_m",    p.satellite.prob_lo_easting_m);
+    pp.query("satellite.prob_lo_northing_m",   p.satellite.prob_lo_northing_m);
+    pp.query("satellite.fetch_interval_s",     p.satellite.fetch_interval_s);
+    pp.query("satellite.use_as_ic",            p.satellite.use_as_ic);
+    pp.query("satellite.use_mid_sim",          p.satellite.use_mid_sim);
+    pp.query("satellite.confidence_threshold", p.satellite.confidence_threshold);
+    pp.query("satellite.detection_radius_m",   p.satellite.detection_radius_m);
+    pp.query("satellite.local_cache_file",     p.satellite.local_cache_file);
+    pp.query("satellite.local_file",           p.satellite.local_file);
+    pp.query("satellite.suppress_if_burning",  p.satellite.suppress_if_burning);
+
+    if (p.satellite.enable == 1) {
+        // Validate
+        if (p.satellite.source != "file"  &&
+            p.satellite.source != "goes"  &&
+            p.satellite.source != "viirs") {
+            amrex::Abort("satellite.source must be one of: file, goes, viirs");
+        }
+        if (p.satellite.source == "viirs" && p.satellite.api_key.empty()) {
+            amrex::Abort("satellite.source='viirs' requires satellite.api_key to be set. "
+                         "Obtain a free map key at "
+                         "https://firms.modaps.eosdis.nasa.gov/api/map_key/");
+        }
+        if (p.satellite.source == "file" && p.satellite.local_file.empty() &&
+            p.satellite.local_cache_file.empty()) {
+            amrex::Abort("satellite.source='file' requires satellite.local_file "
+                         "(or satellite.local_cache_file) to be set");
+        }
+        if (p.satellite.utm_zone < 1 || p.satellite.utm_zone > 60)
+            amrex::Abort("satellite.utm_zone must be 1-60");
+        if (p.satellite.confidence_threshold < 0 || p.satellite.confidence_threshold > 100)
+            amrex::Abort("satellite.confidence_threshold must be in [0, 100]");
+        if (p.satellite.detection_radius_m <= 0.0)
+            amrex::Abort("satellite.detection_radius_m must be > 0 m");
+        if (p.satellite.fetch_interval_s <= 0.0)
+            amrex::Abort("satellite.fetch_interval_s must be > 0 s");
+
+        Print() << "Satellite fire detection assimilation enabled:\n";
+        Print() << "  source=" << p.satellite.source;
+        if (p.satellite.source == "goes")
+            Print() << "  product=" << p.satellite.goes_product
+                    << "  bucket=" << p.satellite.goes_bucket << "\n";
+        else if (p.satellite.source == "viirs")
+            Print() << "  FIRMS API  api_key=***\n";
+        else if (p.satellite.source == "file")
+            Print() << "  file=" << (p.satellite.local_file.empty()
+                                     ? p.satellite.local_cache_file
+                                     : p.satellite.local_file) << "\n";
+        else
+            Print() << "\n";
+        Print() << "  bbox=[" << p.satellite.bbox_lon_min
+                << "," << p.satellite.bbox_lon_max
+                << "] lon  [" << p.satellite.bbox_lat_min
+                << "," << p.satellite.bbox_lat_max << "] lat\n";
+        Print() << "  UTM zone " << p.satellite.utm_zone
+                << (p.satellite.utm_northern ? "N" : "S")
+                << "  prob_lo_easting="  << p.satellite.prob_lo_easting_m  << " m"
+                << "  prob_lo_northing=" << p.satellite.prob_lo_northing_m << " m\n";
+        Print() << "  confidence_threshold=" << p.satellite.confidence_threshold << " %"
+                << "  detection_radius=" << p.satellite.detection_radius_m << " m"
+                << "  fetch_interval=" << p.satellite.fetch_interval_s << " s\n";
+        Print() << "  use_as_ic=" << p.satellite.use_as_ic
+                << "  use_mid_sim=" << p.satellite.use_mid_sim
+                << "  suppress_if_burning=" << p.satellite.suppress_if_burning << "\n";
+        if (!p.satellite.local_cache_file.empty())
+            Print() << "  local_cache_file=" << p.satellite.local_cache_file << "\n";
     }
 
 }

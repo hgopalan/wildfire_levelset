@@ -102,6 +102,7 @@ using namespace amrex;
 #include "wind_dir_schedule.H"
 #include "barrier_polygons.H"
 #include "retardant_drop.H"
+#include "satellite_assimilation.H"
 
 // ---- Project headers: weather inputs ----
 #include "wtr_weather.H"
@@ -119,5 +120,8 @@ using namespace amrex;
 // ---- Project headers: output ----
 #include "write_xy_data.H"
 #include "plot_results.H"
+#include "fire_report.H"
+#include "smoke_plume_rise.H"
+#include "sim_datetime.H"
 
 #endif // WILDFIRE_INCLUDES_H

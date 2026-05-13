@@ -20,13 +20,11 @@ reinit_int = 5
 # Constant wind field
 u_x = 0.25
 u_y = 0.0
-u_z = 0.0
 
 # Spherical ignition
 source_type = sphere
 center_x = 0.5
 center_y = 0.5
-center_z = 0.5
 sphere_radius = 0.15
 
 # Rothermel fuel defaults

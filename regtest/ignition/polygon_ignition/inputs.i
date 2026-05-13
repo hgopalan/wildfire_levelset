@@ -20,7 +20,6 @@ reinit_int = 20
 # Wind: 3 m/s eastward
 u_x = 3.0
 u_y = 0.0
-u_z = 0.0
 
 # Polygon ignition from CSV file
 source_type = polygon

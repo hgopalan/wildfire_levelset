@@ -169,7 +169,7 @@ inline void load_wind_field_data(const std::string& filename,
 inline void interpolate_velocity_field(MultiFab& vel, const Geometry& geom,
                                         const std::vector<Real>& x_data1, const std::vector<Real>& y_data1,
                                         const std::vector<Real>& u_data1, const std::vector<Real>& v_data1,
-                                        const std::vector<Real>& x_data2, const std::vector<Real>& y_data2,
+                                        const std::vector<Real>& x_data2, const std::vector<Real>& /*y_data2*/,
                                         const std::vector<Real>& u_data2, const std::vector<Real>& v_data2,
                                         Real time_fraction)
 {

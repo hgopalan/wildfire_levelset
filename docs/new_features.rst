@@ -8,8 +8,86 @@ update.  All new C++ headers live in ``src/`` and are included automatically by 
    :depth: 2
    :local:
 
-Scott & Reinhardt (2001) Torching / Crowning Index Diagnostics
----------------------------------------------------------------
+WAF Formula Selection (Andrews vs. BehavePlus)
+-----------------------------------------------
+
+**Header**: ``src/andrews_model.H``
+
+The Wind Adjustment Factor (WAF) formula used when ``rothermel.use_waf = 1`` is now
+selectable via ``rothermel.waf_formula``.  Two fuel-model–aware formulas are provided:
+
+**"andrews"** (default) — logarithmic Albini & Baughman (1979)
+
+  *Open / shrub fuel beds* (unsheltered):
+
+  .. math::
+
+     \text{WAF} = \frac{1.83}{\ln\!\left(\dfrac{20 + 0.36\,h}{0.13\,h}\right)}
+
+  *Forest / closed-canopy fuel beds* (sheltered, FARSITE-style):
+
+  .. math::
+
+     \text{WAF}_\text{sheltered} = \frac{0.555}{\sqrt{f_c\,h_c}\,
+       \ln\!\left(\dfrac{20 + 0.36\,h_c}{0.13\,h_c}\right)}
+
+  The sheltered formula is applied automatically when canopy cover fraction
+  :math:`f_c \geq 0.5` and canopy height :math:`h_c >` fuel depth :math:`h`.
+
+**"behaviorplus"** — BehavePlus linear / exponential
+
+  *Open / shrub fuel beds* (unsheltered):
+
+  .. math::
+
+     \text{WAF} = 0.36 + 0.004\,h_\text{in}   \quad [h_\text{in} = 12 h_\text{ft}]
+
+  This linear approximation is used by BehavePlus for grass, shrub, and open
+  timber-litter fuel models.
+
+  *Forest / closed-canopy fuel beds* (sheltered):
+
+  .. math::
+
+     \text{WAF}_\text{canopy} = (0.36 + 0.004\,h_{c,\text{in}}) \times
+       \exp(-\alpha_c\,f_c)
+
+  The exponential Beer–Lambert term accounts for the wind speed attenuation
+  through the canopy column.  The attenuation strength is controlled by
+  ``rothermel.waf_canopy_alpha`` (:math:`\alpha_c`, default 1.5).
+
+**Input parameters** (prefix ``rothermel.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``use_waf``
+     - 0
+     - 1 to enable Wind Adjustment Factor
+   * - ``waf_formula``
+     - ``"andrews"``
+     - Formula: ``"andrews"`` or ``"behaviorplus"``
+   * - ``waf_canopy_alpha``
+     - 1.5
+     - Canopy attenuation coefficient α_c for BehavePlus exponential canopy WAF
+
+**Example — BehavePlus open/shrub WAF**::
+
+    rothermel.use_waf       = 1
+    rothermel.waf_formula   = behaviorplus
+
+**Example — BehavePlus with custom canopy attenuation**::
+
+    rothermel.use_waf          = 1
+    rothermel.waf_formula      = behaviorplus
+    rothermel.waf_canopy_alpha = 2.0   # stronger sheltering
+
+**Tests**: ``regtest/wind/waf_andrews/``, ``regtest/wind/waf_behaviorplus/``
+
+
 
 **Header**: ``src/fire_ecology_model.H``
 
@@ -495,3 +573,211 @@ are handled correctly: fire is active when ``clock_hour >= 22`` **or**
     burn_period.end_hour   = 7.0
     burn_period.sim_start_hour = 0.0
 
+
+
+Smoke Plume-Rise Model (Briggs 1965)
+-------------------------------------
+
+**Header**: ``src/smoke_plume_rise.H``
+
+Computes the effective smoke plume-rise height Δh [m] above each fire-front
+cell using the Briggs (1965/1969) buoyancy-dominated formula.  The result is
+written to every plotfile as the variable ``plume_rise_m`` and the domain
+maximum is printed in per-step log output.
+
+**Theory**
+
+1. Buoyancy flux per unit fire-line length:
+
+   .. math::
+
+      F_B = \frac{g \, I_B}{\pi \, \rho_a \, c_p \, T_a}  \quad [\text{m}^4/\text{s}^3]
+
+   where :math:`I_B` is the Byram fireline intensity [W/m] (= 1000 × kW/m),
+   :math:`g = 9.81\,\text{m/s}^2`, :math:`\rho_a` is air density [kg/m³],
+   :math:`c_p` is specific heat of air [J/(kg·K)], and :math:`T_a` is ambient
+   temperature [K].
+
+2. Distance to final rise :math:`x_f = 3.5\,x^*`:
+
+   .. math::
+
+      x^* = \begin{cases}
+        49\,F_B^{5/8}   & F_B < 55\,\text{m}^4/\text{s}^3 \\
+        120\,F_B^{2/5}  & F_B \geq 55\,\text{m}^4/\text{s}^3
+      \end{cases}
+
+3. Final plume rise:
+
+   .. math::
+
+      \Delta h = 1.6 \, F_B^{1/3} \, x_f^{2/3} / u  \quad [\text{m}]
+
+   where :math:`u` is wind speed [m/s] (clamped to 0.5 m/s to avoid
+   division by zero).
+
+**Input parameters** (prefix ``smoke_plume.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to compute plume rise (written to plotfile as ``plume_rise_m``)
+   * - ``T_a``
+     - 303.15
+     - Ambient temperature [K] (default = 30 °C)
+   * - ``rho_a``
+     - 1.20
+     - Air density [kg/m³]
+   * - ``Cp_a``
+     - 1005.0
+     - Specific heat of air [J/(kg·K)]
+
+**Example**::
+
+    smoke_plume.enable = 1
+    smoke_plume.T_a    = 308.0   # 35 °C hot day
+    smoke_plume.rho_a  = 1.18    # slightly lower density at altitude
+    smoke_plume.Cp_a   = 1005.0
+
+**References**: Briggs (1965) JAPCA 15:433; Briggs (1969) USAEC TID-25075.
+
+
+KML Perimeter Export
+--------------------
+
+**Function**: ``write_fire_perimeter_kml()`` in ``src/write_xy_data.H``
+
+Writes the fire perimeter as a KML (Keyhole Markup Language) document that
+can be opened directly in Google Earth or any GIS tool supporting KML.
+Perimeter coordinates are converted from simulation UTM [m] to WGS-84 lon/lat
+using the standard inverse Transverse Mercator formula (Redfearn 1948) when a
+UTM zone number is specified.
+
+A ``.kml`` file is written at every plotfile step and for every isochrone,
+alongside the existing ``.csv`` and ``.geojson`` perimeter files.
+
+**Input parameters**:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``write_perimeter_kml``
+     - 0
+     - 1 to write ``perimeter_NNNN.kml`` at each plotfile step
+   * - ``kml_utm_zone``
+     - 0
+     - UTM zone number 1–60; set 0 to write raw UTM coords (not WGS-84)
+   * - ``kml_utm_northern``
+     - 1
+     - 1 for northern hemisphere, 0 for southern
+
+**Example** – Southern California (UTM Zone 11N)::
+
+    write_perimeter_csv     = 1
+    write_perimeter_geojson = 1
+    write_perimeter_kml     = 1
+    kml_utm_zone            = 11
+    kml_utm_northern        = 1
+
+
+Simulation Date/Time Display in Logs and Report
+------------------------------------------------
+
+When a simulation start date is configured, each per-step log line includes
+the calendar date and time alongside the simulation time in seconds:
+
+.. code-block:: text
+
+    Time:3600.0 (2024-08-15 09:00) with timestep:45.2
+
+The simulation start date is taken from either:
+
+* ``sim_datetime.year/month/day`` (explicit standalone fields), or
+* ``solar_radiation.year/month/day`` when ``solar_radiation.enable = 1``
+  (the two sets are automatically linked).
+
+The start hour comes from ``solar_radiation.sim_start_hour`` (decimal hours).
+If no start date is set, the plain "Time:T s" format is used as before.
+
+The HTML fire report (``fire_report_file``) also shows start and end
+calendar dates in the header.
+
+**Input parameters** (prefix ``sim_datetime.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``sim_datetime.year``
+     - 0
+     - Calendar year at t=0 (0 = inherit from ``solar_radiation``)
+   * - ``sim_datetime.month``
+     - 0
+     - Calendar month at t=0 (1–12)
+   * - ``sim_datetime.day``
+     - 0
+     - Calendar day at t=0 (1–31)
+
+**Example**::
+
+    sim_datetime.year  = 2024
+    sim_datetime.month = 8
+    sim_datetime.day   = 15
+    # Start hour comes from solar_radiation.sim_start_hour (default 8.0)
+
+
+Post-fire Fuel Adjustment for Re-entry Spots
+---------------------------------------------
+
+When firebrand spotting (basic or Albini) is active alongside per-cell fuel
+depletion tracking (``fuel_depletion.enable = 1``), this option reduces the
+catching probability for spot fires that land in previously-burned areas where
+the residual fuel load is depleted.
+
+The adjustment works as follows:
+
+* For each spot-fire landing point, the local ``residual_fuel_mf`` value
+  :math:`f_r \in [0,1]` is looked up (1 = fully loaded, 0 = completely burned).
+* If :math:`f_r < \text{spotting\_fuel\_threshold}`, the spot is suppressed
+  (no ignition regardless of P_catch).
+* Otherwise, the effective catching probability is scaled:
+  :math:`P_\text{eff} = P_\text{catch} \times f_r`.
+
+This prevents re-burned spots from growing as fast as fresh-fuel ignitions
+and is physically consistent with the exponential burnout model used to
+compute ``residual_fuel_mf``.
+
+**Input parameters** (prefix ``fuel_depletion.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``adjust_spotting_reentry``
+     - 0
+     - 1 to scale P_catch by residual fuel for firebrand spots (requires ``enable=1``)
+   * - ``spotting_fuel_threshold``
+     - 0.05
+     - Minimum residual fuel fraction below which spots cannot ignite [0–1]
+
+**Example**::
+
+    fuel_depletion.enable                  = 1
+    fuel_depletion.tau_burnout             = 1800.0
+    fuel_depletion.adjust_spotting_reentry = 1
+    fuel_depletion.spotting_fuel_threshold = 0.05
+
+    albini_spotting.enable = 1
+    albini_spotting.P_catch = 0.8

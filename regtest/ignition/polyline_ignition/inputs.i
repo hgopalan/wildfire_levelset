@@ -20,7 +20,6 @@ reinit_int = 20
 # Wind: 4 m/s northward
 u_x = 0.0
 u_y = 4.0
-u_z = 0.0
 
 # Polyline ignition from CSV file
 source_type = polyline

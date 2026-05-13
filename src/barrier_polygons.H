@@ -124,12 +124,16 @@ static std::vector<IntVect> load_barrier_cells(
 #if (AMREX_SPACEDIM == 3)
         int k = lo[2] + static_cast<int>(std::floor((all_z[n] - plo[2]) / dx[2]));
 #else
-        int k = lo[2]; // always 0 in 2-D
+        int k = 0; // always 0 in 2-D (single z-layer; lo[2] would be out-of-bounds)
 #endif
         // Clamp to domain
         i = std::max(lo[0], std::min(hi[0], i));
         j = std::max(lo[1], std::min(hi[1], j));
+#if (AMREX_SPACEDIM == 3)
         k = std::max(lo[2], std::min(hi[2], k));
+#else
+        amrex::ignore_unused(k);
+#endif
         cells.push_back(IntVect(AMREX_D_DECL(i, j, k)));
     }
 
