@@ -942,6 +942,57 @@ void parse_inputs(InputParameters& p)
                 << " delta=" << p.rothermel.delta << " M_x=" << p.rothermel.M_x << "\n";
     }
 
+    // -------- Flux-based ember cascade model (plume-rise driven) --------
+    p.ember_cascade.enable              = 0;       pp.query("ember_cascade.enable",              p.ember_cascade.enable);
+    p.ember_cascade.I_B_min             = 10.0;    pp.query("ember_cascade.I_B_min",             p.ember_cascade.I_B_min);
+    p.ember_cascade.terminal_velocity   = 1.0;     pp.query("ember_cascade.terminal_velocity",   p.ember_cascade.terminal_velocity);
+    p.ember_cascade.k_flux              = 1.0;     pp.query("ember_cascade.k_flux",              p.ember_cascade.k_flux);
+    p.ember_cascade.I_B_ref             = 100.0;   pp.query("ember_cascade.I_B_ref",             p.ember_cascade.I_B_ref);
+    p.ember_cascade.flux_exp            = 1.0;     pp.query("ember_cascade.flux_exp",            p.ember_cascade.flux_exp);
+    p.ember_cascade.sigma_base          = 50.0;    pp.query("ember_cascade.sigma_base",          p.ember_cascade.sigma_base);
+    p.ember_cascade.k_sigma             = 0.1;     pp.query("ember_cascade.k_sigma",             p.ember_cascade.k_sigma);
+    p.ember_cascade.n_sigma_cutoff      = 4.0;     pp.query("ember_cascade.n_sigma_cutoff",      p.ember_cascade.n_sigma_cutoff);
+    p.ember_cascade.N_min_density       = 1.0e-3;  pp.query("ember_cascade.N_min_density",       p.ember_cascade.N_min_density);
+    p.ember_cascade.spot_radius         = 5.0;     pp.query("ember_cascade.spot_radius",         p.ember_cascade.spot_radius);
+    p.ember_cascade.check_interval      = 5;       pp.query("ember_cascade.check_interval",      p.ember_cascade.check_interval);
+    p.ember_cascade.random_seed         = 0;       pp.query("ember_cascade.random_seed",         p.ember_cascade.random_seed);
+    p.ember_cascade.require_3d_wind     = 0;       pp.query("ember_cascade.require_3d_wind",     p.ember_cascade.require_3d_wind);
+    p.ember_cascade.use_3d_wind         = 0;       pp.query("ember_cascade.use_3d_wind",         p.ember_cascade.use_3d_wind);
+    p.ember_cascade.plt_wind_file       = "";      pp.query("ember_cascade.plt_wind_file",       p.ember_cascade.plt_wind_file);
+    if (p.ember_cascade.enable == 1) {
+        if (p.ember_cascade.terminal_velocity <= 0.0)
+            amrex::Abort("ember_cascade.terminal_velocity must be > 0 m/s");
+        if (p.ember_cascade.I_B_min < 0.0)
+            amrex::Abort("ember_cascade.I_B_min must be >= 0 kW/m");
+        if (p.ember_cascade.k_flux < 0.0)
+            amrex::Abort("ember_cascade.k_flux must be >= 0");
+        if (p.ember_cascade.I_B_ref <= 0.0)
+            amrex::Abort("ember_cascade.I_B_ref must be > 0 kW/m");
+        if (p.ember_cascade.sigma_base < 0.0)
+            amrex::Abort("ember_cascade.sigma_base must be >= 0 m");
+        if (p.ember_cascade.N_min_density <= 0.0)
+            amrex::Abort("ember_cascade.N_min_density must be > 0 embers/m2/s");
+        if (p.ember_cascade.check_interval < 1)
+            amrex::Abort("ember_cascade.check_interval must be >= 1");
+        if (p.ember_cascade.require_3d_wind == 1 && p.ember_cascade.plt_wind_file.empty())
+            amrex::Abort("ember_cascade.require_3d_wind = 1 requires ember_cascade.plt_wind_file to be set");
+        if ((p.ember_cascade.use_3d_wind == 1 || p.ember_cascade.require_3d_wind == 1)
+            && p.ember_cascade.plt_wind_file.empty())
+            amrex::Abort("ember_cascade.use_3d_wind = 1 requires ember_cascade.plt_wind_file to be set");
+        Print() << "Flux-based ember cascade model (plume-rise driven) enabled:\n";
+        Print() << "  I_B_min=" << p.ember_cascade.I_B_min << " kW/m"
+                << "  v_t=" << p.ember_cascade.terminal_velocity << " m/s"
+                << "  k_flux=" << p.ember_cascade.k_flux
+                << "  flux_exp=" << p.ember_cascade.flux_exp << "\n";
+        Print() << "  sigma_base=" << p.ember_cascade.sigma_base << " m"
+                << "  k_sigma=" << p.ember_cascade.k_sigma
+                << "  N_min_density=" << p.ember_cascade.N_min_density << " embers/m2/s"
+                << "  spot_radius=" << p.ember_cascade.spot_radius << " m\n";
+        if (p.ember_cascade.use_3d_wind == 1 || p.ember_cascade.require_3d_wind == 1) {
+            Print() << "  3-D wind transport: plt_wind_file=" << p.ember_cascade.plt_wind_file << "\n";
+        }
+    }
+
     // -------- Feature 8: Albini (1979) torching-tree spotting --------
     p.torching_spotting.enable              = 0;       pp.query("torching_spotting.enable",              p.torching_spotting.enable);
     p.torching_spotting.k_torch             = 4.24;    pp.query("torching_spotting.k_torch",             p.torching_spotting.k_torch);

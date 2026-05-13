@@ -65,6 +65,7 @@ using namespace amrex;
 #include "firebrand_spotting.H"
 #include "albini_spotting.H"
 #include "albini_torching_spotting.H"
+#include "ember_cascade_flux.H"
 #include "scott_spotting_table.H"
 
 // ---- Project headers: fire diagnostics and ecology ----

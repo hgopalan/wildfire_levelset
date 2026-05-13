@@ -61,6 +61,7 @@ int main(int argc, char* argv[])
     MultiFab& farsite_spread        = f.farsite_spread;
     MultiFab& spotting_data         = f.spotting_data;
     MultiFab& albini_data           = f.albini_data;
+    MultiFab& ember_cascade_mf      = f.ember_cascade_mf;
     MultiFab& R_mf                  = f.R_mf;
     MultiFab& fuel_consumption_mf   = f.fuel_consumption_mf;
     MultiFab& crown_fire_fraction_mf= f.crown_fire_fraction_mf;
@@ -166,6 +167,20 @@ int main(int argc, char* argv[])
         if (!read_plt_wind_file(inputs.albini_spotting.plt_wind_file, albini_plt_wind)) {
             amrex::Abort("Failed to read 3-D wind plt file for Albini spotting: "
                          + inputs.albini_spotting.plt_wind_file);
+        }
+    }
+
+    // ---- 3-D wind for flux-based ember cascade model ----
+    // When ember_cascade.use_3d_wind = 1 or ember_cascade.require_3d_wind = 1,
+    // read the plt file once before the time loop.  A missing or unreadable
+    // file is a fatal error when require_3d_wind = 1.
+    PltWindData ember_cascade_plt_wind;
+    if (inputs.ember_cascade.enable == 1 &&
+        (inputs.ember_cascade.use_3d_wind == 1 || inputs.ember_cascade.require_3d_wind == 1) &&
+        !inputs.ember_cascade.plt_wind_file.empty()) {
+        if (!read_plt_wind_file(inputs.ember_cascade.plt_wind_file, ember_cascade_plt_wind)) {
+            amrex::Abort("Failed to read 3-D wind plt file for ember cascade: "
+                         + inputs.ember_cascade.plt_wind_file);
         }
     }
 
@@ -1310,6 +1325,19 @@ int main(int argc, char* argv[])
 	  compute_albini_torching_spots(phi, ecology_mf, fireline_intensity_mf,
 	                                flame_length_mf, canopy_height_mf,
 	                                vel, geom, inputs.torching_spotting, step);
+	}
+
+	// Flux-based ember cascade model (plume-rise driven)
+	// Runs independently of the single-brand Albini model; both can be
+	// active simultaneously for complementary coverage.
+	if (inputs.ember_cascade.enable == 1 &&
+	    (step % inputs.ember_cascade.check_interval == 0)) {
+	  const Real dt_check_ec = dt_step * static_cast<Real>(inputs.ember_cascade.check_interval);
+	  compute_ember_cascade_flux(
+	      phi, ember_cascade_mf, fireline_intensity_mf,
+	      vel, geom, inputs.ember_cascade,
+	      dt_check_ec, step,
+	      (ember_cascade_plt_wind.valid) ? &ember_cascade_plt_wind : nullptr);
 	}
       }
 
