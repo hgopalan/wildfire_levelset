@@ -50,6 +50,8 @@ inline void build_rhs_weno5z(const MultiFab& phi,
     // Slope/wind cross-term
     const int  use_sw_cross = rc.use_slope_wind_cross;
     const Real k_sw_cross   = rc.k_slope_wind_cross;
+    // FARSITE-style vectorial slope/wind combination
+    const int  use_sw_vectors = rc.use_slope_wind_vectors;
 
     // RHS per Eq. (2): ∂φ/∂t = - R ( |∇φ| - ε Δφ ), with R from Rothermel (1972)
     // or from a pre-computed R MultiFab (e.g. Balbi model).
@@ -114,10 +116,36 @@ inline void build_rhs_weno5z(const MultiFab& phi,
                     phi_s = phi_s_const;
                 }
 
-                // Rate of spread [ft/min] → simulation units
-                // Optional slope/wind cross-term: R = R₀(1 + φ_w + φ_s + k×φ_w×φ_s)
-                Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
-                R = std::max(R0 * (1.0 + phi_w + phi_s + cross), 0.0) * ros_conv;
+                // Combine φ_w and φ_s using the selected mode.
+                // Mode A – FARSITE vectorial (use_slope_wind_vectors = 1):
+                //   φ_combined = |φ_w·wind_hat + φ_s·slope_hat|
+                // Mode B – Scalar cross-term (use_slope_wind_cross = 1):
+                //   φ_combined = φ_w + φ_s + k × φ_w × φ_s
+                // Mode C – Default scalar additive:
+                //   φ_combined = φ_w + φ_s
+                Real phi_combined;
+                if (use_sw_vectors == 1 && use_terrain) {
+                    Real slope_x = s(i,j,k,0);
+                    Real slope_y = s(i,j,k,1);
+                    Real tan_phi = std::sqrt(slope_x*slope_x + slope_y*slope_y);
+                    Real U_mag   = std::sqrt(ux*ux + uy*uy);
+                    if (phi_w > Real(0.0) && tan_phi > Real(0.0)) {
+                        Real wind_hat_x  = ux / U_mag;
+                        Real wind_hat_y  = uy / U_mag;
+                        Real slope_hat_x = slope_x / tan_phi;
+                        Real slope_hat_y = slope_y / tan_phi;
+                        Real comb_x = phi_w * wind_hat_x + phi_s * slope_hat_x;
+                        Real comb_y = phi_w * wind_hat_y + phi_s * slope_hat_y;
+                        phi_combined = std::sqrt(comb_x*comb_x + comb_y*comb_y);
+                    } else {
+                        phi_combined = phi_w + phi_s;
+                    }
+                } else {
+                    Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
+                    phi_combined = phi_w + phi_s + cross;
+                }
+
+                R = std::max(R0 * (Real(1.0) + phi_combined), Real(0.0)) * ros_conv;
             }
 
             // Final RHS (keeps your WENO5 & RK3 integrators intact)

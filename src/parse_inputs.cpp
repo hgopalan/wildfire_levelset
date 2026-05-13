@@ -174,6 +174,18 @@ void parse_inputs(InputParameters& p)
         Print() << "Slope/wind cross-term enabled: R = R₀(1 + φ_w + φ_s + "
                 << p.rothermel.k_slope_wind_cross << " × φ_w × φ_s)\n";
     }
+    // FARSITE-style vectorial slope/wind combination (mutually exclusive with cross-term)
+    p.rothermel.use_slope_wind_vectors = 0;
+    pp.query("rothermel.use_slope_wind_vectors", p.rothermel.use_slope_wind_vectors);
+    if (p.rothermel.use_slope_wind_vectors == 1) {
+        if (p.rothermel.use_slope_wind_cross == 1) {
+            amrex::Abort("rothermel.use_slope_wind_vectors and "
+                         "rothermel.use_slope_wind_cross cannot both be 1 "
+                         "(they are mutually exclusive)");
+        }
+        Print() << "Slope/wind vectorial combination enabled (FARSITE-style): "
+                   "R = R₀(1 + |φ_w·wind_hat + φ_s·slope_hat|)\n";
+    }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);

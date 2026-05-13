@@ -61,6 +61,8 @@ Overview
      - Van Wagner (1977) crown fire initiation and active-crown ROS worksheet
    * - ``ignition_probability_table.py``
      - Anderson (1970) probability of ignition lookup tables
+   * - Satellite Assimilation (``src/satellite_assimilation.H``)
+     - Ingest GOES / VIIRS / CSV active-fire detections into the level-set initial condition or mid-simulation
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.
@@ -248,6 +250,13 @@ Converts AMReX 2-D plotfiles to GeoTIFF rasters and GeoJSON fire-perimeter conto
 import into QGIS, ArcGIS, or other GIS tools.  Multi-level AMR plotfiles (``finest_level > 0``)
 are supported; finer-level data is composited onto the Level 0 base grid.
 
+**Default fire-behaviour variables** exported when no ``-v`` filter is given:
+
+``phi``, ``R``, ``fireline_intensity``, ``flame_length``, ``elevation``,
+``slope``, ``aspect``, ``fuel_model``, ``fuel_consumption``,
+``residual_fuel`` *(post-frontal burnout fraction)*, ``crown_fraction``,
+``arrival_time``, ``reaction_intensity``, ``wind_speed``, ``wind_direction``.
+
 **Typical usage**
 
 .. code-block:: bash
@@ -258,6 +267,11 @@ are supported; finer-level data is composited onto the Level 0 base grid.
    # Export specific variables with UTM georeference
    python3 tools/plotfile_to_geotiff.py plt0100 \
        -v phi R fireline_intensity flame_length \
+       --utm-origin 450000 4200000 --epsg 32613 --outdir gis_out
+
+   # Post-frontal fuel state rasters
+   python3 tools/plotfile_to_geotiff.py plt0100 \
+       -v residual_fuel fuel_consumption arrival_time \
        --utm-origin 450000 4200000 --epsg 32613 --outdir gis_out
 
    # Batch-convert all plt#### directories

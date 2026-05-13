@@ -50,6 +50,8 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     // Slope/wind cross-term
     const int  use_sw_cross  = rc.use_slope_wind_cross;
     const Real k_sw_cross    = rc.k_slope_wind_cross;
+    // FARSITE-style vectorial slope/wind combination
+    const int  use_sw_vectors = rc.use_slope_wind_vectors;
     // Andrews (2018) wind adjustment defaults (global fuel)
     const Real waf_default      = rc.waf;
     const Real U_max_default    = rc.U_max_ftmin;
@@ -235,10 +237,53 @@ inline void compute_rothermel_R(MultiFab& R_mf,
             }
 
             // Rate of spread [ft/min] → simulation units
+            // Three modes (mutually exclusive):
+            //
+            //  A. FARSITE vectorial (use_slope_wind_vectors = 1):
+            //       φ_w_vec = φ_w × wind_unit_vector
+            //       φ_s_vec = φ_s × upslope_unit_vector
+            //       φ_combined = |φ_w_vec + φ_s_vec|
+            //       R = R₀(1 + φ_combined)
+            //     Naturally captures alignment effect: constructive when wind
+            //     blows upslope, partially cancelling when it blows downslope.
+            //     Requires terrain data and non-zero wind; falls back to
+            //     scalar additive when either is absent.
+            //
+            //  B. Scalar cross-term (use_slope_wind_cross = 1):
+            //       R = R₀(1 + φ_w + φ_s + k × φ_w × φ_s)
+            //     Amplifies both effects when both are non-zero; always ≥ A.
+            //
+            //  C. Default scalar additive:
+            //       R = R₀(1 + φ_w + φ_s)
+            Real phi_combined;
+            if (use_sw_vectors == 1 && use_terrain) {
+                // FARSITE vectorial mode
+                Real slope_x = s(i,j,k,0);
+                Real slope_y = s(i,j,k,1);
+                Real tan_phi = std::sqrt(slope_x*slope_x + slope_y*slope_y);
+                Real U_mag   = std::sqrt(ux*ux + uy*uy);
+
+                if (phi_w > Real(0.0) && tan_phi > Real(0.0)) {
+                    // Both wind and slope present: true vectorial sum
+                    Real wind_hat_x  = ux / U_mag;
+                    Real wind_hat_y  = uy / U_mag;
+                    Real slope_hat_x = slope_x / tan_phi;
+                    Real slope_hat_y = slope_y / tan_phi;
+                    Real comb_x = phi_w * wind_hat_x + phi_s * slope_hat_x;
+                    Real comb_y = phi_w * wind_hat_y + phi_s * slope_hat_y;
+                    phi_combined = std::sqrt(comb_x*comb_x + comb_y*comb_y);
+                } else {
+                    // One factor is zero: magnitude equals the non-zero one
+                    phi_combined = phi_w + phi_s;
+                }
+            } else {
+                // Scalar additive (default) or cross-term
+                Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
+                phi_combined = phi_w + phi_s + cross;
+            }
+
             // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
-            // Optional slope/wind cross-term: R = R₀(1 + φ_w + φ_s + k×φ_w×φ_s)
-            Real cross = (use_sw_cross == 1) ? k_sw_cross * phi_w * phi_s : Real(0.0);
-            const Real R_raw = std::max(cell_R0 * (1.0 + phi_w + phi_s + cross), 0.0) * ros_conv;
+            const Real R_raw = std::max(cell_R0 * (Real(1.0) + phi_combined), Real(0.0)) * ros_conv;
             R(i,j,k) = (R_raw >= WildfireConst::ROS_MIN_MS) ? R_raw : Real(0.0);
         });
     }

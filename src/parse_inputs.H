@@ -77,6 +77,20 @@ struct RothermelParams {
     // Reference: Rothermel (1983) GTR INT-143; Anderson (1982) Res. Note INT-328.
     int         use_slope_wind_cross;   // 1 to enable cross-term (default: 0)
     amrex::Real k_slope_wind_cross;     // cross-term coupling coefficient (default: 1.0)
+    // --- FARSITE-style vectorial slope/wind combination (new option) ---
+    // When use_slope_wind_vectors = 1 (and terrain is available), the wind and
+    // slope effects are added as vectors before computing the scalar ROS:
+    //   φ_w_vec = φ_w × wind_unit_vector
+    //   φ_s_vec = φ_s × upslope_unit_vector
+    //   φ_combined = |φ_w_vec + φ_s_vec|
+    //   R = R₀ × (1 + φ_combined)
+    // This replaces the scalar sum R = R₀(1 + φ_w + φ_s) and naturally captures
+    // the effect of wind/slope alignment: aligned vectors add constructively,
+    // opposed vectors partially cancel.  The cross-term (use_slope_wind_cross)
+    // is not applied when this option is active (they are mutually exclusive).
+    // When no terrain data is present, falls back to scalar additive.
+    // Reference: Finney (1998) FARSITE; Rothermel (1983) GTR INT-143.
+    int         use_slope_wind_vectors; // 1 = FARSITE vectorial mode (default: 0)
 };
 
 struct InputParameters {

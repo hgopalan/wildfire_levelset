@@ -781,3 +781,187 @@ compute ``residual_fuel_mf``.
 
     albini_spotting.enable = 1
     albini_spotting.P_catch = 0.8
+
+FARSITE Vectorial Slope/Wind Combination
+-----------------------------------------
+
+**Headers**: ``src/compute_rothermel_R.H``, ``src/advection.H``
+
+The standard Rothermel (1972) scalar ROS formula adds wind and slope factors
+directly:
+
+.. math::
+
+   R = R_0 \,(1 + \varphi_w + \varphi_s)
+
+This overestimates spread when wind and slope point in different directions
+(e.g. a cross-slope wind or a downslope wind that opposes the slope factor).
+
+FARSITE (Finney 1998) avoids this by treating the two factors as *vectors*
+before combining them into a scalar magnitude:
+
+.. math::
+
+   \boldsymbol{\varphi}_w &= \varphi_w \,\hat{u}  \quad (\text{upwind unit vector})\\
+   \boldsymbol{\varphi}_s &= \varphi_s \,\hat{n}  \quad (\text{upslope unit vector})\\
+   \varphi_\text{combined} &= \left|\boldsymbol{\varphi}_w + \boldsymbol{\varphi}_s\right|\\
+   R &= R_0 \,(1 + \varphi_\text{combined})
+
+This is now available as an option with ``rothermel.use_slope_wind_vectors = 1``.
+
+**Comparison of slope/wind interaction modes** (all mutually exclusive):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Mode
+     - Formula
+   * - Default scalar additive (mode C)
+     - :math:`R = R_0(1 + \varphi_w + \varphi_s)`
+   * - Scalar cross-term (mode B)
+     - :math:`R = R_0(1 + \varphi_w + \varphi_s + k\,\varphi_w\varphi_s)`
+   * - FARSITE vectorial (mode A)
+     - :math:`R = R_0(1 + |\varphi_w\hat{u} + \varphi_s\hat{n}|)`
+
+Modes B and C require ``rothermel.terrain_file`` (or a landscape file) to
+supply per-cell slope vectors.  When terrain is not provided the vectorial
+mode falls back to scalar additive.  Modes B and C (cross-term) and A
+(vectorial) cannot be active simultaneously; setting both raises an error at
+startup.
+
+**Input parameters**:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``rothermel.use_slope_wind_vectors``
+     - 0
+     - 1 to enable FARSITE-style vectorial slope/wind combination
+   * - ``rothermel.use_slope_wind_cross``
+     - 0
+     - 1 to enable :math:`k\,\varphi_w\varphi_s` cross-term (existing option)
+   * - ``rothermel.k_slope_wind_cross``
+     - 1.0
+     - Cross-term coupling coefficient :math:`k` (only used when ``use_slope_wind_cross = 1``)
+
+**Example — vectorial mode (FARSITE-parity)**::
+
+    rothermel.terrain_file          = terrain.xyz
+    rothermel.use_slope_wind_vectors = 1
+
+**Example — cross-term with custom coupling**::
+
+    rothermel.terrain_file         = terrain.xyz
+    rothermel.use_slope_wind_cross = 1
+    rothermel.k_slope_wind_cross   = 0.5   # partial coupling
+
+**References**: Finney (1998) FARSITE RMRS-RP-4; Rothermel (1983) GTR INT-143;
+Anderson (1982) Res. Note INT-328.
+
+Burn-Period (Daytime Burning Window) Gate
+------------------------------------------
+
+**Headers**: ``src/parse_inputs.H``, ``src/main.cpp``
+
+The rate-of-spread field ``R_mf`` is zeroed outside the configured local clock
+window ``[burn_period.start_hour, burn_period.end_hour)``, pausing all spread
+paths (level-set advection, FARSITE ellipse, MTT) during inactive hours.
+Moisture evolution, spotting diagnostics, and all other sub-models continue
+normally.  This mirrors the FARSITE / FSPro burn-period concept used in
+operational forecasting.
+
+The gate is applied as a single ``R_mf.setVal(0.0)`` call immediately after
+the retardant-suppression step, so no changes are required to any of the
+individual spread-path implementations.
+
+**Input parameters** (prefix ``burn_period.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to activate the burn-period gate
+   * - ``start_hour``
+     - 10.0
+     - Local decimal hour when spread becomes active (inclusive)
+   * - ``end_hour``
+     - 20.0
+     - Local decimal hour when spread becomes inactive (exclusive)
+   * - ``sim_start_hour``
+     - 0.0
+     - Local clock hour at simulation :math:`t = 0` (inherits from
+       ``solar_radiation.sim_start_hour`` when solar radiation is enabled)
+
+Midnight-crossing windows (e.g. ``start_hour = 22``, ``end_hour = 6``) are
+handled correctly.
+
+**Example**::
+
+    burn_period.enable         = 1
+    burn_period.start_hour     = 10.0
+    burn_period.end_hour       = 20.0
+    burn_period.sim_start_hour = 8.0   # simulation starts at 08:00
+
+Post-frontal Fuel Consumption Raster Output
+--------------------------------------------
+
+**Header**: ``src/main.cpp``; GIS export: ``tools/plotfile_to_geotiff.py``
+
+Two complementary rasters quantify post-frontal fuel state:
+
+* **``fuel_consumption``** — instantaneous bulk fuel consumption fraction
+  :math:`f_c \in [0, 1]` computed during the FARSITE spread step when
+  ``farsite.use_bulk_fuel_consumption = 1``.  Based on fire intensity and
+  residence time (Albini 1976 / Rothermel 1983 per-class exponential burnout).
+
+* **``residual_fuel``** — fraction of fuel remaining behind the fire front.
+  Updated every timestep for burned cells via exponential decay:
+
+  .. math::
+
+     f_r(t) = \exp\!\left(-\frac{t - t_\text{arrive}}{\tau_\text{burnout}}\right)
+
+  Requires ``fuel_depletion.enable = 1`` and ``fuel_depletion.tau_burnout``
+  [s].  :math:`f_r = 1` (unburned), :math:`f_r \to 0` (fully consumed).
+
+Both variables are written to every AMReX plotfile and are exported as
+GeoTIFF by ``plotfile_to_geotiff.py`` (now included in the default
+``FIRE_VARS`` export set alongside ``phi``, ``fireline_intensity``, etc.).
+
+**Input parameters**:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``farsite.use_bulk_fuel_consumption``
+     - 0
+     - 1 to compute ``fuel_consumption`` during FARSITE spread
+   * - ``fuel_depletion.enable``
+     - 0
+     - 1 to track exponential post-frontal burnout (``residual_fuel``)
+   * - ``fuel_depletion.tau_burnout``
+     - 3600.0
+     - Characteristic burnout time :math:`\tau` [s]
+
+**Example**::
+
+    farsite.use_bulk_fuel_consumption = 1
+    fuel_depletion.enable             = 1
+    fuel_depletion.tau_burnout        = 1800.0
+
+**GIS export**::
+
+    python3 tools/plotfile_to_geotiff.py plt0200 \
+        -v residual_fuel fuel_consumption arrival_time \
+        --utm-origin 500000 3700000 --epsg 32611 --outdir gis_out
