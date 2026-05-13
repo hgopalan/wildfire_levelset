@@ -60,8 +60,14 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // On a slope dz/dx = slope_x, a horizontal step dx corresponds to a
     // surface distance ds_x = dx * sqrt(1 + slope_x^2); the surface gradient
     // component is therefore (Delta phi) / ds_x.
-    const Real eff_dx = dx[0] * std::sqrt(Real(1.0) + slope_x * slope_x);
-    const Real eff_dy = dx[1] * std::sqrt(Real(1.0) + slope_y * slope_y);
+    // Skip the sqrt when the slope is zero to avoid unnecessary computation
+    // in the common flat-terrain (or reinitialization) code path.
+    const Real eff_dx = (slope_x != Real(0.0))
+                        ? dx[0] * std::sqrt(Real(1.0) + slope_x * slope_x)
+                        : dx[0];
+    const Real eff_dy = (slope_y != Real(0.0))
+                        ? dx[1] * std::sqrt(Real(1.0) + slope_y * slope_y)
+                        : dx[1];
 
     // Grid-aware epsilon for regularization (use smallest effective spacing)
 #if (AMREX_SPACEDIM == 3)
