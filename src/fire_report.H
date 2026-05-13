@@ -448,4 +448,93 @@ inline void write_fire_report_html(const InputParameters& inputs,
     amrex::Print() << "Wrote HTML fire report to: " << inputs.fire_report_file << "\n";
 }
 
+// ============================================================================
+// write_fire_size_summary_text
+//
+// Reads the fire_stats CSV (written by append_fire_stats during the run) and
+// prints a formatted ASCII summary table to the AMReX output stream, followed
+// by a brief final-state summary.  Mirrors the output of the companion Python
+// tool tools/fire_size_summary.py so that users get the same at-a-glance
+// statistics without having to run a post-processing script manually.
+//
+// Called once at the end of the simulation, after all plotfile writes.
+// Only the IO processor performs the work; safe to call on all MPI ranks.
+//
+// Does nothing (silently) when fire_stats_file is empty or cannot be read.
+// ============================================================================
+inline void write_fire_size_summary_text(const std::string& fire_stats_file)
+{
+    if (fire_stats_file.empty()) return;
+    if (!ParallelDescriptor::IOProcessor()) return;
+
+    const std::vector<FireStatsRow> rows = read_fire_stats_csv(fire_stats_file);
+    if (rows.empty()) return;
+
+    // Column widths
+    constexpr int W_STEP  =  6;
+    constexpr int W_TIME  =  9;
+    constexpr int W_MIN   = 10;
+    constexpr int W_AREA  = 10;
+    constexpr int W_PERIM = 11;
+    constexpr int W_FRONT = 12;
+    constexpr int W_ROS   = 10;
+
+    auto sep_str = [](int w, char c = '-') -> std::string {
+        return std::string(static_cast<std::size_t>(w), c);
+    };
+
+    amrex::Print() << "\n========== Fire Size Summary ==========\n";
+
+    // Header
+    std::ostringstream hdr;
+    hdr << std::setw(W_STEP)  << "Step"
+        << std::setw(W_TIME)  << "Time[s]"
+        << std::setw(W_MIN)   << "Time[min]"
+        << std::setw(W_AREA)  << "Area[ha]"
+        << std::setw(W_PERIM) << "Perim[km]"
+        << std::setw(W_FRONT) << "FrontCells"
+        << std::setw(W_ROS)   << "HeadROS";
+    amrex::Print() << hdr.str() << "\n";
+
+    std::ostringstream sep;
+    sep << sep_str(W_STEP)  << " "
+        << sep_str(W_TIME)  << " "
+        << sep_str(W_MIN)   << " "
+        << sep_str(W_AREA)  << " "
+        << sep_str(W_PERIM) << " "
+        << sep_str(W_FRONT) << " "
+        << sep_str(W_ROS);
+    amrex::Print() << sep.str() << "\n";
+
+    for (const auto& r : rows) {
+        std::ostringstream row;
+        row << std::setw(W_STEP)  << r.step
+            << std::setw(W_TIME)  << std::fixed << std::setprecision(1) << r.time_s
+            << std::setw(W_MIN)   << std::fixed << std::setprecision(2)
+                                  << r.time_s / 60.0
+            << std::setw(W_AREA)  << std::fixed << std::setprecision(2) << r.burned_ha
+            << std::setw(W_PERIM) << std::fixed << std::setprecision(3) << r.perimeter_km
+            << std::setw(W_FRONT) << r.active_front
+            << std::setw(W_ROS)   << std::fixed << std::setprecision(4) << r.head_ros_ms;
+        amrex::Print() << row.str() << "\n";
+    }
+
+    // Final summary block
+    const FireStatsRow& last = rows.back();
+    amrex::Print() << "\n"
+                   << "Simulation duration : "
+                   << std::fixed << std::setprecision(2)
+                   << last.time_s / 3600.0 << " h\n"
+                   << "Final burned area   : "
+                   << std::fixed << std::setprecision(2)
+                   << last.burned_ha << " ha  ("
+                   << std::fixed << std::setprecision(4)
+                   << last.burned_ha / 100.0 << " km²)\n"
+                   << "Final perimeter     : "
+                   << std::fixed << std::setprecision(3)
+                   << last.perimeter_km << " km\n"
+                   << "Total time steps    : " << static_cast<int>(rows.size()) << "\n"
+                   << "=======================================\n";
+}
+
 #endif // FIRE_REPORT_H

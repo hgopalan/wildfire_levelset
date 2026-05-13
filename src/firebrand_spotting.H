@@ -31,8 +31,52 @@
 using namespace amrex;
 
 // ============================================================================
-// Compute spotting probability field based on wind, fire intensity, and moisture
+// Compute per-cell spot-fire catching (ignition) probability
+//
+// Returns a spatially-varying raster:
+//   P_catch_local(i,j) = P_catch × max(0, (M_x − M_f_local(i,j)) / M_x)
+//
+// The Anderson (1970) / Rothermel (1972) moisture-damping factor accounts for
+// the fact that wet or near-extinction-moisture fuels are less likely to be
+// ignited by a landed firebrand.  When spatial_moisture_mf is provided the
+// per-cell 1-hr dead moisture M_d1 (component 0) is used; otherwise the
+// global M_f from RothermelParams is applied uniformly.
+//
+// Parameters:
+//   spot_catch_prob_mf  – output MultiFab (1 comp); filled in-place
+//   rp                  – Rothermel parameters supplying M_x and M_f defaults
+//   P_catch             – global max catching probability [0–1]
+//   spatial_moisture_mf – optional per-cell moisture MultiFab (FMS_MOISTURE_NCOMP)
 // ============================================================================
+inline void compute_spot_catch_probability(
+    MultiFab&            spot_catch_prob_mf,
+    const RothermelParams& rp,
+    Real                 P_catch,
+    const MultiFab*      spatial_moisture_mf = nullptr)
+{
+    const Real M_x   = rp.M_x;
+    const Real M_f   = rp.M_f;
+    const Real P_c   = amrex::max(Real(0.0), amrex::min(Real(1.0), P_catch));
+    const bool has_sm = (spatial_moisture_mf != nullptr);
+
+    for (MFIter mfi(spot_catch_prob_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto cp = spot_catch_prob_mf.array(mfi);
+
+        Array4<const Real> sm_arr;
+        if (has_sm) sm_arr = spatial_moisture_mf->const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+            Real M_f_local = has_sm ? sm_arr(i, j, k, 0) : M_f;
+            Real f_moisture = (M_x > Real(0.0))
+                ? amrex::max(Real(0.0), (M_x - M_f_local) / M_x)
+                : Real(0.0);
+            cp(i, j, k) = amrex::min(Real(1.0), P_c * f_moisture);
+        });
+    }
+}
+
+
 inline void compute_spotting_probability(
     MultiFab &spotting_data,
     const MultiFab &phi,
@@ -133,10 +177,11 @@ inline void generate_firebrand_spots(
     const Geometry &geom,
     const InputParameters::SpottingParams &sp,
     int step,
-    const MultiFab* fuel_model_mf   = nullptr,  // per-cell fuel model code (optional)
-    const std::string* fuel_system  = nullptr,   // "13" or "40" (optional)
+    const MultiFab* fuel_model_mf    = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system   = nullptr,  // "13" or "40" (optional)
     const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
-    Real reentry_fuel_threshold      = Real(0.05)) // min fuel fraction to allow ignition
+    Real reentry_fuel_threshold      = Real(0.05), // min fuel fraction to allow ignition
+    MultiFab* spotting_lineage_mf    = nullptr)  // lineage output: src (x,y) per landing cell
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
@@ -626,6 +671,37 @@ inline void generate_firebrand_spots(
                 
                 // Mark as active spot fire location (component 3)
                 spot(i_center, j_center, k_center, 3) = 1.0;
+            }
+        }
+    }
+
+    // ---- Lineage tracking: record source-cell coordinates at each landing cell ----
+    // Components 0,1 of spotting_lineage_mf: (firebrand_src_x, firebrand_src_y)
+    // When multiple brands land in the same cell the most recent source wins.
+    if (spotting_lineage_mf != nullptr && total_spots > 0) {
+        for (MFIter mfi(*spotting_lineage_mf); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto lin = spotting_lineage_mf->array(mfi);
+            const auto lo = lbound(bx);
+            const auto hi = ubound(bx);
+
+            for (int idx = 0; idx < total_spots; ++idx) {
+                Real x_spot = spot_x[idx];
+                Real y_spot = spot_y[idx];
+
+                int i_land = static_cast<int>(std::floor((x_spot - prob_lo[0]) / gdx[0]));
+                int j_land = static_cast<int>(std::floor((y_spot - prob_lo[1]) / gdx[1]));
+                int k_land = 0;
+
+                if (i_land >= lo.x && i_land <= hi.x &&
+                    j_land >= lo.y && j_land <= hi.y &&
+                    k_land >= lo.z && k_land <= hi.z) {
+                    // Source cell physical centre
+                    Real src_x = prob_lo[0] + (source_i[idx] + Real(0.5)) * gdx[0];
+                    Real src_y = prob_lo[1] + (source_j[idx] + Real(0.5)) * gdx[1];
+                    lin(i_land, j_land, k_land, 0) = src_x;
+                    lin(i_land, j_land, k_land, 1) = src_y;
+                }
             }
         }
     }

@@ -201,11 +201,12 @@ inline void compute_albini_spotting(
     const RothermelParams& rp,
     const InputParameters::AlbiniSpottingParams& asp,
     int step,
-    const MultiFab* fuel_model_mf   = nullptr,  // per-cell fuel model code (optional)
-    const std::string* fuel_system  = nullptr,   // "13" or "40" (optional)
-    const PltWindData* plt_wind     = nullptr,   // 3-D wind from massconsistent_amr (optional)
+    const MultiFab* fuel_model_mf    = nullptr,  // per-cell fuel model code (optional)
+    const std::string* fuel_system   = nullptr,  // "13" or "40" (optional)
+    const PltWindData* plt_wind      = nullptr,  // 3-D wind from massconsistent_amr (optional)
     const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
-    Real reentry_fuel_threshold      = Real(0.05)) // min fuel fraction to allow ignition
+    Real reentry_fuel_threshold      = Real(0.05), // min fuel fraction to allow ignition
+    MultiFab* spotting_lineage_mf    = nullptr)  // lineage output: src (x,y) in comps 2,3
 {
     if (asp.enable == 0) {
         return;
@@ -560,10 +561,11 @@ inline void compute_albini_spotting(
 
     // Stores landing locations (x, y) and source index
     struct LandingSpot {
-        Real x, y;
+        Real x, y;         // landing position (physical)
         int  src_i, src_j;
-        int  ic, jc;      // grid indices of the landing cell
+        int  ic, jc;       // grid indices of the landing cell
         Real distance;
+        Real src_x, src_y; // source fire-front cell position (physical); for lineage
     };
     std::vector<LandingSpot> spots;
 
@@ -629,7 +631,7 @@ inline void compute_albini_spotting(
 
         int ic = static_cast<int>(std::floor((px - prob_lo[0]) / dx[0]));
         int jc = static_cast<int>(std::floor((py - prob_lo[1]) / dx[1]));
-        spots.push_back({px, py, fc.i, fc.j, ic, jc, dist});
+        spots.push_back({px, py, fc.i, fc.j, ic, jc, dist, fc.x, fc.y});
     }
 
     amrex::Print() << "Albini spotting: generated " << spots.size()
@@ -755,6 +757,38 @@ inline void compute_albini_spotting(
     amrex::MultiFab::Copy(phi,         phi_h,   0, 0, phi.nComp(),         phi.nGrow());
     amrex::MultiFab::Copy(albini_data, adata_h, 0, 0, albini_data.nComp(), 0);
     amrex::Gpu::streamSynchronize();
+
+    // ---- Lineage tracking: record source-cell coordinates at each landing cell ----
+    // Components 2,3 of spotting_lineage_mf: (albini_src_x, albini_src_y)
+    // When multiple brands land in the same cell the most recent source wins.
+    if (spotting_lineage_mf != nullptr && !spots.empty()) {
+        amrex::MultiFab lin_h(spotting_lineage_mf->boxArray(),
+                              spotting_lineage_mf->DistributionMap(),
+                              spotting_lineage_mf->nComp(), 0,
+                              amrex::MFInfo().SetArena(amrex::The_Pinned_Arena()));
+        amrex::MultiFab::Copy(lin_h, *spotting_lineage_mf, 0, 0,
+                              spotting_lineage_mf->nComp(), 0);
+        amrex::Gpu::streamSynchronize();
+
+        for (MFIter mfi(lin_h); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto lin = lin_h.array(mfi);
+            const auto lo = lbound(bx);
+            const auto hi = ubound(bx);
+
+            for (const auto& sp : spots) {
+                if (sp.ic >= lo.x && sp.ic <= hi.x &&
+                    sp.jc >= lo.y && sp.jc <= hi.y) {
+                    lin(sp.ic, sp.jc, 0, 2) = sp.src_x;
+                    lin(sp.ic, sp.jc, 0, 3) = sp.src_y;
+                }
+            }
+        }
+
+        amrex::MultiFab::Copy(*spotting_lineage_mf, lin_h, 0, 0,
+                              spotting_lineage_mf->nComp(), 0);
+        amrex::Gpu::streamSynchronize();
+    }
 }
 
 #endif // ALBINI_SPOTTING_H
