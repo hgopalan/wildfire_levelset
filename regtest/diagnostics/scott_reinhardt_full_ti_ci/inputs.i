@@ -7,10 +7,8 @@ n_cell = 64
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 330600.0
 prob_hi_y = 3775600.0
-prob_hi_z = 1.0
 
 # Short run: we just need the initial diagnostics
 final_time = 300.0

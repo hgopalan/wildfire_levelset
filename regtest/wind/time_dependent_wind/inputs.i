@@ -7,14 +7,11 @@
 # Grid & domain (1000 m x 1000 m)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 0.0
 prob_lo_y = 0.0
-prob_lo_z = 0.0
 prob_hi_x = 1000.0
 prob_hi_y = 1000.0
-prob_hi_z = 1.0
 
 # Simulate two wind-time intervals
 final_time = 120.0

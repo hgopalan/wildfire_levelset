@@ -14,14 +14,11 @@
 # Grid & domain (1000 m x 1000 m, UTM Zone 11N)
 n_cell_x = 64
 n_cell_y = 64
-n_cell_z = 1
 max_grid_size = 32
 prob_lo_x = 330000.0
 prob_lo_y = 3775000.0
-prob_lo_z = 0.0
 prob_hi_x = 331000.0
 prob_hi_y = 3776000.0
-prob_hi_z = 1.0
 
 # Short run (verifies precomputation and a few spread steps)
 nsteps = 40

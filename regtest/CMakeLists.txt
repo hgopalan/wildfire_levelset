@@ -15,7 +15,6 @@ cmake_minimum_required(VERSION 3.20)
 enable_testing()
 
 set(LEVELSET_EXE   "${CMAKE_BINARY_DIR}/levelset"    CACHE FILEPATH "Path to levelset executable")
-set(WIND_SOLVER_EXE "${CMAKE_BINARY_DIR}/wind_solver" CACHE FILEPATH "Path to wind_solver executable")
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
@@ -119,9 +118,7 @@ add_regression_test(albini_spotting          spotting/albini_spotting)
 # ===========================================================================
 # terrain/ – terrain and wind-terrain interaction
 # ===========================================================================
-if(LEVELSET_DIM_2D)
-    add_regression_test(terrain_wind         terrain/terrain_wind)
-endif()
+add_regression_test(terrain_wind         terrain/terrain_wind)
 add_regression_test(balbi_viegas_heatflux    terrain/balbi_viegas_heatflux)
 add_regression_test(windninja_ridge_canyon   terrain/windninja_ridge_canyon)
 if(Python3_FOUND)
@@ -171,10 +168,8 @@ endif()
 # ===========================================================================
 # wind/ – wind models (time-dependent, turbulent, direction schedule)
 # ===========================================================================
-if(LEVELSET_DIM_2D)
-    add_regression_test(time_dependent_wind  wind/time_dependent_wind)
-    add_regression_test(turb_wind            wind/turb_wind)
-endif()
+add_regression_test(time_dependent_wind  wind/time_dependent_wind)
+add_regression_test(turb_wind            wind/turb_wind)
 add_regression_test(wind_dir_schedule        wind/wind_dir_schedule)
 
 # ===========================================================================
@@ -184,11 +179,8 @@ add_regression_test(scott_reinhardt_indices  diagnostics/scott_reinhardt_indices
 add_regression_test(scott_reinhardt_full_ti_ci diagnostics/scott_reinhardt_full_ti_ci)
 
 # ===========================================================================
-# misc/ – 3-D tests, EB, MTT, benchmarks, LANDFIRE
+# misc/ – EB, MTT, benchmarks, LANDFIRE
 # ===========================================================================
-if(NOT LEVELSET_DIM_2D)
-    add_regression_test(3d_sphere            misc/3d_sphere)
-endif()
 add_regression_test(eb_implicit              misc/eb_implicit)
 add_regression_test(mtt_propagation          misc/mtt_propagation)
 add_regression_test(bulk_fuel_consumption    misc/bulk_fuel_consumption)
@@ -204,13 +196,8 @@ endif()
 if(Python3_FOUND)
     set(TIMING_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/misc/timing_benchmark")
     file(MAKE_DIRECTORY ${TIMING_WORK_DIR})
-    if(LEVELSET_DIM_2D)
-        set(_TIMING_DIM 2)
-        set(_TIMING_RES "32;64;128")
-    else()
-        set(_TIMING_DIM 3)
-        set(_TIMING_RES "16;32;48")
-    endif()
+    set(_TIMING_DIM 2)
+    set(_TIMING_RES "32;64;128")
     string(REPLACE ";" " " _TIMING_RES_ARGS "${_TIMING_RES}")
     separate_arguments(_TIMING_RES_LIST NATIVE_COMMAND "${_TIMING_RES_ARGS}")
     add_test(NAME timing_benchmark
@@ -224,29 +211,6 @@ if(Python3_FOUND)
                          TIMEOUT 1200
                          LABELS  "regtest;benchmark"
                          RUN_SERIAL TRUE)
-endif()
-
-# ---------------------------------------------------------------------------
-# wind_solver tests
-# ---------------------------------------------------------------------------
-function(add_wind_solver_regression_test TEST_NAME TEST_DIR)
-    set(TEST_INPUT    "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/inputs.i")
-    set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
-    file(MAKE_DIRECTORY ${TEST_WORK_DIR})
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/terrain.csv"
-             DESTINATION ${TEST_WORK_DIR})
-    endif()
-    add_test(NAME ${TEST_NAME}
-             COMMAND ${WIND_SOLVER_EXE} ${TEST_INPUT}
-             WORKING_DIRECTORY ${TEST_WORK_DIR})
-    set_tests_properties(${TEST_NAME} PROPERTIES
-                         TIMEOUT 600
-                         LABELS  "regtest;wind_solver")
-endfunction()
-
-if(LEVELSET_BUILD_WIND_SOLVER)
-    add_wind_solver_regression_test(gaussian_hill_wind_solver wind/gaussian_hill_wind_solver)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -269,17 +233,17 @@ message(STATUS "                    fbp_o1a_grassfire, fbp_s1_slash, lautenberge
 message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
 message(STATUS "                    fmc_seasonal, rothermel1991_crown")
 message(STATUS "  spotting/       : firebrand_spotting, albini_spotting")
-message(STATUS "  terrain/        : terrain_wind (2-D), balbi_viegas_heatflux,")
+message(STATUS "  terrain/        : terrain_wind, balbi_viegas_heatflux,")
 message(STATUS "                    windninja_ridge_canyon, solar_horizon_shading")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
 message(STATUS "                    precip_wetting, spatial_moisture_output")
 message(STATUS "  fuel/           : fuel_adj_file")
 message(STATUS "  ignition/       : barrier_polygons, fire_perimeter_output,")
 message(STATUS "                    polygon_ignition, polyline_ignition")
-message(STATUS "  wind/           : time_dependent_wind (2-D), turb_wind (2-D),")
+message(STATUS "  wind/           : time_dependent_wind, turb_wind,")
 message(STATUS "                    wind_dir_schedule")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci")
-message(STATUS "  misc/           : 3d_sphere (3-D), eb_implicit, mtt_propagation,")
+message(STATUS "  misc/           : eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, timing_benchmark,")
 message(STATUS "                    landfire_farsite, nonburnable_mask")
 message(STATUS "")
