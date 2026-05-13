@@ -591,6 +591,48 @@ The gradient :math:`|\nabla\phi|` is computed using:
    |\nabla\phi| = \sqrt{\left(\frac{\partial\phi}{\partial x}\right)^2 + \left(\frac{\partial\phi}{\partial y}\right)^2}
 
 
+Terrain-Corrected Gradient
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When a terrain file is present, the gradient is computed on the terrain
+surface rather than on the flat horizontal plane.  The horizontal grid
+spacing :math:`\Delta x` corresponds to a surface arc length of
+:math:`\Delta s_x = \Delta x \sqrt{1 + (\partial z/\partial x)^2}`, and
+similarly in :math:`y`.  Dividing finite differences by these arc-length
+spacings gives the surface gradient components:
+
+.. math::
+
+   \frac{\partial\phi}{\partial s_x} = \frac{\Delta\phi}{\Delta x \sqrt{1 + s_x^2}}, \qquad
+   \frac{\partial\phi}{\partial s_y} = \frac{\Delta\phi}{\Delta y \sqrt{1 + s_y^2}}
+
+where :math:`s_x = \partial z / \partial x` and
+:math:`s_y = \partial z / \partial y` are the terrain slope components stored
+in the two-component slopes ``MultiFab``.
+
+The terrain-corrected gradient magnitude is then:
+
+.. math::
+
+   |\nabla_s\phi| = \sqrt{
+       \left(\frac{\partial\phi}{\partial s_x}\right)^2 +
+       \left(\frac{\partial\phi}{\partial s_y}\right)^2}
+
+This correction is applied inside ``godunov_norm_grad_phi``
+(``src/numerical_schemes.H``) using effective spacings
+:math:`\Delta x_\text{eff} = \Delta x \sqrt{1 + s_x^2}` and
+:math:`\Delta y_\text{eff} = \Delta y \sqrt{1 + s_y^2}` in both the WENO3
+and the first-order fallback stencils.  Reinitialization uses the default
+flat-terrain path (slope = 0) because the signed-distance property is defined
+in the horizontal plane.
+
+For steep terrain (e.g., slope magnitude 1.2, equivalent to ~50°) the
+effective spacing is 57 % larger than the flat value, so the surface gradient
+magnitude is correspondingly smaller.  Without this correction the gradient
+would be over-estimated on steep flanks, causing the fire to propagate too
+slowly upslope.
+
+
 
 FARSITE Elliptical Expansion Model (Richards 1990)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

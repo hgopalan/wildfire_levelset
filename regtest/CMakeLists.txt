@@ -126,9 +126,10 @@ endif()
 # ===========================================================================
 # terrain/ – terrain and wind-terrain interaction
 # ===========================================================================
-add_regression_test(terrain_wind             terrain/terrain_wind)
-add_regression_test(balbi_viegas_heatflux    terrain/balbi_viegas_heatflux)
-add_regression_test(windninja_ridge_canyon   terrain/windninja_ridge_canyon)
+add_regression_test(terrain_wind                terrain/terrain_wind)
+add_regression_test(balbi_viegas_heatflux       terrain/balbi_viegas_heatflux)
+add_regression_test(windninja_ridge_canyon      terrain/windninja_ridge_canyon)
+add_regression_test(terrain_gradient_correction terrain/terrain_gradient_correction)
 if(Python3_FOUND)
     add_python_setup_regression_test(solar_horizon_shading
                                      terrain/solar_horizon_shading
@@ -262,7 +263,8 @@ message(STATUS "                    fmc_seasonal, rothermel1991_crown")
 message(STATUS "  spotting/       : firebrand_spotting, albini_spotting,")
 message(STATUS "                    albini_spotting_3d_wind")
 message(STATUS "  terrain/        : terrain_wind, balbi_viegas_heatflux,")
-message(STATUS "                    windninja_ridge_canyon, solar_horizon_shading")
+message(STATUS "                    windninja_ridge_canyon, solar_horizon_shading,")
+message(STATUS "                    terrain_gradient_correction")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
 message(STATUS "                    precip_wetting, spatial_moisture_output,")
 message(STATUS "                    wtr_diurnal, wtr_rain_wetting")

@@ -12,6 +12,7 @@ regtest/
 ├── balbi_fuel/                  # Balbi (2009) physical fire spread model
 ├── cheney_gould_grassfire/      # Cheney & Gould (1995/1998) grassland fire spread
 ├── terrain_wind/                # External terrain (Gaussian hill) and wind field
+├── terrain_gradient_correction/ # Terrain-corrected level-set gradient (surface arc-length) ⭐ NEW
 ├── anderson_lw/                 # Anderson (1983) dynamic L/W ratio
 ├── reinitialization/            # Level-set reinitialization testing
 ├── ellipse_sdf/                 # Elliptical SDF initial condition
@@ -193,6 +194,33 @@ done
 
 ---
 
+### terrain_gradient_correction ⭐ NEW
+**Purpose**: Tests that the level-set gradient |∇φ| is computed on the terrain
+surface (using arc-length spacings) rather than on the flat Cartesian plane.
+
+**Features**:
+- Steep Gaussian hill (H=200 m, σ=100 m) — slopes up to ≈50°
+- Level-set propagation (`propagation_method = levelset`) directly exercises
+  the terrain-corrected `godunov_norm_grad_phi` kernel
+- Effective spacing factor √(1 + s²) up to ~1.57× on the steepest flanks
+- Confirms the solver completes without NaN/Inf across steep terrain
+
+**Expected Runtime**: ~1-2 minutes
+
+**Key Parameters**:
+- Domain: 1000 m × 1000 m, 64 × 64 cells
+- Terrain: Gaussian hill H=200 m, σ=100 m; max slope ≈1.21 (50°)
+- Wind: 5 m/s westerly
+- Fuel: FM4 Chaparral, M_f = 8%
+- Propagation: `levelset`
+
+**Build Requirements**: Requires 2D build (`-DLEVELSET_DIM_2D=ON`)
+
+**Data Files**:
+- `steep_gaussian_terrain.csv`: 1600 elevation points (40×40 grid)
+
+---
+
 ### 7. anderson_lw
 **Purpose**: Tests dynamic L/W ratio calculation based on wind speed (Anderson 1983).
 
@@ -352,6 +380,7 @@ Use this checklist to verify all capabilities:
 - [ ] **Fuel adjustment**: `fuel_adj_file` scales ROS by per-fuel-model multiplier
 - [ ] **MTT propagation**: `mtt_propagation` spreads fire via minimum travel time ⭐ NEW
 - [ ] **Barrier polygons**: `barrier_polygons` extinguishes fire at barrier cells ⭐ NEW
+- [ ] **Terrain gradient correction**: `terrain_gradient_correction` exercises surface arc-length gradient ⭐ NEW
 
 ## Build Configurations
 

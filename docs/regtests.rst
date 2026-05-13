@@ -277,6 +277,31 @@ Confirms that wind is accelerated on the upslope face and channelled in canyon g
 
 **Build**: 2D build.
 
+terrain_gradient_correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Verifies that the level-set gradient :math:`|\nabla\phi|` is computed on
+the terrain surface when a terrain file is present.
+
+When terrain slopes are non-zero, ``godunov_norm_grad_phi`` replaces the flat grid
+spacings with terrain arc-length spacings:
+
+.. math::
+
+   \Delta x_\text{eff} = \Delta x\,\sqrt{1 + s_x^2}, \qquad
+   \Delta y_\text{eff} = \Delta y\,\sqrt{1 + s_y^2}
+
+where :math:`s_x = \partial z/\partial x` and :math:`s_y = \partial z/\partial y`.
+
+The test uses a steep Gaussian hill (:math:`H = 200` m, :math:`\sigma = 100` m) where
+the slope magnitude at the inflection ring reaches :math:`\approx 1.21` (50°), giving an
+effective spacing factor of :math:`\sqrt{1 + 1.21^2} \approx 1.57`.  A level-set run
+(``propagation_method = levelset``) exercises the corrected WENO3 Godunov gradient across
+the full hill profile.  Confirms that the solver completes 100 steps without NaN/Inf and
+writes 4 plotfiles.
+
+**Build**: 2D build (``-DLEVELSET_DIM_2D=ON``).
+
 landfire_farsite
 ^^^^^^^^^^^^^^^^
 
@@ -534,7 +559,8 @@ grouped by physical category:
 |                  | albini_spotting_3d_wind                                 |
 +------------------+---------------------------------------------------------+
 | ``terrain``      | terrain_wind, balbi_viegas_heatflux,                    |
-|                  | windninja_ridge_canyon                                  |
+|                  | windninja_ridge_canyon,                                 |
+|                  | terrain_gradient_correction                             |
 +------------------+---------------------------------------------------------+
 | ``moisture``     | fmd_moisture, cheney_gould_grassfire, precip_wetting,   |
 |                  | spatial_moisture_output                                 |
