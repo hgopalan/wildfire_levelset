@@ -170,16 +170,6 @@ See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools
 - Scott, J.H. & Reinhardt, E.D. (2001). Assessing crown fire potential by linking models of surface and crown fire behavior. USDA For. Serv. Res. Pap. RMRS-RP-29.
 - Van Wagner, C.E. (1977). Conditions for the start and spread of crown fire. Can. J. For. Res. 7:23–34.
 
-## Feature Difficulty Table
-
-The table below classifies implemented features by implementation complexity.
-
-
-
-
-
-
-
 ## Satellite Fire Detection Assimilation
 
 Active-fire detections from operational satellites can be ingested to
