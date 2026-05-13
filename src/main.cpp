@@ -359,7 +359,7 @@ int main(int argc, char* argv[])
     const bool use_balbi_for_viegas = (inputs.fire_spread_model == "balbi");
 
     // ---------------- dt from CFL --------------------------
-    Real dt=10;
+    Real dt=(inputs.propagation_method == "farsite") ? inputs.farsite.dt : 10.0; 
     const bool use_levelset = (inputs.propagation_method == "levelset");
     const bool use_mtt      = (inputs.propagation_method == "mtt");
     if (use_levelset)
@@ -489,7 +489,6 @@ int main(int argc, char* argv[])
                                has_spatial_crown ? &cc_mf : nullptr,
                                has_spatial_crown ? &canopy_height_mf : nullptr);
       }
-      //dt = compute_dt(R_mf, geom, inputs.cfl);
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);

@@ -213,7 +213,7 @@ void parse_inputs(InputParameters& p)
     p.farsite.coeff_a = 1.0;                     pp.query("farsite.coeff_a", p.farsite.coeff_a);
     p.farsite.coeff_b = 0.5;                     pp.query("farsite.coeff_b", p.farsite.coeff_b);
     p.farsite.coeff_c = 0.2;                     pp.query("farsite.coeff_c", p.farsite.coeff_c);
-
+    p.farsite.dt = 10.0;                         pp.query("farsite.dt", p.farsite.dt);
     // Fire shape model (only used when propagation_method = farsite)
     p.farsite.fire_shape_model = "richards";     pp.query("farsite.fire_shape_model", p.farsite.fire_shape_model);
     if (p.farsite.fire_shape_model != "richards" &&

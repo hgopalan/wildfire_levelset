@@ -144,6 +144,7 @@ struct InputParameters {
         // active crown fire behaviour (Finney 1998 / Van Wagner 1977 active-crown criteria).
         int scale_ellipse_with_crown;        // 1 to scale L/W for active crown fire (default: 0)
         amrex::Real crown_lw_scale;         // L/W multiplier for active crown fire (default: 1.5)
+        amrex::Real dt;                      // Farsite time step is tricky. Using fixed time step (default:10)
     } farsite;
     
     // Firebrand spotting model parameters
