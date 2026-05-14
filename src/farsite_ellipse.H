@@ -643,6 +643,11 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       // each propagated position (phi < 0 inside, phi = 0 on the ring,
       // and phi remains 0 for cells outside every disk), analogous to
       // init_phi_from_fire_points_csv / fire_gaussian_sigma.
+      //
+      // Performance note: squared distances are compared in the inner loop
+      // to avoid per-point sqrt; a single sqrt is taken after the loop.
+      // This path is opt-in (farsite.gaussian_sigma >= 0) and has the same
+      // O(cells × npts) complexity as init_phi_from_fire_points_csv.
       // ---------------------------------------------------------------
       const Real sig = eff_sigma;
       ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -651,19 +656,20 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
         const Real z = prob_lo[2] + (k + Real(0.5)) * gdx[2];
 #endif
-        Real min_dist = Real(1.0e30);
+        // Compare squared distances; take sqrt once outside the loop.
+        Real min_dist2 = Real(1.0e60);
         for (int n = 0; n < npts; ++n) {
           const Real ddx = x - px[n];
           const Real ddy = y - py[n];
 #if (AMREX_SPACEDIM == 3)
           const Real ddz = z - pz[n];
-          const Real dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+          const Real dist2 = ddx*ddx + ddy*ddy + ddz*ddz;
 #else
-          const Real dist = std::sqrt(ddx*ddx + ddy*ddy);
+          const Real dist2 = ddx*ddx + ddy*ddy;
 #endif
-          if (dist < min_dist) min_dist = dist;
+          if (dist2 < min_dist2) min_dist2 = dist2;
         }
-        const Real phi_sdf = min_dist - sig;
+        const Real phi_sdf = std::sqrt(min_dist2) - sig;
         p(i, j, k) = amrex::min(p(i, j, k), phi_sdf);
       });
     }

@@ -34,6 +34,7 @@ box_zmax = 1000.0
 # FARSITE ellipse model (Richards 1990) with Gaussian smoothing enabled.
 # farsite.gaussian_sigma > 0: propagated fire-front points are stamped as
 # SDF disks of this radius [m] rather than single cells.
+# With Δx = Δy = 20 m, sigma = 40.0 m covers a 2-cell radius per point.
 farsite.use_anderson_LW = 0
 farsite.length_to_width_ratio = 3.0
 farsite.phi_threshold = 0.1
