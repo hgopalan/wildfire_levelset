@@ -587,30 +587,86 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
   const Real *pz = d_zarray.dataPtr();
 #endif
 
+  // Determine whether Gaussian/SDF smoothing is requested.
+  // fp.gaussian_sigma < 0  →  original single-cell stamping (default).
+  // fp.gaussian_sigma = 0  →  auto sigma = 3 * min(dx, dy [, dz]).
+  // fp.gaussian_sigma > 0  →  user-supplied sigma [m].
+  const Real raw_gsigma = fp.gaussian_sigma;
+  const bool use_gaussian = (raw_gsigma >= Real(0.0));
+  Real eff_sigma = raw_gsigma;
+  if (use_gaussian && eff_sigma == Real(0.0)) {
+#if (AMREX_SPACEDIM == 3)
+    eff_sigma = Real(3.0) * amrex::min({gdx[0], gdx[1], gdx[2]});
+#else
+    eff_sigma = Real(3.0) * amrex::min(gdx[0], gdx[1]);
+#endif
+    amrex::Print() << "FARSITE Gaussian stamping: auto sigma = " << eff_sigma << " m\n";
+  }
+
   for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
     const Box &bx = mfi.validbox();
     auto p = phi.array(mfi);
 
-    // ParallelFor over collected points — write goes through the correct
-    // (device) execution path in GPU builds.
-    ParallelFor(npts, [=] AMREX_GPU_DEVICE(int idx) noexcept {
-      Real x_pos = px[idx];
-      Real y_pos = py[idx];
-      int ii =
-          static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
-      int jj =
-          static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
+    if (!use_gaussian) {
+      // ---------------------------------------------------------------
+      // Original behaviour: stamp a single cell per propagated position.
+      // ---------------------------------------------------------------
+      // ParallelFor over collected points — write goes through the correct
+      // (device) execution path in GPU builds.
+      ParallelFor(npts, [=] AMREX_GPU_DEVICE(int idx) noexcept {
+        Real x_pos = px[idx];
+        Real y_pos = py[idx];
+        int ii =
+            static_cast<int>(std::round((x_pos - prob_lo[0]) / gdx[0] - 0.5));
+        int jj =
+            static_cast<int>(std::round((y_pos - prob_lo[1]) / gdx[1] - 0.5));
 #if (AMREX_SPACEDIM == 3)
-      Real z_pos = pz[idx];
-      int kk =
-          static_cast<int>(std::round((z_pos - prob_lo[2]) / gdx[2] - 0.5));
+        Real z_pos = pz[idx];
+        int kk =
+            static_cast<int>(std::round((z_pos - prob_lo[2]) / gdx[2] - 0.5));
 #else
-            int kk = 0;
+              int kk = 0;
 #endif
-      if (bx.contains(IntVect(AMREX_D_DECL(ii, jj, kk)))) {
-        p(ii, jj, kk) = phi_new;
-      }
-    });
+        if (bx.contains(IntVect(AMREX_D_DECL(ii, jj, kk)))) {
+          p(ii, jj, kk) = phi_new;
+        }
+      });
+    } else {
+      // ---------------------------------------------------------------
+      // Gaussian/SDF smoothed stamping.
+      //
+      // For each grid cell, compute the minimum signed distance to any
+      // propagated fire-front point and set
+      //   phi = min(phi, min_dist - sigma)
+      //
+      // This gives a proper signed-distance disk of radius sigma around
+      // each propagated position (phi < 0 inside, phi = 0 on the ring,
+      // and phi remains 0 for cells outside every disk), analogous to
+      // init_phi_from_fire_points_csv / fire_gaussian_sigma.
+      // ---------------------------------------------------------------
+      const Real sig = eff_sigma;
+      ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+        const Real x = prob_lo[0] + (i + Real(0.5)) * gdx[0];
+        const Real y = prob_lo[1] + (j + Real(0.5)) * gdx[1];
+#if (AMREX_SPACEDIM == 3)
+        const Real z = prob_lo[2] + (k + Real(0.5)) * gdx[2];
+#endif
+        Real min_dist = Real(1.0e30);
+        for (int n = 0; n < npts; ++n) {
+          const Real ddx = x - px[n];
+          const Real ddy = y - py[n];
+#if (AMREX_SPACEDIM == 3)
+          const Real ddz = z - pz[n];
+          const Real dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+#else
+          const Real dist = std::sqrt(ddx*ddx + ddy*ddy);
+#endif
+          if (dist < min_dist) min_dist = dist;
+        }
+        const Real phi_sdf = min_dist - sig;
+        p(i, j, k) = amrex::min(p(i, j, k), phi_sdf);
+      });
+    }
   }
 
   }

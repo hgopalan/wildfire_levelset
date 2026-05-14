@@ -159,6 +159,12 @@ struct InputParameters {
         int scale_ellipse_with_crown;        // 1 to scale L/W for active crown fire (default: 0)
         amrex::Real crown_lw_scale;         // L/W multiplier for active crown fire (default: 1.5)
         amrex::Real dt;                      // Farsite time step is tricky. Using fixed time step (default:10)
+        // Gaussian smoothing of FARSITE spread-point stamping (signed-distance disk around each
+        // propagated position, analogous to fire_points_file / fire_gaussian_sigma).
+        //   < 0  : disabled – single-cell marking, preserving the original behaviour (default: -1)
+        //   = 0  : auto – sigma is set to 3 * min(dx, dy [, dz])
+        //   > 0  : user-specified sigma [m]
+        amrex::Real gaussian_sigma;          // sigma for SDF smoothing of FARSITE spread points [m]
     } farsite;
     
     // Firebrand spotting model parameters
