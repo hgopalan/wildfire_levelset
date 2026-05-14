@@ -322,7 +322,6 @@ int main(int argc, char* argv[])
     ConditionalWeatherTable cond_weather_table =
         load_conditional_weather(inputs.conditional_weather_file);
 
-
     // Initialize from file (2D only) or uniform value
     {
         const bool hf_active = (inputs.heat_flux.enable_upward == 1 ||

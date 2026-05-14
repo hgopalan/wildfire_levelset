@@ -215,10 +215,13 @@ static int apply_conditional_weather(
 {
     if (table.empty()) return -1;
 
-    // trigger_index documents which fire-danger index drove current_index
-    // (ERC, BI, or SC).  The lookup percentile logic is the same for all
-    // triggers; the caller selects the appropriate index value before calling.
-    (void)trigger_index;
+    // Log the trigger index type on first application so users can verify
+    // which fire-danger index is driving the scenario lookup.
+    static bool logged = false;
+    if (!logged) {
+        amrex::Print() << "ConditionalWeather: using trigger index = " << trigger_index << "\n";
+        logged = true;
+    }
 
     // Compute current percentile from the supplied index value
     const double current_pct = erc_to_percentile(current_index, table);
