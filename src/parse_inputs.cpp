@@ -251,6 +251,16 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("farsite.crown_lw_scale must be > 0");
         Print() << "FARSITE crown ellipse scaling: crown L/W × " << p.farsite.crown_lw_scale << " for active crown fire\n";
     }
+
+    // Gaussian smoothing of FARSITE spread-point stamping
+    // <0 = single-cell (default), 0 = auto (3 cells), >0 = user sigma [m]
+    p.farsite.gaussian_sigma = -1.0;             pp.query("farsite.gaussian_sigma", p.farsite.gaussian_sigma);
+    if (p.farsite.gaussian_sigma >= 0.0) {
+        Print() << "FARSITE Gaussian smoothing enabled: sigma = "
+                << (p.farsite.gaussian_sigma > 0.0 ? std::to_string(p.farsite.gaussian_sigma) + " m"
+                                                    : "auto (3 cells)")
+                << "\n";
+    }
     
     // Validate bulk fuel consumption parameters
     if (p.farsite.use_bulk_fuel_consumption == 1) {
