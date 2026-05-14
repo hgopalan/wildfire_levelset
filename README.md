@@ -50,7 +50,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 
 - **Rothermel (1972)** surface fire spread — Anderson 13 and Scott-Burgan 40 fuel databases
 - **WAF formula selection** — Andrews (2018) logarithmic WAF or BehavePlus linear WAF (`rothermel.waf_formula`); exponential Beer–Lambert canopy sheltering for forest fuels (`rothermel.waf_canopy_alpha`)
-- **FARSITE elliptical expansion** (Richards 1990) + Anderson (1983) L/W ratio
+- **FARSITE elliptical expansion** (Richards 1990) + Anderson (1983) L/W ratio; optional **Gaussian-smoothed spread-point stamping** (`farsite.gaussian_sigma`) replaces single-cell phi marking with an SDF disk for a smoother fire perimeter
 - **Alternative spread models**: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005)
 - **Canadian FBP System** — O1a/O1b grass and S1/S2/S3 slash fuel types
 - **Lautenberger (2013) physics-based** fire spread model

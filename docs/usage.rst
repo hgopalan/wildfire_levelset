@@ -501,6 +501,9 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
    * - ``farsite.crown_lw_scale``
      - 1.5
      - L/W multiplier applied during active crown fire
+   * - ``farsite.gaussian_sigma``
+     - -1.0
+     - SDF smoothing radius for spread-point stamping [m]; <0=single-cell, 0=auto (3 cells), >0=user-specified
    * - **Crown Fire Parameters**
      -
      -
@@ -1389,6 +1392,26 @@ FARSITE Parameters
   Only used when ``farsite.scale_ellipse_with_crown = 1``.
 
   Example: ``farsite.crown_lw_scale = 1.5``
+
+**farsite.gaussian_sigma** (default: -1.0)
+  Controls smoothed stamping of propagated fire-front positions into the phi
+  field after each FARSITE Huygens step.
+
+  * ``< 0`` (default ``-1.0``): **single-cell stamping** — preserves the
+    original behaviour; each propagated position marks exactly one grid cell
+    as ``phi = -1``.
+  * ``= 0``: **auto sigma** — the radius is set automatically to
+    ``3 * min(dx, dy)``.
+  * ``> 0``: **user-specified sigma** [m] — each propagated position
+    contributes an SDF disk of the given radius; cells within the disk receive
+    ``phi = dist - sigma`` (negative inside, zero on the perimeter, phi left
+    at 0 outside), analogous to ``fire_gaussian_sigma`` / ``fire_points_file``
+    initialisation.
+
+  Smoothed stamping reduces single-cell aliasing artifacts along the advancing
+  fire perimeter without altering the physical spread rate.
+
+  Example: ``farsite.gaussian_sigma = 40.0``
 
 Crown Fire Parameters
 ^^^^^^^^^^^^^^^^^^^^^
