@@ -94,6 +94,7 @@ int main(int argc, char* argv[])
     MultiFab& spot_catch_prob_mf    = f.spot_catch_prob_mf;
     MultiFab& spotting_lineage_mf   = f.spotting_lineage_mf;
     MultiFab& ros_at_arrival_mf     = f.ros_at_arrival_mf;
+    MultiFab& fl_exceedance_mf      = f.fl_exceedance_mf;
 
     // ---------------- Initialise phi and mark initially-burned cells --------
     bool use_indicator = (inputs.propagation_method == "farsite");
@@ -317,7 +318,11 @@ int main(int argc, char* argv[])
     PrecipState&          precip_state    = sd.precip_state;
     std::vector<std::pair<double,double>>& precip_schedule = sd.precip_schedule;
 
-    // ---------------- Heat flux MultiFab initialization ------------------
+    // ---- Conditional weather table (ERC/BI/SC percentile lookup) -----------
+    ConditionalWeatherTable cond_weather_table =
+        load_conditional_weather(inputs.conditional_weather_file);
+
+
     // Initialize from file (2D only) or uniform value
     {
         const bool hf_active = (inputs.heat_flux.enable_upward == 1 ||
@@ -513,6 +518,15 @@ int main(int argc, char* argv[])
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+    // Update flame-length exceedance raster (element-wise max over time)
+    for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto ex  = fl_exceedance_mf.array(mfi);
+        auto const fl = flame_length_mf.const_array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
+        });
+    }
     if (inputs.weise_biging.enable == 1) {
         compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
                                    vel, terrain_slopes.get(), inputs.weise_biging);
@@ -672,6 +686,12 @@ int main(int argc, char* argv[])
     // ---------------- Initialize fire statistics CSV -------------------
     if (!inputs.fire_stats_file.empty())
         write_fire_stats_header(inputs.fire_stats_file);
+
+    // Initialize Fire Spread Atlas (.fsa) and post-processing stats (.pst)
+    if (!inputs.fsa_file.empty())
+        write_fsa_header(inputs.fsa_file);
+    if (!inputs.pst_file.empty())
+        write_pst_header(inputs.pst_file);
 
     // ---------------- Write initial plotfile ---------------
     write_wildfire_plotfile(f, ba, dm, geom, inputs, restart_step, time, ftd,
@@ -1027,6 +1047,15 @@ int main(int argc, char* argv[])
                                has_spatial_crown ? &canopy_height_mf : nullptr);
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+      // Update flame-length exceedance raster (element-wise max over time)
+      for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
+          const Box& bx = mfi.validbox();
+          auto ex  = fl_exceedance_mf.array(mfi);
+          auto const fl = flame_length_mf.const_array(mfi);
+          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
+          });
+      }
       if (inputs.weise_biging.enable == 1) {
           compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
                                      vel, terrain_slopes.get(), inputs.weise_biging);
@@ -1049,6 +1078,43 @@ int main(int argc, char* argv[])
       // Fire ecology diagnostics (always computed)
       compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                            inputs.rothermel, inputs.fire_ecology, inputs.crown);
+
+      // ---- Conditional weather update (ERC / BI / SC percentile table) ----
+      // Select comp from ecology_mf based on trigger_index:
+      //   6 = energy_release_component (ERC)
+      //   7 = nfdrs_spread_component   (SC)
+      //   8 = nfdrs_burning_index      (BI)
+      if (!cond_weather_table.empty()) {
+          const std::string& tri = inputs.conditional_weather_trigger;
+          int ecomp = 6;  // default: ERC
+          if (tri == "sc") ecomp = 7;
+          else if (tri == "bi") ecomp = 8;
+          // Domain-mean of selected ecology component
+          Real index_sum = Real(0.0);
+          amrex::Long n_cells = 0;
+          for (MFIter mfi(ecology_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto const eco = ecology_mf.const_array(mfi);
+              amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+                  index_sum += eco(i, j, k, ecomp);
+                  ++n_cells;
+              });
+          }
+          ParallelDescriptor::ReduceRealSum(index_sum);
+          ParallelDescriptor::ReduceLongSum(n_cells);
+          const double mean_index = (n_cells > 0)
+              ? static_cast<double>(index_sum) / static_cast<double>(n_cells)
+              : 0.0;
+          const int sel = apply_conditional_weather(
+              cond_weather_table, mean_index,
+              inputs.conditional_weather_trigger,
+              inputs.rothermel, inputs.ux, inputs.uy);
+          if (sel >= 0) {
+              // Recompute wind field with updated ux/uy
+              vel.setVal(inputs.ux, 0, 1);
+              vel.setVal(inputs.uy, 1, 1);
+          }
+      }
 
       // Scott & Reinhardt (2001) full bisection-based TI/CI (optional, host-only)
       if (inputs.scott_reinhardt_full.enable == 1) {

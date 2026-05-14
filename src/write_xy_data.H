@@ -950,4 +950,260 @@ inline void append_fire_stats(const MultiFab& phi,
     out.close();
 }
 
+// ============================================================================
+// FARSITE Fire Spread Atlas (.fsa) – Cumulative Perimeter Archive
+// ============================================================================
+// Appends a time-stamped fire perimeter snapshot to a single cumulative file.
+// This mirrors FARSITE's Fire Spread Atlas which collects all perimeter
+// polygons across the simulation into one file for post-processing.
+//
+// File format (text, human-readable):
+//   # Fire Spread Atlas – wildfire_levelset
+//   # Each snapshot block:
+//   SNAPSHOT step  time_s  n_points
+//   x1 y1
+//   x2 y2
+//   ...
+//   END_SNAPSHOT
+//
+// Call write_fsa_header() once at startup, then append_fire_spread_atlas()
+// at each plotfile step.
+//
+// References:
+//   Finney, M.A. (1998). FARSITE: Fire Area Simulator. USDA FS RMRS-RP-4.
+// ============================================================================
+
+inline void write_fsa_header(const std::string& filename)
+{
+    if (!ParallelDescriptor::IOProcessor()) return;
+    if (filename.empty()) return;
+    std::ofstream out(filename, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+        amrex::Print() << "WARNING: Cannot open .fsa file: " << filename << "\n";
+        return;
+    }
+    out << "# Fire Spread Atlas - wildfire_levelset\n"
+        << "# Each snapshot: SNAPSHOT <step> <time_s> <n_points>\n"
+        << "#                <x> <y>  (one pair per line)\n"
+        << "#                END_SNAPSHOT\n";
+    out.close();
+}
+
+inline void append_fire_spread_atlas(const MultiFab& phi,
+                                     const Geometry& geom,
+                                     int step, Real time_s,
+                                     const std::string& filename)
+{
+    if (filename.empty()) return;
+
+    const auto dx     = geom.CellSizeArray();
+    const auto problo = geom.ProbLoArray();
+
+    Gpu::streamSynchronize();
+
+    std::vector<std::pair<Real, Real>> perim_pts;
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx  = mfi.validbox();
+        auto const phi_arr = phi.array(mfi);
+        const IntVect lo   = bx.smallEnd();
+        const IntVect hi   = bx.bigEnd();
+
+        amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+            if (phi_arr(i, j, k, 0) >= Real(0.0)) return;
+            bool on_perim = false;
+            if (i > lo[0]) on_perim |= (phi_arr(i-1, j, k, 0) >= Real(0.0));
+            if (i < hi[0]) on_perim |= (phi_arr(i+1, j, k, 0) >= Real(0.0));
+            if (j > lo[1]) on_perim |= (phi_arr(i, j-1, k, 0) >= Real(0.0));
+            if (j < hi[1]) on_perim |= (phi_arr(i, j+1, k, 0) >= Real(0.0));
+            if (on_perim) {
+                Real x = problo[0] + (i + Real(0.5)) * dx[0];
+                Real y = problo[1] + (j + Real(0.5)) * dx[1];
+                perim_pts.push_back({x, y});
+            }
+        });
+    }
+
+#ifdef AMREX_USE_MPI
+    {
+        int local_n = static_cast<int>(perim_pts.size());
+        std::vector<int> counts(ParallelDescriptor::NProcs());
+        MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                      ParallelDescriptor::Communicator());
+        std::vector<int> displ(ParallelDescriptor::NProcs());
+        int total = 0;
+        for (int r = 0; r < ParallelDescriptor::NProcs(); ++r) {
+            displ[r] = total; total += counts[r];
+            counts[r] *= 2;  displ[r] *= 2;
+        }
+        std::vector<Real> ldata;
+        ldata.reserve(2 * local_n);
+        for (auto& pt : perim_pts) { ldata.push_back(pt.first); ldata.push_back(pt.second); }
+        std::vector<Real> all;
+        if (ParallelDescriptor::IOProcessor()) all.resize(total * 2);
+        MPI_Gatherv(ldata.data(), (int)ldata.size(),
+                    ParallelDescriptor::Mpi_typemap<Real>::type(),
+                    all.data(), counts.data(), displ.data(),
+                    ParallelDescriptor::Mpi_typemap<Real>::type(),
+                    ParallelDescriptor::IOProcessorNumber(),
+                    ParallelDescriptor::Communicator());
+        if (ParallelDescriptor::IOProcessor()) {
+            perim_pts.clear();
+            for (size_t kk = 0; kk + 1 < all.size(); kk += 2)
+                perim_pts.push_back({all[kk], all[kk+1]});
+        }
+    }
+#endif
+
+    if (!ParallelDescriptor::IOProcessor()) return;
+
+    // Sort by angle around centroid for a consistent ordering
+    if (!perim_pts.empty()) {
+        Real cx = 0, cy = 0;
+        for (auto& p : perim_pts) { cx += p.first; cy += p.second; }
+        cx /= static_cast<Real>(perim_pts.size());
+        cy /= static_cast<Real>(perim_pts.size());
+        std::sort(perim_pts.begin(), perim_pts.end(),
+            [cx, cy](const std::pair<Real,Real>& a, const std::pair<Real,Real>& b) {
+                return std::atan2(a.second - cy, a.first - cx) <
+                       std::atan2(b.second - cy, b.first - cx);
+            });
+    }
+
+    std::ofstream out(filename, std::ios::out | std::ios::app);
+    if (!out.is_open()) {
+        amrex::Print() << "WARNING: Cannot append to .fsa file: " << filename << "\n";
+        return;
+    }
+    out << "SNAPSHOT " << step << " " << time_s << " " << perim_pts.size() << "\n";
+    for (auto& p : perim_pts)
+        out << std::fixed << std::setprecision(2) << p.first << " " << p.second << "\n";
+    out << "END_SNAPSHOT\n";
+    out.close();
+}
+
+// ============================================================================
+// FARSITE Post-processing Statistics (.pst)
+// ============================================================================
+// Writes per-step fire statistics to a FARSITE-compatible .pst text file.
+// Columns extend the fire_stats CSV with maximum fireline intensity and
+// maximum flame length observed at the fire front, and maximum spotting
+// distance when spotting is active.
+//
+// File format:
+//   # FARSITE Post-processing Statistics – wildfire_levelset
+//   # step time_h burned_ha perimeter_km active_cells max_intensity_kW_m
+//   #       max_flame_len_m max_spot_dist_m
+//
+// References:
+//   Finney, M.A. (1998). FARSITE: Fire Area Simulator. USDA FS RMRS-RP-4.
+// ============================================================================
+
+inline void write_pst_header(const std::string& filename)
+{
+    if (!ParallelDescriptor::IOProcessor()) return;
+    if (filename.empty()) return;
+    std::ofstream out(filename, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+        amrex::Print() << "WARNING: Cannot open .pst file: " << filename << "\n";
+        return;
+    }
+    out << "# FARSITE Post-processing Statistics - wildfire_levelset\n";
+    out << "step,time_h,burned_ha,perimeter_km,active_cells,"
+           "max_fireline_intensity_kW_m,max_flame_length_m,max_spotting_dist_m\n";
+    out.close();
+}
+
+inline void append_pst_stats(const MultiFab& phi,
+                              const Geometry& geom,
+                              const MultiFab& arrival_time_mf,
+                              const MultiFab* fireline_intensity_mf,
+                              const MultiFab* flame_length_mf,
+                              const MultiFab* spotting_data_mf,
+                              int step, Real time_s,
+                              const std::string& filename)
+{
+    if (filename.empty()) return;
+
+    const auto dxx = geom.CellSize();
+    Real cell_area = dxx[0] * dxx[1];
+
+    amrex::Long n_burned = 0, n_active = 0;
+    Real perim_m = Real(0.0);
+    Real max_fi  = Real(0.0);  // max fireline intensity [kW/m]
+    Real max_fl  = Real(0.0);  // max flame length [m]
+    Real max_sd  = Real(0.0);  // max spotting distance [m]
+
+    for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const at  = arrival_time_mf.const_array(mfi);
+        auto const pv  = phi.const_array(mfi);
+        const IntVect hi = bx.bigEnd();
+
+        Array4<const Real> fi_arr, fl_arr, sp_arr;
+        if (fireline_intensity_mf) fi_arr = fireline_intensity_mf->const_array(mfi);
+        if (flame_length_mf)       fl_arr = flame_length_mf->const_array(mfi);
+        if (spotting_data_mf)      sp_arr = spotting_data_mf->const_array(mfi);
+
+        amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
+            bool burned = (at(i, j, k, 0) >= Real(0.0));
+            if (burned) {
+                ++n_burned;
+                if (fireline_intensity_mf) {
+                    Real v = fi_arr(i, j, k, 0);
+                    if (v > max_fi) max_fi = v;
+                }
+                if (flame_length_mf) {
+                    Real v = fl_arr(i, j, k, 0);
+                    if (v > max_fl) max_fl = v;
+                }
+            } else if (pv(i, j, k, 0) < Real(0.1) && pv(i, j, k, 0) >= Real(0.0)) {
+                ++n_active;
+            }
+            // Spotting: comp 2 = landing distance [m]
+            if (spotting_data_mf) {
+                Real v = sp_arr(i, j, k, 2);
+                if (v > max_sd) max_sd = v;
+            }
+            // Edge-crossing perimeter
+            if (i < hi[0]) {
+                bool burned_n = (at(i+1, j, k, 0) >= Real(0.0));
+                if (burned != burned_n) perim_m += dxx[1];
+            }
+            if (j < hi[1]) {
+                bool burned_n = (at(i, j+1, k, 0) >= Real(0.0));
+                if (burned != burned_n) perim_m += dxx[0];
+            }
+        });
+    }
+
+    ParallelDescriptor::ReduceLongSum(n_burned);
+    ParallelDescriptor::ReduceLongSum(n_active);
+    ParallelDescriptor::ReduceRealSum(perim_m);
+    if (fireline_intensity_mf) ParallelDescriptor::ReduceRealMax(max_fi);
+    if (flame_length_mf)       ParallelDescriptor::ReduceRealMax(max_fl);
+    if (spotting_data_mf)      ParallelDescriptor::ReduceRealMax(max_sd);
+
+    if (!ParallelDescriptor::IOProcessor()) return;
+
+    Real burned_ha = static_cast<Real>(n_burned) * cell_area / Real(1.0e4);
+    Real perim_km  = perim_m / Real(1000.0);
+    Real time_h    = time_s / Real(3600.0);
+
+    std::ofstream out(filename, std::ios::out | std::ios::app);
+    if (!out.is_open()) {
+        amrex::Print() << "WARNING: Cannot append to .pst file: " << filename << "\n";
+        return;
+    }
+    out << step        << ","
+        << time_h      << ","
+        << burned_ha   << ","
+        << perim_km    << ","
+        << n_active    << ","
+        << max_fi      << ","
+        << max_fl      << ","
+        << max_sd      << "\n";
+    out.close();
+}
+
 #endif // WRITE_XY_DATA_H

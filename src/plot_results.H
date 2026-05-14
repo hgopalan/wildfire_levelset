@@ -101,6 +101,7 @@ inline void write_wildfire_plotfile(
     MultiFab& spotting_lineage_mf   = f.spotting_lineage_mf;
     MultiFab& ros_at_arrival_mf     = f.ros_at_arrival_mf;
     MultiFab& ember_cascade_mf      = f.ember_cascade_mf;
+    MultiFab& fl_exceedance_mf      = f.fl_exceedance_mf;
 
     const bool has_landscape = !inputs.rothermel.landscape_file.empty();
 
@@ -148,7 +149,8 @@ inline void write_wildfire_plotfile(
         "spot_catch_prob",
         "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y",
         "ros_at_arrival",
-        "ember_cascade_flux", "ember_cascade_ignition"
+        "ember_cascade_flux", "ember_cascade_ignition",
+        "fl_exceedance"
 #else
         , "farsite_dx", "farsite_dy", "R",
         "spot_prob", "spot_count", "spot_dist", "spot_active",
@@ -175,7 +177,8 @@ inline void write_wildfire_plotfile(
         "spot_catch_prob",
         "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y",
         "ros_at_arrival",
-        "ember_cascade_flux", "ember_cascade_ignition"
+        "ember_cascade_flux", "ember_cascade_ignition",
+        "fl_exceedance"
 #endif
     };
 
@@ -212,13 +215,15 @@ inline void write_wildfire_plotfile(
     //   ...+EMISSIONS+17+FMS_MOISTURE_NCOMP      : spotting_lineage (SPOT_LINEAGE_NCOMP)
     //   ...+EMISSIONS+17+FMS_MOISTURE_NCOMP+SPOT_LINEAGE_NCOMP : ros_at_arrival (1)
     //   ...+EMISSIONS+18+FMS_MOISTURE_NCOMP+SPOT_LINEAGE_NCOMP : ember_cascade (2)
+    //   ...+EMISSIONS+20+FMS_MOISTURE_NCOMP+SPOT_LINEAGE_NCOMP : fl_exceedance (1)
     constexpr int D = AMREX_SPACEDIM;
     const int ncomp = 1 + D + D + 1 + 4 + 1 + 1 + 4 + 1 + 5
                     + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP
                     + 13 + FMS_MOISTURE_NCOMP + 1  // +1 for plume_rise_m
                     + 2 + 1 + SPOT_LINEAGE_NCOMP   // spread_dir(2), spot_catch_prob(1), lineage(4)
                     + 1                             // ros_at_arrival (1)
-                    + 2;                            // ember_cascade (flux + ignition flag)
+                    + 2                             // ember_cascade (flux + ignition flag)
+                    + 1;                            // fl_exceedance (1)
     MultiFab plotmf(ba, dm, ncomp, 0);
 
     int c = 0;
@@ -259,7 +264,8 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, spot_catch_prob_mf,    0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, spotting_lineage_mf,   0, c, SPOT_LINEAGE_NCOMP, 0); c += SPOT_LINEAGE_NCOMP;
     MultiFab::Copy(plotmf, ros_at_arrival_mf,     0, c, 1,           0); c += 1;
-    MultiFab::Copy(plotmf, ember_cascade_mf,      0, c, 2,           0);
+    MultiFab::Copy(plotmf, ember_cascade_mf,      0, c, 2,           0); c += 2;
+    MultiFab::Copy(plotmf, fl_exceedance_mf,      0, c, 1,           0);
 
     // ---- Write plotfile ----
     char buf[64];
@@ -361,6 +367,13 @@ inline void write_wildfire_plotfile(
         if (!inputs.fire_stats_file.empty())
             append_fire_stats(phi, geom, &emissions_mf, step, time,
                               inputs.fire_stats_file, arrival_time_mf, &R_mf);
+        if (!inputs.fsa_file.empty())
+            append_fire_spread_atlas(phi, geom, step, time, inputs.fsa_file);
+        if (!inputs.pst_file.empty())
+            append_pst_stats(phi, geom, arrival_time_mf,
+                             &fireline_intensity_mf, &flame_length_mf,
+                             &spotting_data,
+                             step, time, inputs.pst_file);
         if (inputs.write_perimeter_csv == 1) {
             char csv_buf[64];
             std::snprintf(csv_buf, sizeof(csv_buf), "perimeter_%04d.csv", step);

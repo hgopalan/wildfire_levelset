@@ -148,6 +148,13 @@ struct WildfireFields {
     // Sentinel -1.0 indicates no brand has landed in that cell for that model.
     MultiFab spotting_lineage_mf;
 
+    // ---- Flame length exceedance raster (1 comp) ----
+    // Maximum observed Byram flame length [m] per cell over the simulation.
+    // Initialised to 0; updated each timestep via element-wise max with
+    // flame_length_mf so that it records the worst-case flame length seen
+    // in each cell, regardless of whether the cell is actively burning.
+    MultiFab fl_exceedance_mf;
+
     // ---- Terrain slopes helper (2 comps: slope_x, slope_y) ----
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
@@ -218,6 +225,7 @@ struct WildfireFields {
         , spot_catch_prob_mf   (ba, dm, 1,                 0)
         // Spotfire lineage
         , spotting_lineage_mf  (ba, dm, SPOT_LINEAGE_NCOMP, 0)
+        , fl_exceedance_mf     (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
     {
@@ -264,6 +272,8 @@ struct WildfireFields {
         spot_catch_prob_mf .setVal(Real(0.0));
         // Spotfire lineage: sentinel -1 = no brand has landed
         spotting_lineage_mf.setVal(Real(-1.0));
+        // Flame-length exceedance: 0 = no fire observed yet
+        fl_exceedance_mf.setVal(Real(0.0));
     }
 };
 
