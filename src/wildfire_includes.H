@@ -108,6 +108,7 @@ using namespace amrex;
 // ---- Project headers: weather inputs ----
 #include "wtr_weather.H"
 #include "multi_wtr_weather.H"
+#include "conditional_weather.H"
 
 // ---- Project headers: field setup ----
 #include "multifab_setup.H"

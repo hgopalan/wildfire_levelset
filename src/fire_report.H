@@ -408,6 +408,41 @@ inline void write_fire_report_html(const InputParameters& inputs,
   </div>
 </section>
 
+<!-- Fire line intensity classification (NFFL / Byram) -->
+<section>
+  <h2>Fire Line Intensity Classification</h2>
+  <p style="font-size:.85em;color:#555;margin-top:-8px">
+    Byram (1959) fireline intensity classes with observed maximum head ROS [m/min] context.
+    Max head ROS recorded: <strong>)";
+    html << std::fixed << std::setprecision(3) << max_ros_ms * 60.0;
+    html << R"( m/min</strong>.
+  </p>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th style="text-align:left">Class</th>
+      <th>Intensity (kW/m)</th>
+      <th>Flame Length (m)</th>
+      <th>Fire Behaviour Description</th>
+      <th>Suppression</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>I</td><td>&lt; 10</td><td>&lt; 0.5</td><td>Creeping / smouldering; low grass or litter</td><td>Easy; hand tools</td></tr>
+      <tr><td>II</td><td>10 – 175</td><td>0.5 – 1.5</td><td>Low-intensity surface fire; backing or flanking</td><td>Hand crews effective</td></tr>
+      <tr><td>III</td><td>175 – 500</td><td>1.5 – 2.5</td><td>Moderate intensity; head-fire in medium fuels</td><td>Dozer lines; retardant</td></tr>
+      <tr><td>IV</td><td>500 – 2 000</td><td>2.5 – 5</td><td>High intensity; spotting begins; possible crowning</td><td>Indirect attack</td></tr>
+      <tr><td>V</td><td>2 000 – 10 000</td><td>5 – 11</td><td>Very high; active crown fire; dangerous spotting</td><td>Safety zones critical</td></tr>
+      <tr><td>VI</td><td>&gt; 10 000</td><td>&gt; 11</td><td>Extreme; massive crown fire or firestorm</td><td>No direct attack</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:.8em;color:#888;margin-top:8px">
+    Reference: Byram, G.M. (1959). Combustion of forest fuels. In: Davis, K.P. (ed.)
+    Forest Fire: Control and Use. McGraw-Hill. Intensity classes follow the convention
+    used in Andrews et al. (2011) RMRS-GTR-249.
+  </p>
+</section>
+
 <!-- Per-step table -->
 <section>
   <h2>Per-Step Fire Statistics</h2>

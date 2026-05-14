@@ -538,6 +538,25 @@ struct InputParameters {
     // active_front_cells, mean_co2, mean_co, mean_pm25.
     std::string fire_stats_file;             // output CSV path (default: "fire_stats.csv")
 
+    // ---- FARSITE Fire Spread Atlas (.fsa) output ----
+    // When non-empty, a cumulative fire perimeter archive is written to this
+    // file.  Each plotfile step appends a SNAPSHOT block containing the
+    // angle-sorted perimeter points (same cells as perimeter_NNNN.csv) with
+    // a header giving the step, simulation time, and point count.  The
+    // resulting single file collects all perimeter snapshots across the full
+    // simulation, mirroring FARSITE's Fire Spread Atlas concept.
+    // (default: "" = disabled)
+    std::string fsa_file;                    // cumulative .fsa archive path
+
+    // ---- FARSITE Post-processing Statistics (.pst) output ----
+    // When non-empty, a FARSITE-compatible statistics file is written with one
+    // row per plotfile step.  Columns: step, time_h, burned_ha, perimeter_km,
+    // active_cells, max_fireline_intensity_kW_m, max_flame_length_m,
+    // max_spotting_dist_m.  Extends the fire_stats_file CSV with maximum
+    // observed fire behaviour metrics.
+    // (default: "" = disabled)
+    std::string pst_file;                    // .pst statistics path
+
     // ---- Automatic HTML report generation ----
     // When non-empty, a self-contained HTML report is written at end-of-run,
     // summarising simulation parameters, per-step fire statistics (read from
@@ -939,12 +958,19 @@ struct InputParameters {
     int         use_ccfr;        // 1 to enable CCFR active-crown criterion (default: 0)
 
     // ---- Conditional weather / ERC percentile lookup table ----
-    // When enabled, simulation conditions (ERC) are mapped to wind/moisture
-    // scenarios from a user-supplied percentile table.
+    // When enabled, simulation conditions are mapped to wind/moisture scenarios
+    // from a user-supplied percentile table.
     // File format (CSV, header row): erc_percentile, wind_speed_ms, wind_dir_deg,
     //                                M_d1_pct, M_d10_pct, M_d100_pct
     // (default: "" = disabled)
-    std::string conditional_weather_file;  // path to percentile-weather CSV (default: "")
+    //
+    // conditional_weather.trigger_index selects which fire-danger index is used
+    // to look up the scenario:
+    //   "erc"  – NFDRS Energy Release Component (default; existing behaviour)
+    //   "bi"   – NFDRS Burning Index  (ecology_mf component 8)
+    //   "sc"   – NFDRS Spread Component (ecology_mf component 7)
+    std::string conditional_weather_file;       // path to percentile-weather CSV
+    std::string conditional_weather_trigger;    // trigger index: "erc" | "bi" | "sc"
 
     // ---- Burn-period controls (diurnal active-spread window) ----
     // When enabled, fire spread (R_mf) is gated to a daily active-burn time
@@ -1043,6 +1069,7 @@ struct InputParameters {
     //   moisture_lh          – live herbaceous moisture [fraction]
     //   moisture_lw          – live woody moisture [fraction]
     //   plume_rise_m         – Briggs (1965) smoke plume-rise height [m]
+    //   fl_exceedance        – maximum observed flame length per cell [m]
     std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
 
     // ---- Smoke plume-rise model (Briggs 1965 / 1969) ----

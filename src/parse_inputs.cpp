@@ -790,6 +790,18 @@ void parse_inputs(InputParameters& p)
     p.fire_stats_file = "fire_stats.csv";
     pp.query("fire_stats_file", p.fire_stats_file);
 
+    // -------- FARSITE Fire Spread Atlas (.fsa) --------
+    p.fsa_file = "";
+    pp.query("fsa_file", p.fsa_file);
+    if (!p.fsa_file.empty())
+        Print() << "Fire Spread Atlas will be written to: " << p.fsa_file << "\n";
+
+    // -------- FARSITE Post-processing Statistics (.pst) --------
+    p.pst_file = "";
+    pp.query("pst_file", p.pst_file);
+    if (!p.pst_file.empty())
+        Print() << "Post-processing statistics will be written to: " << p.pst_file << "\n";
+
     // -------- Automatic HTML report generation --------
     p.fire_report_file = "";
     pp.query("fire_report_file", p.fire_report_file);
@@ -1373,11 +1385,18 @@ void parse_inputs(InputParameters& p)
     }
 
     // -------- Conditional weather / ERC percentile table --------
-    p.conditional_weather_file = "";
-    pp.query("conditional_weather_file", p.conditional_weather_file);
+    p.conditional_weather_file    = "";
+    p.conditional_weather_trigger = "erc";
+    pp.query("conditional_weather_file",    p.conditional_weather_file);
+    pp.query("conditional_weather_trigger", p.conditional_weather_trigger);
     if (!p.conditional_weather_file.empty()) {
         Print() << "Conditional weather table: loading from "
                 << p.conditional_weather_file << "\n";
+        const std::string& tri = p.conditional_weather_trigger;
+        if (tri != "erc" && tri != "bi" && tri != "sc") {
+            amrex::Abort("conditional_weather_trigger must be 'erc', 'bi', or 'sc'");
+        }
+        Print() << "  Trigger index: " << tri << "\n";
     }
 
     // -------- Burn-period controls --------

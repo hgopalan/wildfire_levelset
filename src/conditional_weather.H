@@ -1,5 +1,5 @@
 // ============================================================================
-// Conditional Weather / ERC Percentile Lookup Table
+// Conditional Weather / ERC-BI-SC Percentile Lookup Table
 // ============================================================================
 // FARSITE supports a "conditional weather" table that maps fuel moisture
 // percentile conditions (expressed as ERC percentile) to specific wind/moisture
@@ -15,14 +15,19 @@
 //   97, 10.0, 315,  4.0,  6.0, 10.0
 //
 // Behaviour:
-//   The current simulation ERC (from fire_ecology_model component 6) is mapped
-//   to a percentile using the historical distribution in the table.  The
-//   corresponding wind speed, wind direction, and dead fuel moistures are then
-//   applied to the simulation.
+//   The current simulation fire-danger index (ERC, BI, or SC, depending on
+//   conditional_weather_trigger) is mapped to a percentile using the
+//   historical distribution in the table.  The corresponding wind speed,
+//   wind direction, and dead fuel moistures are then applied to the simulation.
 //
 //   This module provides:
 //     1. load_conditional_weather()  – parse CSV, build in-memory table
-//     2. apply_conditional_weather() – select row by current ERC, update inputs
+//     2. apply_conditional_weather() – select row by current index, update inputs
+//
+// Supported trigger indices (conditional_weather_trigger in inputs):
+//   "erc"  – NFDRS Energy Release Component  (default; ecology component 6)
+//   "bi"   – NFDRS Burning Index             (ecology component 8)
+//   "sc"   – NFDRS Spread Component          (ecology component 7)
 //
 // References:
 //   Finney, M.A. (1998). FARSITE: Fire Area Simulator. USDA FS RMRS-RP-4.
@@ -182,15 +187,19 @@ static double erc_to_percentile(double current_erc,
 // apply_conditional_weather
 //
 // Selects the weather scenario whose erc_percentile best matches the current
-// simulation ERC, then updates RothermelParams moisture and wind inputs.
+// simulation fire-danger index, then updates RothermelParams moisture and
+// wind inputs.
 //
 // The selected row is the one with the largest erc_percentile that does not
-// exceed the current ERC percentile (lower-bound lookup).
+// exceed the current index percentile (lower-bound lookup).
 //
 // Parameters
 // ----------
 //   table         – conditional weather table (from load_conditional_weather)
-//   current_erc   – current domain-mean ERC (ecology component 6)
+//   current_index – current domain-mean fire-danger index value
+//                   (ERC, BI, or SC depending on trigger_index)
+//   trigger_index – which index drives the lookup: "erc", "bi", or "sc"
+//                   (default "erc" reproduces the original behaviour)
 //   rp            – Rothermel parameters to update (M_d1, M_d10, M_d100)
 //   ux, uy        – wind components [m/s] to update
 //
@@ -198,15 +207,27 @@ static double erc_to_percentile(double current_erc,
 // ============================================================================
 static int apply_conditional_weather(
     const ConditionalWeatherTable& table,
-    double                         current_erc,
+    double                         current_index,
+    const std::string&             trigger_index,
     RothermelParams&               rp,
     amrex::Real&                   ux,
     amrex::Real&                   uy)
 {
     if (table.empty()) return -1;
 
-    // Compute current ERC percentile
-    const double current_pct = erc_to_percentile(current_erc, table);
+    // Log the trigger index type on first application so users can verify
+    // which fire-danger index is driving the scenario lookup.
+    static bool logged = false;
+    if (!logged) {
+        amrex::Print() << "ConditionalWeather: using trigger index = " << trigger_index << "\n";
+        logged = true;
+    }
+
+    // Compute current percentile from the supplied index value
+    const double current_pct = erc_to_percentile(current_index, table);
+
+    // Log the trigger index type on first use (printed once via static flag)
+    // so users can verify which index is driving the lookup.
 
     // Find the row with the largest erc_percentile <= current_pct
     int sel = 0;

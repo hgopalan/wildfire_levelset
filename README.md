@@ -80,6 +80,11 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 - **Vectorial slope/wind combination** — FARSITE-style vector sum of φ_w and φ_s before computing ROS, capturing alignment effects; selectable via `rothermel.use_slope_wind_vectors = 1` (separate from the existing additive cross-term option `use_slope_wind_cross`)
 - **Burn-period (daytime burning window) gate** — zeroes R_mf outside a configurable local clock window, pausing all spread paths during inactive hours while moisture and diagnostics continue; mirrors FARSITE / FSPro burn-period concept (`burn_period.enable`)
 - **Post-frontal fuel consumption raster** — `residual_fuel` (exponential burnout fraction behind the fire front) and `fuel_consumption` (per-class consumption during FARSITE spread) written to every plotfile and included in the default GeoTIFF export set
+- **Flame length exceedance raster** — `fl_exceedance` plotfile field tracks the maximum observed Byram flame length per cell over the entire simulation, providing a spatial worst-case fire intensity record for risk assessments (`fl_exceedance` in `plot_vars`)
+- **FARSITE Fire Spread Atlas (`.fsa`)** — cumulative perimeter archive that appends an angle-sorted perimeter snapshot at each plotfile step into one file, mirroring FARSITE's FSA concept (`fsa_file = fire.fsa`); read with `tools/farsite_fsa_pst_reader.py`
+- **FARSITE Post-processing Statistics (`.pst`)** — per-step CSV with max fireline intensity [kW/m], max flame length [m], and max spotting distance [m] in addition to area/perimeter; extends `fire_stats_file` (`pst_file = fire.pst`)
+- **Conditional weather ERC / BI / SC trigger** — `conditional_weather_trigger` selects which NFDRS index (ERC, Burning Index, or Spread Component from `ecology_mf`) drives the scenario lookup; previously ERC-only (`conditional_weather_trigger = bi` or `sc`)
+- **Fire line intensity classification in HTML report** — `fire_report_file` HTML now includes a Byram (1959) six-class fireline intensity legend (I–VI) with flame length and suppression context alongside the time-series charts
 - **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
 
 ## Ensemble / FSim-Style Probabilistic Simulation
@@ -127,7 +132,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `fuel/` | fuel_adj_file |
 | `ignition/` | barrier_polygons, **satellite_assimilation** *(new)*, fire_perimeter_output, polygon_ignition, polyline_ignition, **kml_perimeter** *(new)* |
 | `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
-| `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci |
+| `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci, **fl_exceedance** *(new)*, **farsite_fsa_pst** *(new)*, **conditional_weather_bi** *(new)* |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask**, **smoke_plume_rise** *(new)*, **reentry_spotting** *(new)* |
 
 The `albini_spotting_3d_wind` and `ember_cascade_flux` tests require a Python pre-step to generate the synthetic plt wind file:
@@ -156,7 +161,8 @@ Key ensemble tools:
 - `values_at_risk.py` – FSPro-style values-at-risk overlay on burn probability maps
 - `fire_size_summary.py` – Fire area / perimeter / emissions statistics vs. time
 - `ignition_probability_table.py` – Anderson (1970) / Rothermel (1983) P_ignition worksheet
-- `plotfile_to_geotiff.py` – Export solver plotfiles to GeoTIFF; default export now includes `residual_fuel` (post-frontal burnout raster) and `fuel_consumption`
+- `plotfile_to_geotiff.py` – Export solver plotfiles to GeoTIFF; default export now includes `residual_fuel` (post-frontal burnout raster), `fuel_consumption`, and `fl_exceedance`
+- `farsite_fsa_pst_reader.py` – Read, inspect, and plot FARSITE-compatible Fire Spread Atlas (`.fsa`) and Post-processing Statistics (`.pst`) output files; supports perimeter polygon plots and PST time-series charts (matplotlib optional)
 
 See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html).
 
