@@ -683,9 +683,9 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
           const Real z = prob_lo[2] + (k + Real(0.5)) * gdx[2];
           const Real ddz = z - zn;
-          const Real phi_sdf = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz) - sig;
+          const Real phi_sdf = amrex::max(std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz) - sig, phi_new);
 #else
-          const Real phi_sdf = std::sqrt(ddx*ddx + ddy*ddy) - sig;
+          const Real phi_sdf = amrex::max(std::sqrt(ddx*ddx + ddy*ddy) - sig, phi_new);
 #endif
           p(i, j, k) = amrex::min(p(i, j, k), phi_sdf);
         });
