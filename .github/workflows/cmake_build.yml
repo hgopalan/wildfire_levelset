@@ -369,6 +369,10 @@ jobs:
 
       - name: Build fcompare (AMReX Tools)
         run: |
+          # fcompare is an optional build – we fall back to header-only checks
+          # if the build fails (e.g., missing GNUmake prerequisites on the runner).
+          # set +e prevents the workflow step from aborting on make failure so
+          # we can inspect and set FCOMPARE_AVAILABLE explicitly.
           set +e
           make -j4 -C external/amrex/Tools/Plotfile \
             COMP=gnu DIM=2 USE_MPI=FALSE USE_OMP=FALSE \

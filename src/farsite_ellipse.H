@@ -655,6 +655,9 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
 #if (AMREX_SPACEDIM == 3)
       const int r_k = static_cast<int>(sig / gdx[2]) + 2;
 #endif
+      // Use the host vectors xarray/yarray (not the device pointers px/py)
+      // because the outer for-loop executes on the host; xn and yn are then
+      // captured by value inside the ParallelFor lambda for GPU execution.
       for (int n = 0; n < npts; ++n) {
         const Real xn = xarray[n];
         const Real yn = yarray[n];
