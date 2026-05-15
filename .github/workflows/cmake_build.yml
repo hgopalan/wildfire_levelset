@@ -320,3 +320,222 @@ jobs:
           cmake --build build --config Release -j 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+  # ── Random regression tests + fcompare (PR / workflow_dispatch only) ──────
+  regtest_fcompare:
+    name: Random Regression Tests + fcompare
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build python3
+
+      - name: Build levelset (current / PR branch)
+        run: |
+          cmake -S . -B build_pr -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=ON \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF
+          cmake --build build_pr --parallel
+
+      - name: Checkout base branch for reference build
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.base_ref || 'main' }}
+          path: _base
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build levelset (base branch – reference)
+        run: |
+          cmake -S _base -B build_base -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLEVELSET_USE_VENDORED_AMREX=ON \
+            -DLEVELSET_DIM_2D=ON \
+            -DLEVELSET_ENABLE_MPI=OFF \
+            -DLEVELSET_ENABLE_EB=OFF
+          cmake --build build_base --parallel
+
+      - name: Build fcompare (AMReX Tools)
+        run: |
+          # fcompare is an optional build – we fall back to header-only checks
+          # if the build fails (e.g., missing GNUmake prerequisites on the runner).
+          # set +e prevents the workflow step from aborting on make failure so
+          # we can inspect and set FCOMPARE_AVAILABLE explicitly.
+          set +e
+          make -j4 -C external/amrex/Tools/Plotfile \
+            COMP=gnu DIM=2 USE_MPI=FALSE USE_OMP=FALSE \
+            AMREX_HOME="$GITHUB_WORKSPACE/external/amrex" \
+            fcompare
+          FCOMP=$(find external/amrex/Tools/Plotfile -name "fcompare*.ex" 2>/dev/null | head -1)
+          if [ -n "$FCOMP" ]; then
+            cp "$FCOMP" fcompare
+            chmod +x fcompare
+            echo "FCOMPARE_AVAILABLE=true" >> "$GITHUB_ENV"
+            echo "Built fcompare: $FCOMP"
+          else
+            echo "::warning::fcompare build failed – comparison will use header check only"
+            echo "FCOMPARE_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Select 5 random test cases
+        run: |
+          python3 - << 'PYEOF'
+          import random, os
+          # Pool of tests that do not require a Python setup step
+          POOL = [
+              "surface_spread/basic_levelset",
+              "surface_spread/farsite_ellipse",
+              "surface_spread/farsite_gaussian_sigma",
+              "surface_spread/rothermel_fuel",
+              "surface_spread/anderson_lw",
+              "surface_spread/catchpole_demestre",
+              "surface_spread/wilson_spread",
+              "surface_spread/alexander_lemniscate",
+              "surface_spread/ellipse_sdf",
+              "surface_spread/reinitialization",
+              "surface_spread/fbp_o1a_grassfire",
+              "surface_spread/fbp_o1b_grassfire",
+              "crown_fire/crown_initiation",
+              "crown_fire/rothermel1991_crown",
+              "ignition/fire_perimeter_output",
+              "ignition/polygon_ignition",
+              "ignition/polyline_ignition",
+              "wind/time_dependent_wind",
+              "wind/turb_wind",
+              "misc/bulk_fuel_consumption",
+          ]
+          seed = (int(os.environ.get("GITHUB_RUN_NUMBER", 0))
+                  + int(os.environ.get("GITHUB_RUN_ATTEMPT", 1)))
+          random.seed(seed)
+          selected = random.sample(POOL, min(5, len(POOL)))
+          with open(os.environ["GITHUB_ENV"], "a") as fenv:
+              fenv.write("SELECTED_TESTS=" + "|".join(selected) + "\n")
+          print("Selected tests (seed=%d):" % seed)
+          for t in selected:
+              print("  " + t)
+          PYEOF
+
+      - name: Run tests, compare with fcompare, report anomalies
+        run: |
+          python3 - << 'PYEOF'
+          import os, subprocess, pathlib, shutil, sys
+
+          selected  = os.environ["SELECTED_TESTS"].split("|")
+          exe_pr    = pathlib.Path("build_pr/levelset").resolve()
+          exe_base  = pathlib.Path("build_base/levelset").resolve()
+          fc_bin    = pathlib.Path("fcompare").resolve()
+          have_fc   = (os.environ.get("FCOMPARE_AVAILABLE") == "true"
+                       and fc_bin.exists())
+          regdir    = pathlib.Path("regtest").resolve()
+          summary_f = pathlib.Path(
+              os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null"))
+          DATA_EXTS = ("*.csv", "*.lcp", "*.adj", "*.fmd", "*.fms")
+          results   = []
+          anomalies = []
+
+          def run_test(exe, work_dir, inputs):
+              work_dir.mkdir(parents=True, exist_ok=True)
+              for pat in DATA_EXTS:
+                  for f in inputs.parent.glob(pat):
+                      shutil.copy(f, work_dir)
+              try:
+                  r = subprocess.run(
+                      [str(exe), str(inputs)],
+                      capture_output=True, text=True,
+                      cwd=work_dir, timeout=300)
+                  return r.returncode == 0, r.stdout + r.stderr
+              except subprocess.TimeoutExpired:
+                  return False, "TIMEOUT"
+
+          def last_plt(work_dir):
+              plts = sorted(work_dir.glob("plt_*"))
+              return plts[-1] if plts else None
+
+          def check_header(plt_dir):
+              hdr = plt_dir / "Header"
+              if not hdr.exists():
+                  return False, "no Header file"
+              lo = hdr.read_text(errors="replace").lower()
+              if "nan" in lo or "inf" in lo:
+                  return False, "NaN/Inf detected in Header"
+              return True, "ok"
+
+          for test in selected:
+              inputs  = regdir / test / "inputs.i"
+              slug    = test.replace("/", "_")
+              wd_pr   = pathlib.Path(f"run_pr/{slug}").resolve()
+              wd_base = pathlib.Path(f"run_base/{slug}").resolve()
+
+              pr_ok,   pr_log   = run_test(exe_pr,   wd_pr,   inputs)
+              base_ok, base_log = run_test(exe_base, wd_base, inputs)
+
+              fc_note = ""
+              if not pr_ok:
+                  anomalies.append(
+                      f"**{test}** — PR build FAILED\n"
+                      f"```\n{pr_log[-500:]}\n```")
+              elif not base_ok:
+                  fc_note = "⚠ base run failed (skip fcompare)"
+              else:
+                  plt_pr   = last_plt(wd_pr)
+                  plt_base = last_plt(wd_base)
+                  hdr_ok, hdr_msg = (check_header(plt_pr)
+                                     if plt_pr else (False, "no plotfile"))
+                  if not hdr_ok:
+                      anomalies.append(
+                          f"**{test}** — header anomaly: {hdr_msg}")
+                      fc_note = f"⚠ header: {hdr_msg}"
+                  elif have_fc and plt_pr and plt_base:
+                      fc_r = subprocess.run(
+                          [str(fc_bin), str(plt_base), str(plt_pr)],
+                          capture_output=True, text=True, timeout=120)
+                      if fc_r.returncode != 0:
+                          snippet = (fc_r.stdout + fc_r.stderr)[:800]
+                          anomalies.append(
+                              f"**{test}** — fcompare diff:\n"
+                              f"```\n{snippet}\n```")
+                          fc_note = "⚠ fcompare diff"
+                      else:
+                          fc_note = "fcompare ✓"
+                  else:
+                      fc_note = ("fcompare n/a (header ok)"
+                                 if not have_fc else "no plotfile")
+
+              icon = ("✅" if pr_ok and not fc_note.startswith("⚠")
+                      else "❌")
+              results.append(
+                  f"| {icon} | `{test}` | "
+                  f"{'✓' if pr_ok else '✗'} | {fc_note} |")
+
+          with open(summary_f, "w") as f:
+              f.write("## Random Regression Tests + fcompare\n\n")
+              f.write("| | Test | PR run | fcompare / check |\n")
+              f.write("|---|---|---|---|\n")
+              for row in results:
+                  f.write(row + "\n")
+              if anomalies:
+                  f.write("\n### ⚠ Anomalies\n\n")
+                  for a in anomalies:
+                      f.write(a + "\n\n")
+
+          if anomalies:
+              print("ANOMALIES DETECTED:")
+              for a in anomalies:
+                  print(a)
+              sys.exit(1)
+          else:
+              print("All %d tests passed." % len(results))
+          PYEOF
+

@@ -633,45 +633,63 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
       });
     } else {
       // ---------------------------------------------------------------
-      // Gaussian/SDF smoothed stamping.
+      // Point-driven SDF stamping (replaces the previous O(cells × npts)
+      // cell-driven approach).
       //
-      // For each grid cell, compute the minimum signed distance to any
-      // propagated fire-front point and set
-      //   phi = min(phi, min_dist - sigma)
+      // For each propagated fire-front point, update only the cells within
+      // a bounding box of radius ceil(sig/dx)+2 around that point.
+      // The per-cell SDF contribution is:
+      //   phi_sdf = dist(cell_centre, point) - sig
+      // and phi is updated as min(phi, phi_sdf).
       //
-      // This gives a proper signed-distance disk of radius sigma around
-      // each propagated position (phi < 0 inside, phi = 0 on the ring,
-      // and phi remains 0 for cells outside every disk), analogous to
-      // init_phi_from_fire_points_csv / fire_gaussian_sigma.
+      // Complexity: O(npts × (sig/dx)²) vs. the previous O(cells × npts),
+      // yielding orders-of-magnitude speedup when sigma << domain_size.
       //
-      // Performance note: squared distances are compared in the inner loop
-      // to avoid per-point sqrt; a single sqrt is taken after the loop.
-      // This path is opt-in (farsite.gaussian_sigma >= 0) and has the same
-      // O(cells × npts) complexity as init_phi_from_fire_points_csv.
+      // AMReX ParallelFor kernels within the same GPU stream execute in
+      // order (same-stream ordering guarantees), so the sequential
+      // per-point min-update to p(i,j,k) is race-free without atomics.
       // ---------------------------------------------------------------
       const Real sig = eff_sigma;
-      ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-        const Real x = prob_lo[0] + (i + Real(0.5)) * gdx[0];
-        const Real y = prob_lo[1] + (j + Real(0.5)) * gdx[1];
+      const int r_i = static_cast<int>(sig / gdx[0]) + 2;
+      const int r_j = static_cast<int>(sig / gdx[1]) + 2;
 #if (AMREX_SPACEDIM == 3)
-        const Real z = prob_lo[2] + (k + Real(0.5)) * gdx[2];
+      const int r_k = static_cast<int>(sig / gdx[2]) + 2;
 #endif
-        // Compare squared distances; take sqrt once outside the loop.
-        Real min_dist2 = Real(1.0e60);
-        for (int n = 0; n < npts; ++n) {
-          const Real ddx = x - px[n];
-          const Real ddy = y - py[n];
+      // Use the host vectors xarray/yarray (not the device pointers px/py)
+      // because the outer for-loop executes on the host; xn and yn are then
+      // captured by value inside the ParallelFor lambda for GPU execution.
+      for (int n = 0; n < npts; ++n) {
+        const Real xn = xarray[n];
+        const Real yn = yarray[n];
 #if (AMREX_SPACEDIM == 3)
-          const Real ddz = z - pz[n];
-          const Real dist2 = ddx*ddx + ddy*ddy + ddz*ddz;
+        const Real zn = zarray[n];
+        const int kk = static_cast<int>((zn - prob_lo[2]) / gdx[2]);
 #else
-          const Real dist2 = ddx*ddx + ddy*ddy;
+        const int kk = 0;
 #endif
-          if (dist2 < min_dist2) min_dist2 = dist2;
-        }
-        const Real phi_sdf = std::sqrt(min_dist2) - sig;
-        p(i, j, k) = amrex::min(p(i, j, k), phi_sdf);
-      });
+        const int ii = static_cast<int>((xn - prob_lo[0]) / gdx[0]);
+        const int jj = static_cast<int>((yn - prob_lo[1]) / gdx[1]);
+
+        Box local_bx(IntVect(AMREX_D_DECL(ii - r_i, jj - r_j, kk - r_k)),
+                     IntVect(AMREX_D_DECL(ii + r_i, jj + r_j, kk + r_k)));
+        local_bx &= bx;
+        if (local_bx.isEmpty()) { continue; }
+
+        ParallelFor(local_bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+          const Real x = prob_lo[0] + (i + Real(0.5)) * gdx[0];
+          const Real y = prob_lo[1] + (j + Real(0.5)) * gdx[1];
+          const Real ddx = x - xn;
+          const Real ddy = y - yn;
+#if (AMREX_SPACEDIM == 3)
+          const Real z = prob_lo[2] + (k + Real(0.5)) * gdx[2];
+          const Real ddz = z - zn;
+          const Real phi_sdf = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz) - sig;
+#else
+          const Real phi_sdf = std::sqrt(ddx*ddx + ddy*ddy) - sig;
+#endif
+          p(i, j, k) = amrex::min(p(i, j, k), phi_sdf);
+        });
+      }
     }
   }
 
