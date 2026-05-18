@@ -346,7 +346,8 @@ jobs:
             -DLEVELSET_USE_VENDORED_AMREX=ON \
             -DLEVELSET_DIM_2D=ON \
             -DLEVELSET_ENABLE_MPI=OFF \
-            -DLEVELSET_ENABLE_EB=OFF
+            -DLEVELSET_ENABLE_EB=OFF \
+            -DLEVELSET_BUILD_FCOMPARE=ON
           cmake --build build_pr --parallel
 
       - name: Checkout base branch for reference build
@@ -367,25 +368,16 @@ jobs:
             -DLEVELSET_ENABLE_EB=OFF
           cmake --build build_base --parallel
 
-      - name: Build fcompare (AMReX Tools)
+      - name: Locate fcompare (built by CMake)
         run: |
-          # fcompare is an optional build – we fall back to header-only checks
-          # if the build fails (e.g., missing GNUmake prerequisites on the runner).
-          # set +e prevents the workflow step from aborting on make failure so
-          # we can inspect and set FCOMPARE_AVAILABLE explicitly.
-          set +e
-          make -j4 -C external/amrex/Tools/Plotfile \
-            COMP=gnu DIM=2 USE_MPI=FALSE USE_OMP=FALSE \
-            AMREX_HOME="$GITHUB_WORKSPACE/external/amrex" \
-            fcompare
-          FCOMP=$(find external/amrex/Tools/Plotfile -name "fcompare*.ex" 2>/dev/null | head -1)
+          FCOMP=$(find build_pr/external/amrex/Tools/Plotfile -name "amrex_fcompare" -type f 2>/dev/null | head -1)
           if [ -n "$FCOMP" ]; then
             cp "$FCOMP" fcompare
             chmod +x fcompare
             echo "FCOMPARE_AVAILABLE=true" >> "$GITHUB_ENV"
-            echo "Built fcompare: $FCOMP"
+            echo "fcompare located: $FCOMP"
           else
-            echo "::warning::fcompare build failed – comparison will use header check only"
+            echo "::warning::amrex_fcompare not found in build tree – comparison will use header check only"
             echo "FCOMPARE_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
 
