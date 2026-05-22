@@ -64,8 +64,9 @@ struct WildfireFields {
     MultiFab crown_fire_fraction_mf;// Crown fire fraction [-] (1 comp)
 
     // ---- Fire behaviour diagnostics ----
-    MultiFab fireline_intensity_mf; // Byram fireline intensity [kW/m] (1 comp)
-    MultiFab flame_length_mf;       // Byram flame length [m] (1 comp)
+    MultiFab fireline_intensity_mf;      // Byram fireline intensity [kW/m] (1 comp)
+    MultiFab flame_length_mf;            // Byram flame length [m] (1 comp)
+    MultiFab fire_intensity_class_mf;    // Fire intensity class (1-6, Byram 1959) (1 comp)
 
     // ---- Fire ecology (ECOLOGY_NCOMP components) ----
     //   0 scorch_height, 1 prob_ignition, 2 tree_mortality, 3 crown_activity,
@@ -183,6 +184,7 @@ struct WildfireFields {
         // Fire behaviour
         , fireline_intensity_mf(ba, dm, 1,                 0)
         , flame_length_mf      (ba, dm, 1,                 0)
+        , fire_intensity_class_mf(ba, dm, 1,               0)
         // Ecology / emissions
         , ecology_mf           (ba, dm, ECOLOGY_NCOMP,     0)
         , emissions_mf         (ba, dm, EMISSIONS_NCOMP,   0)
@@ -236,6 +238,7 @@ struct WildfireFields {
         ember_cascade_mf     .setVal(Real(0.0));
         fireline_intensity_mf.setVal(Real(0.0));
         flame_length_mf      .setVal(Real(0.0));
+        fire_intensity_class_mf.setVal(Real(0.0));
         ecology_mf           .setVal(Real(0.0));
         emissions_mf         .setVal(Real(0.0));
         arrival_time_mf      .setVal(Real(-1.0)); // -1 = not yet burned

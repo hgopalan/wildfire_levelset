@@ -1033,6 +1033,7 @@ struct InputParameters {
     //   fuel_model           – fuel model number (from landscape)
     //   fireline_intensity   – Byram fireline intensity [kW/m]
     //   flame_length         – Byram flame length [m]
+    //   fire_intensity_class – Fire intensity class (1-6, Byram 1959)
     //   weise_flame_height   – Weise & Biging flame height [m]
     //   weise_flame_tilt     – Weise & Biging flame tilt angle [rad]
     //   weise_whirl_height   – fire whirl height [m]

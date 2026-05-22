@@ -28,6 +28,7 @@
 #ifndef PLOT_RESULTS_H
 #define PLOT_RESULTS_H
 
+#include "fire_intensity_class.H"
 #include <unordered_map>
 // ============================================================================
 // write_wildfire_plotfile
@@ -77,6 +78,7 @@ inline void write_wildfire_plotfile(
     MultiFab& fuel_model_mf         = f.fuel_model_mf;
     MultiFab& fireline_intensity_mf = f.fireline_intensity_mf;
     MultiFab& flame_length_mf       = f.flame_length_mf;
+    MultiFab& fire_intensity_class_mf = f.fire_intensity_class_mf;
     MultiFab& weise_data            = f.weise_data;
     MultiFab& viegas_data           = f.viegas_data;
     MultiFab& ecology_mf            = f.ecology_mf;
@@ -120,6 +122,9 @@ inline void write_wildfire_plotfile(
                                has_landscape ? &fuel_model_mf : nullptr,
                                inputs.rothermel,
                                ftd.d_fuel_table_ptr, ftd.fuel_table_size);
+    
+    // Compute fire intensity class (Byram 1959 6-class system)
+    compute_fire_intensity_class(fire_intensity_class_mf, fireline_intensity_mf);
 
     // ---- Build output variable name list ----
     Vector<std::string> names = {"phi", "velx", "vely"
@@ -129,7 +134,7 @@ inline void write_wildfire_plotfile(
         "fuel_consumption", "crown_fraction",
         "albini_Hz", "albini_count", "albini_dist", "albini_active",
         "elevation", "slope", "aspect", "fuel_model",
-        "fireline_intensity", "flame_length",
+        "fireline_intensity", "flame_length", "fire_intensity_class",
         "weise_flame_height", "weise_flame_tilt",
         "weise_whirl_height", "weise_whirl_radius",
         "weise_angular_velocity", "weise_max_tang_vel",
@@ -157,7 +162,7 @@ inline void write_wildfire_plotfile(
         "fuel_consumption", "crown_fraction",
         "albini_Hz", "albini_count", "albini_dist", "albini_active",
         "elevation", "slope", "aspect", "fuel_model",
-        "fireline_intensity", "flame_length",
+        "fireline_intensity", "flame_length", "fire_intensity_class",
         "weise_flame_height", "weise_flame_tilt",
         "weise_whirl_height", "weise_whirl_radius",
         "weise_angular_velocity", "weise_max_tang_vel",
@@ -241,6 +246,7 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, fuel_model_mf,         0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, fireline_intensity_mf, 0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, flame_length_mf,       0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, fire_intensity_class_mf, 0, c, 1,         0); c += 1;
     MultiFab::Copy(plotmf, weise_data,            0, c, WEISE_NCOMP,    0); c += WEISE_NCOMP;
     MultiFab::Copy(plotmf, viegas_data,           0, c, VIEGAS_NCOMP,   0); c += VIEGAS_NCOMP;
     MultiFab::Copy(plotmf, ecology_mf,            0, c, ECOLOGY_NCOMP,  0); c += ECOLOGY_NCOMP;
