@@ -171,6 +171,14 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ---- Fire acceleration state initialization ----
+    // For FARSITE temporal model, allocate per-cell state tracking
+    if (inputs.acceleration.enable == 1 && inputs.acceleration.use_temporal == 1) {
+        f.accel_state_mf = std::make_unique<MultiFab>(ba, dm, 3, 0);
+        f.accel_state_mf->setVal(Real(0.0));
+        amrex::Print() << "Fire acceleration: allocated temporal state tracking (3 components per cell)\n";
+    }
+
     // ---- 3-D wind for flux-based ember cascade model ----
     // When ember_cascade.use_3d_wind = 1 or ember_cascade.require_3d_wind = 1,
     // read the plt file once before the time loop.  A missing or unreadable
@@ -1213,11 +1221,13 @@ int main(int argc, char* argv[])
               amrex::Print() << "  Max smoke plume rise: " << max_plume << " m\n";
       }
 
-      // Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992)
-      // Scales R_mf by alpha = 1 - exp(-r_fire / L_acc) to account for the
-      // slower spread of small fires before quasi-steady-state is reached.
-      // When disabled (default) or fire is large, this is a no-op.
-      apply_fire_acceleration(R_mf, phi, geom, inputs.acceleration);
+      // Feature 10: Fire acceleration model (Rothermel 1983 / Catchpole et al. 1992
+      //             or FARSITE temporal model McAlpine & Wakimoto 1991)
+      // Scales R_mf to account for the slower spread of small fires or newly-changed
+      // wind conditions before quasi-steady-state is reached.
+      // When disabled (default) or fire is at equilibrium, this is a no-op.
+      apply_fire_acceleration(R_mf, phi, geom, inputs.acceleration, dt, 
+                              f.accel_state_mf.get());
 
       // ---- Aerial retardant suppression: scale R_mf in active drop zones ----
       if (!retardant_drops.empty()) {

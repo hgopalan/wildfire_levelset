@@ -160,6 +160,13 @@ struct WildfireFields {
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
 
+    // ---- Fire acceleration state (3 components for FARSITE temporal model) ----
+    //   0 ROS_current    – current instantaneous ROS [m/s]
+    //   1 elapsed_time   – time elapsed since entering current acceleration state [s]
+    //   2 ROS_equilibrium – equilibrium (quasi-steady) ROS target [m/s]
+    // Only allocated when acceleration.use_temporal = 1; nullptr otherwise.
+    std::unique_ptr<MultiFab> accel_state_mf;
+
     // -----------------------------------------------------------------------
     // Constructor: allocate and initialise every field.
     // ba/dm define the box decomposition; inputs provides default values for
@@ -230,6 +237,8 @@ struct WildfireFields {
         , fl_exceedance_mf     (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
+        // accel_state_mf starts as nullptr; allocated if use_temporal = 1
+        , accel_state_mf       (nullptr)
     {
         // ---- Zero / sentinel initialisation ----
         fuel_consumption_mf  .setVal(Real(0.0));

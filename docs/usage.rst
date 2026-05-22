@@ -1749,23 +1749,77 @@ Written to plotfiles as ``residual_fuel``.
 Fire Acceleration Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+The fire acceleration model accounts for the delayed approach to quasi-steady-state
+spread rate in small fires or after wind changes. Two models are available:
+
+1. **Size-based model** (Catchpole et al. 1992): Global scaling based on current fire size
+2. **FARSITE temporal model** (McAlpine & Wakimoto 1991): Per-cell temporal tracking with optional wind-lag
+
+Size-Based Model
+""""""""""""""""
+
 Small fires spread slower than their quasi-steady-state ROS.  This model
 applies a scaling factor :math:`\alpha = 1 - \exp(-r_{\text{fire}} / L_{\text{acc}})`,
 where :math:`r_{\text{fire}}` is the effective fire radius from burned area.
 When :math:`r_{\text{fire}} \gg L_{\text{acc}}`, :math:`\alpha \to 1` and large
 fires are unaffected.
 
+FARSITE Temporal Model
+"""""""""""""""""""""""
+
+Uses VanWagner's equation :math:`R(t) = R_E \times (1 - \exp(-A \times t))` with
+per-cell temporal tracking. Fire ROS ramps up exponentially from ignition (or wind
+change) toward equilibrium. Includes optional wind-onset time-lag capability.
+
 **acceleration.enable** (default: 0)
-  Enable the small-fire acceleration model (1=yes, 0=no). Off by default for
+  Enable the fire acceleration model (1=yes, 0=no). Off by default for
   backward compatibility.
 
   Example: ``acceleration.enable = 1``
 
+**acceleration.use_temporal** (default: 0)
+  Select model type: 0 = size-based (Catchpole et al. 1992), 1 = FARSITE temporal
+  (McAlpine & Wakimoto 1991). The temporal model provides more accurate representation
+  of fire response to wind changes.
+
+  Example: ``acceleration.use_temporal = 1``
+
 **acceleration.L_acc** (default: 50.0)
   Acceleration length scale [m]. Controls how quickly the fire approaches its
-  quasi-steady-state ROS as it grows.
+  quasi-steady-state ROS as it grows. Only used when use_temporal = 0.
+  Typical values: 30–100 m.
 
   Example: ``acceleration.L_acc = 30.0``
+
+**acceleration.A_point** (default: 0.115)
+  Point ignition acceleration constant [1/min]. Only used when use_temporal = 1.
+  Default from FARSITE (Finney 1998).
+
+  Example: ``acceleration.A_point = 0.115``
+
+**acceleration.A_line** (default: 0.300)
+  Line ignition acceleration constant [1/min]. Used when fire perimeter exceeds
+  perim_limit. Only used when use_temporal = 1.
+
+  Example: ``acceleration.A_line = 0.300``
+
+**acceleration.perim_limit** (default: 402.3)
+  Perimeter threshold [m] for switching from point to line acceleration constant.
+  Default is 402.3 m (20 chains). Only used when use_temporal = 1.
+
+  Example: ``acceleration.perim_limit = 400.0``
+
+**acceleration.enable_wind_lag** (default: 0)
+  Enable wind-onset time-lag model (1=yes, 0=no). Fire ROS ramps up exponentially
+  after wind changes with time constant tau_wind. Only applies when use_temporal = 1.
+
+  Example: ``acceleration.enable_wind_lag = 1``
+
+**acceleration.tau_wind** (default: 180.0)
+  Time constant [s] for wind response. Default is 180 s (3 minutes).
+  Only used when enable_wind_lag = 1 and use_temporal = 1.
+
+  Example: ``acceleration.tau_wind = 120.0``
 
 Output Parameters
 ^^^^^^^^^^^^^^^^^

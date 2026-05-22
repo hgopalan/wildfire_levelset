@@ -773,6 +773,14 @@ struct InputParameters {
     struct AccelerationParams {
         int enable;              // 1 to enable fire acceleration model (default: 0)
         amrex::Real L_acc;      // acceleration length scale [m]; fire reaches full ROS when r ≈ L_acc (default: 50.0)
+        // FARSITE-style temporal acceleration model (McAlpine & Wakimoto 1991)
+        int use_temporal;        // 1 to use FARSITE temporal model (default: 0 = use size-based)
+        amrex::Real A_point;     // point ignition acceleration constant [1/min] (default: 0.115)
+        amrex::Real A_line;      // line ignition acceleration constant [1/min] (default: 0.300)
+        amrex::Real perim_limit; // perimeter threshold for point→line switch [m] (default: 402.3 = 20 chains)
+        // Wind-onset time-lag model (applies to temporal model only)
+        int enable_wind_lag;     // 1 to track wind changes and apply time lag (default: 0)
+        amrex::Real tau_wind;    // time constant for wind response [s] (default: 180.0 = 3 min)
     } acceleration;
 
     // ---- FMC seasonal / phenological schedule ----
