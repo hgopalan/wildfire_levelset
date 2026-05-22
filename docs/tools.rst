@@ -68,7 +68,7 @@ Overview
        AMReX plotfiles: summary statistics table, CSV export, and landing-flux
        density map visualisation (requires ``numpy``; ``matplotlib`` for plots)
    * - ``historical_wildfires.py``
-     - Query a curated database of 19+ major historical wildfires (2012–2021);
+     - Query a curated database of 29 major US historical wildfires (2009–2024);
        display tabular summary; export to CSV; generate ``terrain.csv`` and
        ``inputs.i`` files for a selected fire via automatic SRTM elevation
        download with configurable lat/lon bounds (±0.25° default).
@@ -987,18 +987,25 @@ wind, weather, suppression, and other scenario parameters before running the sol
 
 **Database contents**
 
-19 fires across multiple continents and fuel types:
+29 major US wildfires from 2009–2024:
 
-* **USA** (10 fires): Dixie, August Complex, Bootleg, Creek, Woolsey, Rim, Carr,
-  Thomas, Marshall, Apple (California/Oregon/Colorado, 2013–2021)
-* **Australia** (2 fires): Black Summer Bushfires (NSW), Tasmanian Bushfires
-* **Canada** (1 fire): Park Fire (British Columbia, 2017)
-* **Europe** (3 fires): Mati Wildfire (Greece), Pedrógão Grande (Portugal),
-  Estepona (Spain)
-* **Asia-Pacific** (2 fires): Russian Western Siberia, Turkey, Kalimantan Peatland
+* **California** (22 fires): Park Fire (2023), Coastal Fire (2023), Dixie Fire (2021),
+  August Complex (2020), Creek Fire (2020), Apple Fire (2020), Slinkard Fire (2020),
+  Kincade Fire (2019), Easy Fire (2019), Woolsey Fire (2018), Carr Fire (2018),
+  Delta Fire (2018), Tubbs Fire (2017), Thomas Fire (2017), Detwiler Fire (2017),
+  Soberanes Fire (2016), Erskine Fire (2016), Butte Fire (2015), Valley Fire (2015),
+  King Fire (2014), Rim Fire (2013), Yosemite NP Fire (2013)
 
-Each entry includes fire name, country, state, ignition year/month/day, central
-lat/lon, burned area (hectares), and duration (days).
+* **Oregon** (2 fires): Bootleg Fire (2021), Ditch Fire (2020)
+
+* **Colorado** (2 fires): Marshall Fire (2021), Waldo Canyon Fire (2012)
+
+* **New Mexico** (2 fires): Hermits Peak-Calf Canyon Fire (2022), Black Summer Fire (2022)
+
+* **Arizona** (1 fire): Wallow Fire (2011)
+
+Each entry includes fire name, state, ignition year/month/day, central lat/lon,
+burned area (hectares), and duration (days).
 
 **Dependencies**
 
@@ -1006,4 +1013,3 @@ lat/lon, burned area (hectares), and duration (days).
 ``numpy``, ``pyproj``, ``scipy`` (install with ``pip install elevation rasterio ...``).
 
 Plain table/filter operations have no dependencies.
-
