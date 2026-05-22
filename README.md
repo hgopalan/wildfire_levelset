@@ -163,6 +163,7 @@ Key ensemble tools:
 - `ignition_probability_table.py` – Anderson (1970) / Rothermel (1983) P_ignition worksheet
 - `plotfile_to_geotiff.py` – Export solver plotfiles to GeoTIFF; default export now includes `residual_fuel` (post-frontal burnout raster), `fuel_consumption`, and `fl_exceedance`
 - `farsite_fsa_pst_reader.py` – Read, inspect, and plot FARSITE-compatible Fire Spread Atlas (`.fsa`) and Post-processing Statistics (`.pst`) output files; supports perimeter polygon plots and PST time-series charts (matplotlib optional)
+- `historical_wildfires.py` – Query and generate simulation inputs for 29 major US historical wildfires (2009–2024); automatic terrain generation via SRTM with configurable lat/lon bounds
 
 See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html).
 
