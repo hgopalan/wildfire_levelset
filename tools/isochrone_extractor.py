@@ -351,6 +351,80 @@ def make_iso_times(
 
 
 # ---------------------------------------------------------------------------
+# Visualization
+# ---------------------------------------------------------------------------
+
+def plot_isochrones(
+    arrival: np.ndarray,
+    problo: List[float],
+    probhi: List[float],
+    nx: int,
+    ny: int,
+    geojson: dict,
+    output_path: str
+) -> None:
+    """Create a visualization of isochrones with time labels."""
+    if not _HAS_MPL:
+        return
+    
+    # Create coordinate arrays for cell centers
+    x = np.linspace(problo[0], probhi[0], nx + 1)
+    y = np.linspace(problo[1], probhi[1], ny + 1)
+    
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    # Plot arrival time as filled contours
+    valid_mask = ~np.isnan(arrival)
+    if np.any(valid_mask):
+        levels = np.linspace(np.nanmin(arrival), np.nanmax(arrival), 30)
+        contourf = ax.contourf(
+            x[:-1] + (x[1] - x[0]) / 2,
+            y[:-1] + (y[1] - y[0]) / 2,
+            arrival / 60.0,  # Convert to minutes
+            levels=levels / 60.0,
+            cmap='YlOrRd',
+            alpha=0.8
+        )
+        cbar = fig.colorbar(contourf, ax=ax, label='Arrival time [min]')
+    
+    # Plot isochrone contours with labels
+    colors = plt.cm.viridis(np.linspace(0, 1, len(geojson["features"])))
+    
+    for idx, feature in enumerate(geojson["features"]):
+        props = feature["properties"]
+        coords_list = feature["geometry"]["coordinates"]
+        
+        # Draw each polygon ring
+        for ring in coords_list:
+            if len(ring) < 3:
+                continue
+            xs, ys = zip(*ring)
+            ax.plot(xs, ys, '-', color=colors[idx], linewidth=2, 
+                   label=props["label"])
+            
+            # Add time label at the first point
+            ax.text(xs[0], ys[0], f" {props['label']}", 
+                   fontsize=9, color=colors[idx],
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
+                            alpha=0.7, edgecolor=colors[idx]))
+    
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.set_title('Fire Arrival Time Isochrones')
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # Add legend if not too many isochrones
+    if len(geojson["features"]) <= 15:
+        ax.legend(loc='best', fontsize=8)
+    
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved isochrone plot → {output_path}")
+
+
+# ---------------------------------------------------------------------------
 # Per-plotfile processing
 # ---------------------------------------------------------------------------
 
@@ -361,6 +435,7 @@ def process_plotfile(
     custom_times: Optional[List[float]],
     n_iso: int,
     utm_origin: Optional[Tuple[float, float]],
+    plot_output: Optional[str] = None,
 ):
     print(f"\nProcessing {plotfile_dir} …")
     try:
@@ -404,6 +479,11 @@ def process_plotfile(
     with open(out_path, "w") as fh:
         json.dump(geojson, fh, indent=2)
     print(f"  Wrote {n_feat} isochrone polygon(s) → {out_path}")
+    
+    # Optional plot
+    if plot_output and _HAS_MPL:
+        plot_isochrones(arrival, problo, probhi, nx, ny, geojson, plot_output)
+
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +542,12 @@ def main(argv=None):
         help="UTM origin of the simulation domain [m].  Added to simulation "
              "coordinates to produce absolute UTM coordinates.",
     )
+    parser.add_argument(
+        "--plot",
+        default=None,
+        metavar="FILE",
+        help="Save a matplotlib plot of isochrones with labels (e.g., isochrones.png).",
+    )
 
     args = parser.parse_args(argv)
     outdir = Path(args.outdir)
@@ -472,11 +558,14 @@ def main(argv=None):
         if not dirs:
             sys.exit("No plt#### directories found in the current directory.")
         for d in dirs:
-            process_plotfile(d, outdir, args.interval, args.times, args.n_iso, utm_origin)
+            # For --all mode, create per-plotfile plot names
+            plot_name = str(outdir / f"{d.name}_isochrones.png") if args.plot else None
+            process_plotfile(d, outdir, args.interval, args.times, args.n_iso, 
+                           utm_origin, plot_name)
     elif args.plotfile:
         process_plotfile(
             Path(args.plotfile), outdir,
-            args.interval, args.times, args.n_iso, utm_origin,
+            args.interval, args.times, args.n_iso, utm_origin, args.plot,
         )
     else:
         parser.print_help()

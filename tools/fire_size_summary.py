@@ -44,6 +44,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    import numpy as np
+    _HAS_NUMPY = True
+except ImportError:
+    _HAS_NUMPY = False
+
 # ---------------------------------------------------------------------------
 # CSV reader
 # ---------------------------------------------------------------------------
@@ -120,6 +126,51 @@ def print_summary_table(rows: List[Dict[str, float]]) -> None:
         print(f"Simulation duration : {t_h:.2f} h")
         print(f"Final burned area   : {area:.2f} ha  ({area/100.0:.4f} km²)")
         print(f"Total time steps    : {len(rows)}")
+        
+        # Print percentile statistics if numpy is available
+        if _HAS_NUMPY:
+            print()
+            print_percentile_stats(rows)
+
+
+# ---------------------------------------------------------------------------
+# Percentile Statistics
+# ---------------------------------------------------------------------------
+
+def print_percentile_stats(rows: List[Dict[str, float]]) -> None:
+    """Print percentile statistics for fire growth metrics."""
+    if not _HAS_NUMPY or len(rows) < 2:
+        return
+    
+    print("=" * 78)
+    print("PERCENTILE STATISTICS (Fire Growth Distribution)")
+    print("=" * 78)
+    
+    # Extract key metrics
+    areas = np.array([r.get("burned_area_ha", 0.0) for r in rows])
+    perims = np.array([r.get("perimeter_km", 0.0) for r in rows])
+    active = np.array([r.get("active_front_cells", 0.0) for r in rows])
+    head_ros = np.array([r.get("head_ros_ms", 0.0) for r in rows])
+    
+    metrics = [
+        ("Burned Area [ha]", areas),
+        ("Perimeter [km]", perims),
+        ("Active Front Cells", active),
+        ("Head ROS [m/s]", head_ros),
+    ]
+    
+    print(f"{'Metric':<25} {'10th %':>12} {'50th % (Median)':>18} {'90th %':>12}")
+    print("-" * 78)
+    
+    for label, data in metrics:
+        if np.any(data > 0):
+            p10 = np.percentile(data, 10)
+            p50 = np.percentile(data, 50)
+            p90 = np.percentile(data, 90)
+            
+            print(f"{label:<25} {p10:>12.4f} {p50:>18.4f} {p90:>12.4f}")
+    
+    print()
 
 
 # ---------------------------------------------------------------------------
