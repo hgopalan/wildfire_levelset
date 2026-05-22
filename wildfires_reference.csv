@@ -1,0 +1,20 @@
+name,country,state,year,lat,lon,area_ha,duration_days
+Dixie Fire,USA,California,2021,40.8521,-121.2334,389263,105
+August Complex Fire,USA,California,2020,39.4667,-122.3667,428639,154
+Bootleg Fire,USA,Oregon,2021,42.8667,-121.5833,181589,99
+Creek Fire,USA,California,2020,37.2222,-119.2222,179620,134
+Woolsey Fire,USA,California,2018,34.2667,-118.7833,24305,9
+Rim Fire,USA,California,2013,38.3333,-120.1667,104825,73
+Carr Fire,USA,California,2018,40.6667,-122.2667,71751,43
+Thomas Fire,USA,California,2017,34.3667,-119.0667,71481,39
+Marshall Fire,USA,Colorado,2021,39.8333,-105.1333,2190,2
+Apple Fire,USA,California,2020,33.8333,-116.8167,32375,24
+Black Summer Bushfires,Australia,New South Wales,2019,-33.8688,151.2093,1043000,200
+Tasmanian Bushfires,Australia,Tasmania,2016,-42.1667,147.3333,188000,87
+Park Fire (British Columbia),Canada,British Columbia,2017,54.1667,-120.3333,239000,178
+Mati Wildfire,Greece,Attica,2018,38.0333,23.8667,2400,1
+Pedrógão Grande Fire,Portugal,Covilhã,2017,40.0333,-7.3667,50000,4
+Estepona Fire,Spain,Málaga,2012,36.4333,-5.1667,8150,3
+Russian Western Siberia Fires,Russia,Siberia,2021,66.0,93.0,1000000,180
+Turkey Wildfires,Turkey,Antalya,2021,36.5333,30.7667,400000,150
+Kalimantan Peatland Fires,Indonesia,Kalimantan,2015,-2.3333,113.6667,2600000,180
