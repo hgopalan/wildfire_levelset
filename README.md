@@ -177,7 +177,7 @@ Python utilities in `tools/` for terrain download, weather parsing, GIS export, 
 | | `ignition_probability_table.py` | Anderson P_ignition |
 | | `behavior_matrix.py` | Rothermel behavior matrices |
 
-**New FARSITE-parity features** (bold above): percentile statistics, isochrone visualization, MTT paths, burn period analysis. See [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) and `tools/NEW_FARSITE_FEATURES.md`.
+**New FARSITE-parity features:** `fire_size_summary.py` (percentile statistics), `isochrone_extractor.py` (visualization with time labels), `minimum_travel_path.py` (MTT path extraction), `fire_period_analysis.py` (day/night burn classification). See [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) and `tools/NEW_FARSITE_FEATURES.md`.
 
 ## References
 
