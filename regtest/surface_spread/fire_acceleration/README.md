@@ -28,6 +28,11 @@ Validates the FARSITE temporal acceleration model (McAlpine & Wakimoto 1991) imp
 - Wind-lag enabled with tau_wind = 60.0 s
 - Expected: ROS ramps up gradually after wind change, not instantly
 
+## Notes
+
+- The parameter `phi` in the input files refers to domain upper bounds (phi_hi), not the level-set field
+- This naming convention is consistent with other regression tests in the repository
+
 ## References
 
 - McAlpine, R.S. & Wakimoto, R.H. (1991). The acceleration of fire from point source to equilibrium spread. Forest Science, 37(5), 1314–1337.
