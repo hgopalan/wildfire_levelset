@@ -39,6 +39,9 @@
 
 using namespace amrex;
 
+// Tolerance for fuel moisture comparisons to avoid numerical issues
+constexpr Real MOISTURE_TOLERANCE = Real(1e-6);
+
 // ============================================================================
 // Compute ignition delay time [s] based on fuel moisture
 //
@@ -57,13 +60,13 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_spot_ignition_delay(Real tau_base, Real M_x, Real M_f)
 {
     // Safety check: if fuel moisture at or above extinction, no ignition possible
-    if (M_f >= M_x - Real(1e-6)) {
+    if (M_f >= M_x - MOISTURE_TOLERANCE) {
         return Real(-1.0); // Negative indicates no ignition will occur
     }
 
     // Prevent division by very small numbers
     Real moisture_deficit = M_x - M_f;
-    if (moisture_deficit < Real(1e-6)) {
+    if (moisture_deficit < MOISTURE_TOLERANCE) {
         return Real(1e8); // Effectively infinite delay
     }
 

@@ -1468,11 +1468,16 @@ void parse_inputs(InputParameters& p)
         // Validate stability class
         if (p.smoke_plume.use_stability_correction == 1) {
             std::string sc = p.smoke_plume.stability_class;
-            if (sc != "A" && sc != "a" && sc != "B" && sc != "b" &&
-                sc != "C" && sc != "c" && sc != "D" && sc != "d" &&
-                sc != "E" && sc != "e" && sc != "F" && sc != "f") {
-                amrex::Abort("smoke_plume.stability_class must be A, B, C, D, E, or F");
+            // Convert to uppercase for case-insensitive comparison
+            for (char& c : sc) {
+                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
             }
+            if (sc != "A" && sc != "B" && sc != "C" && 
+                sc != "D" && sc != "E" && sc != "F") {
+                amrex::Abort("smoke_plume.stability_class must be A, B, C, D, E, or F (case-insensitive)");
+            }
+            // Update the normalized value back
+            p.smoke_plume.stability_class = sc;
         }
         
         Print() << "Smoke plume-rise model (Briggs 1965) enabled:\n"

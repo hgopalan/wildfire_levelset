@@ -90,17 +90,18 @@ using namespace amrex;
 AMREX_FORCE_INLINE
 Real get_stability_correction_factor(const std::string& stability_class)
 {
-    if (stability_class == "A" || stability_class == "a") {
+    // Note: Input should be normalized to uppercase by parse_inputs.cpp
+    if (stability_class == "A") {
         return Real(1.20);  // Extremely unstable: enhanced plume rise
-    } else if (stability_class == "B" || stability_class == "b") {
+    } else if (stability_class == "B") {
         return Real(1.10);  // Moderately unstable
-    } else if (stability_class == "C" || stability_class == "c") {
+    } else if (stability_class == "C") {
         return Real(1.05);  // Slightly unstable
-    } else if (stability_class == "D" || stability_class == "d") {
+    } else if (stability_class == "D") {
         return Real(1.00);  // Neutral: no correction
-    } else if (stability_class == "E" || stability_class == "e") {
+    } else if (stability_class == "E") {
         return Real(0.85);  // Slightly stable: suppressed rise
-    } else if (stability_class == "F" || stability_class == "f") {
+    } else if (stability_class == "F") {
         return Real(0.70);  // Moderately stable: strongly suppressed rise
     } else {
         // Unknown class: default to neutral (no correction)
