@@ -60,6 +60,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 | | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
 | | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
 | **Spotting & Embers** | Firebrand spotting: Albini (1983) trajectory + torching-tree (1979) | `firebrand.*` |
+| | Vorticity-enhanced spotting: Weise & Biging (1996) fire whirl effects | `weise_biging.enhance_spotting` |
 | | Ember cascade: Gaussian flux field (Sardoy 2007 approach) | `ember_cascade.*` |
 | | GPU-accelerated 3-D wind interpolation (CUDA/HIP/SYCL) | Optional from massconsistent_amr |
 | | Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` |
@@ -74,6 +75,8 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 | | Satellite fire detection (GOES/VIIRS) assimilation | `satellite.*` |
 | **Diagnostics & Output** | Fire ecology: scorch height, tree mortality, TI/CI ratios | `ecology.*` |
 | | Smoke plume rise (Briggs 1965/1969) | `smoke_plume.enable` |
+| | Vorticity field: vertical component for fire whirl identification | Auto in plotfiles |
+| | Fire whirl characteristics: Weise & Biging (1996) model | `weise_biging.enable` |
 | | Fire emissions: CO₂, CO, PM₂.₅ (WRF-Fire) | Auto output |
 | | KML perimeter export (UTM → WGS-84) | `write_perimeter_kml` |
 | | FARSITE .fsa/.pst files | `fsa_file`, `pst_file` |
