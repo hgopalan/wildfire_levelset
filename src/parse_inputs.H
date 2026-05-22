@@ -187,6 +187,12 @@ struct InputParameters {
         // (Anderson 1970 / Rothermel 1972 moisture-damping factor).
         // Set to 1.0 (default) to always ignite on contact (original behaviour).
         amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
+        
+        // Ignition delay parameters (FARSITE-compatible)
+        // Models delay between firebrand landing and actual ignition based on fuel moisture.
+        // τ_delay = τ_base × (M_x / (M_x - M_f))
+        int enable_delay;                    // 1 = enable ignition delay, 0 = instant ignition (default: 0)
+        amrex::Real tau_base;                // base delay time at zero moisture [s] (default: 120.0)
     } spotting;
     
     // Van Wagner crown fire initiation model parameters (Van Wagner 1977)

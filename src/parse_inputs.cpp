@@ -292,6 +292,10 @@ void parse_inputs(InputParameters& p)
     p.spotting.random_seed = 0;                  pp.query("spotting.random_seed", p.spotting.random_seed);
     p.spotting.check_interval = 5;               pp.query("spotting.check_interval", p.spotting.check_interval);
     p.spotting.P_catch = 1.0;                    pp.query("spotting.P_catch", p.spotting.P_catch);
+    
+    // Ignition delay parameters
+    p.spotting.enable_delay = 0;                 pp.query("spotting.enable_delay", p.spotting.enable_delay);
+    p.spotting.tau_base = 120.0;                 pp.query("spotting.tau_base", p.spotting.tau_base);
 
     // Validate spotting parameters
     if (p.spotting.enable == 1) {
