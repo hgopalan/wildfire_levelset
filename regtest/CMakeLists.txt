@@ -104,6 +104,9 @@ add_regression_test(fbp_s1_slash             surface_spread/fbp_s1_slash)
 add_regression_test(fbp_s2_slash             surface_spread/fbp_s2_slash)
 add_regression_test(fbp_s3_slash             surface_spread/fbp_s3_slash)
 add_regression_test(lautenberger_spread      surface_spread/lautenberger_spread)
+add_regression_test(cell_size_correction_baseline         surface_spread/cell_size_correction/cell_size_correction_baseline)
+add_regression_test(cell_size_correction_with_correction  surface_spread/cell_size_correction/cell_size_correction_with_correction)
+add_regression_test(cell_size_correction_levelset         surface_spread/cell_size_correction/cell_size_correction_levelset)
 
 # ===========================================================================
 # crown_fire/ – crown fire initiation, active crown, FMC seasonal schedule
