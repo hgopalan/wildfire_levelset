@@ -130,7 +130,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 |---|---|
 | `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread |
 | `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
-| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)* |
+| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)*, **vorticity_enhanced_spotting** *(new)* |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)*, **terrain_gradient_correction** *(new)* |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |
