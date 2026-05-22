@@ -67,6 +67,11 @@ Overview
      - Post-process ``ember_cascade_flux`` / ``ember_cascade_ignition`` fields from
        AMReX plotfiles: summary statistics table, CSV export, and landing-flux
        density map visualisation (requires ``numpy``; ``matplotlib`` for plots)
+   * - ``historical_wildfires.py``
+     - Query a curated database of 19+ major historical wildfires (2012–2021);
+       display tabular summary; export to CSV; generate ``terrain.csv`` and
+       ``inputs.i`` files for a selected fire via automatic SRTM elevation
+       download with configurable lat/lon bounds (±0.25° default).
 
 A unified legacy tool (``terrain_wind_preprocess.py``) is retained in ``tools/deprecated/``
 and superseded by the split tools above.
@@ -910,3 +915,95 @@ AMReX Python bindings.
        --output flux_step50.png
 
 **Dependencies**: ``numpy`` (required); ``matplotlib`` (optional, for ``--plot``).
+
+``historical_wildfires.py`` — Historical Wildfire Database & Simulation Setup
+------------------------------------------------------------------------------
+
+Provides a curated database of 19+ major historical wildfires (2012–2021) spanning
+the USA, Australia, Canada, Europe, Russia, and Indonesia. Supports querying
+the fire list, exporting to CSV, and automatic generation of simulation input files
+(``terrain.csv`` and ``inputs.i``) with real SRTM elevation data.
+
+**Key workflow**
+
+1. Query the wildfire database and display as ASCII table.
+2. Filter by country, state, year range, and other criteria.
+3. Export selected fires to CSV for further analysis.
+4. Generate ``terrain.csv`` (SRTM elevation) and ``inputs.i`` (solver template)
+   for a selected fire at configurable lat/lon bounds (default ±0.25°).
+
+**Typical usage**
+
+.. code-block:: bash
+
+   # List all available fires
+   python3 tools/historical_wildfires.py --list-fires
+
+   # Display all fires as a table
+   python3 tools/historical_wildfires.py
+
+   # Filter by country and year
+   python3 tools/historical_wildfires.py --country USA --year-min 2020
+
+   # Export to CSV
+   python3 tools/historical_wildfires.py --country Australia --output aus_fires.csv
+
+   # Generate terrain and input files for a fire
+   python3 tools/historical_wildfires.py --create-inputs "Dixie Fire" \
+       --outdir dixie_sim
+
+   # With custom margins (±0.5° instead of default ±0.25°)
+   python3 tools/historical_wildfires.py --create-inputs "Marshall Fire" \
+       --outdir marshall_sim --lat-margin 0.5 --lon-margin 0.5
+
+   # With SRTM subsampling (keep every 2nd point)
+   python3 tools/historical_wildfires.py --create-inputs "Creek Fire" \
+       --outdir creek_sim --subsample 2
+
+**Key options**
+
+* ``--list-fires`` — Print all available fire names with year, location.
+* ``--output FILE`` — Export filtered fires to CSV (instead of printing table).
+* ``--country COUNTRY`` — Filter by country name.
+* ``--state STATE`` — Filter by state/region name.
+* ``--year-min / --year-max YEAR`` — Filter by year range.
+* ``--columns COL1,COL2,...`` — Select columns to display/export.
+* ``--create-inputs FIRE_NAME`` — Generate ``terrain.csv`` and ``inputs.i``.
+* ``--outdir DIR`` — Output directory for generated files (default: current).
+* ``--lat-margin / --lon-margin DEGREES`` — Bounds margin (default: 0.25°).
+* ``--subsample N`` — Keep every N-th SRTM grid point (default: 1).
+
+**Generated files**
+
+When ``--create-inputs`` is used, the tool calls ``srtm_terrain_reader.py`` to
+download real SRTM1 elevation data and produces:
+
+* ``terrain.csv`` — UTM-projected XYZ grid of elevation data for ``rothermel.terrain_file``.
+* ``inputs.i`` — Solver input template with domain parameters, fuel model (Anderson class 7),
+  fuel moisture, ignition point at domain centre, and basic output settings.
+
+The ``inputs.i`` template includes comments and should be edited to customise
+wind, weather, suppression, and other scenario parameters before running the solver.
+
+**Database contents**
+
+19 fires across multiple continents and fuel types:
+
+* **USA** (10 fires): Dixie, August Complex, Bootleg, Creek, Woolsey, Rim, Carr,
+  Thomas, Marshall, Apple (California/Oregon/Colorado, 2013–2021)
+* **Australia** (2 fires): Black Summer Bushfires (NSW), Tasmanian Bushfires
+* **Canada** (1 fire): Park Fire (British Columbia, 2017)
+* **Europe** (3 fires): Mati Wildfire (Greece), Pedrógão Grande (Portugal),
+  Estepona (Spain)
+* **Asia-Pacific** (2 fires): Russian Western Siberia, Turkey, Kalimantan Peatland
+
+Each entry includes fire name, country, state, ignition year/month/day, central
+lat/lon, burned area (hectares), and duration (days).
+
+**Dependencies**
+
+``srtm_terrain_reader.py`` backend requires: ``elevation``, ``rasterio``,
+``numpy``, ``pyproj``, ``scipy`` (install with ``pip install elevation rasterio ...``).
+
+Plain table/filter operations have no dependencies.
+
