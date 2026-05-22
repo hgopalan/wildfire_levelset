@@ -372,7 +372,7 @@ inline void write_wildfire_plotfile(
     if (write_stats) {
         if (!inputs.fire_stats_file.empty())
             append_fire_stats(phi, geom, &emissions_mf, step, time,
-                              inputs.fire_stats_file, arrival_time_mf, &R_mf);
+                              inputs.fire_stats_file, arrival_time_mf, &R_mf, &flame_length_mf);
         if (!inputs.fsa_file.empty())
             append_fire_spread_atlas(phi, geom, step, time, inputs.fsa_file);
         if (!inputs.pst_file.empty())

@@ -814,7 +814,7 @@ inline void write_fire_stats_header(const std::string& filename)
         return;
     }
     out << "step,time_s,burned_area_ha,perimeter_km,"
-           "active_front_cells,head_ros_ms,"
+           "active_front_cells,head_ros_ms,max_flame_length_m,"
            "total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2\n";
     out.close();
 }
@@ -823,8 +823,8 @@ inline void write_fire_stats_header(const std::string& filename)
 // append_fire_stats
 //
 // Computes burned area [ha], perimeter length [km], active front cell count,
-// head ROS [m/s] (maximum ROS in perimeter cells), and domain-mean emission
-// totals, then appends one row to the CSV file.
+// head ROS [m/s] (maximum ROS in perimeter cells), maximum flame length [m],
+// and domain-mean emission totals, then appends one row to the CSV file.
 //
 // Burned area and perimeter are based on arrival_time_mf >= 0 (every cell
 // that has ever been ignited, including the burned interior).  In the FARSITE
@@ -834,6 +834,7 @@ inline void write_fire_stats_header(const std::string& filename)
 //
 // emissions_mf is optional (pass nullptr to skip emission stats).
 // R_mf is optional (pass nullptr to skip head ROS tracking).
+// flame_length_mf is optional (pass nullptr to skip max flame length tracking).
 // ============================================================================
 inline void append_fire_stats(const MultiFab& phi,
                                const Geometry& geom,
@@ -841,7 +842,8 @@ inline void append_fire_stats(const MultiFab& phi,
                                int step, Real time_s,
                                const std::string& filename,
                                const MultiFab& arrival_time_mf,
-                               const MultiFab* R_mf = nullptr)
+                               const MultiFab* R_mf = nullptr,
+                               const MultiFab* flame_length_mf = nullptr)
 {
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
@@ -855,6 +857,7 @@ inline void append_fire_stats(const MultiFab& phi,
     Real perim_m = Real(0.0);
     Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
     Real head_ros = Real(0.0);  // maximum ROS in perimeter cells [m/s]
+    Real max_fl = Real(0.0);     // maximum flame length [m]
 
     for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -866,23 +869,32 @@ inline void append_fire_stats(const MultiFab& phi,
         // Head ROS: optional per-cell R_mf array for this MFIter
         Array4<const Real> R_arr;
         if (R_mf) R_arr = R_mf->const_array(mfi);
+        
+        // Flame length: optional per-cell flame_length_mf array
+        Array4<const Real> FL_arr;
+        if (flame_length_mf) FL_arr = flame_length_mf->const_array(mfi);
 
         amrex::LoopOnCpu(bx, [&](int i, int j, int k) {
             bool burned = (at(i, j, k, 0) >= Real(0.0));
             Real pv     = p(i, j, k, 0);
             if (burned) {
                 ++n_burned;
-                // Track head ROS for perimeter cells (any burned cell adjacent
-                // to an unburned neighbor qualifies as a perimeter cell).
-                if (R_mf) {
-                    bool on_perim = false;
-                    if (i > lo[0]) on_perim |= (at(i-1,j,k,0) < Real(0.0));
-                    if (i < hi[0]) on_perim |= (at(i+1,j,k,0) < Real(0.0));
-                    if (j > lo[1]) on_perim |= (at(i,j-1,k,0) < Real(0.0));
-                    if (j < hi[1]) on_perim |= (at(i,j+1,k,0) < Real(0.0));
-                    if (on_perim) {
+                // Track head ROS and flame length for perimeter cells
+                // (any burned cell adjacent to an unburned neighbor qualifies as a perimeter cell).
+                bool on_perim = false;
+                if (i > lo[0]) on_perim |= (at(i-1,j,k,0) < Real(0.0));
+                if (i < hi[0]) on_perim |= (at(i+1,j,k,0) < Real(0.0));
+                if (j > lo[1]) on_perim |= (at(i,j-1,k,0) < Real(0.0));
+                if (j < hi[1]) on_perim |= (at(i,j+1,k,0) < Real(0.0));
+                
+                if (on_perim) {
+                    if (R_mf) {
                         Real r = R_arr(i, j, k, 0);
                         if (r > head_ros) head_ros = r;
+                    }
+                    if (flame_length_mf) {
+                        Real fl = FL_arr(i, j, k, 0);
+                        if (fl > max_fl) max_fl = fl;
                     }
                 }
             } else if (pv < Real(0.1) && pv >= Real(0.0)) {
@@ -917,6 +929,9 @@ inline void append_fire_stats(const MultiFab& phi,
     if (R_mf) {
         ParallelDescriptor::ReduceRealMax(head_ros);
     }
+    if (flame_length_mf) {
+        ParallelDescriptor::ReduceRealMax(max_fl);
+    }
     if (emissions_mf) {
         ParallelDescriptor::ReduceRealSum(sum_co2);
         ParallelDescriptor::ReduceRealSum(sum_co);
@@ -944,6 +959,7 @@ inline void append_fire_stats(const MultiFab& phi,
         << perim_km   << ","
         << n_active   << ","
         << head_ros   << ","
+        << max_fl     << ","
         << mean_co2   << ","
         << mean_co    << ","
         << mean_pm25  << "\n";

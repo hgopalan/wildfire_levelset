@@ -50,6 +50,7 @@ struct FireStatsRow {
     double perimeter_km;
     int    active_front;
     double head_ros_ms;
+    double max_flame_length_m;
     double co2_kg_m2;
     double co_kg_m2;
     double pm25_kg_m2;
@@ -73,7 +74,7 @@ inline std::vector<FireStatsRow> read_fire_stats_csv(const std::string& path)
         std::istringstream iss(line);
         FireStatsRow r{};
         if (iss >> r.step >> r.time_s >> r.burned_ha >> r.perimeter_km
-                >> r.active_front >> r.head_ros_ms
+                >> r.active_front >> r.head_ros_ms >> r.max_flame_length_m
                 >> r.co2_kg_m2 >> r.co_kg_m2 >> r.pm25_kg_m2) {
             rows.push_back(r);
         }
@@ -184,12 +185,13 @@ inline void write_fire_report_html(const InputParameters& inputs,
 
     // Summary values from last row
     double burned_ha_final   = 0.0, perim_km_final = 0.0;
-    double max_ros_ms        = 0.0, cum_co2        = 0.0;
+    double max_ros_ms        = 0.0, max_fl_m       = 0.0, cum_co2 = 0.0;
     if (!rows.empty()) {
         burned_ha_final = rows.back().burned_ha;
         perim_km_final  = rows.back().perimeter_km;
         for (const auto& r : rows) {
             if (r.head_ros_ms > max_ros_ms) max_ros_ms = r.head_ros_ms;
+            if (r.max_flame_length_m > max_fl_m) max_fl_m = r.max_flame_length_m;
             cum_co2 += r.co2_kg_m2;
         }
     }
@@ -304,6 +306,9 @@ inline void write_fire_report_html(const InputParameters& inputs,
     <div class="kpi"><div class="val">)";
     html << std::fixed << std::setprecision(3) << max_ros_ms;
     html << R"(</div><div class="lbl">Max Head ROS (m/s)</div></div>
+    <div class="kpi"><div class="val">)";
+    html << std::fixed << std::setprecision(2) << max_fl_m;
+    html << R"(</div><div class="lbl">Max Flame Length (m)</div></div>
     <div class="kpi"><div class="val">)";
     html << std::fixed << std::setprecision(4) << cum_co2;
     html << R"(</div><div class="lbl">Cumul. CO₂ (kg/m²)</div></div>
@@ -450,7 +455,7 @@ inline void write_fire_report_html(const InputParameters& inputs,
   <table>
     <thead><tr>
       <th>Step</th><th>Time (h)</th><th>Burned (ha)</th><th>Perim (km)</th>
-      <th>Active cells</th><th>Head ROS (m/min)</th>
+      <th>Active cells</th><th>Head ROS (m/min)</th><th>Max FL (m)</th>
       <th>CO₂ (kg/m²)</th><th>CO (kg/m²)</th><th>PM₂.₅ (kg/m²)</th>
     </tr></thead>
     <tbody>
@@ -463,6 +468,7 @@ inline void write_fire_report_html(const InputParameters& inputs,
              << "<td>" << std::fixed << std::setprecision(3) << r.perimeter_km << "</td>"
              << "<td>" << r.active_front << "</td>"
              << "<td>" << std::fixed << std::setprecision(4) << r.head_ros_ms * 60.0 << "</td>"
+             << "<td>" << std::fixed << std::setprecision(2) << r.max_flame_length_m << "</td>"
              << "<td>" << std::scientific << std::setprecision(3) << r.co2_kg_m2 << "</td>"
              << "<td>" << std::scientific << std::setprecision(3) << r.co_kg_m2 << "</td>"
              << "<td>" << std::scientific << std::setprecision(3) << r.pm25_kg_m2 << "</td>"
