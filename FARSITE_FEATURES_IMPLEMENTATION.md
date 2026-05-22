@@ -1,6 +1,6 @@
 # FARSITE-Compatible Features Implementation Summary
 
-This document summarizes the three new FARSITE-compatible features added to the wildfire_levelset toolkit.
+This document summarizes FARSITE-compatible features added to the wildfire_levelset toolkit.
 
 ## Feature 1: Fire Intensity Class Raster
 
@@ -152,18 +152,143 @@ smoke_plume.stability_class = D
 
 ---
 
+## Feature 4: FARSITE Temporal Fire Acceleration Model
+
+### Overview
+Implements the full FARSITE temporal acceleration model (McAlpine & Wakimoto 1991 / VanWagner's equation) with per-cell temporal tracking and wind-onset time-lag capability. Models the delayed approach to quasi-steady-state spread rate in small fires or after wind changes.
+
+### Implementation
+- **Modified file**: `src/fire_acceleration.H`
+  - `apply_fire_acceleration_size_based()`: Original Catchpole et al. 1992 size-based model
+  - `apply_fire_acceleration_temporal()`: New FARSITE temporal model with VanWagner's equation
+  - `apply_fire_acceleration()`: Main dispatch function
+- **Modified files**:
+  - `src/parse_inputs.H`: Extended `AccelerationParams` with temporal model parameters
+  - `src/parse_inputs.cpp`: Added parameter initialization and validation
+  - `src/multifab_setup.H`: Added `accel_state_mf` for per-cell state tracking
+  - `src/main.cpp`: Initialize temporal state and pass dt to acceleration function
+  - `docs/usage.rst`: Comprehensive documentation of both models
+
+### Models
+
+#### Size-Based Model (Catchpole et al. 1992)
+```
+α = 1 - exp(-r_fire / L_acc)
+R_eff = α × R_QSS
+
+where r_fire = √(A_burned / π)
+```
+
+- Global scaling based on current fire size
+- Simple and computationally efficient
+- Fire achieves ~63% of QSS at r_fire = L_acc, ~95% at r_fire = 3×L_acc
+
+#### FARSITE Temporal Model (McAlpine & Wakimoto 1991)
+```
+R(t) = R_E × (1 - exp(-A × t))
+
+where:
+  A = A_point (0.115 1/min) for small fires (perim < 402.3 m)
+  A = A_line (0.300 1/min) for large fires (perim >= 402.3 m)
+  t = elapsed time since entering current acceleration state [s]
+```
+
+- Per-cell temporal tracking of acceleration state
+- Automatic switching between point and line acceleration constants
+- Each cell tracks: current ROS, elapsed time, equilibrium ROS
+
+#### Wind-Onset Time-Lag Extension
+```
+When R_E changes (wind change):
+  R_target(t) = R_prev + (R_E - R_prev) × (1 - exp(-dt/tau_wind))
+  R(t) = R_target × (1 - exp(-A × t_accel))
+```
+
+- Optional wind-lag model for realistic wind response
+- Fire ROS ramps up exponentially after wind changes
+- Controlled by time constant tau_wind (default: 180 s = 3 min)
+
+### Usage
+
+Enable size-based model (backward compatible):
+```
+acceleration.enable = 1
+acceleration.L_acc = 50.0
+```
+
+Enable FARSITE temporal model:
+```
+acceleration.enable = 1
+acceleration.use_temporal = 1
+acceleration.A_point = 0.115
+acceleration.A_line = 0.300
+acceleration.perim_limit = 402.3
+```
+
+Enable wind-onset time-lag:
+```
+acceleration.enable = 1
+acceleration.use_temporal = 1
+acceleration.enable_wind_lag = 1
+acceleration.tau_wind = 180.0
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `acceleration.enable` | 0 | Enable acceleration model (1=yes, 0=no) |
+| `acceleration.use_temporal` | 0 | 0=size-based, 1=FARSITE temporal |
+| `acceleration.L_acc` | 50.0 m | Length scale for size-based model |
+| `acceleration.A_point` | 0.115 1/min | Point ignition acceleration constant |
+| `acceleration.A_line` | 0.300 1/min | Line ignition acceleration constant |
+| `acceleration.perim_limit` | 402.3 m | Perimeter threshold (20 chains) |
+| `acceleration.enable_wind_lag` | 0 | Enable wind-onset time-lag (1=yes, 0=no) |
+| `acceleration.tau_wind` | 180.0 s | Wind response time constant (3 min) |
+
+### Validation
+
+Regression tests created in `regtest/surface_spread/fire_acceleration/`:
+- **inputs.size_based**: Validates size-based model (Catchpole et al. 1992)
+- **inputs.temporal_point**: Validates FARSITE temporal model with point ignition
+- **inputs.wind_lag**: Validates wind-onset time-lag capability
+
+Expected behavior:
+- Point ignition: ~20 min to reach 90% equilibrium (A = 0.115 1/min)
+- Line ignition: ~8 min to reach 90% equilibrium (A = 0.300 1/min)
+- Wind-lag: ROS lags behind equilibrium by ~3×tau_wind after sudden wind increase
+
+### References
+- McAlpine, R.S. & Wakimoto, R.H. (1991). "The acceleration of fire from point source to equilibrium spread." *Forest Science*, 37(5), 1314–1337.
+- Alexander, M.E., Stocks, B.J. & Lawson, B.D. (1992). "Fire behavior in Black Spruce-lichen woodland." Info. Rep. NOR-X-310. USDA/CFS.
+- Catchpole, E.A., de Mestre, N.J. & Gill, A.M. (1992). "Intensity of fire at its perimeter." *Australian Journal of Ecology*, 17(1), 1–4.
+- Finney, M.A. (1998/2004). "FARSITE: Fire Area Simulator." USDA Forest Service RMRS-RP-4.
+
+### Status
+✅ Size-based model implemented and working
+✅ FARSITE temporal model implemented with per-cell state tracking
+✅ Wind-onset time-lag capability implemented
+✅ Regression tests created
+✅ Documentation updated
+
+---
+
 ## Files Modified
 
 ### New Files
 1. `src/fire_intensity_class.H` - Fire intensity classification functions
 2. `src/spot_ignition_delay.H` - Ignition delay model functions
+3. `regtest/surface_spread/fire_acceleration/` - Fire acceleration regression tests
 
 ### Modified Files
-1. `src/multifab_setup.H` - Added fire_intensity_class_mf MultiFab
+1. `src/multifab_setup.H` - Added fire_intensity_class_mf MultiFab and accel_state_mf
 2. `src/plot_results.H` - Added fire intensity class computation and output
-3. `src/parse_inputs.H` - Added parameters for all three features
+3. `src/parse_inputs.H` - Added parameters for all features including acceleration
 4. `src/parse_inputs.cpp` - Added parameter initialization and validation
 5. `src/smoke_plume_rise.H` - Added Pasquill-Gifford stability correction
+6. `src/fire_acceleration.H` - Complete rewrite with FARSITE temporal model
+7. `src/main.cpp` - Initialize acceleration state and pass dt to acceleration function
+8. `docs/usage.rst` - Comprehensive documentation for all features
 
 ---
 
