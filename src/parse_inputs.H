@@ -167,6 +167,27 @@ struct InputParameters {
         amrex::Real gaussian_sigma;          // sigma for SDF smoothing of FARSITE spread points [m]
     } farsite;
     
+    // Cell size effects correction parameters (FARSITE only)
+    // Empirical correction for fire spread rate based on cell/grid resolution.
+    // Accounts for sub-grid fire behavior: finer grids capture more of the fire
+    // front geometry, leading to higher effective spread rates.
+    // FARSITE Reference: Finney (1998) Section 3.4; based on empirical observations
+    // that fire spread speed depends on grid resolution.
+    //
+    // Correction formula: R_corrected = R_base × (dx_ref / dx_geom)^correction_exponent
+    // where dx_geom = min(dx, dy [, dz]) is the actual grid cell size.
+    //
+    // - Smaller grid → R_corrected > R_base (fires spread faster at high resolution)
+    // - Larger grid  → R_corrected < R_base (fires spread slower at low resolution)
+    //
+    // Applied only when propagation_method = "farsite" and enable = 1.
+    // Not applied to levelset propagation (scale-independent).
+    struct CellSizeParams {
+        int enable;                         // 1 to enable cell size correction, 0 to disable (default: 0)
+        amrex::Real dx_ref;                 // reference cell size [m] (default: 30.0)
+        amrex::Real correction_exponent;    // power-law exponent (default: 0.1)
+    } cellsize;
+    
     // Firebrand spotting model parameters
     struct SpottingParams {
         int enable;                          // 1 to enable spotting, 0 to disable (default: 0)

@@ -278,6 +278,23 @@ void parse_inputs(InputParameters& p)
         }
     }
 
+    // -------- Cell size effects correction parameters (FARSITE only) --------
+    p.cellsize.enable = 0;                       pp.query("cellsize.enable", p.cellsize.enable);
+    p.cellsize.dx_ref = 30.0;                    pp.query("cellsize.dx_ref", p.cellsize.dx_ref);
+    p.cellsize.correction_exponent = 0.1;        pp.query("cellsize.correction_exponent", p.cellsize.correction_exponent);
+    
+    // Validate cell size correction parameters
+    if (p.cellsize.enable == 1) {
+        if (p.cellsize.dx_ref <= 0.0) {
+            amrex::Abort("cellsize.dx_ref must be greater than 0");
+        }
+        if (p.cellsize.correction_exponent < 0.0 || p.cellsize.correction_exponent > 1.0) {
+            amrex::Abort("cellsize.correction_exponent must be in [0.0, 1.0]");
+        }
+        Print() << "Cell size effects correction enabled: dx_ref = " << p.cellsize.dx_ref 
+                << " m, exponent = " << p.cellsize.correction_exponent << "\n";
+    }
+
     // -------- Firebrand spotting model parameters --------
     p.spotting.enable = 0;                       pp.query("spotting.enable", p.spotting.enable);
     p.spotting.P_base = 0.02;                    pp.query("spotting.P_base", p.spotting.P_base);

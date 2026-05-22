@@ -432,13 +432,15 @@ int main(int argc, char* argv[])
             compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
                                     terrain_slopes.get());
         } else {
-            // Compute Rothermel wind speed R
+            // Compute Rothermel wind speed R (levelset path - no cell size correction)
             compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
                                  terrain_slopes.get(),
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size,
                                  has_spatial_crown ? &cc_mf : nullptr,
-                                 has_spatial_crown ? &canopy_height_mf : nullptr);
+                                 has_spatial_crown ? &canopy_height_mf : nullptr,
+                                 0,  // cellsize_enable = 0 (disabled for levelset)
+                                 30.0, 0.1);  // default parameters (unused)
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "Computed dt = " << dt << "\n";
@@ -479,7 +481,9 @@ int main(int argc, char* argv[])
                                  !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                  d_fuel_table_ptr, fuel_table_size,
                                  has_spatial_crown ? &cc_mf : nullptr,
-                                 has_spatial_crown ? &canopy_height_mf : nullptr);
+                                 has_spatial_crown ? &canopy_height_mf : nullptr,
+                                 0,  // cellsize_enable = 0 (disabled for MTT)
+                                 30.0, 0.1);  // default parameters (unused)
         }
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "MTT: pre-computing arrival times (dt = " << dt << ") ...\n";
@@ -522,7 +526,10 @@ int main(int argc, char* argv[])
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                d_fuel_table_ptr, fuel_table_size,
                                has_spatial_crown ? &cc_mf : nullptr,
-                               has_spatial_crown ? &canopy_height_mf : nullptr);
+                               has_spatial_crown ? &canopy_height_mf : nullptr,
+                               inputs.cellsize.enable,  // cellsize_enable
+                               inputs.cellsize.dx_ref,  // cellsize_dx_ref
+                               inputs.cellsize.correction_exponent);  // cellsize_correction_exp
       }
       amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
@@ -1073,7 +1080,10 @@ int main(int argc, char* argv[])
                                !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                                d_fuel_table_ptr, fuel_table_size,
                                has_spatial_crown ? &cc_mf : nullptr,
-                               has_spatial_crown ? &canopy_height_mf : nullptr);
+                               has_spatial_crown ? &canopy_height_mf : nullptr,
+                               inputs.cellsize.enable,  // cellsize_enable
+                               inputs.cellsize.dx_ref,  // cellsize_dx_ref
+                               inputs.cellsize.correction_exponent);  // cellsize_correction_exp
       }
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       // Update flame-length exceedance raster (element-wise max over time)
