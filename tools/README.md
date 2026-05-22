@@ -34,6 +34,38 @@ python3 tools/wrf_wind_reader.py --wrf-file wrfout_d01 --wind wind.csv \
 
 ---
 
+### `hrrr_wind_reader.py` — HRRR Wind Extraction
+
+Reads 10-m U and V wind components from NOAA's High Resolution Rapid Refresh
+(HRRR) forecast/analysis data for a specified lat/lon bounding box and writes
+one or more CSV wind files for use as `velocity_file` in the solver.
+
+```bash
+# Single analysis time
+python3 tools/hrrr_wind_reader.py \
+    --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5 \
+    --date-time "2023-08-15 14:00" \
+    --wind wind.csv
+
+# Custom grid resolution (default: 100 m)
+python3 tools/hrrr_wind_reader.py \
+    --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5 \
+    --date-time "2023-08-15 14:00" \
+    --wind wind.csv \
+    --grid-resolution 30
+
+# Multiple forecast times (f00, f01, f02, f03)
+python3 tools/hrrr_wind_reader.py \
+    --lat-min 40 --lat-max 40.5 --lon-min -105 --lon-max -104.5 \
+    --date-time "2023-08-15 14:00" \
+    --wind wind.csv \
+    --time-indices 0 1 2 3
+```
+
+**Dependencies**: `herbie-data`, `numpy`, `pyproj`; `scipy` for smoother interpolation.
+
+---
+
 ### `srtm_terrain_reader.py` — SRTM Terrain Download
 
 Downloads SRTM1 (30 m) elevation data for a lat/lon bounding box and writes a
@@ -449,18 +481,19 @@ lat, lon = utm_to_latlon(330000, 3775000, zone_number=11, northern=True)
 Install all optional Python dependencies with:
 
 ```bash
-pip install numpy netCDF4 pyproj rasterio elevation requests scipy matplotlib shapely pyshp
+pip install numpy netCDF4 pyproj rasterio elevation requests scipy matplotlib shapely pyshp herbie-data
 ```
 
 | Package | Used by |
 |---------|---------|
-| `numpy` | `wrf_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py`, `plot_burn_probability.py`, `behavior_matrix.py` (optional) |
+| `numpy` | `wrf_wind_reader.py`, `hrrr_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py`, `plot_burn_probability.py`, `behavior_matrix.py` (optional) |
 | `netCDF4` | `wrf_wind_reader.py` (WRF wind extraction) |
-| `pyproj` | `wrf_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `utm_convert.py`, `perimeter_to_shapefile.py` |
+| `herbie-data` | `hrrr_wind_reader.py` (HRRR wind extraction) |
+| `pyproj` | `wrf_wind_reader.py`, `hrrr_wind_reader.py`, `srtm_terrain_reader.py`, `landscape_writer.py`, `utm_convert.py`, `perimeter_to_shapefile.py` |
 | `rasterio` | `srtm_terrain_reader.py`, `landscape_writer.py`, `plotfile_to_geotiff.py`, `plot_burn_probability.py` (optional) |
 | `elevation` | `srtm_terrain_reader.py` (SRTM download) |
 | `requests` | `landscape_writer.py` (LANDFIRE API) |
-| `scipy` | `wrf_wind_reader.py` (IDW interpolation), `ensemble_burn_probability.py` (LHS) |
+| `scipy` | `wrf_wind_reader.py`, `hrrr_wind_reader.py` (interpolation), `ensemble_burn_probability.py` (LHS) |
 | `matplotlib` | `plotfile_to_geotiff.py`, `isochrone_extractor.py`, `plot_burn_probability.py`, `fire_size_summary.py`, `ember_cascade_analysis.py` (all optional) |
 | `shapely` | `perimeter_to_shapefile.py` (convex hull) |
 | `pyshp` | `perimeter_to_shapefile.py` (shapefile writing, **required**) |
