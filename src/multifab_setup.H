@@ -111,6 +111,10 @@ struct WildfireFields {
     // ---- Solar radiation ----
     MultiFab shade_fraction_mf; // Per-cell shade fraction [-] (0=sun, 1=shade)
 
+    // ---- Weather fields (multi-station interpolation) ----
+    MultiFab temperature_mf;    // Per-cell air temperature [°C] (1 comp)
+    MultiFab humidity_mf;       // Per-cell relative humidity [%] (1 comp)
+
     // ---- Terrain and landscape fields ----
     MultiFab elevation_mf;  // Ground elevation [m]
     MultiFab slope_mf;      // Terrain slope [degrees]
@@ -233,7 +237,9 @@ struct WildfireFields {
         // Spot catching probability
         , spot_catch_prob_mf   (ba, dm, 1,                 0)
         // Spotfire lineage
-        , spotting_lineage_mf  (ba, dm, SPOT_LINEAGE_NCOMP, 0)
+        , spotting_lineage_mf(ba, dm, SPOT_LINEAGE_NCOMP, 0)
+        , temperature_mf(ba, dm, 1, 0)
+        , humidity_mf(ba, dm, 1, 0)
         , fl_exceedance_mf     (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
@@ -278,6 +284,10 @@ struct WildfireFields {
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_d100), 2, 1, 0);
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lh),   3, 1, 0);
         spatial_moisture_mf.setVal(static_cast<Real>(inputs.rothermel.M_lw),   4, 1, 0);
+
+        // Default T/RH values (updated each timestep by multi_wtr or diurnal_moisture)
+        temperature_mf.setVal(Real(25.0));  // 25°C default
+        humidity_mf.setVal(Real(30.0));     // 30% RH default
         plume_rise_mf.setVal(Real(0.0));
         // Spread direction and spot catching probability
         spread_dir_mf      .setVal(Real(0.0));

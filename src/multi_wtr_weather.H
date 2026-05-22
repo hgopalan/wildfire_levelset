@@ -28,6 +28,11 @@
 //   Wind U and V components are interpolated separately (IDW in Cartesian
 //   components), then converted back to speed and direction.
 //
+// Temperature and RH interpolation:
+//   Temperature (T_C) and relative humidity (RH_pct) are interpolated as
+//   scalar fields using the same IDW weights. This enables spatially-varying
+//   fuel moisture computation when used with the diurnal EMC model.
+//
 // Usage:
 //   MultiWtrWeather mww;
 //   load_multi_wtr_stations("stations.csv", mww,
@@ -35,6 +40,11 @@
 //
 //   // At each timestep:
 //   apply_multi_wtr_to_vel(vel_mf, geom, mww, sim_time_s);
+//
+//   // For spatial T/RH (diurnal moisture model):
+//   apply_multi_wtr_TRH_to_spatial(T_mf, RH_mf, geom, mww, sim_time_s);
+//
+//   // Or for domain-mean T/RH (legacy):
 //   auto [T_mean, RH_mean] = mww.get_domain_TRH_at_time(sim_time_s);
 //
 // References:
@@ -269,6 +279,99 @@ inline void apply_multi_wtr_to_vel(amrex::MultiFab& vel_mf,
                                       : amrex::Real(0.0);
             v(i, j, k, 0) = ux_sum * inv_w;
             v(i, j, k, 1) = uy_sum * inv_w;
+        });
+    }
+}
+
+// ============================================================================
+// apply_multi_wtr_TRH_to_spatial
+//
+// Updates spatial temperature and relative humidity MultiFabs using
+// IDW-interpolated station weather data. Each station provides (T, RH) at
+// time t_s from its WtrWeatherData. The T and RH values are IDW-interpolated
+// over the domain and stored in the provided MultiFabs.
+//
+// This enables spatially-varying EMC computation for the diurnal moisture
+// model, replacing the domain-mean fallback.
+//
+// Parameters:
+//   T_mf         – temperature MultiFab [°C] (1 component)
+//   RH_mf        – relative humidity MultiFab [%] (1 component)
+//   geom         – AMReX geometry
+//   mww          – multi-station container
+//   t_s          – current simulation time [s]
+// ============================================================================
+inline void apply_multi_wtr_TRH_to_spatial(amrex::MultiFab& T_mf,
+                                            amrex::MultiFab& RH_mf,
+                                            const amrex::Geometry& geom,
+                                            const MultiWtrWeather& mww,
+                                            double t_s)
+{
+    if (mww.empty()) return;
+
+    const int nst = static_cast<int>(mww.stations.size());
+    const double idw_p = mww.idw_power;
+    const double idw_e = mww.idw_eps;
+
+    // Collect per-station (x, y, T, RH) on host
+    std::vector<double> sx(nst), sy(nst), sT(nst), sRH(nst);
+    for (int k = 0; k < nst; ++k) {
+        sx[k] = mww.stations[k].x_m;
+        sy[k] = mww.stations[k].y_m;
+        auto [T_st, RH_st] = mww.stations[k].data.get_TRH_at_time(t_s);
+        sT[k]  = T_st;
+        sRH[k] = RH_st;
+    }
+
+    // Copy station data to device
+    amrex::Gpu::DeviceVector<amrex::Real> d_sx(nst), d_sy(nst), d_sT(nst), d_sRH(nst);
+    for (int k = 0; k < nst; ++k) {
+        d_sx[k]  = static_cast<amrex::Real>(sx[k]);
+        d_sy[k]  = static_cast<amrex::Real>(sy[k]);
+        d_sT[k]  = static_cast<amrex::Real>(sT[k]);
+        d_sRH[k] = static_cast<amrex::Real>(sRH[k]);
+    }
+    const amrex::Real* psx  = d_sx.data();
+    const amrex::Real* psy  = d_sy.data();
+    const amrex::Real* psT  = d_sT.data();
+    const amrex::Real* psRH = d_sRH.data();
+    const int nst_g = nst;
+    const amrex::Real pidw = static_cast<amrex::Real>(idw_p);
+    const amrex::Real peps = static_cast<amrex::Real>(idw_e);
+
+    const auto dx   = geom.CellSizeArray();
+    const auto plo  = geom.ProbLoArray();
+
+    // Iterate over grid boxes
+    for (amrex::MFIter mfi(T_mf); mfi.isValid(); ++mfi) {
+        const amrex::Box& bx = mfi.validbox();
+        auto T_arr  = T_mf.array(mfi);
+        auto RH_arr = RH_mf.array(mfi);
+        const auto gdx  = dx;
+        const auto gplo = plo;
+
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const amrex::Real cx = gplo[0] + (i + amrex::Real(0.5)) * gdx[0];
+            const amrex::Real cy = gplo[1] + (j + amrex::Real(0.5)) * gdx[1];
+
+            amrex::Real w_sum  = amrex::Real(0.0);
+            amrex::Real T_sum  = amrex::Real(0.0);
+            amrex::Real RH_sum = amrex::Real(0.0);
+            for (int s = 0; s < nst_g; ++s) {
+                const amrex::Real dx_ = cx - psx[s];
+                const amrex::Real dy_ = cy - psy[s];
+                amrex::Real dist = std::sqrt(dx_*dx_ + dy_*dy_);
+                if (dist < peps) dist = peps;  // avoid divide-by-zero
+                const amrex::Real w = amrex::Real(1.0) / std::pow(dist, pidw);
+                w_sum  += w;
+                T_sum  += w * psT[s];
+                RH_sum += w * psRH[s];
+            }
+            const amrex::Real inv_w = (w_sum > amrex::Real(0.0))
+                                      ? amrex::Real(1.0) / w_sum
+                                      : amrex::Real(0.0);
+            T_arr(i, j, k)  = T_sum  * inv_w;
+            RH_arr(i, j, k) = RH_sum * inv_w;
         });
     }
 }

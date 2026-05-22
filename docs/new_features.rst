@@ -484,8 +484,12 @@ Station list CSV format (``multi_wtr_file``)::
    3, 332500.0, 3780000.0, station3.wtr
 
 At each timestep, the U and V wind components from each station are IDW-
-interpolated to every grid cell, and the domain-mean T/RH from all stations
-are used to update the global diurnal moisture model.
+interpolated to every grid cell. Temperature and relative humidity are also
+spatially interpolated using IDW when ``diurnal_moisture.enable = 1``, creating
+spatially-varying fuel moisture content across the domain. When the solar
+radiation model is enabled (``solar_radiation.enable = 1``), the shade-adjusted
+EMC computation uses the per-cell interpolated T and RH values instead of the
+diurnal sinusoidal model.
 
 IDW formula:
 
@@ -496,7 +500,26 @@ IDW formula:
 
 where :math:`d_i` is the distance from the cell to station :math:`i`,
 :math:`p` is the IDW power exponent (``multi_wtr_idw_power``, default 2.0),
-and :math:`V_i` is the wind component at station :math:`i` at the current time.
+and :math:`V_i` is the value (wind component, temperature, or RH) at station
+:math:`i` at the current time.
+
+**Spatial Interpolation Details**:
+
+The following fields are spatially interpolated via IDW:
+
+- **Wind U and V components**: Interpolated in Cartesian components then
+  converted to speed and direction.
+- **Temperature [°C]**: Spatially interpolated as a scalar field.
+- **Relative Humidity [%]**: Spatially interpolated as a scalar field.
+
+When ``diurnal_moisture.enable = 1`` is set, the spatially-interpolated T and RH
+values are used to compute per-cell equilibrium moisture content (EMC) via the
+Nelson (2000) model, creating spatially-varying fuel moisture across the domain.
+
+When combined with ``solar_radiation.enable = 1``, the shade-adjusted EMC
+computation uses the per-cell T/RH MultiFabs instead of the global diurnal
+sinusoidal model, enabling realistic spatial moisture gradients from weather
+station data.
 
 **Parameters**:
 
@@ -511,8 +534,22 @@ and :math:`V_i` is the wind component at station :math:`i` at the current time.
    * - ``multi_wtr_idw_power``
      - IDW exponent :math:`p` (default: 2.0)
 
-When ``multi_wtr_file`` is set, the diurnal moisture model is automatically
-enabled and the domain-mean T/RH tracks the station-averaged IDW centroid.
+When ``multi_wtr_file`` is set:
+
+- The diurnal moisture model is automatically enabled.
+- Spatial T and RH interpolation is performed each timestep via
+  ``apply_multi_wtr_TRH_to_spatial()``.
+- The domain-mean T/RH (simple average of all stations) is also computed as a
+  fallback for any global moisture parameters that may still use scalar values.
+
+**Functions**:
+
+- ``load_multi_wtr_stations()`` — Parses station list and loads .wtr files
+- ``apply_multi_wtr_to_vel()`` — IDW interpolation of wind to velocity MultiFab
+- ``apply_multi_wtr_TRH_to_spatial()`` — IDW interpolation of T/RH to MultiFabs
+- ``get_domain_TRH_at_time()`` — Domain-mean T/RH (fallback for scalar use)
+
+**Test**: ``regtest/moisture/multi_wtr_spatial/``
 
 Burn-Period Controls (Diurnal Active-Spread Window)
 ----------------------------------------------------
