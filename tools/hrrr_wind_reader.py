@@ -155,9 +155,11 @@ def _fetch_hrrr_data(date_time_str, time_index, lat_min, lat_max, lon_min, lon_m
         )
 
         # Download and parse wind components
-        # The variable search strings find the 10m U and V components
-        u_data = hrrr.xarray(":10 m U wind component:", backend_kwargs={'engine': 'cfgrib'})
-        v_data = hrrr.xarray(":10 m V wind component:", backend_kwargs={'engine': 'cfgrib'})
+        # The variable search strings find the 10m U and V components.
+        # Use cfgrib engine for reading GRIB2 format HRRR data files.
+        backend_kwargs = {'engine': 'cfgrib'}
+        u_data = hrrr.xarray(":10 m U wind component:", backend_kwargs=backend_kwargs)
+        v_data = hrrr.xarray(":10 m V wind component:", backend_kwargs=backend_kwargs)
 
         # Extract the data variables (first available variable in each)
         u_var_name = list(u_data.data_vars)[0] if u_data.data_vars else None
@@ -194,8 +196,8 @@ def _fetch_hrrr_data(date_time_str, time_index, lat_min, lat_max, lon_min, lon_m
             lats_2d, lons_2d = lat_coords, lon_coords
 
         # Clip to bounding box
-        mask = (lons_2d >= lon_min) & (lons_2d <= lon_max) & \
-               (lats_2d >= lat_min) & (lats_2d <= lat_max)
+        mask = ((lons_2d >= lon_min) & (lons_2d <= lon_max) &
+                (lats_2d >= lat_min) & (lats_2d <= lat_max))
 
         u_clipped = u_field[mask]
         v_clipped = v_field[mask]
