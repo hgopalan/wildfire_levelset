@@ -214,7 +214,7 @@ inline void apply_fire_acceleration_temporal(MultiFab&       R_mf,
                     // Wind increase: apply exponential lag
                     // New target approaches R_E with time constant tau_wind
                     // R_target(t) = R_prev + (R_E - R_prev) × (1 - exp(-dt/tau_wind))
-                    const Real lag_factor = Real(1.0) - amrex::Math::exp(-dt_loc / tau_wind);
+                    const Real lag_factor = Real(1.0) - std::exp(-dt_loc / tau_wind);
                     const Real R_target = R_prev_eq + (R_E - R_prev_eq) * lag_factor;
                     
                     // Start new acceleration towards lagged target
@@ -229,7 +229,7 @@ inline void apply_fire_acceleration_temporal(MultiFab&       R_mf,
 
             // VanWagner acceleration equation: R(t) = R_E × (1 - exp(-A × t))
             t_elapsed += dt_loc;
-            R_curr = R_prev_eq * (Real(1.0) - amrex::Math::exp(-A_loc * t_elapsed));
+            R_curr = R_prev_eq * (Real(1.0) - std::exp(-A_loc * t_elapsed));
 
             // Clamp to equilibrium (avoid overshoot due to numerical error)
             if (R_curr > R_prev_eq) R_curr = R_prev_eq;

@@ -751,20 +751,98 @@ inline std::map<std::string, FuelModel> get_fuel_database() {
 }
 
 // ============================================================================
-// Lookup fuel model by name (case-insensitive)
+// Lookup fuel model by name, numeric code, or alias (case-insensitive)
+// ============================================================================
+// Supports:
+//   - Direct names: FM1, FM2, GR1, GR2, etc.
+//   - Numeric codes: 1 → FM1, 2 → FM2, 101 → GR1, etc.
+//   - Common aliases: SHORT_GRASS → FM1, CHAPARRAL → FM4, GRASS → FM3
 // ============================================================================
 inline bool lookup_fuel_model(const std::string& fuel_name, FuelModel& out_model) {
     static std::map<std::string, FuelModel> database = get_fuel_database();
+    
+    // Build alias map (static, computed once)
+    static std::map<std::string, std::string> aliases = {
+        // Anderson 13 common aliases
+        {"SHORT_GRASS", "FM1"},
+        {"GRASS", "FM3"},
+        {"TALL_GRASS", "FM3"},
+        {"CHAPARRAL", "FM4"},
+        {"BRUSH", "FM5"},
+        {"DORMANT_BRUSH", "FM6"},
+        {"SOUTHERN_ROUGH", "FM7"},
+        {"TIMBER_LITTER", "FM8"},
+        {"CLOSED_TIMBER", "FM8"},
+        {"HARDWOOD_LITTER", "FM9"},
+        {"TIMBER_UNDERSTORY", "FM10"},
+        {"LIGHT_SLASH", "FM11"},
+        {"MEDIUM_SLASH", "FM12"},
+        {"HEAVY_SLASH", "FM13"},
+        // Scott & Burgan 40 common aliases
+        {"GRASS_SHORT", "GR1"},
+        {"GRASS_LOW", "GR2"},
+        {"GRASS_MODERATE", "GR3"},
+        {"GRASS_MODERATE_TALL", "GR4"},
+        {"SHRUB_LOW", "SH1"},
+        {"SHRUB_MODERATE", "SH2"}
+    };
     
     // Convert to uppercase for case-insensitive lookup
     std::string upper_name = fuel_name;
     std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(),
                    [](unsigned char c) { return std::toupper(c); });
     
+    // Try direct lookup first
     auto it = database.find(upper_name);
     if (it != database.end()) {
         out_model = it->second;
         return true;
+    }
+    
+    // Try numeric code conversion (Anderson 13: 1-13 → FM1-FM13)
+    try {
+        int code = std::stoi(upper_name);
+        
+        // Anderson 13 codes (1-13)
+        if (code >= 1 && code <= 13) {
+            std::string key = "FM" + std::to_string(code);
+            auto fm_it = database.find(key);
+            if (fm_it != database.end()) {
+                out_model = fm_it->second;
+                return true;
+            }
+        }
+        
+        // Scott & Burgan 40 codes (101-204)
+        if (code >= 101) {
+            std::string key;
+            if      (code >= 101 && code <= 109) key = "GR" + std::to_string(code - 100);
+            else if (code >= 121 && code <= 124) key = "GS" + std::to_string(code - 120);
+            else if (code >= 141 && code <= 149) key = "SH" + std::to_string(code - 140);
+            else if (code >= 161 && code <= 165) key = "TU" + std::to_string(code - 160);
+            else if (code >= 181 && code <= 189) key = "TL" + std::to_string(code - 180);
+            else if (code >= 201 && code <= 204) key = "SB" + std::to_string(code - 200);
+            
+            if (!key.empty()) {
+                auto fb_it = database.find(key);
+                if (fb_it != database.end()) {
+                    out_model = fb_it->second;
+                    return true;
+                }
+            }
+        }
+    } catch (const std::exception&) {
+        // Not a numeric code, continue to alias lookup
+    }
+    
+    // Try alias lookup
+    auto alias_it = aliases.find(upper_name);
+    if (alias_it != aliases.end()) {
+        auto db_it = database.find(alias_it->second);
+        if (db_it != database.end()) {
+            out_model = db_it->second;
+            return true;
+        }
     }
     
     return false;
@@ -904,7 +982,9 @@ inline void print_available_fuel_models() {
     amrex::Print() << "║ SLASH-BLOWDOWN:    SB1, SB2, SB3, SB4                                 ║\n";
     amrex::Print() << "╠════════════════════════════════════════════════════════════════════╣\n";
     amrex::Print() << "║ Usage: Add 'rothermel.fuel_model=FM1' to command line              ║\n";
-    amrex::Print() << "║        Also accepts: 1, SHORT_GRASS, GRASS, CHAPARRAL, GR2, etc.  ║\n";
+    amrex::Print() << "║        Also accepts numeric codes: 1, 2, 3, ..., 101, 102, ...     ║\n";
+    amrex::Print() << "║        Also accepts aliases: SHORT_GRASS, GRASS, CHAPARRAL, etc.   ║\n";
+    amrex::Print() << "║        Examples: FM1, 1, SHORT_GRASS, GR2, 101, GRASS_SHORT        ║\n";
     amrex::Print() << "║ Landscape fuel type: set 'rothermel.landscape_fuel_type=13' or    ║\n";
     amrex::Print() << "║        '=40' to match the FBFM system in the landscape file.       ║\n";
     amrex::Print() << "╚════════════════════════════════════════════════════════════════════╝\n";
