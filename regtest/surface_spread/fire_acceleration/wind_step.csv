@@ -1,0 +1,4 @@
+# Wind schedule: step change at t=300s
+# time [s], speed [m/s], direction [degrees from north]
+0.0, 2.0, 90.0
+300.0, 10.0, 90.0

@@ -1055,12 +1055,37 @@ void parse_inputs(InputParameters& p)
     }
 
     // -------- Feature 10: Fire acceleration model --------
-    p.acceleration.enable  = 0;       pp.query("acceleration.enable",  p.acceleration.enable);
-    p.acceleration.L_acc   = 50.0;    pp.query("acceleration.L_acc",   p.acceleration.L_acc);
+    p.acceleration.enable         = 0;       pp.query("acceleration.enable",         p.acceleration.enable);
+    p.acceleration.L_acc          = 50.0;    pp.query("acceleration.L_acc",          p.acceleration.L_acc);
+    p.acceleration.use_temporal   = 0;       pp.query("acceleration.use_temporal",   p.acceleration.use_temporal);
+    p.acceleration.A_point        = 0.115;   pp.query("acceleration.A_point",        p.acceleration.A_point);
+    p.acceleration.A_line         = 0.300;   pp.query("acceleration.A_line",         p.acceleration.A_line);
+    p.acceleration.perim_limit    = 402.3;   pp.query("acceleration.perim_limit",    p.acceleration.perim_limit);
+    p.acceleration.enable_wind_lag= 0;       pp.query("acceleration.enable_wind_lag",p.acceleration.enable_wind_lag);
+    p.acceleration.tau_wind       = 180.0;   pp.query("acceleration.tau_wind",       p.acceleration.tau_wind);
     if (p.acceleration.enable == 1) {
         if (p.acceleration.L_acc <= 0.0)
             amrex::Abort("acceleration.L_acc must be > 0 m");
-        Print() << "Fire acceleration model enabled: L_acc=" << p.acceleration.L_acc << " m\n";
+        if (p.acceleration.A_point <= 0.0)
+            amrex::Abort("acceleration.A_point must be > 0 1/min");
+        if (p.acceleration.A_line <= 0.0)
+            amrex::Abort("acceleration.A_line must be > 0 1/min");
+        if (p.acceleration.perim_limit < 0.0)
+            amrex::Abort("acceleration.perim_limit must be >= 0 m");
+        if (p.acceleration.tau_wind <= 0.0)
+            amrex::Abort("acceleration.tau_wind must be > 0 s");
+        Print() << "Fire acceleration model enabled: ";
+        if (p.acceleration.use_temporal == 1) {
+            Print() << "FARSITE temporal model (McAlpine & Wakimoto 1991)\n";
+            Print() << "  A_point=" << p.acceleration.A_point << " 1/min  A_line=" << p.acceleration.A_line << " 1/min\n";
+            Print() << "  perim_limit=" << p.acceleration.perim_limit << " m\n";
+            if (p.acceleration.enable_wind_lag == 1) {
+                Print() << "  Wind-onset time lag enabled: tau_wind=" << p.acceleration.tau_wind << " s\n";
+            }
+        } else {
+            Print() << "size-based model (Catchpole et al. 1992)\n";
+            Print() << "  L_acc=" << p.acceleration.L_acc << " m\n";
+        }
     }
 
     // -------- FMC seasonal schedule --------
