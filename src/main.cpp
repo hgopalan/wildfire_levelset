@@ -1226,7 +1226,7 @@ int main(int argc, char* argv[])
       // Scales R_mf to account for the slower spread of small fires or newly-changed
       // wind conditions before quasi-steady-state is reached.
       // When disabled (default) or fire is at equilibrium, this is a no-op.
-      apply_fire_acceleration(R_mf, phi, geom, inputs.acceleration, dt, 
+      apply_fire_acceleration(R_mf, phi, geom, inputs.acceleration, dt,
                               f.accel_state_mf.get());
 
       // ---- Aerial retardant suppression: scale R_mf in active drop zones ----

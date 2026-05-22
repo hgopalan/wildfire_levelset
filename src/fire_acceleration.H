@@ -204,8 +204,9 @@ inline void apply_fire_acceleration_temporal(MultiFab&       R_mf,
             Real R_prev_eq = state(i, j, k, 2);
 
             // Detect equilibrium ROS change (wind change or fuel change)
+            constexpr Real EQUILIBRIUM_CHANGE_THRESHOLD = Real(1.0e-6);
             const Real dR_eq = amrex::Math::abs(R_E - R_prev_eq);
-            const bool eq_changed = (dR_eq > eps * amrex::max(R_E, R_prev_eq, Real(1.0)));
+            const bool eq_changed = (dR_eq > EQUILIBRIUM_CHANGE_THRESHOLD * amrex::max(R_E, R_prev_eq, Real(1.0)));
 
             if (eq_changed) {
                 // Equilibrium changed — apply wind-lag or reset
