@@ -1445,11 +1445,18 @@ void parse_inputs(InputParameters& p)
         Print() << "  Simulation start hour: " << p.burn_period.sim_start_hour << ":00\n";
     }
 
-    // -------- Smoke plume-rise model (Briggs 1965 / 1969) --------
+    // -------- Smoke plume-rise model (Briggs 1965 / 1969 with Pasquill-Gifford stability) --------
     p.smoke_plume.enable = 0;        pp.query("smoke_plume.enable", p.smoke_plume.enable);
     p.smoke_plume.T_a    = 303.15;   pp.query("smoke_plume.T_a",    p.smoke_plume.T_a);
     p.smoke_plume.rho_a  = 1.20;     pp.query("smoke_plume.rho_a",  p.smoke_plume.rho_a);
     p.smoke_plume.Cp_a   = 1005.0;   pp.query("smoke_plume.Cp_a",   p.smoke_plume.Cp_a);
+    
+    // Pasquill-Gifford atmospheric stability class
+    p.smoke_plume.stability_class = "D";  // Default: neutral conditions
+    pp.query("smoke_plume.stability_class", p.smoke_plume.stability_class);
+    p.smoke_plume.use_stability_correction = 0;  // Default: off (use base Briggs)
+    pp.query("smoke_plume.use_stability_correction", p.smoke_plume.use_stability_correction);
+    
     if (p.smoke_plume.enable == 1) {
         if (p.smoke_plume.T_a <= 0.0)
             amrex::Abort("smoke_plume.T_a must be > 0 K");
@@ -1457,10 +1464,26 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("smoke_plume.rho_a must be > 0 kg/m³");
         if (p.smoke_plume.Cp_a <= 0.0)
             amrex::Abort("smoke_plume.Cp_a must be > 0 J/(kg·K)");
+        
+        // Validate stability class
+        if (p.smoke_plume.use_stability_correction == 1) {
+            std::string sc = p.smoke_plume.stability_class;
+            if (sc != "A" && sc != "a" && sc != "B" && sc != "b" &&
+                sc != "C" && sc != "c" && sc != "D" && sc != "d" &&
+                sc != "E" && sc != "e" && sc != "F" && sc != "f") {
+                amrex::Abort("smoke_plume.stability_class must be A, B, C, D, E, or F");
+            }
+        }
+        
         Print() << "Smoke plume-rise model (Briggs 1965) enabled:\n"
                 << "  T_a=" << p.smoke_plume.T_a << " K"
                 << "  rho_a=" << p.smoke_plume.rho_a << " kg/m3"
-                << "  Cp_a=" << p.smoke_plume.Cp_a << " J/(kg·K)\n";
+                << "  Cp_a=" << p.smoke_plume.Cp_a << " J/(kg·K)";
+        
+        if (p.smoke_plume.use_stability_correction == 1) {
+            Print() << "\n  Pasquill-Gifford stability class: " << p.smoke_plume.stability_class;
+        }
+        Print() << "\n";
     }
 
     // -------- KML perimeter export --------
