@@ -564,9 +564,11 @@ void parse_inputs(InputParameters& p)
     }
 
     // -------- Weise & Biging (1996) fire whirl model --------
-    p.weise_biging.enable  = 0;     pp.query("weise_biging.enable",  p.weise_biging.enable);
-    p.weise_biging.c_r     = 0.1;   pp.query("weise_biging.c_r",     p.weise_biging.c_r);
-    p.weise_biging.I_B_min = 1.0;   pp.query("weise_biging.I_B_min", p.weise_biging.I_B_min);
+    p.weise_biging.enable          = 0;     pp.query("weise_biging.enable",          p.weise_biging.enable);
+    p.weise_biging.c_r             = 0.1;   pp.query("weise_bibing.c_r",             p.weise_biging.c_r);
+    p.weise_biging.I_B_min         = 1.0;   pp.query("weise_biging.I_B_min",         p.weise_biging.I_B_min);
+    p.weise_biging.enhance_spotting = 0;    pp.query("weise_biging.enhance_spotting", p.weise_biging.enhance_spotting);
+    p.weise_biging.alpha           = 1.0;   pp.query("weise_biging.alpha",           p.weise_biging.alpha);
 
     if (p.weise_biging.enable == 1) {
         if (p.weise_biging.c_r <= 0.0)
@@ -576,6 +578,11 @@ void parse_inputs(InputParameters& p)
         Print() << "Weise & Biging (1996) fire whirl model enabled:\n";
         Print() << "  c_r=" << p.weise_biging.c_r
                 << "  I_B_min=" << p.weise_biging.I_B_min << " kW/m\n";
+        if (p.weise_biging.enhance_spotting == 1) {
+            if (p.weise_biging.alpha < 0.0)
+                amrex::Abort("weise_biging.alpha must be >= 0");
+            Print() << "  Vorticity-enhanced spotting enabled: alpha=" << p.weise_biging.alpha << "\n";
+        }
     }
 
     // -------- Viegas (2004) eruptive fire model --------

@@ -284,6 +284,8 @@ struct InputParameters {
         int enable;                          // 1 to enable, 0 to disable (default: 0)
         amrex::Real c_r;                     // whirl core radius-to-height ratio (default: 0.1)
         amrex::Real I_B_min;                 // minimum Byram fireline intensity to compute whirl [kW/m] (default: 1.0)
+        int enhance_spotting;                // 1 to enhance Albini spotting with whirl effects, 0 to disable (default: 0)
+        amrex::Real alpha;                   // spotting enhancement factor coefficient (default: 1.0)
     } weise_biging;
 
     // Viegas (2004) eruptive fire model parameters
