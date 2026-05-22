@@ -1,11 +1,12 @@
 // ============================================================================
-// Smoke Plume-Rise Model  (Briggs 1965 / 1969)
+// Smoke Plume-Rise Model  (Briggs 1965 / 1969 with Pasquill-Gifford stability)
 // ============================================================================
 //
 // Computes the effective smoke plume-rise height Δh [m] above the fire front
-// using the Briggs (1965/1969) buoyancy-dominated plume formula.  The result
-// is written per-cell into the `plume_rise_mf` MultiFab and optionally printed
-// as a domain maximum in the simulation log.
+// using the Briggs (1965/1969) buoyancy-dominated plume formula with optional
+// Pasquill-Gifford atmospheric stability class corrections (FARSITE-compatible).
+// The result is written per-cell into the `plume_rise_mf` MultiFab and
+// optionally printed as a domain maximum in the simulation log.
 //
 // Theory (Briggs 1969, eq. 3-10 / Slade 1968):
 //
@@ -26,6 +27,16 @@
 //        Δh = 1.6 × F_B^(1/3) × x_f^(2/3) / u   [m]
 //      where u = wind speed [m/s] (clamped to u_min = 0.5 m/s to avoid division by zero).
 //
+//   4. Pasquill-Gifford stability correction (optional, FARSITE-compatible):
+//        Δh_corrected = Δh × stability_factor
+//      where stability_factor depends on atmospheric stability class:
+//        A (extremely unstable): 1.20  (enhanced rise due to strong convection)
+//        B (moderately unstable): 1.10
+//        C (slightly unstable):   1.05
+//        D (neutral):             1.00  (no correction)
+//        E (slightly stable):     0.85  (suppressed rise)
+//        F (moderately stable):   0.70  (strongly suppressed rise)
+//
 // Only cells with positive fireline intensity (active fire front) receive a
 // non-zero plume rise.  All others are set to 0.
 //
@@ -35,6 +46,12 @@
 //   Briggs, G.A. (1969). Plume rise. USAEC Critical Review Series, TID-25075.
 //   Slade, D.H. (ed.) (1968). Meteorology and Atomic Energy.
 //     US Atomic Energy Commission, Division of Technical Information.
+//   Pasquill, F. (1961). The estimation of the dispersion of windborne material.
+//     Meteorological Magazine 90:33-49.
+//   Gifford, F.A. (1961). Use of routine meteorological observations for
+//     estimating atmospheric dispersion. Nuclear Safety 2:47-51.
+//   Turner, D.B. (1970). Workbook of atmospheric dispersion estimates.
+//     US EPA AP-26.
 //
 // Input prefix: "smoke_plume."
 // ============================================================================
@@ -50,6 +67,47 @@
 #include <AMReX_GpuLaunch.H>
 
 using namespace amrex;
+
+// ============================================================================
+// Get Pasquill-Gifford atmospheric stability correction factor
+//
+// Returns a multiplier to adjust plume rise based on atmospheric stability.
+// Based on Turner (1970) and FARSITE atmospheric stability conventions.
+//
+// Stability classes:
+//   A = extremely unstable (strong solar radiation, light winds) → 1.20
+//   B = moderately unstable                                      → 1.10
+//   C = slightly unstable                                        → 1.05
+//   D = neutral (overcast or moderate wind)                      → 1.00
+//   E = slightly stable (clear night, light winds)               → 0.85
+//   F = moderately stable (clear night, very light winds)        → 0.70
+//
+// Parameters:
+//   stability_class – string: "A", "B", "C", "D", "E", or "F"
+//
+// Returns: stability correction factor (default 1.0 for unknown classes)
+// ============================================================================
+AMREX_FORCE_INLINE
+Real get_stability_correction_factor(const std::string& stability_class)
+{
+    // Note: Input should be normalized to uppercase by parse_inputs.cpp
+    if (stability_class == "A") {
+        return Real(1.20);  // Extremely unstable: enhanced plume rise
+    } else if (stability_class == "B") {
+        return Real(1.10);  // Moderately unstable
+    } else if (stability_class == "C") {
+        return Real(1.05);  // Slightly unstable
+    } else if (stability_class == "D") {
+        return Real(1.00);  // Neutral: no correction
+    } else if (stability_class == "E") {
+        return Real(0.85);  // Slightly stable: suppressed rise
+    } else if (stability_class == "F") {
+        return Real(0.70);  // Moderately stable: strongly suppressed rise
+    } else {
+        // Unknown class: default to neutral (no correction)
+        return Real(1.00);
+    }
+}
 
 // ============================================================================
 // compute_smoke_plume_rise
@@ -89,6 +147,11 @@ inline void compute_smoke_plume_rise(
     const Real rho_a = Real(sp.rho_a);  // air density [kg/m³]
     const Real Cp_a  = Real(sp.Cp_a);   // specific heat of air [J/(kg·K)]
 
+    // Pasquill-Gifford atmospheric stability correction factor
+    const Real stability_factor = (sp.use_stability_correction == 1)
+        ? get_stability_correction_factor(sp.stability_class)
+        : Real(1.0);
+
     // π × ρ_a × c_p × T_a  (denominator of F_B formula)
     const Real denom = Real(WildfireConst::PI) * rho_a * Cp_a * T_a;
 
@@ -127,9 +190,12 @@ inline void compute_smoke_plume_rise(
             const Real u  = amrex::max(std::sqrt(ux * ux + uy * uy), U_MIN);
 
             // Briggs final plume rise [m]
-            const Real dh = C_FINAL * std::pow(F_B, F_EXP)
-                            * std::pow(x_f, XF_EXP)
-                            / u;
+            Real dh = C_FINAL * std::pow(F_B, F_EXP)
+                      * std::pow(x_f, XF_EXP)
+                      / u;
+
+            // Apply Pasquill-Gifford stability correction if enabled
+            dh *= stability_factor;
 
             pr(i, j, k) = amrex::max(Real(0.0), dh);
         });

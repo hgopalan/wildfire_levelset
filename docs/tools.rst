@@ -41,7 +41,17 @@ Overview
    * - ``plot_burn_probability.py``
      - Visualise ensemble burn probability maps (heatmaps, contours, difference maps)
    * - ``fire_size_summary.py``
-     - Tabulate and plot fire size statistics over time from ``fire_stats.csv``
+     - Tabulate and plot fire size statistics over time from ``fire_stats.csv``;
+       **NEW:** percentile statistics (10th/50th/90th) for FARSITE-style growth analysis
+   * - ``isochrone_extractor.py``
+     - Extract fire arrival-time isochrones from AMReX plotfiles → GeoJSON;
+       **NEW:** matplotlib visualization with time labels overlaid on arrival time heatmap
+   * - ``minimum_travel_path.py``
+     - **NEW:** Extract minimum travel time (MTT) paths from ignition to destinations;
+       follows steepest descent of arrival_time field (FARSITE path analysis)
+   * - ``fire_period_analysis.py``
+     - **NEW:** Classify burned cells as day/night based on burn period settings;
+       spatial map and statistics (FARSITE/FSPro burn period concept)
    * - ``surface_fire_worksheet.py``
      - BehavePlus-style comprehensive single-point surface fire behavior worksheet
        (Rothermel 1972): reaction intensity, ROS, flame length, fire size, spotting,

@@ -187,6 +187,12 @@ struct InputParameters {
         // (Anderson 1970 / Rothermel 1972 moisture-damping factor).
         // Set to 1.0 (default) to always ignite on contact (original behaviour).
         amrex::Real P_catch;                 // max catching probability [0-1] (default: 1.0)
+        
+        // Ignition delay parameters (FARSITE-compatible)
+        // Models delay between firebrand landing and actual ignition based on fuel moisture.
+        // τ_delay = τ_base × (M_x / (M_x - M_f))
+        int enable_delay;                    // 1 = enable ignition delay, 0 = instant ignition (default: 0)
+        amrex::Real tau_base;                // base delay time at zero moisture [s] (default: 120.0)
     } spotting;
     
     // Van Wagner crown fire initiation model parameters (Van Wagner 1977)
@@ -1033,6 +1039,7 @@ struct InputParameters {
     //   fuel_model           – fuel model number (from landscape)
     //   fireline_intensity   – Byram fireline intensity [kW/m]
     //   flame_length         – Byram flame length [m]
+    //   fire_intensity_class – Fire intensity class (1-6, Byram 1959)
     //   weise_flame_height   – Weise & Biging flame height [m]
     //   weise_flame_tilt     – Weise & Biging flame tilt angle [rad]
     //   weise_whirl_height   – fire whirl height [m]
@@ -1078,16 +1085,30 @@ struct InputParameters {
     //   fl_exceedance        – maximum observed flame length per cell [m]
     std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
 
-    // ---- Smoke plume-rise model (Briggs 1965 / 1969) ----
+    // ---- Smoke plume-rise model (Briggs 1965 / 1969 with Pasquill-Gifford stability) ----
     // Computes the effective smoke plume-rise height Δh [m] above the fire
     // front using the Briggs (1965/1969) buoyancy-dominated formula.
+    // Optionally applies Pasquill-Gifford atmospheric stability class corrections
+    // to adjust plume rise based on atmospheric conditions (FARSITE-compatible).
     // The result is written to every plotfile as "plume_rise_m".
     // Input prefix: "smoke_plume."
     struct SmokePlumeParams {
-        int  enable;           // 1 to enable plume-rise computation (default: 0)
-        amrex::Real T_a;       // ambient temperature [K]  (default: 303.15 = 30 °C)
-        amrex::Real rho_a;     // air density [kg/m³]      (default: 1.20)
-        amrex::Real Cp_a;      // specific heat [J/(kg·K)] (default: 1005.0)
+        int  enable;                    // 1 to enable plume-rise computation (default: 0)
+        amrex::Real T_a;                // ambient temperature [K]  (default: 303.15 = 30 °C)
+        amrex::Real rho_a;              // air density [kg/m³]      (default: 1.20)
+        amrex::Real Cp_a;               // specific heat [J/(kg·K)] (default: 1005.0)
+        
+        // Pasquill-Gifford atmospheric stability class (FARSITE-compatible)
+        // Classes A-F representing atmospheric stability conditions:
+        //   A = extremely unstable (strong solar radiation, light winds)
+        //   B = moderately unstable
+        //   C = slightly unstable
+        //   D = neutral (overcast or moderate wind)
+        //   E = slightly stable (clear night, light winds)
+        //   F = moderately stable (clear night, very light winds)
+        // Default "D" = neutral conditions
+        std::string stability_class;    // stability class: "A", "B", "C", "D", "E", or "F" (default: "D")
+        int use_stability_correction;   // 1 = apply stability correction to plume rise, 0 = use base Briggs (default: 0)
     } smoke_plume;
 
     // ---- KML perimeter export ----

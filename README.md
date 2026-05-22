@@ -48,44 +48,45 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 
 ## Core Capabilities
 
-- **Rothermel (1972)** surface fire spread — Anderson 13 and Scott-Burgan 40 fuel databases
-- **WAF formula selection** — Andrews (2018) logarithmic WAF or BehavePlus linear WAF (`rothermel.waf_formula`); exponential Beer–Lambert canopy sheltering for forest fuels (`rothermel.waf_canopy_alpha`)
-- **FARSITE elliptical expansion** (Richards 1990) + Anderson (1983) L/W ratio; optional **Gaussian-smoothed spread-point stamping** (`farsite.gaussian_sigma`) replaces single-cell phi marking with an SDF disk for a smoother fire perimeter
-- **Alternative spread models**: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005)
-- **Canadian FBP System** — O1a/O1b grass and S1/S2/S3 slash fuel types
-- **Lautenberger (2013) physics-based** fire spread model
-- **Non-burnable cell masking** — codes 91–99 / NB1–NB9 zero ROS (water, rock, urban, bare ground)
-- **ROS stall threshold** — FARSITE-compatible floor (1×10⁻⁴ m/s)
-- **Crown fire** — Van Wagner (1977) initiation + Cruz et al. (2005) + Rothermel (1991) multiplier + passive blend
-- **Per-fuel burnout time** — Rothermel (1983) residence time from SAV / particle density when landscape file is present
-- **Firebrand spotting** — Albini (1983) 2-D trajectory + Albini (1979) torching-tree; optional 3-D wind from [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) plotfiles; **GPU-accelerated 3-D wind interpolation** (CUDA/HIP/SYCL via `amrex::ParallelFor` on device-side `PltWindData::d_u2d`/`d_v2d`) with CPU fallback intact
-- **Flux-based ember cascade** — dense firebrand shower from convective plume modelled as a continuous Gaussian landing-flux field (Sardoy et al. 2007 approach); Albini (1983) plume height, wind-advected mean transport, turbulent-diffusion spread, Poisson ignition threshold; optional 3-D wind from massconsistent_amr with `require_3d_wind` assertion (`ember_cascade.*`)
-- **Retardant suppression** — ROS and spotting probability zeroed inside active drop zones
-- **Terrain effects** — per-cell slope/aspect from FARSITE LCP files or XYZ terrain; FARSITE full topographic horizon scan (8-direction ridge shading)
-- **Wind models** — time-varying, turbulent (OU/spectral), compact direction schedule
-- **Multi-station weather** — IDW spatial interpolation of per-station .wtr files (`multi_wtr_file`)
-- **Fuel moisture** — FMD schedule, diurnal (Nelson 2000), precipitation wetting, FMC seasonal phenology; live fuel conditioning ramp
-- **Spatial moisture output** — moisture_d1 / d10 / d100 / lh / lw in every plotfile
-- **Ignition types** — point CSV, closed polygon, polyline (line fire)
-- **Per-cell spatial moisture** from FARSITE .fms scenario files
-- **Fire ecology diagnostics** — scorch height, tree mortality, Scott-Reinhardt TI/CI ratios
-- **Full TI/CI bisection** — exact Scott & Reinhardt (2001) Torching/Crowning Index
-- **Fire emissions** — CO₂, CO, PM₂.₅ (WRF-Fire convention)
-- **MTT propagation** — Minimum Travel Time Dijkstra fast-marching
-- **Smoke plume-rise model** — Briggs (1965/1969) buoyancy-dominated plume rise per fire-front cell; written to plotfile as `plume_rise_m`; domain maximum printed in logs (`smoke_plume.enable`)
-- **KML perimeter export** — Google Earth–compatible `.kml` file alongside CSV/GeoJSON at every plotfile step; full UTM → WGS-84 conversion (`write_perimeter_kml`, `kml_utm_zone`)
-- **Simulation date/time display** — calendar date/time (YYYY-MM-DD HH:MM) shown in per-step log output and HTML fire report when `sim_datetime.year/month/day` or `solar_radiation` start date is set
-- **Post-fire fuel adjustment for re-entry spots** — firebrand spot fires landing in previously-burned cells have their ignition probability scaled by residual fuel fraction; spots below a configurable threshold are suppressed (`fuel_depletion.adjust_spotting_reentry`)
-- **Real-time satellite fire detection assimilation** — ingests GOES-16/17/18 (NOAA, public AWS S3) or VIIRS (NASA FIRMS REST API) active-fire detections; applied as initial conditions and/or mid-simulation re-marking events with configurable confidence threshold, detection radius, and UTM coordinate projection (`satellite.*`)
-- **Vectorial slope/wind combination** — FARSITE-style vector sum of φ_w and φ_s before computing ROS, capturing alignment effects; selectable via `rothermel.use_slope_wind_vectors = 1` (separate from the existing additive cross-term option `use_slope_wind_cross`)
-- **Burn-period (daytime burning window) gate** — zeroes R_mf outside a configurable local clock window, pausing all spread paths during inactive hours while moisture and diagnostics continue; mirrors FARSITE / FSPro burn-period concept (`burn_period.enable`)
-- **Post-frontal fuel consumption raster** — `residual_fuel` (exponential burnout fraction behind the fire front) and `fuel_consumption` (per-class consumption during FARSITE spread) written to every plotfile and included in the default GeoTIFF export set
-- **Flame length exceedance raster** — `fl_exceedance` plotfile field tracks the maximum observed Byram flame length per cell over the entire simulation, providing a spatial worst-case fire intensity record for risk assessments (`fl_exceedance` in `plot_vars`)
-- **FARSITE Fire Spread Atlas (`.fsa`)** — cumulative perimeter archive that appends an angle-sorted perimeter snapshot at each plotfile step into one file, mirroring FARSITE's FSA concept (`fsa_file = fire.fsa`); read with `tools/farsite_fsa_pst_reader.py`
-- **FARSITE Post-processing Statistics (`.pst`)** — per-step CSV with max fireline intensity [kW/m], max flame length [m], and max spotting distance [m] in addition to area/perimeter; extends `fire_stats_file` (`pst_file = fire.pst`)
-- **Conditional weather ERC / BI / SC trigger** — `conditional_weather_trigger` selects which NFDRS index (ERC, Burning Index, or Spread Component from `ecology_mf`) drives the scenario lookup; previously ERC-only (`conditional_weather_trigger = bi` or `sc`)
-- **Fire line intensity classification in HTML report** — `fire_report_file` HTML now includes a Byram (1959) six-class fireline intensity legend (I–VI) with flame length and suppression context alongside the time-series charts
-- **AMReX-based** — GPU kernels, AMR-ready, MPI parallelism
+| Category | Feature | Key Reference |
+|----------|---------|---------------|
+| **Fire Spread Models** | Rothermel (1972) surface fire with Anderson 13 & Scott-Burgan 40 fuel databases | `rothermel.*` |
+| | FARSITE elliptical expansion (Richards 1990) + Anderson L/W ratio | `farsite.*` |
+| | Alternative models: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005) | `balbi.*`, `cheney.*`, `cruz.*` |
+| | Canadian FBP System (O1a/O1b grass, S1/S2/S3 slash) | `fbp.*` |
+| | Lautenberger (2013) physics-based spread | `lautenberger.*` |
+| **Fire Behavior** | Wind Adjustment Factor: Andrews logarithmic or BehavePlus linear | `rothermel.waf_formula` |
+| | Crown fire: Van Wagner (1977) + Cruz et al. (2005) + Rothermel (1991) | `crown.*` |
+| | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
+| | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
+| **Spotting & Embers** | Firebrand spotting: Albini (1983) trajectory + torching-tree (1979) | `firebrand.*` |
+| | Ember cascade: Gaussian flux field (Sardoy 2007 approach) | `ember_cascade.*` |
+| | GPU-accelerated 3-D wind interpolation (CUDA/HIP/SYCL) | Optional from massconsistent_amr |
+| | Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` |
+| **Terrain & Weather** | Slope/aspect from FARSITE LCP or XYZ; 8-direction horizon scan | `terrain.*` |
+| | Time-varying, turbulent (OU/spectral), direction-schedule winds | `wind.*` |
+| | Multi-station weather with IDW interpolation | `multi_wtr_file` |
+| **Fuel Moisture** | FMD schedule, diurnal (Nelson 2000), precipitation wetting, FMC phenology | `fuel_moisture.*` |
+| | Spatial moisture from FARSITE .fms files | `.fms` support |
+| | Moisture fields (d1/d10/d100/lh/lw) in every plotfile | Auto output |
+| **Ignition & Suppression** | Point CSV, polygon, polyline ignitions | `ignition.*` |
+| | Retardant drop zones (zero ROS & spotting) | `retardant.*` |
+| | Satellite fire detection (GOES/VIIRS) assimilation | `satellite.*` |
+| **Diagnostics & Output** | Fire ecology: scorch height, tree mortality, TI/CI ratios | `ecology.*` |
+| | Smoke plume rise (Briggs 1965/1969) | `smoke_plume.enable` |
+| | Fire emissions: CO₂, CO, PM₂.₅ (WRF-Fire) | Auto output |
+| | KML perimeter export (UTM → WGS-84) | `write_perimeter_kml` |
+| | FARSITE .fsa/.pst files | `fsa_file`, `pst_file` |
+| | Flame length exceedance raster | `fl_exceedance` in `plot_vars` |
+| | Post-frontal fuel consumption raster | Auto in plotfiles |
+| | Simulation date/time display | `sim_datetime.*` |
+| | Fire line intensity classification (Byram I–VI) in HTML report | `fire_report_file` |
+| **Technical** | AMReX-based: GPU kernels (CUDA/HIP/SYCL), AMR, MPI | Build options |
+| | MTT (Minimum Travel Time) Dijkstra propagation | `mtt.*` |
+| | Non-burnable masking (codes 91–99 / NB1–NB9) | Auto from fuel codes |
+| | ROS stall threshold (FARSITE-compatible 1×10⁻⁴ m/s) | Built-in |
+| | Vectorial slope/wind combination | `rothermel.use_slope_wind_vectors` |
+| | Conditional weather ERC/BI/SC trigger | `conditional_weather_trigger` |
 
 ## Ensemble / FSim-Style Probabilistic Simulation
 
@@ -153,19 +154,30 @@ cd build && ctest -L regtest --output-on-failure
 
 ## Tools
 
-Python utilities in `tools/` for terrain download, weather file parsing, GIS export, ensemble analysis, and satellite detection preparation.
+Python utilities in `tools/` for terrain download, weather parsing, GIS export, ensemble analysis, and post-processing.
 
-Key ensemble tools:
-- `ensemble_burn_probability.py` – FSim-style Monte Carlo driver (burn probability, crown fire probability, ignition sampling, containment probability, area exceedance, flame-length exceedance)
-- `plot_burn_probability.py` – Visualise burn probability maps (PNG/GeoTIFF)
-- `values_at_risk.py` – FSPro-style values-at-risk overlay on burn probability maps
-- `fire_size_summary.py` – Fire area / perimeter / emissions statistics vs. time
-- `ignition_probability_table.py` – Anderson (1970) / Rothermel (1983) P_ignition worksheet
-- `plotfile_to_geotiff.py` – Export solver plotfiles to GeoTIFF; default export now includes `residual_fuel` (post-frontal burnout raster), `fuel_consumption`, and `fl_exceedance`
-- `farsite_fsa_pst_reader.py` – Read, inspect, and plot FARSITE-compatible Fire Spread Atlas (`.fsa`) and Post-processing Statistics (`.pst`) output files; supports perimeter polygon plots and PST time-series charts (matplotlib optional)
-- `historical_wildfires.py` – Query and generate simulation inputs for 29 major US historical wildfires (2009–2024); automatic terrain generation via SRTM with configurable lat/lon bounds
+| Category | Tool | Description |
+|----------|------|-------------|
+| **Ensemble** | `ensemble_burn_probability.py` | FSim-style Monte Carlo driver |
+| | `plot_burn_probability.py` | Visualise burn probability maps |
+| | `values_at_risk.py` | FSPro-style values-at-risk overlay |
+| **Fire Analysis** | `fire_size_summary.py` | Fire statistics with **percentile analysis** |
+| | `fire_period_analysis.py` | **Day/night burn classification** |
+| | `minimum_travel_path.py` | **MTT path extraction** |
+| | `isochrone_extractor.py` | Arrival-time isochrones with **visualization** |
+| | `farsite_fsa_pst_reader.py` | FARSITE .fsa/.pst file reader |
+| **GIS/Export** | `plotfile_to_geotiff.py` | AMReX plotfiles → GeoTIFF/GeoJSON |
+| | `perimeter_to_shapefile.py` | Fire perimeter → Esri Shapefile |
+| **Input Prep** | `landscape_writer.py` | LANDFIRE → FARSITE .lcp |
+| | `srtm_terrain_reader.py` | SRTM elevation → terrain CSV |
+| | `farsite_weather_reader.py` | FARSITE .wtr → wind CSV |
+| | `historical_wildfires.py` | 29 major US fires (2009–2024) database |
+| **Worksheets** | `surface_fire_worksheet.py` | BehavePlus-style surface fire |
+| | `crown_fire_worksheet.py` | Van Wagner crown fire |
+| | `ignition_probability_table.py` | Anderson P_ignition |
+| | `behavior_matrix.py` | Rothermel behavior matrices |
 
-See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html).
+**New FARSITE-parity features:** `fire_size_summary.py` (percentile statistics), `isochrone_extractor.py` (visualization with time labels), `minimum_travel_path.py` (MTT path extraction), `fire_period_analysis.py` (day/night burn classification). See [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) and `tools/NEW_FARSITE_FEATURES.md`.
 
 ## References
 
