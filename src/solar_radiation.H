@@ -561,6 +561,77 @@ inline void apply_solar_emc_to_spatial_moisture(
 }
 
 // ============================================================================
+// apply_solar_emc_to_spatial_moisture (Spatially-Varying T/RH Version)
+//
+// Same as above, but accepts spatially-varying T and RH MultiFabs instead of
+// scalar values. This enables per-cell EMC computation using IDW-interpolated
+// weather station data when multi_wtr_file is active.
+//
+// Parameters:
+//   spatial_moisture_mf – per-cell moisture (comps 0-2 updated: M_d1/d10/d100)
+//   shade_mf            – per-cell shade fraction [0, 1] from terrain & canopy
+//   T_C_mf              – per-cell air temperature [°C] MultiFab
+//   RH_pct_mf           – per-cell relative humidity [%] MultiFab
+//   solar_heating_C     – maximum solar heating increment [°C]
+// ============================================================================
+inline void apply_solar_emc_to_spatial_moisture(
+    MultiFab&       spatial_moisture_mf,
+    const MultiFab& shade_mf,
+    const MultiFab& T_C_mf,
+    const MultiFab& RH_pct_mf,
+    amrex::Real     solar_heating_C)
+{
+    const amrex::Real dT_sol = solar_heating_C;
+
+    for (MFIter mfi(spatial_moisture_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto       sm = spatial_moisture_mf.array(mfi);
+        auto const sh = shade_mf.const_array(mfi);
+        auto const T  = T_C_mf.const_array(mfi);
+        auto const RH = RH_pct_mf.const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            // Per-cell air temperature and RH (clamped to physical ranges)
+            amrex::Real T_air_C = amrex::max(amrex::Real(-40.0),
+                                   amrex::min(amrex::Real(60.0), T(i, j, k)));
+            amrex::Real RH_pct  = amrex::max(amrex::Real(1.0),
+                                   amrex::min(amrex::Real(100.0), RH(i, j, k)));
+
+            // Per-cell fuel temperature (shade reduces solar heating)
+            amrex::Real T_fuel = T_air_C + dT_sol * (amrex::Real(1.0) - sh(i, j, k));
+            T_fuel = amrex::max(amrex::Real(-40.0),
+                     amrex::min(amrex::Real(80.0), T_fuel));
+
+            amrex::Real rh = RH_pct / amrex::Real(100.0);  // [0, 1] fractional
+
+            // Simard (1968) EMC equations [%]
+            amrex::Real emc_pct;
+            if (RH_pct < amrex::Real(10.0)) {
+                emc_pct = amrex::Real(0.03229)
+                        + amrex::Real(0.281073) * rh
+                        - amrex::Real(0.000578) * T_fuel * rh;
+            } else if (RH_pct < amrex::Real(50.0)) {
+                emc_pct = amrex::Real(2.22749)
+                        + amrex::Real(0.160107) * rh
+                        - amrex::Real(0.014784) * T_fuel;
+            } else {
+                emc_pct = amrex::Real(21.0606)
+                        + amrex::Real(0.005565) * rh * rh
+                        - amrex::Real(0.00035)  * T_fuel * rh
+                        - amrex::Real(0.483199) * rh;
+            }
+            emc_pct = amrex::max(amrex::Real(0.5), emc_pct);
+
+            // Store timelag-corrected dead-fuel moistures (Nelson 2000)
+            sm(i, j, k, 0) = emc_pct / amrex::Real(100.0);           // 1-hr
+            sm(i, j, k, 1) = emc_pct * amrex::Real(1.10) / amrex::Real(100.0); // 10-hr
+            sm(i, j, k, 2) = emc_pct * amrex::Real(1.30) / amrex::Real(100.0); // 100-hr
+            // Components 3 (M_lh) and 4 (M_lw) are unchanged.
+        });
+    }
+}
+
+// ============================================================================
 // advance_solar_date
 //
 // Advances the calendar date by the given number of elapsed seconds,
@@ -719,6 +790,96 @@ inline void apply_solar_radiation_step(
             static_cast<amrex::Real>(RH_p),
             inputs.solar_radiation.solar_heating_C);
     }
+}
+
+// ============================================================================
+// apply_solar_radiation_step (Spatially-Varying T/RH Version)
+//
+// Same as above, but accepts spatially-varying T and RH MultiFabs instead of
+// using the diurnal sinusoidal model. This enables shade-adjusted EMC
+// computation with per-cell weather from multi-station interpolation.
+//
+// Parameters:
+//   inputs            – full input parameter set (solar_radiation)
+//   shade_fraction_mf – output per-cell shade fraction [0,1]
+//   slope_mf          – terrain slope [deg]
+//   aspect_mf         – terrain aspect [deg]
+//   has_spatial_crown – true when canopy-cover MultiFab is populated
+//   cc_mf             – canopy-cover [%] MultiFab
+//   spatial_moisture_mf – in/out: dead-fuel moistures updated (comps 0-2)
+//   T_C_mf            – input per-cell air temperature [°C]
+//   RH_pct_mf         – input per-cell relative humidity [%]
+//   elapsed_s         – elapsed simulation time [s]
+//   horizon_mf        – 8-comp horizon-angle MultiFab; nullptr = skip
+//   print_position    – when true, print computed solar position
+// ============================================================================
+inline void apply_solar_radiation_step(
+    const InputParameters& inputs,
+    MultiFab&              shade_fraction_mf,
+    const MultiFab&        slope_mf,
+    const MultiFab&        aspect_mf,
+    bool                   has_spatial_crown,
+    const MultiFab&        cc_mf,
+    MultiFab&              spatial_moisture_mf,
+    const MultiFab&        T_C_mf,
+    const MultiFab&        RH_pct_mf,
+    amrex::Real            elapsed_s,
+    const MultiFab*        horizon_mf    = nullptr,
+    bool                   print_position = false)
+{
+    // Advance calendar date by elapsed simulation time
+    int sol_year  = inputs.solar_radiation.year;
+    int sol_month = inputs.solar_radiation.month;
+    int sol_day   = inputs.solar_radiation.day;
+    amrex::Real hour_local = advance_solar_date(
+        sol_year, sol_month, sol_day,
+        inputs.solar_radiation.sim_start_hour,
+        elapsed_s);
+
+    // Compute solar position
+    SolarPosition sun = compute_solar_position(
+        inputs.solar_radiation.latitude,
+        inputs.solar_radiation.longitude,
+        sol_year, sol_month, sol_day,
+        hour_local,
+        inputs.solar_radiation.timezone_offset);
+
+    if (print_position) {
+        amrex::Print() << "Solar position at t=" << elapsed_s << "s: elevation="
+                       << sun.elevation_rad * (180.0 / WildfireConst::PI) << " deg"
+                       << "  azimuth="
+                       << sun.azimuth_rad   * (180.0 / WildfireConst::PI) << " deg\n";
+        amrex::Print() << "  Topographic horizon check: "
+                       << (horizon_mf != nullptr ? "ACTIVE" : "NOT ACTIVE")
+                       << "\n";
+        amrex::Print() << "  Using spatially-varying T/RH from multi-station weather\n";
+    }
+
+    // Per-cell terrain + canopy shade fraction
+    const MultiFab* cc_for_shade = (inputs.solar_radiation.use_canopy_shading == 1
+                                    && has_spatial_crown) ? &cc_mf : nullptr;
+    compute_shade_fraction_mf(shade_fraction_mf,
+                              slope_mf, aspect_mf,
+                              cc_for_shade,
+                              sun,
+                              inputs.solar_radiation.use_canopy_shading,
+                              static_cast<amrex::Real>(inputs.solar_radiation.cloud_cover),
+                              horizon_mf);
+
+    if (print_position) {
+        amrex::Real sf_min = shade_fraction_mf.min(0);
+        amrex::Real sf_max = shade_fraction_mf.max(0);
+        amrex::Print() << "  Shade fraction: min=" << sf_min
+                       << "  max=" << sf_max << "\n";
+    }
+
+    // Per-cell shade-adjusted EMC using spatial T/RH MultiFabs
+    apply_solar_emc_to_spatial_moisture(
+        spatial_moisture_mf,
+        shade_fraction_mf,
+        T_C_mf,
+        RH_pct_mf,
+        inputs.solar_radiation.solar_heating_C);
 }
 
 #endif // SOLAR_RADIATION_H

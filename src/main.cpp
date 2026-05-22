@@ -86,6 +86,8 @@ int main(int argc, char* argv[])
     MultiFab& cc_mf                 = f.cc_mf;
     MultiFab& canopy_height_mf      = f.canopy_height_mf;
     MultiFab& spatial_moisture_mf   = f.spatial_moisture_mf;
+    MultiFab& temperature_mf        = f.temperature_mf;
+    MultiFab& humidity_mf           = f.humidity_mf;
     MultiFab& plume_rise_mf         = f.plume_rise_mf;
     std::unique_ptr<MultiFab>& terrain_slopes = f.terrain_slopes;
 
@@ -777,12 +779,24 @@ int main(int argc, char* argv[])
       // dead fuel moistures into spatial_moisture_mf (components 0-2).
       // Requires diurnal_moisture.enable = 1 to supply T_air and RH.
       if (inputs.solar_radiation.enable == 1) {
-          apply_solar_radiation_step(inputs, shade_fraction_mf,
-                                     slope_mf, aspect_mf,
-                                     has_spatial_crown, cc_mf,
-                                     spatial_moisture_mf,
-                                     static_cast<amrex::Real>(time),
-                                     horizon_mf.get());
+          if (multi_wtr_active && inputs.diurnal_moisture.enable == 1) {
+              // Use spatially-varying T/RH from multi-station weather
+              apply_solar_radiation_step(inputs, shade_fraction_mf,
+                                         slope_mf, aspect_mf,
+                                         has_spatial_crown, cc_mf,
+                                         spatial_moisture_mf,
+                                         temperature_mf, humidity_mf,
+                                         static_cast<amrex::Real>(time),
+                                         horizon_mf.get());
+          } else {
+              // Use diurnal sinusoidal T/RH model
+              apply_solar_radiation_step(inputs, shade_fraction_mf,
+                                         slope_mf, aspect_mf,
+                                         has_spatial_crown, cc_mf,
+                                         spatial_moisture_mf,
+                                         static_cast<amrex::Real>(time),
+                                         horizon_mf.get());
+          }
       }
 
       // Update FMC seasonal schedule (updates crown.FMC used by Van Wagner model)
@@ -827,8 +841,16 @@ int main(int argc, char* argv[])
           MultiFab& wind_target = turb_wind_active ? *vel_base : vel;
           apply_multi_wtr_to_vel(wind_target, geom, multi_wtr,
                                  static_cast<double>(time));
-          // Domain-mean T/RH for global moisture model
+
+          // Spatial T/RH interpolation for diurnal moisture model
           if (inputs.diurnal_moisture.enable == 1) {
+              // Interpolate T and RH to per-cell MultiFabs
+              apply_multi_wtr_TRH_to_spatial(temperature_mf, humidity_mf,
+                                             geom, multi_wtr,
+                                             static_cast<double>(time));
+
+              // Fallback: domain-mean T/RH for global moisture parameters
+              // (used when spatial moisture is not enabled)
               auto [T_mww, RH_mww] = multi_wtr.get_domain_TRH_at_time(
                                        static_cast<double>(time));
               inputs.diurnal_moisture.T_min  = static_cast<amrex::Real>(T_mww);
