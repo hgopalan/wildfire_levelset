@@ -2930,7 +2930,10 @@ Multiple Weather Stations with Spatial IDW Interpolation
 
 A new ``multi_wtr_file`` input enables loading multiple FARSITE ``.wtr`` weather
 station files and producing spatially-varying wind, temperature, and relative
-humidity via inverse-distance-weighting (IDW).
+humidity via inverse-distance-weighting (IDW). At each timestep, wind U/V
+components, temperature, and relative humidity are interpolated to every grid
+cell, creating spatially-varying fuel moisture content when used with the
+diurnal moisture model.
 
 Station list CSV format (``multi_wtr_file``)::
 
@@ -2939,16 +2942,26 @@ Station list CSV format (``multi_wtr_file``)::
    2, 335000.0, 3775000.0, station2.wtr
    3, 332500.0, 3780000.0, station3.wtr
 
-At each timestep the U and V wind components from each station are IDW-
-interpolated to every grid cell:
+At each timestep, the following fields are IDW-interpolated to every grid cell:
 
 .. math::
 
    V_{\text{cell}} = \frac{\sum_i w_i V_i}{\sum_i w_i},
    \quad w_i = d_i^{-p}
 
-where :math:`d_i` is the distance from the cell to station :math:`i` and
-:math:`p` is the IDW power exponent (default 2.0).
+where :math:`d_i` is the distance from the cell to station :math:`i`,
+:math:`p` is the IDW power exponent (default 2.0), and :math:`V_i` is the
+value at station :math:`i` (wind component, temperature, or RH).
+
+**Interpolated Fields**:
+
+- Wind U and V components (Cartesian interpolation)
+- Temperature :math:`T` [°C] (scalar interpolation)
+- Relative Humidity RH [%] (scalar interpolation)
+
+When ``diurnal_moisture.enable = 1`` is set, the spatially-interpolated T and
+RH create per-cell equilibrium moisture content (EMC) via the Nelson (2000)
+model, resulting in realistic spatial moisture gradients.
 
 .. list-table::
    :header-rows: 1
@@ -2959,3 +2972,5 @@ where :math:`d_i` is the distance from the cell to station :math:`i` and
      - Path to station list CSV (default: ``""`` = disabled)
    * - ``multi_wtr_idw_power``
      - IDW exponent :math:`p` (default: 2.0)
+
+**Test**: ``regtest/moisture/multi_wtr_spatial/``
