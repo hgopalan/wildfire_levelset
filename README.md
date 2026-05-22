@@ -60,6 +60,7 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 | | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
 | | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
 | **Spotting & Embers** | Firebrand spotting: Albini (1983) trajectory + torching-tree (1979) | `firebrand.*` |
+| | Vorticity-enhanced spotting: Weise & Biging (1996) fire whirl effects | `weise_biging.enhance_spotting` |
 | | Ember cascade: Gaussian flux field (Sardoy 2007 approach) | `ember_cascade.*` |
 | | GPU-accelerated 3-D wind interpolation (CUDA/HIP/SYCL) | Optional from massconsistent_amr |
 | | Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` |
@@ -74,6 +75,8 @@ See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building
 | | Satellite fire detection (GOES/VIIRS) assimilation | `satellite.*` |
 | **Diagnostics & Output** | Fire ecology: scorch height, tree mortality, TI/CI ratios | `ecology.*` |
 | | Smoke plume rise (Briggs 1965/1969) | `smoke_plume.enable` |
+| | Vorticity field: vertical component for fire whirl identification | Auto in plotfiles |
+| | Fire whirl characteristics: Weise & Biging (1996) model | `weise_biging.enable` |
 | | Fire emissions: CO₂, CO, PM₂.₅ (WRF-Fire) | Auto output |
 | | KML perimeter export (UTM → WGS-84) | `write_perimeter_kml` |
 | | FARSITE .fsa/.pst files | `fsa_file`, `pst_file` |
@@ -127,7 +130,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 |---|---|
 | `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread |
 | `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
-| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)* |
+| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)*, **vorticity_enhanced_spotting** *(new)* |
 | `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)*, **terrain_gradient_correction** *(new)* |
 | `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
 | `fuel/` | fuel_adj_file |

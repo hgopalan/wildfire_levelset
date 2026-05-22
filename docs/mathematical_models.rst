@@ -1066,6 +1066,43 @@ Each plot file contains four Albini-specific scalar fields:
 * ``albini_active`` – flag (1) at cells that received a spot ignition.
 
 
+**Vorticity-Enhanced Spotting (optional)**
+
+When both the Albini spotting model (``albini_spotting.enable = 1``) and the
+Weise & Biging fire whirl model (``weise_biging.enable = 1``) are active,
+vorticity-enhanced spotting can be enabled via ``weise_biging.enhance_spotting = 1``.
+This couples the fire whirl characteristics to the Albini spotting distance,
+capturing the enhanced lofting and transport caused by fire whirls.
+
+The enhancement factor multiplies the base Albini spotting distance:
+
+.. math::
+
+   d_{\text{whirl}} = d_{\text{base}} \times \left(1 + \alpha \frac{v_\theta}{U} \frac{\Omega\,r_w}{U}\right)
+
+where:
+
+* :math:`d_{\text{base}}` is the baseline Albini spotting distance
+* :math:`\alpha` is the empirical enhancement coefficient (``weise_biging.alpha``, default: 1.0)
+* :math:`v_\theta` is the maximum tangential velocity at the whirl core edge [m/s]
+* :math:`\Omega` is the angular velocity [rad/s]
+* :math:`r_w` is the whirl core radius [m]
+* :math:`U` is the ambient wind speed [m/s]
+
+The enhancement factor is clamped to the range [1.0, 5.0] to avoid extreme values.
+When fire whirl characteristics are negligible (low intensity or wind), the
+enhancement factor defaults to 1.0 (no enhancement).
+
+**Configuration**: To enable, set all three flags:
+
+.. code-block:: text
+
+   weise_biging.enable = 1
+   weise_biging.enhance_spotting = 1
+   albini_spotting.enable = 1
+   weise_biging.alpha = 1.0  # Optional: default is 1.0
+
+
 Flux-Based Ember Cascade Model (``ember_cascade.*``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2110,6 +2147,12 @@ Configuration via Parmparse (``weise_biging.*``)
    * - ``weise_biging.I_B_min``
      - 1.0 kW/m
      - Minimum Byram fireline intensity threshold
+   * - ``weise_biging.enhance_spotting``
+     - 0
+     - Enable (1) vorticity-enhanced Albini spotting
+   * - ``weise_biging.alpha``
+     - 1.0
+     - Spotting enhancement coefficient (dimensionless)
 
 Diagnostic Output Fields
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

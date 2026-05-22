@@ -1391,7 +1391,11 @@ int main(int argc, char* argv[])
 	                          (inputs.fuel_depletion.adjust_spotting_reentry == 1)
 	                              ? &residual_fuel_mf : nullptr,
 	                          inputs.fuel_depletion.spotting_fuel_threshold,
-	                          &spotting_lineage_mf);
+	                          &spotting_lineage_mf,
+	                          (inputs.weise_biging.enable == 1 && inputs.weise_biging.enhance_spotting == 1)
+	                              ? &weise_data : nullptr,
+	                          (inputs.weise_biging.enable == 1 && inputs.weise_biging.enhance_spotting == 1)
+	                              ? &inputs.weise_biging : nullptr);
 	  // Scott/Albini (1979) maximum spotting distance table diagnostic:
 	  // Print the table maximum for the dominant global fuel model and
 	  // the current mean wind speed to help the user assess whether

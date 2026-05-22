@@ -206,7 +206,9 @@ inline void compute_albini_spotting(
     const PltWindData* plt_wind      = nullptr,  // 3-D wind from massconsistent_amr (optional)
     const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
     Real reentry_fuel_threshold      = Real(0.05), // min fuel fraction to allow ignition
-    MultiFab* spotting_lineage_mf    = nullptr)  // lineage output: src (x,y) in comps 2,3
+    MultiFab* spotting_lineage_mf    = nullptr,  // lineage output: src (x,y) in comps 2,3
+    const MultiFab* weise_data       = nullptr,  // Weise & Biging whirl data (optional)
+    const InputParameters::WeiseBigingParams* wp = nullptr) // Weise & Biging params (optional)
 {
     if (asp.enable == 0) {
         return;
@@ -250,6 +252,15 @@ inline void compute_albini_spotting(
             fuel_model_mf->nComp(), 0, host_info);
         amrex::MultiFab::Copy(*fm_h_ptr, *fuel_model_mf, 0, 0,
                               fuel_model_mf->nComp(), 0);
+    }
+
+    std::unique_ptr<amrex::MultiFab> weise_h_ptr;
+    if (weise_data != nullptr) {
+        weise_h_ptr = std::make_unique<amrex::MultiFab>(
+            weise_data->boxArray(), weise_data->DistributionMap(),
+            weise_data->nComp(), 0, host_info);
+        amrex::MultiFab::Copy(*weise_h_ptr, *weise_data, 0, 0,
+                              weise_data->nComp(), 0);
     }
     amrex::Gpu::streamSynchronize();  // wait for device→host copies
 
@@ -438,10 +449,13 @@ inline void compute_albini_spotting(
         Real H_z;                 // Albini lofting height [m]
         Real I_B;                 // Byram fire line intensity [kW/m]
         int  fuel_model;          // FBFM fuel model code at this cell (0 = unknown)
+        Real whirl_enhance;       // whirl enhancement factor (1.0 = no enhancement)
     };
     std::vector<FrontCell> front_cells;
 
     const bool has_fm = (fm_h_ptr != nullptr);
+    const bool use_whirl_enhance = (weise_data != nullptr && wp != nullptr && 
+                                     wp->enhance_spotting == 1);
 
     for (MFIter mfi(phi_h); mfi.isValid(); ++mfi) {
         const Box& bx   = mfi.validbox();
@@ -451,6 +465,9 @@ inline void compute_albini_spotting(
 
         Array4<const Real> fm_arr;
         if (has_fm) fm_arr = fm_h_ptr->const_array(mfi);
+
+        Array4<const Real> weise_arr;
+        if (use_whirl_enhance) weise_arr = weise_h_ptr->const_array(mfi);
 
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
@@ -473,10 +490,40 @@ inline void compute_albini_spotting(
                 // Store lofting height diagnostic
                 ad(i, j, 0, 0) = H_z;
 
+                // Compute whirl enhancement factor if enabled
+                Real whirl_enhance = Real(1.0);
+                if (use_whirl_enhance) {
+                    // Weise & Biging whirl data components:
+                    // 0 – weise_flame_height   [m]
+                    // 1 – weise_flame_tilt     [rad]
+                    // 2 – weise_whirl_height   [m]
+                    // 3 – weise_whirl_radius   [m]
+                    // 4 – weise_angular_velocity [rad/s]
+                    // 5 – weise_max_tang_vel   [m/s]
+                    const Real v_theta = weise_arr(i, j, 0, 5);  // max tangential velocity
+                    const Real r_w     = weise_arr(i, j, 0, 3);  // whirl radius
+                    const Real Omega   = weise_arr(i, j, 0, 4);  // angular velocity
+                    
+                    // Ambient wind speed at this cell
+                    Real ux = vel_h.array(mfi)(i, j, 0, 0);
+                    Real uy = vel_h.array(mfi)(i, j, 0, 1);
+                    Real U  = std::sqrt(ux * ux + uy * uy);
+                    
+                    // Enhancement formula from VORTICITY_SPOTTING_STATUS.md:
+                    // d_spot_whirl = d_spot_base × (1 + α × (v_θ/U) × (Ω × r_w / U))
+                    // We store the multiplier (1 + α × ...) as whirl_enhance
+                    if (U > Real(1.0e-3) && v_theta > Real(0.0)) {
+                        const Real alpha = wp->alpha;
+                        whirl_enhance = Real(1.0) + alpha * (v_theta / U) * (Omega * r_w / U);
+                        // Clamp to reasonable range [1.0, 5.0] to avoid extreme values
+                        whirl_enhance = amrex::max(Real(1.0), amrex::min(whirl_enhance, Real(5.0)));
+                    }
+                }
+
                 int fm_code = has_fm ? static_cast<int>(fm_arr(i, j, 0)) : 0;
                 Real x = prob_lo[0] + (i + Real(0.5)) * dx[0];
                 Real y = prob_lo[1] + (j + Real(0.5)) * dx[1];
-                front_cells.push_back({x, y, i, j, H_z, I_B, fm_code});
+                front_cells.push_back({x, y, i, j, H_z, I_B, fm_code, whirl_enhance});
             }
         }
     }
@@ -495,16 +542,17 @@ inline void compute_albini_spotting(
         for (int r = 0; r < nprocs; ++r) { displs[r] = total; total += counts[r]; }
 
         // Serialise struct fields into flat arrays
-        std::vector<Real> fc_x(local_n), fc_y(local_n), fc_Hz(local_n), fc_IB(local_n);
+        std::vector<Real> fc_x(local_n), fc_y(local_n), fc_Hz(local_n), fc_IB(local_n), fc_enhance(local_n);
         std::vector<int>  fc_i(local_n), fc_j(local_n), fc_fm(local_n);
         for (int n = 0; n < local_n; ++n) {
-            fc_x[n]  = front_cells[n].x;
-            fc_y[n]  = front_cells[n].y;
-            fc_Hz[n] = front_cells[n].H_z;
-            fc_IB[n] = front_cells[n].I_B;
-            fc_i[n]  = front_cells[n].i;
-            fc_j[n]  = front_cells[n].j;
-            fc_fm[n] = front_cells[n].fuel_model;
+            fc_x[n]       = front_cells[n].x;
+            fc_y[n]       = front_cells[n].y;
+            fc_Hz[n]      = front_cells[n].H_z;
+            fc_IB[n]      = front_cells[n].I_B;
+            fc_i[n]       = front_cells[n].i;
+            fc_j[n]       = front_cells[n].j;
+            fc_fm[n]      = front_cells[n].fuel_model;
+            fc_enhance[n] = front_cells[n].whirl_enhance;
         }
 
         auto allgatherv_real = [&](std::vector<Real>& v) {
@@ -526,6 +574,7 @@ inline void compute_albini_spotting(
 
         allgatherv_real(fc_x);  allgatherv_real(fc_y);
         allgatherv_real(fc_Hz); allgatherv_real(fc_IB);
+        allgatherv_real(fc_enhance);
         allgatherv_int(fc_i);   allgatherv_int(fc_j);
         allgatherv_int(fc_fm);
 
@@ -533,7 +582,7 @@ inline void compute_albini_spotting(
         front_cells.reserve(total);
         for (int n = 0; n < total; ++n) {
             front_cells.push_back({fc_x[n], fc_y[n], fc_i[n], fc_j[n],
-                                   fc_Hz[n], fc_IB[n], fc_fm[n]});
+                                   fc_Hz[n], fc_IB[n], fc_fm[n], fc_enhance[n]});
         }
     }
 #endif
@@ -605,6 +654,17 @@ inline void compute_albini_spotting(
 
         Real dist = std::sqrt((px - fc.x) * (px - fc.x) +
                               (py - fc.y) * (py - fc.y));
+        
+        // Apply whirl enhancement to the spotting distance
+        if (fc.whirl_enhance > Real(1.0)) {
+            // Enhance spotting distance by scaling the displacement from source
+            Real dx_spot = px - fc.x;
+            Real dy_spot = py - fc.y;
+            px = fc.x + dx_spot * fc.whirl_enhance;
+            py = fc.y + dy_spot * fc.whirl_enhance;
+            dist *= fc.whirl_enhance;
+        }
+
         // Require the firebrand to have travelled at least one cell width
         if (dist < dx[0]) {
             continue;
