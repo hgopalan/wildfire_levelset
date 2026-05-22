@@ -11,6 +11,7 @@
 #include <AMReX_Gpu.H>
 #include "parse_inputs.H"
 #include "rothermel_model.H"
+#include "cell_size_correction.H"
 
 using namespace amrex;
 
@@ -28,14 +29,17 @@ using namespace amrex;
 // ============================================================================
 inline void compute_rothermel_R(MultiFab& R_mf,
                                 const MultiFab& vel,
-                                const Geometry& /*geom*/,
+                                const Geometry& geom,
                                 const RothermelParams& rp,
                                 const MultiFab* slopes = nullptr,
                                 const MultiFab* fuel_model_mf = nullptr,
                                 const RothermelComputed* fuel_table = nullptr,
                                 int fuel_table_size = 0,
                                 const MultiFab* canopy_cover_mf = nullptr,
-                                const MultiFab* canopy_height_mf = nullptr)
+                                const MultiFab* canopy_height_mf = nullptr,
+                                int cellsize_enable = 0,
+                                amrex::Real cellsize_dx_ref = 30.0,
+                                amrex::Real cellsize_correction_exp = 0.1)
 {
     // Compute Rothermel (1972) fire spread parameters (global default)
     const RothermelComputed rc = compute_rothermel_params(rp);
@@ -79,6 +83,17 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     // blending formula is retained as a fallback.
     const bool use_canopy_ht_waf = (canopy_height_mf != nullptr && canopy_cover_mf != nullptr && use_waf_flag == 1);
     const bool use_cc_waf        = (!use_canopy_ht_waf && canopy_cover_mf != nullptr && use_waf_flag == 1);
+
+    // Cell size effects correction (FARSITE only)
+    // Compute the minimum cell size and the correction factor
+    const auto dx_array = geom.CellSize();
+    Real dx_min = dx_array[0];
+    if (AMREX_SPACEDIM > 1) dx_min = std::min(dx_min, dx_array[1]);
+    if (AMREX_SPACEDIM > 2) dx_min = std::min(dx_min, dx_array[2]);
+    
+    const Real cellsize_factor = (cellsize_enable == 1) ? 
+        compute_cell_size_correction_factor(dx_min, cellsize_dx_ref, cellsize_correction_exp) :
+        Real(1.0);
 
     // Compute the domain-mean wind components so that extreme wind-speed cells
     // (> 25 m/s) can be replaced with the global mean of the flow field rather
@@ -284,7 +299,9 @@ inline void compute_rothermel_R(MultiFab& R_mf,
 
             // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
             const Real R_raw = std::max(cell_R0 * (Real(1.0) + phi_combined), Real(0.0)) * ros_conv;
-            R(i,j,k) = (R_raw >= WildfireConst::ROS_MIN_MS) ? R_raw : Real(0.0);
+            // Apply cell size effects correction if enabled
+            const Real R_corrected = R_raw * cellsize_factor;
+            R(i,j,k) = (R_corrected >= WildfireConst::ROS_MIN_MS) ? R_corrected : Real(0.0);
         });
     }
 }
