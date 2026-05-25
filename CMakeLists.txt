@@ -8,6 +8,7 @@ option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
 option(LEVELSET_BUILD_LEVELSET "Build the levelset fire-spread solver" ON)
 option(LEVELSET_BUILD_FCOMPARE "Build the AMReX fcompare plotfile comparison tool" OFF)
+option(LEVELSET_BUILD_PYTHON_BINDINGS "Build Python bindings using pybind11" OFF)
 set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
     "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
 set_property(CACHE LEVELSET_GPU_BACKEND PROPERTY STRINGS NONE CUDA HIP SYCL)
@@ -131,6 +132,11 @@ else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 endif()
 endif() # LEVELSET_BUILD_LEVELSET
+
+# Add Python bindings subdirectory
+if(LEVELSET_BUILD_PYTHON_BINDINGS)
+  add_subdirectory(src/python)
+endif()
 
 # Add regression test subdirectory
 add_subdirectory(regtest)
