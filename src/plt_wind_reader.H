@@ -542,4 +542,124 @@ inline bool read_plt_wind_file(const std::string& plt_dir, PltWindData& pwd)
     return true;
 }
 
+// ============================================================================
+// load_plt_wind_from_arrays
+//
+// Populate PltWindData from raw arrays (e.g., from Python via pybind11).
+// This allows direct loading from pyAMReX MultiFab or numpy arrays without
+// file I/O.
+//
+// Parameters:
+//   nx, ny, nz          - Grid dimensions
+//   xmin, xmax, etc.    - Physical domain bounds
+//   u_data, v_data, w_data - Flat arrays of velocity components (size: nx*ny*nz)
+//                            in Fortran column-major order: k*nx*ny + j*nx + i
+//   pwd                 - Output PltWindData structure to populate
+//
+// Returns: true on success, false on failure
+// ============================================================================
+inline bool load_plt_wind_from_arrays(
+    int nx, int ny, int nz,
+    double xmin, double xmax,
+    double ymin, double ymax,
+    double zmin, double zmax,
+    const double* u_data,
+    const double* v_data,
+    const double* w_data,
+    PltWindData& pwd)
+{
+    pwd.valid = false;
+
+    if (nx <= 0 || ny <= 0 || nz <= 0) {
+        amrex::Print() << "[load_plt_wind_from_arrays] Invalid grid dimensions\n";
+        return false;
+    }
+
+    if (u_data == nullptr || v_data == nullptr) {
+        amrex::Print() << "[load_plt_wind_from_arrays] Null data pointers\n";
+        return false;
+    }
+
+    const int n_pts_total = nx * ny * nz;
+    const double dx3 = (xmax - xmin) / nx;
+    const double dy3 = (ymax - ymin) / ny;
+    const double dz3 = (nz > 1) ? (zmax - zmin) / nz : 1.0;
+
+    // Allocate host arrays
+    pwd.x.assign(n_pts_total, 0.0);
+    pwd.y.assign(n_pts_total, 0.0);
+    pwd.z.assign(n_pts_total, 0.0);
+    pwd.u.assign(n_pts_total, 0.0);
+    pwd.v.assign(n_pts_total, 0.0);
+    pwd.w.assign(n_pts_total, 0.0);
+
+    // Copy data from input arrays
+    // Input data is in Fortran column-major order: k*nx*ny + j*nx + i
+    for (int k = 0; k < nz; ++k) {
+        for (int j = 0; j < ny; ++j) {
+            for (int i = 0; i < nx; ++i) {
+                const int gflat = k * nx * ny + j * nx + i;
+                pwd.x[gflat] = static_cast<amrex::Real>(xmin + (i + 0.5) * dx3);
+                pwd.y[gflat] = static_cast<amrex::Real>(ymin + (j + 0.5) * dy3);
+                pwd.z[gflat] = static_cast<amrex::Real>(zmin + (k + 0.5) * dz3);
+                pwd.u[gflat] = static_cast<amrex::Real>(u_data[gflat]);
+                pwd.v[gflat] = static_cast<amrex::Real>(v_data[gflat]);
+                pwd.w[gflat] = (w_data != nullptr)
+                    ? static_cast<amrex::Real>(w_data[gflat])
+                    : amrex::Real(0.0);
+            }
+        }
+    }
+
+    pwd.n_points = n_pts_total;
+
+    // Build height-averaged 2-D wind
+    pwd.nx_2d = nx;
+    pwd.ny_2d = ny;
+    pwd.lo2d[0] = static_cast<amrex::Real>(xmin);
+    pwd.lo2d[1] = static_cast<amrex::Real>(ymin);
+    pwd.hi2d[0] = static_cast<amrex::Real>(xmax);
+    pwd.hi2d[1] = static_cast<amrex::Real>(ymax);
+
+    pwd.u2d.assign(nx * ny, amrex::Real(0.0));
+    pwd.v2d.assign(nx * ny, amrex::Real(0.0));
+
+    for (int j = 0; j < ny; ++j) {
+        for (int i = 0; i < nx; ++i) {
+            double u_sum = 0.0, v_sum = 0.0;
+            for (int k = 0; k < nz; ++k) {
+                const int gflat = k * nx * ny + j * nx + i;
+                u_sum += static_cast<double>(pwd.u[gflat]);
+                v_sum += static_cast<double>(pwd.v[gflat]);
+            }
+            pwd.u2d[j * nx + i] = static_cast<amrex::Real>(u_sum / nz);
+            pwd.v2d[j * nx + i] = static_cast<amrex::Real>(v_sum / nz);
+        }
+    }
+
+    // Upload to GPU
+    auto upload = [](const std::vector<amrex::Real>& h,
+                     amrex::Gpu::DeviceVector<amrex::Real>& d) {
+        d.resize(h.size());
+        amrex::Gpu::copy(amrex::Gpu::hostToDevice, h.begin(), h.end(), d.begin());
+    };
+
+    upload(pwd.x,   pwd.d_x);
+    upload(pwd.y,   pwd.d_y);
+    upload(pwd.z,   pwd.d_z);
+    upload(pwd.u,   pwd.d_u);
+    upload(pwd.v,   pwd.d_v);
+    upload(pwd.w,   pwd.d_w);
+    upload(pwd.u2d, pwd.d_u2d);
+    upload(pwd.v2d, pwd.d_v2d);
+
+    amrex::Print() << "[load_plt_wind_from_arrays] Loaded " << n_pts_total
+                   << " 3-D wind points from arrays\n";
+    amrex::Print() << "[load_plt_wind_from_arrays] 2-D column-averaged wind grid: "
+                   << nx << "×" << ny << "\n";
+
+    pwd.valid = true;
+    return true;
+}
+
 #endif // PLT_WIND_READER_H

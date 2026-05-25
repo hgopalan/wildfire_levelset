@@ -8,6 +8,7 @@ option(LEVELSET_BUILD_DOCS "Build Sphinx documentation" OFF)
 option(LEVELSET_ENABLE_MPI "Enable MPI parallelism" OFF)
 option(LEVELSET_BUILD_LEVELSET "Build the levelset fire-spread solver" ON)
 option(LEVELSET_BUILD_FCOMPARE "Build the AMReX fcompare plotfile comparison tool" OFF)
+option(LEVELSET_BUILD_PYTHON_BINDINGS "Build Python bindings using pybind11" OFF)
 set(LEVELSET_GPU_BACKEND "NONE" CACHE STRING
     "GPU backend for AMReX: NONE (CPU-only), CUDA, HIP, or SYCL")
 set_property(CACHE LEVELSET_GPU_BACKEND PROPERTY STRINGS NONE CUDA HIP SYCL)
@@ -62,6 +63,11 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
   set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
+  # For Python bindings, we need position-independent code
+  if(LEVELSET_BUILD_PYTHON_BINDINGS)
+    set(AMReX_PIC ON CACHE BOOL "Build AMReX with position-independent code" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  endif()
   # Linear solvers are not required by the levelset fire-spread solver.
   set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
   set(AMReX_PARTICLES OFF CACHE BOOL "Build AMReX without particle support" FORCE)
@@ -131,6 +137,11 @@ else()
   target_compile_options(levelset PRIVATE -Wall -Wextra -Wno-pedantic)
 endif()
 endif() # LEVELSET_BUILD_LEVELSET
+
+# Add Python bindings subdirectory
+if(LEVELSET_BUILD_PYTHON_BINDINGS)
+  add_subdirectory(src/python)
+endif()
 
 # Add regression test subdirectory
 add_subdirectory(regtest)
