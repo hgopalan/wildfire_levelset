@@ -63,6 +63,11 @@ if(LEVELSET_USE_VENDORED_AMREX AND EXISTS "${AMREX_SUBMODULE_DIR}/CMakeLists.txt
   set(AMReX_GPU_BACKEND "${LEVELSET_GPU_BACKEND}" CACHE STRING "AMReX GPU backend" FORCE)
   set(AMReX_FORTRAN OFF CACHE BOOL "Build AMReX without Fortran" FORCE)
   set(AMReX_AMRLEVEL OFF CACHE BOOL "Build AMReX without AmrLevel support" FORCE)
+  # For Python bindings, we need position-independent code
+  if(LEVELSET_BUILD_PYTHON_BINDINGS)
+    set(AMReX_PIC ON CACHE BOOL "Build AMReX with position-independent code" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  endif()
   # Linear solvers are not required by the levelset fire-spread solver.
   set(AMReX_LINEAR_SOLVERS OFF CACHE BOOL "Build AMReX without linear solvers" FORCE)
   set(AMReX_PARTICLES OFF CACHE BOOL "Build AMReX without particle support" FORCE)

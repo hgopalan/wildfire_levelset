@@ -33,12 +33,14 @@ py::dict load_wind_from_arrays_py(
     double zmin, double zmax,
     py::array_t<double> u_array,
     py::array_t<double> v_array,
-    py::array_t<double> w_array = py::none())
+    py::object w_array_obj = py::none())
 {
     // Initialize AMReX if not already initialized
     static bool amrex_initialized = false;
     if (!amrex_initialized) {
-        amrex::Initialize(0, nullptr);
+        int argc = 0;
+        char** argv = nullptr;
+        amrex::Initialize(argc, argv);
         amrex_initialized = true;
     }
 
@@ -63,14 +65,24 @@ py::dict load_wind_from_arrays_py(
     const double* v_ptr = static_cast<const double*>(v_info.ptr);
     const double* w_ptr = nullptr;
 
-    if (!w_array.is_none()) {
-        auto w_info = w_array.request();
-        if (w_info.size != expected_size) {
-            throw std::runtime_error("w_array size mismatch: expected " + 
-                                     std::to_string(expected_size) + 
-                                     ", got " + std::to_string(w_info.size));
+    // Check if w_array was provided
+    if (!w_array_obj.is_none()) {
+        try {
+            py::array_t<double> w_array = w_array_obj.cast<py::array_t<double>>();
+            auto w_info = w_array.request();
+            if (w_info.size != expected_size) {
+                throw std::runtime_error("w_array size mismatch: expected " + 
+                                         std::to_string(expected_size) + 
+                                         ", got " + std::to_string(w_info.size));
+            }
+            w_ptr = static_cast<const double*>(w_info.ptr);
+        } catch (const py::cast_error&) {
+            throw std::runtime_error("w_array must be a numpy array if provided");
         }
-        w_ptr = static_cast<const double*>(w_info.ptr);
+    }
+    else {
+        // w_array is optional - will be filled with zeros in load function
+        w_ptr = nullptr;
     }
 
     // Create PltWindData structure and populate it
