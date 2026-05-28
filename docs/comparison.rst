@@ -61,7 +61,7 @@ Tools are grouped into three columns to keep the table compact:
      - Van Wagner (1977)
    * - **Wind adjustment**
      - WAF (Andrews 2018); MEWS cap;
-       7 wind-terrain feedback models
+       8 wind-terrain feedback models (Viegas, canyon, ridge, WindNinja, FARSITE)
      - FARSITE/FlamMap: WAF + MEWS (internal);
        BehavePlus: user-specified WAF
      - 3-D mass-consistent (QUIC-URB) or LES

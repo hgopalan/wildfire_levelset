@@ -84,6 +84,7 @@ fire.finalize()
 | | Canadian FBP System (O1a/O1b grass, S1/S2/S3 slash) | `fbp.*` |
 | | Lautenberger (2013) physics-based spread | `lautenberger.*` |
 | **Fire Behavior** | Wind Adjustment Factor: Andrews logarithmic or BehavePlus linear | `rothermel.waf_formula` |
+| | Wind-terrain feedback: 8 models (Viegas, canyon, ridge, WindNinja, FARSITE) | `wind_terrain.model` |
 | | Crown fire: Van Wagner (1977) + Cruz et al. (2005) + Rothermel (1991) | `crown.*` |
 | | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
 | | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
