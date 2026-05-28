@@ -3778,3 +3778,343 @@ through its CFL-based timestep constraint.
 
 **References**: Finney, M.A. (1998). FARSITE: Fire Area Simulator. USDA Forest Service 
 RMRS-RP-4.
+
+Advanced Physics Features
+-------------------------
+
+This section describes 10 advanced physics features that have been implemented as standalone header-only modules with GPU-compatible kernels. They can be used independently or combined to enhance fire behavior modeling.
+
+Radiation-Driven Preheating Distance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/radiation_preheating.H``
+
+**Purpose:** Calculate the distance ahead of the fire front where fuel is preheated by radiant energy from flames.
+
+**Key Functions:**
+
+* ``compute_preheating_distance()`` - Compute preheating distance field from flame length and wind
+* ``compute_preheating_distance_scalar()`` - Variant using scalar wind speed
+
+**Physics:**
+
+.. math::
+
+    d_{\text{preheat}} = L_f \cos(\theta_{\text{tilt}}) F_v
+
+where:
+
+* :math:`L_f` is the flame length (m)
+* :math:`\theta_{\text{tilt}}` is the flame tilt angle (rad)
+* :math:`F_v` is the view factor (dimensionless)
+
+**Value:** Affects ignition timing and spread rate, important for understanding fire behavior in non-uniform fuels.
+
+Fuel Particle Temperature Evolution
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/fuel_temperature.H``
+
+**Purpose:** Track surface temperature of fuel particles ahead of and behind the fire front.
+
+**Key Functions:**
+
+* ``update_fuel_temperature()`` - Time integration of energy balance equation
+* ``check_thermal_ignition()`` - Check for ignition based on temperature threshold
+* ``init_fuel_temperature()`` - Initialize temperature field
+* ``compute_thermal_capacitance_field()`` - Compute thermal properties
+
+**Physics:**
+
+.. math::
+
+    \frac{dT}{dt} = \frac{Q_{\text{rad}} + Q_{\text{conv}} - Q_{\text{loss}}}{C_{\text{thermal}}}
+
+where:
+
+* :math:`Q_{\text{rad}}` is the radiative heat transfer (kW/m²)
+* :math:`Q_{\text{conv}}` is the convective heat transfer (kW/m²)
+* :math:`Q_{\text{loss}}` is the radiative losses (kW/m²)
+* :math:`C_{\text{thermal}}` is the thermal capacitance (kJ/m³/K)
+
+**Value:** Determines actual ignition timing (not instantaneous), affects spotting ignition probability.
+
+Fire Line Intensity Rate of Change
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/intensity_rate_of_change.H``
+
+**Purpose:** Compute temporal derivative of fireline intensity for blow-up detection.
+
+**Key Functions:**
+
+* ``compute_intensity_rate_of_change()`` - Compute dI/dt field
+* ``update_previous_intensity()`` - Store previous intensity for next time step
+* ``classify_fire_behavior()`` - Classify fire as intensifying/steady/weakening
+
+**Physics:**
+
+.. math::
+
+    \frac{dI}{dt} = \frac{I_{\text{current}} - I_{\text{previous}}}{\Delta t}
+
+where:
+
+* :math:`I` is the fireline intensity (kW/m)
+* :math:`\Delta t` is the timestep (s)
+
+**Value:** Simple diagnostic for identifying dangerous "blow-up" conditions, useful for suppression resource allocation.
+
+Flame Residence Time from Fire Intensity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/intensity_residence_time.H``
+
+**Purpose:** Improve the burnout_time model with intensity-dependent residence time.
+
+**Key Functions:**
+
+* ``compute_intensity_residence_time()`` - Compute intensity-dependent residence
+* ``compute_intensity_residence_field()`` - Field version
+* ``compute_intensity_burnout_time()`` - Enhanced burnout time calculation
+* ``classify_combustion_rate()`` - Classify combustion as smoldering/flaming/intense
+
+**Physics:**
+
+.. math::
+
+    \tau_{\text{res}} = \tau_{\text{base}} \left(\frac{I_{\text{base}}}{I_{\text{byram}}}\right)^{\alpha}
+
+where:
+
+* :math:`\tau_{\text{base}}` is the base residence time (s)
+* :math:`I_{\text{byram}}` is the Byram fireline intensity (kW/m)
+* :math:`\alpha` is the intensity exponent (dimensionless)
+
+**Value:** Higher intensity fires burn faster; refines existing burnout model.
+
+Wind-Fuel Interaction Feedback
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/wind_fuel_interaction.H``
+
+**Purpose:** Adjust effective wind speed based on fuel structure (sheltering, penetration depth).
+
+**Key Functions:**
+
+* ``estimate_LAI()`` - Estimate leaf area index from fuel properties
+* ``compute_wind_reduction_factor()`` - Exponential attenuation through canopy
+* ``compute_sheltered_wind_speed()`` - Combined function
+* ``compute_sheltered_wind_field()`` - Field version
+* ``apply_wind_fuel_reduction()`` - In-place modification of wind
+
+**Physics:**
+
+.. math::
+
+    U_{\text{eff}} = U_{\text{ref}} \exp\left(-a \cdot \text{LAI} \cdot \left(1 - \frac{z}{h}\right)\right)
+
+where:
+
+* :math:`U_{\text{eff}}` is the effective wind speed (m/s)
+* :math:`U_{\text{ref}}` is the reference wind speed (m/s)
+* :math:`a` is the extinction coefficient
+* :math:`\text{LAI}` is the leaf area index
+* :math:`z` is the height (m)
+* :math:`h` is the canopy height (m)
+
+**Value:** Dense fuels shelter surface from wind; current WAF models are height-based only, this adds fuel-structure feedback.
+
+Fuel Moisture of Extinction Gradient
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/moisture_of_extinction.H``
+
+**Purpose:** Make moisture of extinction (:math:`M_x`) depend on fuel properties, not constant 0.30.
+
+**Key Functions:**
+
+* ``compute_moisture_of_extinction()`` - SAV-dependent M_x
+* ``compute_M_x_rothermel()`` - Original Rothermel formulation with mineral content
+* ``compute_M_x_field()`` - Field version
+* ``classify_fuel_ignitability()`` - Classify fuels by M_x
+
+**Physics:**
+
+.. math::
+
+    M_x = 0.12 + 0.28 \left(\frac{\sigma_{\text{fuel}}}{\sigma_{\text{ref}}}\right)^{-0.3}
+
+where:
+
+* :math:`\sigma_{\text{fuel}}` is the fuel surface-area-to-volume ratio (m²/m³)
+* :math:`\sigma_{\text{ref}}` is the reference surface-area-to-volume ratio (m²/m³)
+
+**Value:** M_x varies by fuel type (grass vs. timber), more accurate fire/no-fire transitions.
+
+Flame Intermittency Factor
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/flame_intermittency.H``
+
+**Purpose:** Account for pulsating/intermittent flames rather than steady burning.
+
+**Key Functions:**
+
+* ``compute_flame_intermittency()`` - Intensity-dependent intermittency factor
+* ``compute_flame_intermittency_field()`` - Field version
+* ``apply_flame_intermittency()`` - Apply to radiative heat flux
+* ``classify_flame_stability()`` - Classify as flickering/pulsating/continuous
+
+**Physics:**
+
+.. math::
+
+    \gamma = 1 - \exp(-k I_{\text{byram}}), \quad Q_{\text{rad,eff}} = \gamma Q_{\text{rad,steady}}
+
+where:
+
+* :math:`\gamma` is the intermittency factor (0-1)
+* :math:`k` is the intermittency coefficient
+* :math:`Q_{\text{rad,eff}}` is the effective radiative heat flux (kW/m²)
+
+**Value:** Real flames flicker and pulse; affects heat transfer efficiency and spotting.
+
+Plume Entrainment Feedback on Surface Wind
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/plume_momentum_feedback.H``
+
+**Purpose:** Enhance heat_flux_model with horizontal momentum effects.
+
+**Key Functions:**
+
+* ``compute_plume_velocity()`` - Upward plume velocity from buoyancy
+* ``compute_plume_wind_increment()`` - Horizontal wind increment from plume
+* ``compute_plume_wind_field()`` - Field version
+* ``apply_plume_momentum_feedback()`` - In-place wind modification
+* ``apply_directional_plume_feedback()`` - Vectorial 2D feedback
+
+**Physics:**
+
+.. math::
+
+    dU_{\text{plume}} = k_{\text{momentum}} w_{\text{plume}} \left(\frac{I}{I_{\text{ref}}}\right)^{0.5}
+
+where:
+
+* :math:`k_{\text{momentum}}` is the momentum coupling coefficient
+* :math:`w_{\text{plume}}` is the plume updraft velocity (m/s)
+* :math:`I` is the fireline intensity (kW/m)
+
+**Value:** Fire creates inflow winds; can strengthen ROS by feeding fire with fresh air, important for fire whirl formation.
+
+Fuel Bed Bulk Density Spatial Variation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/fuel_loading_variation.H``
+
+**Purpose:** Allow spatially varying fuel loading from landscape files.
+
+**Key Functions:**
+
+* ``apply_fuel_loading_multiplier()`` - Apply spatial multiplier to fuel loading
+* ``init_uniform_multiplier()`` - Initialize with constant value
+* ``load_fuel_multiplier_from_file()`` - Load from ASCII file with IDW interpolation
+* ``generate_random_fuel_variation()`` - Create random variation for ensembles
+
+**Physics:**
+
+.. math::
+
+    w_{0,\text{eff}} = w_{0,\text{base}} \times m(x, y)
+
+where:
+
+* :math:`w_{0,\text{base}}` is the base fuel loading (kg/m²)
+* :math:`m(x, y)` is the spatial multiplier (dimensionless)
+
+**Value:** Current models use uniform fuel properties; real landscapes have patchy fuel loading affecting local ROS and intensity.
+
+Critical Heat Flux for Ignition
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/critical_heat_flux.H``
+
+**Purpose:** Replace binary ignition (φ < 0) with threshold-based ignition from incident heat flux.
+
+**Key Functions:**
+
+* ``compute_critical_heat_flux()`` - Moisture-dependent critical flux
+* ``compute_critical_heat_flux_field()`` - Field version
+* ``check_heat_flux_ignition()`` - Binary ignition check
+* ``compute_ignition_probability()`` - Probabilistic ignition near threshold
+* ``check_moisture_dependent_ignition()`` - Combined function
+
+**Physics:**
+
+.. math::
+
+    q_{\text{crit}} = q_{\text{base}} (1 + k_{\text{moisture}} M_{\text{fuel}})
+
+where:
+
+* :math:`q_{\text{crit}}` is the critical heat flux (kW/m²)
+* :math:`q_{\text{base}}` is the base critical flux (kW/m²)
+* :math:`k_{\text{moisture}}` is the moisture sensitivity coefficient
+* :math:`M_{\text{fuel}}` is the fuel moisture content (%)
+
+**Value:** More physically realistic than geometric ignition; wet fuels need more heat. Used in Balbi and Lautenberger models.
+
+Design Principles
+~~~~~~~~~~~~~~~~~
+
+All advanced physics features follow these design principles:
+
+1. **Header-only**: Implemented as header-only libraries for easy integration
+2. **GPU-compatible**: All kernels use AMReX GPU macros (``AMREX_GPU_DEVICE``, ``ParallelFor``)
+3. **Standalone**: Each feature can be used independently
+4. **No core modifications**: Features don't require changes to main solver loop
+5. **Well-documented**: Extensive comments with physics explanations and references
+
+Integration Example
+~~~~~~~~~~~~~~~~~~~
+
+Features can be integrated into the main solver by:
+
+1. Including the appropriate header file
+2. Allocating MultiFab fields as needed
+3. Calling the compute functions in the time-stepping loop
+4. Adding fields to plotfile output
+
+Example integration pattern:
+
+.. code-block:: cpp
+
+    #include "radiation_preheating.H"
+    
+    // Allocate field
+    MultiFab preheating_dist_mf(ba, dm, 1, 0);
+    
+    // Compute in time loop
+    compute_preheating_distance(preheating_dist_mf, flame_length_mf, 
+                               vel_x_mf, vel_y_mf, view_factor);
+    
+    // Add to plotfile
+    WriteSingleLevelPlotfile("plt", preheating_dist_mf, ...);
+
+References
+~~~~~~~~~~
+
+Each feature is supported by scientific literature:
+
+1. Butler et al. (2004), Weber (1991) - Preheating
+2. Dupuy & Maréchal (2011), Pickett et al. (2010) - Fuel temperature
+3. Byram (1959), Rothermel (1972) - Intensity dynamics
+4. Byram (1959), Rothermel (1972) - Residence time
+5. Wilson (1985), Albini & Baughman (1979) - Wind-fuel interaction
+6. Rothermel (1972), Anderson (1970) - Moisture of extinction
+7. Finney et al. (2015), Frankman et al. (2013) - Flame intermittency
+8. Finney et al. (2015), Linn et al. (2002) - Plume entrainment
+9. Finney (1998), Andrews (2018) - Spatial variation
+10. Drysdale (2011), Quintiere (2006), Balbi (2009) - Critical heat flux
