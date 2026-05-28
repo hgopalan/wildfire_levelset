@@ -947,6 +947,62 @@ handled correctly.
     burn_period.end_hour       = 20.0
     burn_period.sim_start_hour = 8.0   # simulation starts at 08:00
 
+Fire Size and Growth Rate Statistics
+-------------------------------------
+
+**Header**: ``src/write_xy_data.H``; **Tool**: ``tools/fire_size_summary.py``
+
+The fire statistics CSV output (``fire_stats_file``) has been extended with
+additional growth metrics and fire ellipse geometry estimates:
+
+**New CSV columns**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Column
+     - Description
+   * - ``growth_rate_ha_min``
+     - Instantaneous fire growth rate [ha/min]; (current_area - previous_area) / time_delta
+   * - ``major_axis_m``
+     - Fire ellipse semi-major axis [m]; estimated from perimeter and area using Ramanujan's ellipse approximation
+   * - ``minor_axis_m``
+     - Fire ellipse semi-minor axis [m]; estimated from perimeter and area
+
+These metrics characterize fire expansion speed and shape evolution over the
+simulation duration.  The ellipse axes are computed from the perimeter and
+burned area by solving the simultaneous equations:
+
+.. math::
+
+   A = \pi a b, \quad P \approx \pi(a + b)
+
+where :math:`a, b` are the semi-major and semi-minor axes respectively.
+
+**Processing tool updates**:
+
+The ``fire_size_summary.py`` tool now:
+
+* Displays growth rate and ellipse axes in ASCII summary table
+* Includes them in percentile statistics (10th, 50th, 90th percentiles)
+* Generates additional plots: ``fire_growth_rate.{fmt}`` and ``fire_ellipse_axes.{fmt}``
+
+**Usage**::
+
+    python3 tools/fire_size_summary.py fire_stats.csv --plot
+
+This generates updated plots including fire growth rate dynamics and ellipse
+geometry evolution.  Growth rate can be negative during controlled burns or when
+fire front contracts (e.g., due to retardant or suppression).
+
+**CSV format example**::
+
+    step,time_s,...,growth_rate_ha_min,major_axis_m,minor_axis_m
+    0,0.0,...,0.0,0.0,0.0
+    20,200.0,...,0.5,125.3,85.2
+    40,400.0,...,0.45,180.6,120.1
+
 Post-frontal Fuel Consumption Raster Output
 --------------------------------------------
 
