@@ -136,6 +136,7 @@ endif()
 add_regression_test(terrain_wind                terrain/terrain_wind)
 add_regression_test(balbi_viegas_heatflux       terrain/balbi_viegas_heatflux)
 add_regression_test(windninja_ridge_canyon      terrain/windninja_ridge_canyon)
+add_regression_test(farsite_wind                terrain/farsite_wind)
 add_regression_test(terrain_gradient_correction terrain/terrain_gradient_correction)
 if(Python3_FOUND)
     add_python_setup_regression_test(solar_horizon_shading
