@@ -51,9 +51,80 @@ cmake --build build -j
 | `LEVELSET_ENABLE_EB` | `OFF` | Embedded Boundary support |
 | `LEVELSET_ENABLE_MPI` | `OFF` | MPI parallelism |
 | `LEVELSET_GPU_BACKEND` | `NONE` | `CUDA`, `HIP`, or `SYCL` |
+| `LEVELSET_BUILD_PYTHON_BINDINGS` | `OFF` | Python API (pyWildfire) |
 | `LEVELSET_BUILD_DOCS` | `OFF` | Sphinx documentation |
 
 See the [full build guide](https://hgopalan.github.io/wildfire_levelset/building.html) for GPU, MPI, and Windows instructions.
+
+## Python API for Coupled Simulations
+
+The Python API (`pyWildfire`) enables **full programmatic control** of the fire solver from Python, designed for coupled wind-fire simulations with external wind solvers like [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr).
+
+### Quick Start with Python API
+
+Build with Python bindings:
+```bash
+cmake -S . -B build -DLEVELSET_DIM_2D=ON -DLEVELSET_BUILD_PYTHON_BINDINGS=ON
+cmake --build build -j
+export PYTHONPATH=$PWD/build/python:$PYTHONPATH
+```
+
+Run a fire simulation from Python:
+```python
+from wildfire_solver import WildfireSolver
+
+# Initialize and run
+fire = WildfireSolver("inputs.i")
+for i in range(100):
+    fire.step()
+    state = fire.get_state()
+    print(f"t={state['time']:.1f}s, burned={sum(state['phi']<=0)*fire.dx*fire.dy:.0f}m²")
+fire.finalize()
+```
+
+### Coupled Wind-Fire Simulation
+
+Integrate with external 3D wind solvers:
+```python
+from wildfire_solver import WildfireSolver
+# from pyWindSolver import WindSolver  # Example: massconsistent_amr
+
+fire = WildfireSolver("fire_inputs.i")
+# wind = WindSolver("wind_inputs.txt")  # External wind solver
+
+while fire.time < final_time:
+    # 1. Solve/update 3D wind field
+    # u_3d, v_3d, w_3d = wind.get_velocity_arrays()
+    u_3d, v_3d, w_3d = generate_wind_field(...)  # Your wind solver
+    
+    # 2. Pass wind to fire solver
+    fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin, zmax)
+    
+    # 3. Advance fire
+    fire.step()
+
+fire.finalize()
+```
+
+**Key Features:**
+- Complete fire solver state management (initialization, time-stepping, finalization)
+- Extract all fire fields as NumPy arrays (`phi`, `ros`, `intensity`, `flame_length`, etc.)
+- Update wind from 2D or 3D fields during simulation
+- Write AMReX plotfiles from Python
+- Zero-copy data transfer between C++ and Python
+
+**Applications:**
+- Two-way coupled atmosphere-fire simulations
+- Ensemble runs with varying wind scenarios
+- Machine learning training data generation
+- Custom fire-weather coupling strategies
+- Integration with WRF, WRF-Fire, or other atmospheric models
+
+**Documentation:**
+- [Python API Guide](https://hgopalan.github.io/wildfire_levelset/python_api.html) - Complete API reference and examples
+- [PYTHON_API_IMPLEMENTATION.md](PYTHON_API_IMPLEMENTATION.md) - Implementation details
+- [Python API Regression Tests](regtest/python_api/README.md) - How to run tests and integrate wind solvers
+- [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) - Compatible 3D wind solver
 
 ## Core Capabilities
 
@@ -147,6 +218,7 @@ Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N co
 | `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
 | `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci, **fl_exceedance** *(new)*, **farsite_fsa_pst** *(new)*, **conditional_weather_bi** *(new)* |
 | `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask**, **smoke_plume_rise** *(new)*, **reentry_spotting** *(new)* |
+| `python_api/` | **basic_fire_solver**, **coupled_wind_fire** *(Python bindings)* |
 
 The `albini_spotting_3d_wind` and `ember_cascade_flux` tests require a Python pre-step to generate the synthetic plt wind file:
 

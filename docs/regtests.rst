@@ -604,6 +604,177 @@ grouped by physical category:
 |                  | bulk_fuel_consumption, timing_benchmark,                |
 |                  | landfire_farsite, nonburnable_mask                      |
 +------------------+---------------------------------------------------------+
+| ``python_api``   | **basic_fire_solver**, **coupled_wind_fire**           |
+|                  | (Python bindings, requires pybind11)                   |
++------------------+---------------------------------------------------------+
 
 All tests use UTM Zone 11N, Southern California reference coordinates
 (330 000 E, 3 775 000 N).
+
+Python API Tests
+-----------------
+
+The ``python_api/`` sub-folder contains regression tests for the Python bindings
+that enable programmatic control of the fire solver from Python.
+
+basic_fire_solver (python_api/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Tests the core Python API functionality for running wildfire simulations
+from Python.
+
+The test exercises:
+
+* Initialization from an inputs file using the ``WildfireSolver`` class
+* Time-stepping with ``fire.step()``
+* State extraction with ``fire.get_state()``
+* Fire spread verification (burned area growth)
+* Plotfile writing from Python
+
+Key operations:
+
+.. code-block:: python
+
+   from wildfire_solver import WildfireSolver
+   
+   fire = WildfireSolver("inputs.i")
+   for i in range(10):
+       fire.step()
+       state = fire.get_state()
+   fire.finalize()
+
+**Build**: 2D build with Python bindings::
+
+   cmake -S . -B build -DLEVELSET_DIM_2D=ON -DLEVELSET_BUILD_PYTHON_BINDINGS=ON
+
+**Requirements**: Python 3.6+, NumPy, pybind11
+
+**Run**::
+
+   cd build
+   ctest -R python_api_basic_fire_solver --output-on-failure
+
+Or directly::
+
+   cd regtest/python_api/basic_fire_solver
+   PYTHONPATH=/path/to/build/python:$PYTHONPATH python3 test_fire_solver.py
+
+See the `Python API regression tests README <../regtest/python_api/README.md>`_
+for detailed instructions.
+
+coupled_wind_fire (python_api/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Demonstrates integration with external 3D wind solvers via the Python API.
+
+This test simulates a coupled wind-fire workflow where:
+
+1. A 3D wind field is generated (synthetic data simulating massconsistent_amr output)
+2. Wind is passed to the fire solver via ``fire.update_wind_3d()``
+3. The fire solver advances one timestep
+4. Steps 1-3 repeat in a coupled time loop
+
+Key operations:
+
+.. code-block:: python
+
+   from wildfire_solver import WildfireSolver
+   
+   fire = WildfireSolver("inputs.i")
+   
+   while fire.time < final_time:
+       # Generate/update 3D wind field (your wind solver here)
+       u_3d, v_3d, w_3d, nz, zmin, zmax = generate_wind_field(...)
+       
+       # Update fire wind
+       fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin, zmax)
+       
+       # Advance fire
+       fire.step()
+   
+   fire.finalize()
+
+**Integrating with massconsistent_amr**:
+
+To replace the synthetic wind generation with real wind solver output:
+
+1. Build massconsistent_amr with Python bindings::
+
+      cd /path/to/massconsistent_amr
+      cmake -S . -B build -DBUILD_PYTHON_BINDINGS=ON
+      cmake --build build -j
+
+2. Set PYTHONPATH to include both modules::
+
+      export PYTHONPATH=/path/to/wildfire_levelset/build/python:\
+      /path/to/massconsistent_amr/build/python:$PYTHONPATH
+
+3. Replace the synthetic wind call with actual solver calls (see test comments)
+
+**Wind Solver Requirements**:
+
+Any wind solver can be used if it provides:
+
+* 3D velocity arrays ``u_3d, v_3d, w_3d`` with shape ``(nz, ny, nx)``
+* Fortran (column-major) array order
+* Velocities in m/s
+* Vertical domain specification (``nz, zmin, zmax``)
+* Domain overlap with fire solver domain
+
+**Build**: Same as basic_fire_solver
+
+**Run**::
+
+   cd build
+   ctest -R python_api_coupled_wind_fire --output-on-failure
+
+**See also**:
+
+* `Python API documentation <python_api.html>`_ - Complete API reference
+* `massconsistent_amr <https://github.com/hgopalan/massconsistent_amr>`_ - Compatible wind solver
+* ``regtest/python_api/README.md`` - Integration guide for other wind solvers
+
+Replacing the Wind Solver
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The coupled_wind_fire test is designed to work with any wind solver. Common patterns:
+
+**Option 1: AMReX-based solver with Python bindings** (like massconsistent_amr):
+
+.. code-block:: python
+
+   from pyWindSolver import WindSolver
+   
+   wind = WindSolver("wind_inputs.txt")
+   wind.solve(fire.time)
+   u_3d, v_3d, w_3d = wind.get_velocity_arrays()
+
+**Option 2: External executable** (WindNinja, etc.):
+
+.. code-block:: python
+
+   import subprocess
+   
+   def run_external_wind_solver(time):
+       subprocess.run(['WindNinja_cli', '--time', str(time), ...])
+       return load_wind_output('wind_output.asc')
+
+**Option 3: WRF or NetCDF-based models**:
+
+.. code-block:: python
+
+   from netCDF4 import Dataset
+   import wrf
+   
+   u = wrf.getvar(ncfile, 'ua', timeidx=time_idx)
+   # Interpolate to fire grid...
+
+**Option 4: Custom Python wind solver**:
+
+.. code-block:: python
+
+   def solve_log_law_wind(fire, time):
+       # Implement your wind model
+       return u_3d, v_3d, w_3d, nz, zmin, zmax
+
+See the `Python API documentation <python_api.html>`_ for complete integration examples.
