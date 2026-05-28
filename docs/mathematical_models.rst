@@ -1853,6 +1853,52 @@ Byram's (1959) empirical relationship between fireline intensity and flame lengt
 These fields (``fireline_intensity`` and ``flame_length``) are computed at every time
 step and written to each plotfile.
 
+Fire Intensity Classification
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fireline intensity :math:`I_B` is classified into six discrete classes following the 
+FARSITE / NFFL convention:
+
+.. list-table:: Fire Intensity Classes (Byram 1959)
+   :header-rows: 1
+   :widths: 10 20 20 50
+
+   * - Class
+     - Intensity (kW/m)
+     - Flame Length (m)
+     - Description
+   * - I
+     - < 10
+     - < 0.5
+     - Creeping / smouldering
+   * - II
+     - 10-175
+     - 0.5-1.5
+     - Low intensity surface fire
+   * - III
+     - 175-500
+     - 1.5-2.5
+     - Moderate intensity
+   * - IV
+     - 500-2000
+     - 2.5-5
+     - High intensity; spotting begins
+   * - V
+     - 2000-10000
+     - 5-11
+     - Very high; active crown fire
+   * - VI
+     - > 10000
+     - > 11
+     - Extreme; firestorm
+
+The classification is automatically computed and written to every plotfile as ``fire_intensity_class``.
+To selectively output only this field::
+
+    plot_vars = fire_intensity_class fireline_intensity
+
+Implementation: ``src/fire_intensity_class.H`` provides GPU-compatible classification functions.
+
 Viegas (2004) Eruptive Fire Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2335,6 +2381,82 @@ where:
   - PM\ :sub:`2.5`\: 0.0162 kg/kg (Andreae & Merlet 2001)
 
 Output fields: ``co2_emissions``, ``co_emissions``, ``pm25_emissions``.
+
+
+Smoke Plume Rise with Pasquill-Gifford Stability
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Integrates Pasquill-Gifford atmospheric stability classification into the Briggs plume rise 
+model, allowing FARSITE-compatible adjustment of smoke plume rise based on atmospheric conditions.
+
+The base Briggs (1965/1969) formula computes:
+
+.. math::
+
+   \Delta h = 1.6 \times F_B^{1/3} \times x_f^{2/3} / u
+
+With Pasquill-Gifford correction:
+
+.. math::
+
+   \Delta h_{\text{corrected}} = \Delta h \times \text{stability\_factor}
+
+This accounts for:
+
+* **Unstable conditions (A-C)**: Enhanced vertical mixing → greater plume rise
+* **Stable conditions (E-F)**: Suppressed vertical motion → reduced plume rise
+
+Stability Classes
+^^^^^^^^^^^^^^^^^^
+
+.. list-table:: Pasquill-Gifford Stability Classes
+   :header-rows: 1
+   :widths: 10 30 20 40
+
+   * - Class
+     - Conditions
+     - Correction Factor
+     - Effect on Plume Rise
+   * - A
+     - Extremely unstable (strong solar radiation, light winds)
+     - 1.20
+     - +20% enhanced rise
+   * - B
+     - Moderately unstable
+     - 1.10
+     - +10% enhanced rise
+   * - C
+     - Slightly unstable
+     - 1.05
+     - +5% enhanced rise
+   * - D
+     - Neutral (overcast or moderate wind)
+     - 1.00
+     - No correction
+   * - E
+     - Slightly stable (clear night, light winds)
+     - 0.85
+     - -15% suppressed rise
+   * - F
+     - Moderately stable (clear night, very light winds)
+     - 0.70
+     - -30% suppressed rise
+
+**Usage**::
+
+    smoke_plume.enable = 1
+    smoke_plume.use_stability_correction = 1
+    smoke_plume.stability_class = A  # Options: A, B, C, D, E, or F
+
+Default (without correction) is equivalent to::
+
+    smoke_plume.use_stability_correction = 0  # or omit
+    smoke_plume.stability_class = D
+
+**Implementation**: ``src/smoke_plume_rise.H``
+
+**References**: Briggs, G.A. (1965/1969). Plume rise models; Pasquill, F. (1961); 
+Gifford, F.A. (1961); Turner, D.B. (1970). Workbook of atmospheric dispersion estimates.
 
 
 Always-Present Output Fields
@@ -3017,3 +3139,256 @@ model, resulting in realistic spatial moisture gradients.
      - IDW exponent :math:`p` (default: 2.0)
 
 **Test**: ``regtest/moisture/multi_wtr_spatial/``
+
+
+Spot Fire Ignition Delay
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Models the delay between firebrand landing and actual ignition based on fuel moisture 
+content, following FARSITE's approach to more realistically represent fire spread timing.
+
+The delay formula is:
+
+.. math::
+
+   \tau_{\text{delay}} = \tau_{\text{base}} \times \frac{M_x}{M_x - M_f}
+
+where:
+
+* :math:`\tau_{\text{base}}` = base delay time at zero moisture [s] (default: 120 s)
+* :math:`M_x` = extinction moisture content [fraction]
+* :math:`M_f` = current fuel moisture content [fraction]
+
+At extinction moisture (:math:`M_f \to M_x`), delay approaches infinity (no ignition).
+At very dry conditions (:math:`M_f \to 0`), delay approaches :math:`\tau_{\text{base}}`.
+
+**Usage**::
+
+    spotting.enable = 1
+    spotting.enable_delay = 1
+    spotting.tau_base = 120.0  # base delay in seconds
+
+**Implementation**: ``src/spot_ignition_delay.H``
+
+
+FARSITE Temporal Fire Acceleration Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Implements the full FARSITE temporal acceleration model (McAlpine & Wakimoto 1991 / 
+VanWagner's equation) with per-cell temporal tracking and wind-onset time-lag capability. 
+Models the delayed approach to quasi-steady-state spread rate in small fires or after wind changes.
+
+Two models are available:
+
+Size-Based Model (Catchpole et al. 1992)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. math::
+
+   \alpha = 1 - \exp(-r_{\text{fire}} / L_{\text{acc}})
+
+   R_{\text{eff}} = \alpha \times R_{\text{QSS}}
+
+where :math:`r_{\text{fire}} = \sqrt{A_{\text{burned}} / \pi}`. Global scaling based on 
+current fire size. Fire achieves ~63% of QSS at :math:`r_{\text{fire}} = L_{\text{acc}}`, 
+~95% at :math:`r_{\text{fire}} = 3 \times L_{\text{acc}}`.
+
+FARSITE Temporal Model (McAlpine & Wakimoto 1991)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. math::
+
+   R(t) = R_E \times (1 - \exp(-A \times t))
+
+where:
+
+* :math:`A = A_{\text{point}}` (0.115 1/min) for small fires (perim < 402.3 m)
+* :math:`A = A_{\text{line}}` (0.300 1/min) for large fires (perim >= 402.3 m)
+* :math:`t` = elapsed time since entering current acceleration state [s]
+
+Per-cell temporal tracking with automatic switching between point and line acceleration constants.
+
+Wind-Onset Time-Lag Extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When :math:`R_E` changes (wind change):
+
+.. math::
+
+   R_{\text{target}}(t) = R_{\text{prev}} + (R_E - R_{\text{prev}}) \times (1 - \exp(-dt/\tau_{\text{wind}}))
+
+   R(t) = R_{\text{target}} \times (1 - \exp(-A \times t_{\text{accel}}))
+
+Optional wind-lag model for realistic wind response. Fire ROS ramps up exponentially 
+after wind changes, controlled by time constant tau_wind (default: 180 s = 3 min).
+
+**Usage - Size-based model (backward compatible)**::
+
+    acceleration.enable = 1
+    acceleration.L_acc = 50.0
+
+**Usage - FARSITE temporal model**::
+
+    acceleration.enable = 1
+    acceleration.use_temporal = 1
+    acceleration.A_point = 0.115
+    acceleration.A_line = 0.300
+    acceleration.perim_limit = 402.3
+
+**Usage - Enable wind-onset time-lag**::
+
+    acceleration.enable = 1
+    acceleration.use_temporal = 1
+    acceleration.enable_wind_lag = 1
+    acceleration.tau_wind = 180.0
+
+.. list-table:: Fire Acceleration Parameters
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``acceleration.enable``
+     - 0
+     - Enable acceleration model (1=yes, 0=no)
+   * - ``acceleration.use_temporal``
+     - 0
+     - 0=size-based, 1=FARSITE temporal
+   * - ``acceleration.L_acc``
+     - 50.0 m
+     - Length scale for size-based model
+   * - ``acceleration.A_point``
+     - 0.115 1/min
+     - Point ignition acceleration constant
+   * - ``acceleration.A_line``
+     - 0.300 1/min
+     - Line ignition acceleration constant
+   * - ``acceleration.perim_limit``
+     - 402.3 m
+     - Perimeter threshold (20 chains)
+   * - ``acceleration.enable_wind_lag``
+     - 0
+     - Enable wind-onset time-lag (1=yes, 0=no)
+   * - ``acceleration.tau_wind``
+     - 180.0 s
+     - Wind response time constant (3 min)
+
+**Tests**: ``regtest/surface_spread/fire_acceleration/``
+
+**Implementation**: ``src/fire_acceleration.H``
+
+**References**: McAlpine, R.S. & Wakimoto, R.H. (1991). The acceleration of fire from point 
+source to equilibrium spread. *Forest Science*, 37(5), 1314–1337.
+
+
+Cell Size Effects Correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Implements empirical correction factors for fire spread rates based on grid cell resolution. 
+Accounts for the physical reality that finer computational grids better resolve fire-front 
+geometry, leading to higher effective spread rates when compared to coarser grids.
+
+Physical Basis
+~~~~~~~~~~~~~~
+
+Fire spread models like Rothermel assume a representative fuel bed at a given scale. When 
+implementing these models on computational grids:
+
+* **Coarser grids**: Numerical diffusion and averaging effects cause under-prediction of fire spread
+* **Finer grids**: Better resolution of fire-front topology leads to higher effective spread rates
+
+FARSITE addresses this through empirical cell size correction factors.
+
+Correction Formula
+~~~~~~~~~~~~~~~~~~
+
+The rate of spread is adjusted as:
+
+.. math::
+
+    R_{\text{corrected}} = R_{\text{base}} \times (dx_{\text{ref}} / dx_{\text{min}})^{\text{exponent}}
+
+where:
+
+* :math:`R_{\text{base}}` = rate of spread without correction (m/s)
+* :math:`dx_{\text{ref}}` = reference cell size (default: 30 m)
+* :math:`dx_{\text{min}}` = actual minimum cell size in domain = min(dx, dy, dz)
+* :math:`\text{exponent}` = power-law exponent (default: 0.1)
+
+Examples
+~~~~~~~~
+
+With ``dx_ref = 30.0`` and ``exponent = 0.1``:
+
+.. list-table:: Cell Size Correction Examples
+   :header-rows: 1
+   :widths: 20 20 25 35
+
+   * - Cell Size (m)
+     - dx/dx_ref
+     - Correction Factor
+     - Effect
+   * - 10
+     - 3.0
+     - (3.0)^0.1 = 1.116
+     - +11.6% faster
+   * - 15
+     - 2.0
+     - (2.0)^0.1 = 1.072
+     - +7.2% faster
+   * - 20
+     - 1.5
+     - (1.5)^0.1 = 1.041
+     - +4.1% faster
+   * - 30
+     - 1.0
+     - (1.0)^0.1 = 1.000
+     - No change
+   * - 60
+     - 0.5
+     - (0.5)^0.1 = 0.933
+     - -6.7% slower
+   * - 100
+     - 0.3
+     - (0.3)^0.1 = 0.878
+     - -12.2% slower
+
+Usage
+~~~~~
+
+Cell size correction is designed for FARSITE elliptical propagation and applies only when 
+``propagation_method = farsite``::
+
+    propagation_method = farsite
+    cellsize.enable = 1
+    cellsize.dx_ref = 30.0
+    cellsize.correction_exponent = 0.1
+
+Cell size correction is **not applied** to level-set or MTT propagation, even if 
+``cellsize.enable = 1``. The level-set method naturally incorporates resolution effects 
+through its CFL-based timestep constraint.
+
+.. list-table:: Cell Size Correction Parameters
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``cellsize.enable``
+     - 0
+     - 0: Disable, 1: Enable empirical correction
+   * - ``cellsize.dx_ref``
+     - 30.0
+     - Reference cell size for correction [m]
+   * - ``cellsize.correction_exponent``
+     - 0.1
+     - Power-law exponent (range: [0.0, 1.0])
+
+**Tests**: ``regtest/surface_spread/cell_size_correction_*/``
+
+**Implementation**: ``src/cell_size_correction.H``
+
+**References**: Finney, M.A. (1998). FARSITE: Fire Area Simulator. USDA Forest Service 
+RMRS-RP-4.

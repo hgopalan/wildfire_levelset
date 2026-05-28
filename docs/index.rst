@@ -20,15 +20,6 @@ Welcome to the documentation for the Wildfire Level-Set Solver, an AMReX-based C
    comparison
    api_reference
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Implementation Details:
-
-   farsite_features_implementation
-   implementation_summary
-   cell_size_correction
-   implementation_spatial_trh
-
 Overview
 ========
 
