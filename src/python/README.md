@@ -1,11 +1,26 @@
 # pyWildfire Python Bindings
 
-Python bindings for wildfire_levelset that enable direct loading of 3D wind field data from Python without file I/O.
+Python bindings for wildfire_levelset that enable:
+1. **Direct wind data loading** from numpy arrays without file I/O
+2. **Fire solver control** for time-stepping simulations from Python
+3. **Coupled wind-fire simulations** with external wind solvers
+
+## New in v0.2.0: Fire Solver Control
+
+The Python bindings now include complete fire solver control, allowing you to:
+- Initialize and run wildfire simulations entirely from Python
+- Couple with external wind solvers (e.g., massconsistent_amr)
+- Extract fire state (ROS, intensity, flame length) at each timestep
+- Update wind fields dynamically during simulation
 
 ## Features
 
 - Load 3D wind velocity fields from numpy arrays
+- Initialize and control the fire solver from Python
 - Automatic computation of 2D column-averaged wind for fire spotting
+- Time-stepping with automatic CFL condition
+- State extraction (phi, ROS, intensity, flame length, wind)
+- Wind field updates for coupled simulations
 - Zero-copy data transfer (when using pyAMReX MultiFab in future)
 - Compatible with massconsistent_amr output via pyAMReX
 
@@ -49,7 +64,97 @@ export PYTHONPATH=$PWD/build/python:$PYTHONPATH
 
 ## Usage
 
-### Basic Example: Loading from NumPy Arrays
+### Fire Solver Control (New in v0.2.0)
+
+#### Quick Start: Simple Fire Simulation
+
+```python
+from wildfire_solver import WildfireSolver
+
+# Initialize solver from inputs file
+fire = WildfireSolver("inputs.i")
+
+# Run for 10 timesteps
+for i in range(10):
+    fire.step()
+    state = fire.get_state()
+    print(f"Step {i+1}: t={state['time']:.2f} s, "
+          f"burned area={np.sum(state['phi'] <= 0) * fire.dx * fire.dy:.1f} m²")
+
+# Clean up
+fire.finalize()
+```
+
+#### Coupled Wind-Fire Simulation
+
+```python
+from wildfire_solver import WildfireSolver
+import numpy as np
+
+# Initialize fire solver
+fire = WildfireSolver("inputs.i")
+
+# Time loop with external wind solver
+for n in range(num_steps):
+    # 1. Solve wind field (e.g., massconsistent_amr)
+    # u_3d, v_3d, w_3d = wind_solver.solve(fire.time)
+    
+    # For demonstration, use synthetic wind
+    u_3d = np.full((nz, fire.ny, fire.nx), 5.0)  # 5 m/s easterly
+    v_3d = np.zeros((nz, fire.ny, fire.nx))
+    w_3d = np.zeros((nz, fire.ny, fire.nx))
+    
+    # 2. Pass wind to fire solver
+    fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin=0.0, zmax=100.0)
+    
+    # 3. Advance fire simulation
+    fire.step()
+    
+    # 4. Optionally extract state for analysis
+    if n % 10 == 0:
+        state = fire.get_state()
+        fire.write_plotfile(f"plt{n:05d}")
+
+fire.finalize()
+```
+
+#### Using the Low-Level API
+
+```python
+import pyWildfire
+
+# Initialize solver
+result = pyWildfire.initialize("inputs.i")
+if result['success']:
+    print(f"Initialized {result['nx']}×{result['ny']} grid")
+
+# Time-stepping loop
+for step in range(10):
+    # Advance one timestep
+    step_result = pyWildfire.advance()
+    
+    # Extract state
+    state = pyWildfire.get_state()
+    phi = state['phi']              # Level set (< 0 = burned)
+    ros = state['ros']              # Rate of spread (m/s)
+    intensity = state['intensity']  # Fire line intensity (kW/m)
+    flame_length = state['flame_length']  # Flame length (m)
+    
+    # Update wind if needed
+    u_new = np.full((state['ny'], state['nx']), 10.0)
+    v_new = np.zeros((state['ny'], state['nx']))
+    pyWildfire.update_wind(u_new, v_new)
+
+# Write final plotfile
+pyWildfire.write_plotfile("plt_final")
+
+# Clean up
+pyWildfire.finalize()
+```
+
+### Wind Data Loading (Original Functionality)
+
+#### Basic Example: Loading from NumPy Arrays
 
 ```python
 import numpy as np
@@ -143,7 +248,98 @@ result = pyWildfire.load_wind_from_multifab(
 
 ## API Reference
 
-### `load_wind_from_arrays()`
+### Fire Solver Control Functions
+
+#### `pyWildfire.initialize(inputs_file)`
+
+Initialize the wildfire solver from an inputs file.
+
+**Parameters:**
+- `inputs_file` (str): Path to the inputs file
+
+**Returns:**
+- dict with keys:
+  - `success` (bool): Whether initialization succeeded
+  - `nx, ny` (int): Grid dimensions
+  - `xmin, xmax, ymin, ymax` (float): Domain bounds (meters)
+  - `dx, dy` (float): Cell sizes (meters)
+
+#### `pyWildfire.advance()`
+
+Advance the fire simulation by one timestep.
+
+**Returns:**
+- dict with keys:
+  - `success` (bool): Whether timestep succeeded
+  - `dt` (float): Timestep used (seconds)
+  - `time` (float): Current simulation time (seconds)
+  - `step` (int): Current timestep number
+
+#### `pyWildfire.get_state()`
+
+Extract the current state of the fire simulation.
+
+**Returns:**
+- dict with keys:
+  - `time` (float): Current simulation time (seconds)
+  - `step` (int): Current timestep number
+  - `nx, ny` (int): Grid dimensions
+  - `xmin, xmax, ymin, ymax` (float): Domain bounds (meters)
+  - `dx, dy` (float): Cell sizes (meters)
+  - `phi` (ndarray): Level set field (ny, nx), < 0 burned, > 0 unburned
+  - `ros` (ndarray): Rate of spread (m/s), shape (ny, nx)
+  - `intensity` (ndarray): Fire line intensity (kW/m), shape (ny, nx)
+  - `flame_length` (ndarray): Flame length (m), shape (ny, nx)
+  - `u_wind, v_wind` (ndarray): Wind components (m/s), shape (ny, nx)
+  - `arrival_time` (ndarray): Fire arrival time (s), shape (ny, nx)
+
+#### `pyWildfire.update_wind(u_wind, v_wind)`
+
+Update the wind field from external 2D arrays.
+
+**Parameters:**
+- `u_wind` (ndarray): U-component of wind (m/s), shape (ny, nx)
+- `v_wind` (ndarray): V-component of wind (m/s), shape (ny, nx)
+
+**Returns:**
+- bool: True if wind was updated successfully
+
+#### `pyWildfire.update_wind_3d(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, u_array, v_array, w_array)`
+
+Update the wind field from external 3D arrays.
+
+**Parameters:**
+- `nx, ny, nz` (int): Grid dimensions
+- `xmin, xmax, ymin, ymax, zmin, zmax` (float): Domain bounds (meters)
+- `u_array, v_array, w_array` (ndarray): 3D wind velocity components (m/s), flattened in Fortran order
+
+**Returns:**
+- bool: True if wind was updated successfully
+
+#### `pyWildfire.write_plotfile(plotfile_name)`
+
+Write the current state to an AMReX plotfile.
+
+**Parameters:**
+- `plotfile_name` (str): Name/path of the plotfile to write
+
+**Returns:**
+- bool: True if plotfile was written successfully
+
+#### `pyWildfire.finalize()`
+
+Clean up and finalize the fire solver.
+
+#### `pyWildfire.is_initialized()`
+
+Check if the fire solver is currently initialized.
+
+**Returns:**
+- bool: True if solver is initialized
+
+### Wind Data Loading Functions
+
+#### `pyWildfire.load_wind_from_arrays()`
 
 Load 3D wind field from numpy arrays and compute 2D column-averaged wind.
 
@@ -167,6 +363,43 @@ Dictionary with keys:
 - Arrays must be in Fortran (column-major) order with indexing [k, j, i]
 - The 2D wind is computed by averaging over all vertical levels at each (x, y) column
 - This matches the format expected by wildfire_levelset for spotting calculations
+
+## Examples
+
+### Complete Examples Provided
+
+1. **`test_fire_solver_api.py`** - Comprehensive test suite for the fire solver API
+   ```bash
+   PYTHONPATH=build/python python3 src/python/test_fire_solver_api.py
+   ```
+
+2. **`coupled_wind_fire_example.py`** - Demonstration of coupled wind-fire simulation
+   ```bash
+   PYTHONPATH=build/python python3 src/python/coupled_wind_fire_example.py inputs.i
+   ```
+
+3. **`wildfire_solver.py`** - High-level Python class (can be run standalone)
+   ```bash
+   PYTHONPATH=build/python python3 src/python/wildfire_solver.py inputs.i
+   ```
+
+### Running Examples
+
+```bash
+# Set PYTHONPATH to find the module
+export PYTHONPATH=$PWD/build/python:$PYTHONPATH
+
+# Run comprehensive test suite
+python3 src/python/test_fire_solver_api.py
+
+# Run coupled wind-fire example
+python3 src/python/coupled_wind_fire_example.py \
+    regtest/surface_spread/farsite_ellipse/inputs.i
+
+# Run simple fire simulation
+python3 src/python/wildfire_solver.py \
+    regtest/surface_spread/farsite_ellipse/inputs.i
+```
 
 ## Testing
 
@@ -217,16 +450,78 @@ writing intermediate plotfiles to disk.
 massconsistent_amr → plotfile (disk) → plt_wind_reader.H → wildfire_levelset
 ```
 
-### New Workflow (Memory-Based)
+### New Workflow (Memory-Based via Python)
 ```
 massconsistent_amr → pyAMReX MultiFab → pyWildfire → wildfire_levelset
 ```
 
-Benefits:
-- Eliminates disk I/O overhead
-- Faster data transfer (zero-copy when possible)
-- Enables coupled simulations in single Python script
-- Easier to integrate into workflows
+### Coupled Simulation Pattern
+
+```python
+from wildfire_solver import WildfireSolver
+# When pyWindSolver is available:
+# from pyWindSolver import WindSolver
+
+# Initialize both solvers
+fire = WildfireSolver("fire_inputs.i")
+# wind = WindSolver("wind_inputs.txt")  # Future
+
+# Coupled time loop
+final_time = 3600.0  # 1 hour
+while fire.time < final_time:
+    # 1. Solve wind field for current time
+    # wind.solve(fire.time)
+    # u_3d, v_3d, w_3d = wind.get_velocity_arrays()
+    
+    # For now, use synthetic wind
+    u_3d = generate_wind(fire.time)  # Your function
+    
+    # 2. Pass wind to fire solver
+    fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin, zmax)
+    
+    # 3. Advance fire simulation
+    fire.step()
+    
+    # 4. Optionally: extract heat release for wind solver feedback
+    # state = fire.get_state()
+    # heat_release = compute_heat_release(state)
+    # wind.add_heat_source(heat_release)
+```
+
+### Benefits
+
+- **Eliminates disk I/O overhead** - No intermediate plotfiles
+- **Faster data transfer** - Zero-copy when possible with pyAMReX
+- **Enables coupled simulations** - Single Python script controls both
+- **Flexible coupling strategies** - One-way, two-way, sub-cycling
+- **Easier workflow integration** - Python-based analysis and visualization
+
+### Future Enhancements
+
+Once pyWindSolver (massconsistent_amr Python bindings) is available:
+
+1. **True two-way coupling** - Fire heat → atmospheric buoyancy → wind
+2. **Sub-cycling** - Different timesteps for wind and fire
+3. **Adaptive mesh refinement** - Refine both grids near fire front
+4. **Ensemble simulations** - Run multiple coupled scenarios in parallel
+
+## Roadmap
+
+### Completed (v0.2.0)
+- ✅ Fire solver initialization from Python
+- ✅ Time-stepping control
+- ✅ State extraction (phi, ROS, intensity, etc.)
+- ✅ Wind field updates (2D and 3D)
+- ✅ Plotfile writing
+- ✅ High-level WildfireSolver class
+- ✅ Coupled simulation example
+
+### Planned
+- ⬜ Direct pyAMReX MultiFab support (zero-copy)
+- ⬜ Fire → wind coupling (heat release feedback)
+- ⬜ Advanced diagnostics (burn probability, isochrones)
+- ⬜ Parallel execution (MPI support)
+- ⬜ GPU acceleration via Python
 
 ## Troubleshooting
 
