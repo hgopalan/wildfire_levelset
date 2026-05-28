@@ -14,6 +14,7 @@ Welcome to the documentation for the Wildfire Level-Set Solver, an AMReX-based C
    code_structure
    building
    usage
+   python_api
    tools
    regtests
    comparison
