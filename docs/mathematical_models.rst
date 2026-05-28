@@ -1899,6 +1899,266 @@ To selectively output only this field::
 
 Implementation: ``src/fire_intensity_class.H`` provides GPU-compatible classification functions.
 
+Advanced Physics Features
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following advanced physics models enhance the realism of fire behavior simulations.
+
+Radiation-Driven Preheating Distance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The distance ahead of the fire front where fuel is preheated by radiant energy from flames:
+
+.. math::
+
+   d_{\text{preheat}} \;[\text{m}] = L_f \times \cos(\theta_{\text{tilt}}) \times F_v
+
+where :math:`L_f` is the Byram flame length [m], :math:`\theta_{\text{tilt}}` is the flame tilt angle from vertical [radians],
+and :math:`F_v` is the radiative view factor (typically 0.3-0.5).
+
+The flame tilt angle is computed from wind and buoyancy:
+
+.. math::
+
+   \tan(\theta_{\text{tilt}}) = \frac{U_{\text{eff}}}{v_{\text{buoy}}}
+
+where :math:`U_{\text{eff}}` is the effective wind speed [m/s] and :math:`v_{\text{buoy}} = \sqrt{g \times L_f}` is the buoyant rise velocity scale.
+
+This affects ignition timing and spread rate in non-uniform fuels.
+
+**Reference:** Butler et al. (2004), Weber (1991)
+
+**Implementation:** ``src/radiation_preheating.H``
+
+Fuel Particle Temperature Evolution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tracks the surface temperature of fuel particles using a lumped-capacitance energy balance:
+
+.. math::
+
+   \frac{dT}{dt} = \frac{Q_{\text{rad}} + Q_{\text{conv}} - Q_{\text{loss}}}{C_{\text{thermal}}}
+
+where:
+
+* :math:`T` is fuel particle temperature [K]
+* :math:`Q_{\text{rad}}` is radiative heat flux from flames [W/m²]
+* :math:`Q_{\text{conv}}` is convective heat flux from hot gases [W/m²]
+* :math:`Q_{\text{loss}} = \varepsilon \sigma (T^4 - T_a^4)` is re-radiation loss [W/m²]
+* :math:`C_{\text{thermal}} = \rho_p c_p V_{\text{char}}` is thermal capacitance [J/K/m²]
+
+Ignition occurs when :math:`T \geq T_{\text{ignition}}` (typically ~600 K for wood).
+
+This determines actual ignition timing (not instantaneous) and affects spotting ignition probability.
+
+**Reference:** Dupuy & Maréchal (2011), Pickett et al. (2010), Drysdale (2011)
+
+**Implementation:** ``src/fuel_temperature.H``
+
+Fire Line Intensity Rate of Change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The temporal derivative of fireline intensity provides an indicator of fire acceleration/deceleration:
+
+.. math::
+
+   \frac{dI}{dt} \;[\text{kW/m/s}] = \frac{I_{\text{current}} - I_{\text{previous}}}{\Delta t}
+
+Interpretation:
+
+* :math:`dI/dt > 0`: Fire is intensifying (accelerating)
+* :math:`dI/dt = 0`: Fire is steady-state
+* :math:`dI/dt < 0`: Fire is weakening (decelerating)
+
+Large positive values (e.g., > 50 kW/m/s) indicate dangerous "blow-up" conditions.
+
+Useful for suppression resource allocation and identifying rapid fire growth.
+
+**Implementation:** ``src/intensity_rate_of_change.H``
+
+Intensity-Dependent Flame Residence Time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enhances the constant residence time model with intensity dependence:
+
+.. math::
+
+   \tau_{\text{res}} \;[\text{s}] = \tau_{\text{base}} \times \left(\frac{I_{\text{base}}}{I_{\text{byram}}}\right)^\alpha
+
+where :math:`\tau_{\text{base}}` is the baseline residence time [s] at reference intensity :math:`I_{\text{base}}` [kW/m],
+:math:`I_{\text{byram}}` is the current fireline intensity [kW/m], and :math:`\alpha` is the intensity exponent (typically 0.3-0.5).
+
+Higher intensity fires burn more vigorously and complete combustion faster.
+
+**Reference:** Byram (1959), Rothermel (1972)
+
+**Implementation:** ``src/intensity_residence_time.H``
+
+Wind-Fuel Interaction Feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Adjusts effective wind speed based on fuel canopy sheltering:
+
+.. math::
+
+   U_{\text{eff}} \;[\text{m/s}] = U_{\text{ref}} \times \exp\left(-a \times \text{LAI} \times \left(1 - \frac{z}{h}\right)\right)
+
+where :math:`U_{\text{ref}}` is the reference wind speed [m/s], :math:`a` is the extinction coefficient (typically 0.5-2.0),
+LAI is the leaf area index [dimensionless], :math:`z` is the height of interest [m], and :math:`h` is canopy height [m].
+
+LAI is estimated from fuel bed properties:
+
+.. math::
+
+   \text{LAI} \approx k_{\text{LAI}} \times \delta \times \beta
+
+where :math:`k_{\text{LAI}}` is an empirical coefficient (typically 3-6), :math:`\delta` is fuel bed depth [m],
+and :math:`\beta` is packing ratio [dimensionless].
+
+Dense fuels shelter the surface from wind, reducing effective wind at fuel bed level.
+
+**Reference:** Wilson (1985), Albini & Baughman (1979)
+
+**Implementation:** ``src/wind_fuel_interaction.H``
+
+Fuel Moisture of Extinction Gradient
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Makes moisture of extinction (:math:`M_x`) depend on fuel surface-area-to-volume ratio rather than using a constant 0.30:
+
+.. math::
+
+   M_x = 0.12 + 0.28 \times \left(\frac{\sigma_{\text{fuel}}}{\sigma_{\text{ref}}}\right)^{-0.3}
+
+where :math:`\sigma_{\text{fuel}}` is the fuel SAV [ft⁻¹] and :math:`\sigma_{\text{ref}}` is the reference SAV (typically 1739 ft⁻¹ for 1-hr fuels).
+
+Typical values:
+
+* Grass (σ ~ 2000 ft⁻¹): :math:`M_x \approx 0.25`
+* 1-hr fuels (σ ~ 1739): :math:`M_x \approx 0.30`
+* 10-hr fuels (σ ~ 109): :math:`M_x \approx 0.40`
+
+More accurate fire/no-fire transitions with variable :math:`M_x`.
+
+**Reference:** Rothermel (1972), Anderson (1970), Albini (1976)
+
+**Implementation:** ``src/moisture_of_extinction.H``
+
+Flame Intermittency Factor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Accounts for pulsating/intermittent flames rather than steady burning:
+
+.. math::
+
+   \gamma = 1 - \exp(-k \times I_{\text{byram}})
+
+where :math:`\gamma \in [0, 1]` is the intermittency factor, :math:`I_{\text{byram}}` is Byram fireline intensity [kW/m],
+and :math:`k` is an empirical coefficient (typically 0.00325 [m/kW]).
+
+The effective radiative heat flux is:
+
+.. math::
+
+   Q_{\text{rad,eff}} = \gamma \times Q_{\text{rad,steady}}
+
+For low intensity fires: :math:`\gamma \to 0` (highly intermittent)
+
+For high intensity fires: :math:`\gamma \to 1` (continuous flame)
+
+Real flames flicker and pulse, affecting heat transfer efficiency and spotting (firebrands released in pulses).
+
+**Reference:** Finney et al. (2015), Frankman et al. (2013)
+
+**Implementation:** ``src/flame_intermittency.H``
+
+Plume Entrainment Momentum Feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Fire plumes create horizontal inflow winds that strengthen ROS:
+
+.. math::
+
+   dU_{\text{plume}} \;[\text{m/s}] = k_{\text{momentum}} \times w_{\text{plume}} \times \sqrt{\frac{I}{I_{\text{ref}}}}
+
+where :math:`k_{\text{momentum}}` is the momentum coupling coefficient (typically 0.1-0.3),
+:math:`w_{\text{plume}}` is the upward plume velocity [m/s], :math:`I` is fireline intensity [kW/m],
+and :math:`I_{\text{ref}}` is reference intensity [kW/m] (typically 500-1000).
+
+The upward plume velocity is estimated from buoyancy:
+
+.. math::
+
+   w_{\text{plume}} = \sqrt{\frac{g \times Q \times H}{\rho_{\text{air}} \times C_p \times T_a}}
+
+The total effective wind is:
+
+.. math::
+
+   U_{\text{eff,total}} = U_{\text{ambient}} + dU_{\text{plume}}
+
+Important for fire whirl formation and rapid fire growth.
+
+**Reference:** Finney et al. (2015), Linn et al. (2002)
+
+**Implementation:** ``src/plume_momentum_feedback.H``
+
+Spatially Varying Fuel Bed Bulk Density
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Allows spatially varying fuel loading from landscape files:
+
+.. math::
+
+   w_{0,\text{eff}} = w_{0,\text{base}} \times m(x, y)
+
+where :math:`w_{0,\text{base}}` is the base fuel loading [lb/ft²] and :math:`m(x, y)` is a spatial multiplier field [dimensionless].
+
+Real landscapes have patchy fuel loading due to terrain, moisture, past fires, etc.
+Higher local loading leads to higher intensity and potentially higher ROS.
+
+The multiplier field can be loaded from:
+
+* LCP auxiliary data
+* Separate ASCII file with X Y multiplier columns
+* Generated randomly for ensemble runs
+
+**Reference:** Finney (1998), Andrews (2018)
+
+**Implementation:** ``src/fuel_loading_variation.H``
+
+Critical Heat Flux for Ignition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Replaces binary ignition (φ < 0) with threshold-based ignition from incident heat flux:
+
+.. math::
+
+   q_{\text{crit}} \;[\text{kW/m}^2] = q_{\text{base}} \times (1 + k_{\text{moisture}} \times M_{\text{fuel}})
+
+where :math:`q_{\text{base}}` is the base critical heat flux for dry fuel [kW/m²] (typically 10-15),
+:math:`k_{\text{moisture}}` is the moisture sensitivity coefficient (typically 2-4),
+and :math:`M_{\text{fuel}}` is fuel moisture content [fraction].
+
+Ignition criterion:
+
+.. math::
+
+   \text{Ignite when: } q_{\text{incident}} > q_{\text{crit}}
+
+Typical values:
+
+* Dry fuel (M=0.05): :math:`q_{\text{crit}} \approx 11` kW/m²
+* Moderate (M=0.15): :math:`q_{\text{crit}} \approx 16` kW/m²
+* Wet fuel (M=0.30): :math:`q_{\text{crit}} \approx 25` kW/m²
+
+More physically realistic than geometric ignition; wet fuels require more heat to ignite.
+
+**Reference:** Drysdale (2011), Quintiere (2006), Balbi et al. (2009), Lautenberger (2013)
+
+**Implementation:** ``src/critical_heat_flux.H``
+
+
 Viegas (2004) Eruptive Fire Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

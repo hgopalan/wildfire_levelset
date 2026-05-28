@@ -688,6 +688,110 @@ Run tests:
    cd build
    ctest -L python_api --output-on-failure
 
+Advanced Physics Features
+--------------------------
+
+The following advanced physics features have been added to enhance fire behavior modeling:
+
+Radiation-Driven Preheating
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The solver can compute the distance ahead of the fire front where fuel is preheated by radiant energy.
+This affects ignition timing and spread rate in non-uniform fuels.
+
+Access preheating distance from state:
+
+.. code-block:: python
+
+   state = fire.get_state()
+   if 'preheating_distance' in state:
+       d_preheat = state['preheating_distance']  # [m]
+
+Fuel Particle Temperature
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Track fuel particle temperature evolution ahead of and behind the fire front. This determines
+actual ignition timing (not instantaneous) and affects spotting probability.
+
+.. code-block:: python
+
+   state = fire.get_state()
+   if 'fuel_temperature' in state:
+       T_fuel = state['fuel_temperature']  # [K]
+       # Check where ignition temperature is reached
+       ignited = T_fuel >= 600.0  # 600 K typical for wood
+
+Fire Line Intensity Rate of Change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The temporal derivative of fireline intensity (dI/dt) indicates fire acceleration or deceleration.
+Positive values indicate dangerous rapid fire growth.
+
+.. code-block:: python
+
+   state = fire.get_state()
+   if 'dI_dt' in state:
+       dI_dt = state['dI_dt']  # [kW/m/s]
+       # Identify blow-up conditions
+       rapid_growth = dI_dt > 50.0  # Rapid intensification
+
+Flame Intermittency
+~~~~~~~~~~~~~~~~~~~
+
+Accounts for pulsating/intermittent flames rather than steady burning. This affects heat transfer
+efficiency and spotting (firebrands released in pulses).
+
+.. code-block:: python
+
+   state = fire.get_state()
+   if 'intermittency' in state:
+       gamma = state['intermittency']  # [0, 1]
+       # gamma = 1: continuous flame
+       # gamma = 0: highly intermittent
+
+Critical Heat Flux for Ignition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+More physically realistic ignition based on incident heat flux threshold, which depends on
+fuel moisture content.
+
+.. code-block:: python
+
+   state = fire.get_state()
+   if 'q_crit' in state:
+       q_crit = state['q_crit']  # [kW/m²]
+       # Wetter fuels have higher critical heat flux
+
+Wind-Fuel Interaction
+~~~~~~~~~~~~~~~~~~~~~~
+
+Wind speed is automatically adjusted based on fuel structure (sheltering effect through canopy).
+Dense fuels reduce effective wind at fuel bed level.
+
+This is computed automatically when fuel properties are available.
+
+Spatially Varying Fuel Loading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Fuel loading can vary spatially even within the same fuel type, affecting local fire intensity.
+
+.. code-block:: python
+
+   # If using spatially varying fuel loading
+   state = fire.get_state()
+   if 'fuel_multiplier' in state:
+       multiplier = state['fuel_multiplier']  # Spatial variation factor
+
+Plume Momentum Feedback
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Fire plumes create inflow winds that strengthen actual ROS by feeding fresh air to the fire.
+This horizontal momentum feedback is important for fire whirl formation.
+
+Automatically computed when heat flux and intensity fields are available.
+
+For more details on these advanced features, see the `Mathematical Models <mathematical_models.html>`_ documentation.
+
 See Also
 --------
 
