@@ -47,17 +47,16 @@ using namespace amrex;
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
 {
-    using namespace amrex;
-    
     // Clamp crown_activity to integer range [0,2]
-    int ca = static_cast<int>(amrex::max(Real(0.0), amrex::min(Real(2.0), crown_activity)));
+    int ca = static_cast<int>(amrex::max(amrex::Real(0.0), amrex::min(amrex::Real(2.5), crown_activity)) + amrex::Real(0.5));
+    ca = amrex::max(0, amrex::min(2, ca));
     
     if (ca == 0) {
-        return Real(1.0);    // Surface fire: baseline spotting
+        return amrex::Real(1.0);    // Surface fire: baseline spotting
     } else if (ca == 1) {
-        return Real(1.25);   // Passive crown fire: 25% enhancement
+        return amrex::Real(1.25);   // Passive crown fire: 25% enhancement
     } else {
-        return Real(1.75);   // Active crown fire: 75% enhancement
+        return amrex::Real(1.75);   // Active crown fire: 75% enhancement
     }
 }
 
@@ -412,9 +411,10 @@ inline void generate_firebrand_spots(
 
             // Apply crown fire scaling to spotting distance
             // Active crown fire increases spotting distance
-            Real crown_mult = compute_crown_fire_spotting_multiplier(
-                (idx < static_cast<int>(crown_activity_arr.size()))
-                    ? crown_activity_arr[idx] : Real(0.0));
+            Real crown_mult = amrex::Real(1.0);
+            if (idx >= 0 && idx < static_cast<int>(crown_activity_arr.size())) {
+                crown_mult = compute_crown_fire_spotting_multiplier(crown_activity_arr[idx]);
+            }
             distance *= crown_mult;
 
             // ---- Scott/Albini (1979) per-fuel-model maximum spotting distance cap ----
