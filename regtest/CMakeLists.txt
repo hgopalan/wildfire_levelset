@@ -228,6 +228,51 @@ if(Python3_FOUND)
     add_python_setup_regression_test(nonburnable_mask misc/nonburnable_mask create_landscape.py)
 endif()
 
+# ===========================================================================
+# python_api/ – Python bindings and coupled simulation tests
+# ===========================================================================
+if(Python3_FOUND AND LEVELSET_BUILD_PYTHON_BINDINGS)
+    # Helper function for Python API tests (require Python bindings)
+    function(add_python_api_test TEST_NAME TEST_DIR TEST_SCRIPT)
+        set(TEST_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TEST_DIR}")
+        file(MAKE_DIRECTORY ${TEST_WORK_DIR})
+        
+        # Copy input files
+        file(GLOB _DATA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/*.i")
+        foreach(_df ${_DATA_FILES})
+            file(COPY "${_df}" DESTINATION ${TEST_WORK_DIR})
+        endforeach()
+        
+        # Set PYTHONPATH to include the build/python directory
+        set(PYTHON_PATH_CMD ${CMAKE_COMMAND} -E env 
+            "PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH}")
+        
+        add_test(NAME ${TEST_NAME}
+                 COMMAND ${PYTHON_PATH_CMD}
+                         ${Python3_EXECUTABLE}
+                         ${CMAKE_CURRENT_SOURCE_DIR}/${TEST_DIR}/${TEST_SCRIPT}
+                 WORKING_DIRECTORY ${TEST_WORK_DIR})
+        set_tests_properties(${TEST_NAME} PROPERTIES
+                             TIMEOUT 600
+                             LABELS  "regtest;python_api")
+    endfunction()
+    
+    # Python API regression tests
+    add_python_api_test(python_api_basic_fire_solver 
+                        python_api/basic_fire_solver 
+                        test_fire_solver.py)
+    add_python_api_test(python_api_coupled_wind_fire 
+                        python_api/coupled_wind_fire 
+                        test_coupled_wind_fire.py)
+else()
+    if(NOT Python3_FOUND)
+        message(STATUS "Python3 not found – skipping Python API tests")
+    endif()
+    if(NOT LEVELSET_BUILD_PYTHON_BINDINGS)
+        message(STATUS "Python bindings not enabled – skipping Python API tests (use -DLEVELSET_BUILD_PYTHON_BINDINGS=ON)")
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Timing benchmark
 # ---------------------------------------------------------------------------
