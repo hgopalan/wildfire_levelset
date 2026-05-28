@@ -44,14 +44,18 @@ using namespace amrex;
 //
 // This function is called per-cell to get the appropriate scaling factor.
 // ============================================================================
+
+// Upper bound for crown_activity clamping before rounding
+// Set to 2.5 to ensure values in range [1.5, 2.5) round to 2
+static constexpr amrex::Real CROWN_ACTIVITY_UPPER_BOUND = amrex::Real(2.5);
+
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
 {
     // Round crown_activity to nearest integer: 0, 1, or 2
-    // Using 2.5 upper bound ensures rounding works correctly for floating-point values
+    // The upper bound ensures rounding works correctly for floating-point values
     // that may slightly exceed 2.0 due to numerical precision
-    int ca = static_cast<int>(amrex::max(amrex::Real(0.0), amrex::min(amrex::Real(2.5), crown_activity)) + amrex::Real(0.5));
-    ca = amrex::max(0, amrex::min(2, ca));
+    int ca = static_cast<int>(amrex::max(amrex::Real(0.0), amrex::min(CROWN_ACTIVITY_UPPER_BOUND, crown_activity)) + amrex::Real(0.5));
     
     if (ca == 0) {
         return amrex::Real(1.0);    // Surface fire: baseline spotting
