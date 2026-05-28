@@ -676,6 +676,12 @@ void parse_inputs(InputParameters& p)
     p.wind_terrain.k_pimont    = 0.5;    pp.query("wind_terrain.k_pimont",    p.wind_terrain.k_pimont);
     p.wind_terrain.k_ridge     = 1.0;    pp.query("wind_terrain.k_ridge",     p.wind_terrain.k_ridge);
     p.wind_terrain.k_canyon_wn = 0.5;    pp.query("wind_terrain.k_canyon_wn", p.wind_terrain.k_canyon_wn);
+    // FARSITE wind stream simulation parameters (Option 8)
+    p.wind_terrain.k_ridge_farsite = 1.5;   pp.query("wind_terrain.k_ridge_farsite", p.wind_terrain.k_ridge_farsite);
+    p.wind_terrain.k_shelter       = 0.6;   pp.query("wind_terrain.k_shelter",       p.wind_terrain.k_shelter);
+    p.wind_terrain.k_valley        = 0.8;   pp.query("wind_terrain.k_valley",        p.wind_terrain.k_valley);
+    p.wind_terrain.k_deflection    = 0.3;   pp.query("wind_terrain.k_deflection",    p.wind_terrain.k_deflection);
+    p.wind_terrain.min_curvature   = 0.0001; pp.query("wind_terrain.min_curvature",  p.wind_terrain.min_curvature);
 
     // Validate model name
     if (p.wind_terrain.model != "none"                   &&
@@ -684,10 +690,11 @@ void parse_inputs(InputParameters& p)
         p.wind_terrain.model != "canyon_wind"            &&
         p.wind_terrain.model != "viegas_neto"            &&
         p.wind_terrain.model != "pimont"                 &&
-        p.wind_terrain.model != "windninja_ridge_canyon") {
+        p.wind_terrain.model != "windninja_ridge_canyon" &&
+        p.wind_terrain.model != "farsite_wind") {
         amrex::Abort("wind_terrain.model must be one of: "
                      "none, viegas_ros, viegas_wind, canyon_wind, viegas_neto, pimont, "
-                     "windninja_ridge_canyon");
+                     "windninja_ridge_canyon, farsite_wind");
     }
 
     // Validate model-specific parameters
@@ -702,6 +709,18 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("wind_terrain.k_ridge must be > 0");
         if (p.wind_terrain.k_canyon_wn <= 0.0)
             amrex::Abort("wind_terrain.k_canyon_wn must be > 0");
+    }
+    if (p.wind_terrain.model == "farsite_wind") {
+        if (p.wind_terrain.k_ridge_farsite <= 0.0)
+            amrex::Abort("wind_terrain.k_ridge_farsite must be > 0");
+        if (p.wind_terrain.k_shelter < 0.0)
+            amrex::Abort("wind_terrain.k_shelter must be >= 0");
+        if (p.wind_terrain.k_valley <= 0.0)
+            amrex::Abort("wind_terrain.k_valley must be > 0");
+        if (p.wind_terrain.k_deflection < 0.0)
+            amrex::Abort("wind_terrain.k_deflection must be >= 0");
+        if (p.wind_terrain.min_curvature < 0.0)
+            amrex::Abort("wind_terrain.min_curvature must be >= 0");
     }
 
     // Auto-enable Viegas diagnostics for Viegas-based wind-terrain models
@@ -756,6 +775,13 @@ void parse_inputs(InputParameters& p)
                 << "  k_ridge = " << p.wind_terrain.k_ridge << "\n";
         Print() << "  Canyon (wind downslope): f = 1 + k_canyon_wn * tan_phi * |alignment|,"
                 << "  k_canyon_wn = " << p.wind_terrain.k_canyon_wn << "\n";
+    } else if (p.wind_terrain.model == "farsite_wind") {
+        Print() << "Wind-terrain model: farsite_wind (Option 8 – FARSITE wind stream simulation)\n";
+        Print() << "  Ridge speed-up:      k_ridge_farsite = " << p.wind_terrain.k_ridge_farsite << "\n";
+        Print() << "  Lee-side sheltering: k_shelter = " << p.wind_terrain.k_shelter << "\n";
+        Print() << "  Valley channeling:   k_valley = " << p.wind_terrain.k_valley << "\n";
+        Print() << "  Direction deflection: k_deflection = " << p.wind_terrain.k_deflection << "\n";
+        Print() << "  Min curvature threshold: " << p.wind_terrain.min_curvature << "\n";
     }
 
     // -------- Heat flux MultiFab parameters --------
