@@ -1,12 +1,95 @@
 #!/usr/bin/env python3
 """
 Regression test for coupled wind-fire simulation via Python API
+
 Tests:
 1. Initialization of fire solver
 2. Synthetic 3D wind field generation (simulating massconsistent_amr)
 3. Passing 3D wind to fire solver via update_wind_3d()
 4. Coupled time-stepping loop
 5. Verification of wind effects on fire spread
+
+===============================================================================
+HOW TO RUN THIS TEST
+===============================================================================
+
+Method 1: Using CMake/CTest (recommended)
+------------------------------------------
+From the build directory:
+    cd build
+    ctest -R python_api_coupled_wind_fire --output-on-failure
+
+Or run all Python API tests:
+    ctest -L python_api --output-on-failure
+
+Method 2: Direct Python execution
+----------------------------------
+From this test directory:
+    cd regtest/python_api/coupled_wind_fire
+    PYTHONPATH=/path/to/build/python:$PYTHONPATH python3 test_coupled_wind_fire.py
+
+===============================================================================
+INTEGRATING WITH MASSCONSISTENT_AMR (or other wind solvers)
+===============================================================================
+
+This test uses SYNTHETIC wind data. To integrate with massconsistent_amr
+or another AMReX-based wind solver, follow these steps:
+
+1. Build massconsistent_amr with Python bindings:
+   --------------------------------------------------
+   cd /path/to/massconsistent_amr
+   cmake -S . -B build -DBUILD_PYTHON_BINDINGS=ON
+   cmake --build build -j
+   
+2. Set PYTHONPATH to include both modules:
+   ----------------------------------------
+   export PYTHONPATH=/path/to/wildfire_levelset/build/python:\
+/path/to/massconsistent_amr/build/python:$PYTHONPATH
+
+3. Replace the synthetic wind generation in this script:
+   ------------------------------------------------------
+   Replace this section:
+       u_3d, v_3d, w_3d, nz, zmin, zmax = generate_synthetic_wind_3d(fire, fire.time)
+   
+   With actual wind solver calls:
+       # Example (when massconsistent_amr has Python bindings)
+       from pyWindSolver import WindSolver
+       
+       wind = WindSolver("wind_inputs.txt")
+       wind.solve(fire.time)
+       u_3d, v_3d, w_3d = wind.get_velocity_arrays()
+       nz, zmin, zmax = wind.nz, wind.zmin, wind.zmax
+
+4. Current wind solver implementations:
+   ------------------------------------
+   - massconsistent_amr: https://github.com/hgopalan/massconsistent_amr
+     Status: Python bindings available as of [date in repo]
+   
+   - WindNinja: Can be called via subprocess, convert output to numpy arrays
+   
+   - WRF: Extract wind from wrfout files using wrf-python, interpolate to grid
+   
+   - Custom solvers: Implement compatible interface returning (u_3d, v_3d, w_3d)
+     arrays with shape (nz, ny, nx) in Fortran order
+
+5. Wind solver requirements:
+   --------------------------
+   The wind solver must provide:
+   - 3D velocity arrays: u_3d, v_3d, w_3d (optional)
+   - Grid dimensions: nz (number of vertical levels)
+   - Vertical domain: zmin, zmax (in meters)
+   - Arrays in Fortran order (column-major) with shape (nz, ny, nx)
+   - Wind velocities in m/s
+   - Domain must overlap with fire solver domain
+
+===============================================================================
+REQUIREMENTS
+===============================================================================
+- Build wildfire_levelset with: -DLEVELSET_BUILD_PYTHON_BINDINGS=ON
+- Python 3.6 or later
+- NumPy
+
+===============================================================================
 """
 
 import sys

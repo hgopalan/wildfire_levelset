@@ -1,12 +1,47 @@
 #!/usr/bin/env python3
 """
 Regression test for Python fire solver API - basic fire spread
+
 Tests:
 1. Initialization from inputs file
 2. Time-stepping with advance()
 3. State extraction with get_state()
 4. Fire spread verification
 5. Plotfile writing
+
+===============================================================================
+HOW TO RUN THIS TEST
+===============================================================================
+
+Method 1: Using CMake/CTest (recommended)
+------------------------------------------
+From the build directory:
+    cd build
+    ctest -R python_api_basic_fire_solver --output-on-failure
+
+Or run all Python API tests:
+    ctest -L python_api --output-on-failure
+
+Method 2: Direct Python execution
+----------------------------------
+From this test directory:
+    cd regtest/python_api/basic_fire_solver
+    PYTHONPATH=/path/to/build/python:$PYTHONPATH python3 test_fire_solver.py
+
+Method 3: After installation
+-----------------------------
+If you've installed pyWildfire to your Python environment:
+    cd regtest/python_api/basic_fire_solver
+    python3 test_fire_solver.py
+
+===============================================================================
+REQUIREMENTS
+===============================================================================
+- Build wildfire_levelset with: -DLEVELSET_BUILD_PYTHON_BINDINGS=ON
+- Python 3.6 or later
+- NumPy
+
+===============================================================================
 """
 
 import sys
