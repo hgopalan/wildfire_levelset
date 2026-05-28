@@ -380,6 +380,9 @@ struct InputParameters {
     //                                       canyon channeling based on wind-slope alignment:
     //                                       ridge  (alignment > 0): f = 1 + k_ridge * tan_phi * alignment
     //                                       canyon (alignment < 0): f = 1 + k_canyon_wn * tan_phi * |alignment|
+    //  "farsite_wind"          (Option 8) – FARSITE empirical wind stream simulation using
+    //                                       terrain curvature to identify ridges/valleys and
+    //                                       modify both wind speed and direction
     //
     // For "viegas_ros", "viegas_wind", and "viegas_neto" the Viegas diagnostic
     // model is automatically enabled (viegas.enable is set to 1).
@@ -391,6 +394,12 @@ struct InputParameters {
         amrex::Real k_pimont;     // Option 6: exponential slope correction coefficient (default: 0.5)
         amrex::Real k_ridge;      // Option 7: ridge speed-up coefficient (default: 1.0)
         amrex::Real k_canyon_wn;  // Option 7: canyon channeling coefficient (default: 0.5)
+        // Option 8 (FARSITE wind stream simulation) parameters:
+        amrex::Real k_ridge_farsite;  // FARSITE ridge speed-up coefficient (default: 1.5)
+        amrex::Real k_shelter;        // lee-side sheltering coefficient (default: 0.6)
+        amrex::Real k_valley;         // valley channeling coefficient (default: 0.8)
+        amrex::Real k_deflection;     // wind direction deflection coefficient (default: 0.3)
+        amrex::Real min_curvature;    // minimum curvature threshold (default: 0.0001)
     } wind_terrain;
 
     // Heat flux MultiFab parameters for fire-induced wind corrections.

@@ -399,8 +399,8 @@ int main(int argc, char* argv[])
     const bool use_mtt      = (inputs.propagation_method == "mtt");
     if (use_levelset)
       {
-        // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
-        apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+        // Apply wind-terrain velocity modification (Options 3-8) before ROS computation
+        apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
 
         // Apply heat flux wind corrections (upward velocity + induced inflow)
         if (heat_flux_active) {
@@ -449,7 +449,7 @@ int main(int argc, char* argv[])
       // then run the Dijkstra fast-march to fill arrival_time_mf,
       // and set a sensible dt based on the ROS field.
       {
-        apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+        apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
         if (heat_flux_active) {
             apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
         }
@@ -494,7 +494,7 @@ int main(int argc, char* argv[])
       }
       } else {
       // FARSITE: compute initial ROS field and CFL-based dt (same as levelset/MTT paths).
-      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
       if (heat_flux_active) {
           apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
       }
@@ -1042,8 +1042,8 @@ int main(int argc, char* argv[])
       }
 
       // --- Step 2: Compute surface ROS via selected fire spread model
-      // Apply wind-terrain velocity modification (Options 3-7) before ROS computation
-      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), inputs);
+      // Apply wind-terrain velocity modification (Options 3-8) before ROS computation
+      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
 
       // Apply heat flux wind corrections (upward velocity + induced inflow)
       if (heat_flux_active) {

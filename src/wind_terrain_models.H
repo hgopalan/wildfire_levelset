@@ -1,7 +1,7 @@
 // ============================================================================
 // Wind–Terrain Feedback Models for Rothermel ROS Enhancement
 // ============================================================================
-// Provides seven selectable options for how terrain-induced or fire-feedback
+// Provides eight selectable options for how terrain-induced or fire-feedback
 // winds modify the Rothermel wind field before (or after) ROS computation.
 //
 //  Option 1 – "none"                  : default Rothermel, no modification
@@ -20,6 +20,9 @@
 //                                         alignment = dot(wind_xy, upslope) / |wind|
 //                                         ridge  (alignment > 0): f = 1 + k_ridge * tan_phi * alignment
 //                                         canyon (alignment < 0): f = 1 + k_canyon_wn * tan_phi * |alignment|
+//  Option 8 – "farsite_wind"          : FARSITE empirical wind stream simulation using
+//                                       terrain curvature to identify ridges/valleys and
+//                                       modify both wind speed and direction
 //
 // References:
 //   Rothermel, R.C. (1983). How to Predict the Spread and Intensity of Forest
@@ -33,6 +36,8 @@
 //     18(7), 775-790.
 //   WindNinja: Forthofer, J.M. (2007). Modeling Wind in Complex Terrain for Use
 //     in Fire Spread Prediction. Colorado State University MS thesis.
+//   Finney, M.A. (1998). FARSITE: Fire Area Simulator—Model Development
+//     and Evaluation. USDA Forest Service Research Paper RMRS-RP-4.
 // ============================================================================
 
 #ifndef WIND_TERRAIN_MODELS_H
@@ -43,13 +48,14 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_GpuLaunch.H>
 #include "parse_inputs.H"
+#include "farsite_wind_model.H"
 
 using namespace amrex;
 
 // ============================================================================
 // wind_terrain_modifies_velocity
 //
-// Returns true when the selected wind-terrain model (Options 3-7) produces a
+// Returns true when the selected wind-terrain model (Options 3-8) produces a
 // terrain-modified velocity field in vel_effective that differs from the
 // ambient vel.  For "none" (Option 1) and "viegas_ros" (Option 2) the
 // ambient vel is used directly and this returns false.
@@ -61,7 +67,8 @@ inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
             m == "canyon_wind" ||
             m == "viegas_neto" ||
             m == "pimont"      ||
-            m == "windninja_ridge_canyon");
+            m == "windninja_ridge_canyon" ||
+            m == "farsite_wind");
 }
 
 // ============================================================================
@@ -69,7 +76,7 @@ inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
 //
 // Fills vel_eff with a terrain-modified copy of the ambient wind field vel.
 // Called for Options 3 (viegas_wind), 4 (canyon_wind), 5 (viegas_neto),
-// 6 (pimont), and 7 (windninja_ridge_canyon).
+// 6 (pimont), 7 (windninja_ridge_canyon), and 8 (farsite_wind).
 // For "none" and "viegas_ros" this function should not be called.
 //
 // Parameters:
@@ -78,6 +85,7 @@ inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
 //   vel            – input:  ambient wind field [m/s]
 //   terrain_slopes – optional: 2-component MultiFab (slope_x = dz/dx,
 //                    slope_y = dz/dy); nullptr = flat terrain (no modification)
+//   geom           – grid geometry (required for farsite_wind curvature calc)
 //   inputs         – full input parameter set (uses wind_terrain, viegas, and
 //                    rothermel sub-structs)
 // ============================================================================
@@ -85,9 +93,29 @@ inline void apply_wind_terrain_velocity(
     MultiFab&              vel_eff,
     const MultiFab&        vel,
     const MultiFab*        terrain_slopes,
+    const Geometry&        geom,
     const InputParameters& inputs)
 {
     const std::string& model = inputs.wind_terrain.model;
+
+    // -----------------------------------------------------------------------
+    // Option 8 - FARSITE wind stream simulation
+    // -----------------------------------------------------------------------
+    if (model == "farsite_wind") {
+        if (terrain_slopes == nullptr) {
+            // No terrain → copy ambient wind unchanged
+            MultiFab::Copy(vel_eff, vel, 0, 0, 3, 0);
+            return;
+        }
+        apply_farsite_wind_terrain(
+            vel_eff, vel, *terrain_slopes, geom,
+            inputs.wind_terrain.k_ridge_farsite,
+            inputs.wind_terrain.k_shelter,
+            inputs.wind_terrain.k_valley,
+            inputs.wind_terrain.k_deflection,
+            inputs.wind_terrain.min_curvature);
+        return;
+    }
 
     // -----------------------------------------------------------------------
     // Parameters captured for GPU lambda
@@ -109,13 +137,15 @@ inline void apply_wind_terrain_velocity(
     const bool has_slope  = (terrain_slopes != nullptr);
 
     // Enumerate model so GPU lambda captures an int (no std::string on device)
-    // 3 = viegas_wind, 4 = canyon_wind, 5 = viegas_neto, 6 = pimont, 7 = windninja_ridge_canyon
+    // 3 = viegas_wind, 4 = canyon_wind, 5 = viegas_neto, 6 = pimont, 
+    // 7 = windninja_ridge_canyon, 8 = farsite_wind
     int model_id = 0;
     if      (model == "viegas_wind")            model_id = 3;
     else if (model == "canyon_wind")            model_id = 4;
     else if (model == "viegas_neto")            model_id = 5;
     else if (model == "pimont")                 model_id = 6;
     else if (model == "windninja_ridge_canyon") model_id = 7;
+    // Note: farsite_wind (model_id 8) handled separately above
 
     // WindNinja ridge/canyon coefficients (Option 7)
     const Real k_ridge     = inputs.wind_terrain.k_ridge;
@@ -262,7 +292,7 @@ inline void apply_wind_terrain_velocity(
 // apply_wind_terrain_effective_velocity
 //
 // Convenience wrapper: when the selected wind-terrain model modifies velocity
-// (Options 3-7), calls apply_wind_terrain_velocity to fill vel_eff with the
+// (Options 3-8), calls apply_wind_terrain_velocity to fill vel_eff with the
 // terrain-corrected wind.  Otherwise, copies the ambient vel into vel_eff so
 // that downstream code can always read from vel_eff uniformly.
 // ============================================================================
@@ -270,10 +300,11 @@ inline void apply_wind_terrain_effective_velocity(
     MultiFab&              vel_eff,
     const MultiFab&        vel,
     const MultiFab*        terrain_slopes,
+    const Geometry&        geom,
     const InputParameters& inputs)
 {
     if (wind_terrain_modifies_velocity(inputs)) {
-        apply_wind_terrain_velocity(vel_eff, vel, terrain_slopes, inputs);
+        apply_wind_terrain_velocity(vel_eff, vel, terrain_slopes, geom, inputs);
     } else {
         MultiFab::Copy(vel_eff, vel, 0, 0, 3, 0);
     }

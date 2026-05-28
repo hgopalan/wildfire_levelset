@@ -3067,6 +3067,132 @@ Parameters:
 Reference: Forthofer, J.M. (2007). *Modeling Wind in Complex Terrain for Use
 in Fire Spread Prediction.* Colorado State University MS thesis.
 
+FARSITE Wind Stream Simulation (Option 8)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The FARSITE wind stream simulation model (Option 8,
+``wind_terrain.model = farsite_wind``) implements FARSITE's internal simplified
+empirical wind flow model around terrain. Unlike full CFD approaches, this model
+uses terrain curvature analysis to identify ridge and valley features, then
+applies empirical wind speed adjustments and direction deflections based on
+field observations and wind tunnel experiments (Finney 1998).
+
+Terrain Curvature Analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The model computes terrain curvature (Laplacian of elevation) to classify
+topographic features:
+
+.. math::
+
+   \kappa = \nabla^2 z = \frac{\partial^2 z}{\partial x^2} + \frac{\partial^2 z}{\partial y^2}
+
+where:
+
+* :math:`\kappa > 0`: **ridge** (convex terrain)
+* :math:`\kappa < 0`: **valley** (concave terrain)
+* :math:`|\kappa| < \kappa_{\text{min}}`: flat terrain, no modification
+
+Wind Speed Modifications
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Ridge acceleration** (positive curvature, wind upslope):
+
+.. math::
+
+   f_{\text{ridge}} = 1 + k_{\text{ridge,FARSITE}} \,\kappa \, (1 + a)
+
+where :math:`a = (\mathbf{U} \cdot \hat{\mathbf{n}}_s) / |\mathbf{U}|` is the
+wind-slope alignment. Maximum acceleration occurs when wind blows directly
+upslope (:math:`a = 1`).
+
+**Lee-side sheltering** (negative curvature, wind downslope):
+
+.. math::
+
+   f_{\text{shelter}} = 1 - k_{\text{shelter}} \,|\kappa| \, (1 - a) \quad (a < -0.3)
+
+Applies in protected areas downwind of ridges when wind has a downslope
+component. Floor at :math:`f_{\text{shelter}} \ge 0.2` prevents zero wind.
+
+**Valley channeling** (negative curvature, cross-wind or upslope):
+
+.. math::
+
+   f_{\text{valley}} = 1 + k_{\text{valley}} \,|\kappa| \, (1 - a^2) \quad (a \ge -0.3)
+
+Valley funneling is strongest when wind flows perpendicular to the valley axis
+(:math:`a \approx 0`).
+
+Wind Direction Deflection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Wind direction is deflected to follow terrain contours:
+
+.. math::
+
+   \Delta\theta = k_{\text{deflection}} \sin(\alpha_s - \theta_{\text{wind}}) \tan\varphi
+
+where :math:`\alpha_s` is the terrain aspect (direction of steepest ascent),
+:math:`\theta_{\text{wind}}` is the wind direction, and :math:`\varphi` is the
+slope angle. Maximum deflection occurs when wind crosses terrain contours at
+90°. Deflection is limited to ±45° per cell to preserve numerical stability.
+
+Effective Wind
+~~~~~~~~~~~~~~~
+
+The final effective wind incorporates both speed and direction modifications:
+
+.. math::
+
+   |\mathbf{U}_{\text{eff}}| &= |\mathbf{U}| \, f_{\text{speed}} \\
+   \theta_{\text{eff}} &= \theta_{\text{wind}} + \Delta\theta \\
+   \mathbf{U}_{\text{eff}} &= |\mathbf{U}_{\text{eff}}| \,(\cos\theta_{\text{eff}}, \sin\theta_{\text{eff}})
+
+Parameters
+~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 15 45
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``wind_terrain.model``
+     - ``none``
+     - Set to ``farsite_wind`` to enable (Option 8)
+   * - ``wind_terrain.k_ridge_farsite``
+     - 1.5
+     - Ridge speed-up coefficient
+   * - ``wind_terrain.k_shelter``
+     - 0.6
+     - Lee-side sheltering coefficient
+   * - ``wind_terrain.k_valley``
+     - 0.8
+     - Valley channeling coefficient
+   * - ``wind_terrain.k_deflection``
+     - 0.3
+     - Wind direction deflection coefficient
+   * - ``wind_terrain.min_curvature``
+     - 0.0001
+     - Minimum curvature threshold [m⁻¹]
+
+Example Configuration
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: ini
+
+   # FARSITE wind stream simulation on complex terrain
+   wind_terrain.model = farsite_wind
+   wind_terrain.k_ridge_farsite = 1.5
+   wind_terrain.k_shelter = 0.6
+   wind_terrain.k_valley = 0.8
+   wind_terrain.k_deflection = 0.3
+
+Reference: Finney, M.A. (1998). *FARSITE: Fire Area Simulator—Model Development
+and Evaluation.* USDA Forest Service Research Paper RMRS-RP-4.
+
 Compact Wind Direction Schedule
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
