@@ -39,7 +39,7 @@ wind_terrain.k_ridge_farsite = 1.5    # ridge speed-up coefficient
 wind_terrain.k_shelter = 0.6           # lee-side sheltering coefficient
 wind_terrain.k_valley = 0.8            # valley channeling coefficient
 wind_terrain.k_deflection = 0.3        # wind direction deflection coefficient
-wind_terrain.min_curvature = 0.0001    # minimum curvature threshold
+wind_terrain.min_curvature = 0.0001    # minimum curvature threshold [m⁻¹]
 
 # Level-set propagation
 propagation_method = levelset
