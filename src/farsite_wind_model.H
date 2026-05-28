@@ -52,8 +52,7 @@
 //   k_shelter        – lee-side sheltering coefficient (default: 0.6)
 //   k_valley         – valley channeling coefficient (default: 0.8)
 //   k_deflection     – wind direction deflection coefficient (default: 0.3)
-//   curvature_smooth – smoothing radius for curvature calculation [m] (default: 50.0)
-//   min_curvature    – minimum curvature threshold to apply corrections (default: 0.0001)
+//   min_curvature    – minimum curvature threshold [m⁻¹] (default: 0.0001)
 //
 // References:
 //   Finney, M.A. (1998). FARSITE: Fire Area Simulator—Model Development

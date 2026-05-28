@@ -681,7 +681,7 @@ void parse_inputs(InputParameters& p)
     p.wind_terrain.k_shelter       = 0.6;   pp.query("wind_terrain.k_shelter",       p.wind_terrain.k_shelter);
     p.wind_terrain.k_valley        = 0.8;   pp.query("wind_terrain.k_valley",        p.wind_terrain.k_valley);
     p.wind_terrain.k_deflection    = 0.3;   pp.query("wind_terrain.k_deflection",    p.wind_terrain.k_deflection);
-    p.wind_terrain.min_curvature   = 0.0001; pp.query("wind_terrain.min_curvature",  p.wind_terrain.min_curvature);
+    p.wind_terrain.min_curvature   = 0.0001; pp.query("wind_terrain.min_curvature",  p.wind_terrain.min_curvature); // [m⁻¹]
 
     // Validate model name
     if (p.wind_terrain.model != "none"                   &&
