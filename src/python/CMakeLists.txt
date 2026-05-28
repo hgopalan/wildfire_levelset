@@ -30,12 +30,14 @@ endif()
 # Create Python module
 pybind11_add_module(pyWildfire MODULE
   pyWildfire.cpp
+  ${CMAKE_SOURCE_DIR}/src/fire_solver_api.cpp
+  ${CMAKE_SOURCE_DIR}/src/parse_inputs.cpp
 )
 
 # Link with AMReX
 target_link_libraries(pyWildfire PRIVATE AMReX::amrex)
 
-# Add include directories for plt_wind_reader.H
+# Add include directories for headers
 target_include_directories(pyWildfire PRIVATE
   ${CMAKE_SOURCE_DIR}/src
 )
