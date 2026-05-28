@@ -562,10 +562,18 @@ For large simulations, be aware of memory usage:
    phi = fire.get_state()['phi']
    # Don't hold reference to full state dict
 
-Applications
-------------
+Applications and Use Cases
+--------------------------
 
-The Python API enables various advanced workflows:
+The Python API enables various advanced workflows beyond basic fire simulation.
+
+**Primary Applications:**
+
+* **Two-way coupled atmosphere-fire simulations** - Integrate with WRF, WRF-Fire, or custom atmospheric models
+* **Ensemble runs with varying wind scenarios** - Monte Carlo simulations for probabilistic forecasting
+* **Machine learning training data generation** - Create large datasets for ML-based fire prediction
+* **Custom fire-weather coupling strategies** - Implement novel coupling algorithms
+* **Integration with external wind solvers** - Connect to WindNinja, QUIC-URB, massconsistent_amr, etc.
 
 Ensemble Simulations
 ~~~~~~~~~~~~~~~~~~~~
