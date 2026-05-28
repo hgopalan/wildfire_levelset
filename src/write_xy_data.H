@@ -836,6 +836,118 @@ inline void write_fire_stats_header(const std::string& filename)
 // R_mf is optional (pass nullptr to skip head ROS tracking).
 // flame_length_mf is optional (pass nullptr to skip max flame length tracking).
 // ============================================================================
+
+// ============================================================================
+// Helper: Calculate fire ellipse major and minor axes from perimeter and area
+// ============================================================================
+// Approximates the fire as an ellipse given its perimeter and burned area.
+// Uses the relationships:
+//   - Area = π * a * b  (where a = semi-major axis, b = semi-minor axis)
+//   - Perimeter ≈ π * (a + b)  (Ramanujan's first approximation)
+//
+// Returns {major_axis_m, minor_axis_m} (full axes, not semi-axes)
+// ============================================================================
+inline std::pair<Real, Real> compute_fire_ellipse_axes(Real area_m2, Real perimeter_m)
+{
+    // Avoid division by zero
+    if (perimeter_m <= 0.0 || area_m2 <= 0.0) {
+        return {0.0, 0.0};
+    }
+
+    constexpr Real PI = M_PI;
+    
+    // From Area = π * a * b  and  Perimeter ≈ π * (a + b)
+    // we get: a + b ≈ Perimeter / π
+    // and:    a * b = Area / π
+    // These are the sum and product of the semi-axes.
+    // Solving the quadratic: x² - (a+b)x + ab = 0
+    
+    Real sum_ab    = perimeter_m / PI;
+    Real prod_ab   = area_m2 / PI;
+    
+    // Clamp to avoid numerical issues
+    if (sum_ab <= 0.0 || prod_ab <= 0.0) {
+        return {0.0, 0.0};
+    }
+    
+    // Solve for semi-major and semi-minor axes using quadratic formula
+    Real discriminant = sum_ab * sum_ab - 4.0 * prod_ab;
+    if (discriminant < 0.0) {
+        // No real solution; return a circle approximation
+        Real radius = std::sqrt(area_m2 / PI);
+        return {2.0 * radius, 2.0 * radius};
+    }
+    
+    Real sqrt_disc = std::sqrt(discriminant);
+    Real semi_a = (sum_ab + sqrt_disc) / 2.0;  // semi-major axis
+    Real semi_b = (sum_ab - sqrt_disc) / 2.0;  // semi-minor axis
+    
+    // Return full axes (2 * semi-axes)
+    return {2.0 * semi_a, 2.0 * semi_b};
+}
+
+// ============================================================================
+// Helper: Read previous area and time from fire_stats CSV for growth rate
+// ============================================================================
+// Reads the last row of the CSV file to get the previous burned area and time.
+// Returns {prev_area_ha, prev_time_s} or {0, 0} if file doesn't exist or is empty.
+// ============================================================================
+inline std::pair<Real, Real> get_previous_fire_stats(const std::string& filename)
+{
+    std::ifstream in(filename);
+    if (!in.is_open()) {
+        return {0.0, 0.0};
+    }
+    
+    std::string line;
+    Real last_time = 0.0;
+    Real last_area = 0.0;
+    bool found = false;
+    
+    // Skip header line
+    std::getline(in, line);
+    
+    // Read through all lines to get the last one
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        
+        // Parse: step, time_s, burned_area_ha, ...
+        std::istringstream iss(line);
+        int step_tmp;
+        Real time_tmp, area_tmp;
+        char comma;
+        
+        if (iss >> step_tmp >> comma >> time_tmp >> comma >> area_tmp) {
+            last_time = time_tmp;
+            last_area = area_tmp;
+            found = true;
+        }
+    }
+    in.close();
+    
+    return found ? std::make_pair(last_area, last_time) : std::make_pair(0.0, 0.0);
+}
+
+// ============================================================================
+// Write initial header for fire_stats.csv if file is empty
+// ============================================================================
+inline void write_fire_stats_header_if_needed(const std::string& filename)
+{
+    std::ifstream check(filename);
+    bool file_exists = check.good();
+    check.close();
+    
+    if (!file_exists) {
+        std::ofstream out(filename, std::ios::out);
+        if (out.is_open()) {
+            out << "step,time_s,burned_area_ha,perimeter_km,active_front_cells,"
+                << "head_ros_ms,max_flame_length_m,total_co2_kg_m2,total_co_kg_m2,"
+                << "total_pm25_kg_m2,growth_rate_ha_min,major_axis_m,minor_axis_m\n";
+            out.close();
+        }
+    }
+}
+
 inline void append_fire_stats(const MultiFab& phi,
                                const Geometry& geom,
                                const MultiFab* emissions_mf,
@@ -845,6 +957,13 @@ inline void append_fire_stats(const MultiFab& phi,
                                const MultiFab* R_mf = nullptr,
                                const MultiFab* flame_length_mf = nullptr)
 {
+    // Ensure CSV header exists
+    if (step == 0 || !ParallelDescriptor::IOProcessor()) {
+        if (step == 0 && ParallelDescriptor::IOProcessor()) {
+            write_fire_stats_header_if_needed(filename);
+        }
+        ParallelDescriptor::Barrier();
+    }
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
@@ -945,6 +1064,20 @@ inline void append_fire_stats(const MultiFab& phi,
     Real mean_co2  = (total_cells > 0) ? sum_co2  / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_co   = (total_cells > 0) ? sum_co   / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_pm25 = (total_cells > 0) ? sum_pm25 / static_cast<Real>(total_cells) : Real(0.0);
+    
+    // Calculate fire ellipse major/minor axes from area and perimeter
+    Real area_m2 = burned_ha * Real(1.0e4);  // convert ha to m²
+    auto [major_axis_m, minor_axis_m] = compute_fire_ellipse_axes(area_m2, perim_m);
+    
+    // Calculate growth rate (ha/min)
+    Real growth_rate_ha_min = 0.0;
+    if (step > 0 && time_s > 0.0) {
+        auto [prev_area_ha, prev_time_s] = get_previous_fire_stats(filename);
+        Real dt_min = (time_s - prev_time_s) / 60.0;
+        if (dt_min > 1e-6) {  // avoid division by very small numbers
+            growth_rate_ha_min = (burned_ha - prev_area_ha) / dt_min;
+        }
+    }
 
     if (!ParallelDescriptor::IOProcessor()) return;
 
@@ -962,7 +1095,10 @@ inline void append_fire_stats(const MultiFab& phi,
         << max_fl     << ","
         << mean_co2   << ","
         << mean_co    << ","
-        << mean_pm25  << "\n";
+        << mean_pm25  << ","
+        << growth_rate_ha_min << ","
+        << major_axis_m << ","
+        << minor_axis_m << "\n";
     out.close();
 }
 

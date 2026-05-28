@@ -91,6 +91,7 @@ def print_summary_table(rows: List[Dict[str, float]]) -> None:
         ("burned_area_ha",   "Area [ha]",      "10.2f"),
         ("perimeter_km",     "Perim [km]",     "11.3f"),
         ("active_front_cells","Active cells",  "12.0f"),
+        ("growth_rate_ha_min","Growth [ha/m]", "12.3f"),
         ("total_co2_kg_m2",  "CO2 [kg/m2]",   "12.4e"),
         ("total_pm25_kg_m2", "PM2.5[kg/m2]",  "12.4e"),
     ]
@@ -122,9 +123,16 @@ def print_summary_table(rows: List[Dict[str, float]]) -> None:
         last = rows[-1]
         t_h = last.get("time_s", 0.0) / 3600.0
         area = last.get("burned_area_ha", 0.0)
+        perim = last.get("perimeter_km", 0.0)
+        major = last.get("major_axis_m", 0.0)
+        minor = last.get("minor_axis_m", 0.0)
         print()
         print(f"Simulation duration : {t_h:.2f} h")
         print(f"Final burned area   : {area:.2f} ha  ({area/100.0:.4f} km²)")
+        print(f"Final perimeter     : {perim:.3f} km")
+        if major > 0 and minor > 0:
+            print(f"Fire ellipse axes   : major={major:.1f} m, minor={minor:.1f} m")
+            print(f"Ellipse eccentricity: {np.sqrt(1 - (minor/major)**2):.3f}" if _HAS_NUMPY else "")
         print(f"Total time steps    : {len(rows)}")
         
         # Print percentile statistics if numpy is available
@@ -151,24 +159,40 @@ def print_percentile_stats(rows: List[Dict[str, float]]) -> None:
     perims = np.array([r.get("perimeter_km", 0.0) for r in rows])
     active = np.array([r.get("active_front_cells", 0.0) for r in rows])
     head_ros = np.array([r.get("head_ros_ms", 0.0) for r in rows])
+    growth_rate = np.array([r.get("growth_rate_ha_min", 0.0) for r in rows])
+    major_axis = np.array([r.get("major_axis_m", 0.0) for r in rows])
+    minor_axis = np.array([r.get("minor_axis_m", 0.0) for r in rows])
     
     metrics = [
         ("Burned Area [ha]", areas),
         ("Perimeter [km]", perims),
         ("Active Front Cells", active),
         ("Head ROS [m/s]", head_ros),
+        ("Growth Rate [ha/min]", growth_rate),
+        ("Major Axis [m]", major_axis),
+        ("Minor Axis [m]", minor_axis),
     ]
     
-    print(f"{'Metric':<25} {'10th %':>12} {'50th % (Median)':>18} {'90th %':>12}")
-    print("-" * 78)
+    print(f"{'Metric':<30} {'10th %':>12} {'50th % (Median)':>18} {'90th %':>12}")
+    print("-" * 80)
     
     for label, data in metrics:
-        if np.any(data > 0):
+        # Skip if all data is zero
+        if np.all(data == 0.0):
+            continue
+            
+        # For growth rate, handle negative values (shrinking phase)
+        if label == "Growth Rate [ha/min]" and np.any(data != 0):
+            # Show all percentiles including negative ones
             p10 = np.percentile(data, 10)
             p50 = np.percentile(data, 50)
             p90 = np.percentile(data, 90)
-            
-            print(f"{label:<25} {p10:>12.4f} {p50:>18.4f} {p90:>12.4f}")
+            print(f"{label:<30} {p10:>12.4f} {p50:>18.4f} {p90:>12.4f}")
+        elif np.any(data > 0):
+            p10 = np.percentile(data, 10)
+            p50 = np.percentile(data, 50)
+            p90 = np.percentile(data, 90)
+            print(f"{label:<30} {p10:>12.4f} {p50:>18.4f} {p90:>12.4f}")
     
     print()
 
@@ -252,6 +276,42 @@ def make_plots(rows: List[Dict[str, float]], outdir: Path, fmt: str) -> None:
         fig3.savefig(out3, dpi=150)
         plt.close(fig3)
         print(f"Saved → {out3}")
+    
+    # ---- Plot 1b: Fire ellipse axes (if available) ----
+    major_axes = [r.get("major_axis_m", 0.0) for r in rows]
+    minor_axes = [r.get("minor_axis_m", 0.0) for r in rows]
+    
+    if any(v > 0 for v in major_axes):
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(times_min, major_axes, "r-o", ms=3, label="Major axis")
+        ax.plot(times_min, minor_axes, "b-s", ms=3, label="Minor axis")
+        ax.set_xlabel("Simulation time [min]")
+        ax.set_ylabel("Axis length [m]")
+        ax.set_title("Fire ellipse axes evolution")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        out1b = outdir / f"fire_ellipse_axes.{fmt}"
+        fig.savefig(out1b, dpi=150)
+        plt.close(fig)
+        print(f"Saved → {out1b}")
+    
+    # ---- Plot 4: Fire growth rate ----
+    growth_rate = [r.get("growth_rate_ha_min", 0.0) for r in rows]
+    if any(v != 0 for v in growth_rate):
+        fig4, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(times_min, growth_rate, "g-^", ms=3, label="Growth rate")
+        ax.axhline(y=0, color='k', linestyle='--', lw=0.5, alpha=0.5)
+        ax.set_xlabel("Simulation time [min]")
+        ax.set_ylabel("Growth rate [ha/min]")
+        ax.set_title("Fire growth rate over time")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig4.tight_layout()
+        out4 = outdir / f"fire_growth_rate.{fmt}"
+        fig4.savefig(out4, dpi=150)
+        plt.close(fig4)
+        print(f"Saved → {out4}")
 
 
 # ---------------------------------------------------------------------------
