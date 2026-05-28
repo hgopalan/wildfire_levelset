@@ -53,9 +53,9 @@ static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
 {
     // Round crown_activity to nearest integer: 0, 1, or 2
-    // The upper bound ensures rounding works correctly for floating-point values
-    // that may slightly exceed 2.0 due to numerical precision
-    int ca = static_cast<int>(amrex::max(amrex::Real(0.0), amrex::min(CROWN_ACTIVITY_UPPER_BOUND, crown_activity)) + amrex::Real(0.5));
+    // Clamp to valid range, then round to nearest integer
+    amrex::Real clamped = amrex::max(amrex::Real(0.0), amrex::min(CROWN_ACTIVITY_UPPER_BOUND, crown_activity));
+    int ca = static_cast<int>(std::round(clamped));
     
     if (ca == 0) {
         return amrex::Real(1.0);    // Surface fire: baseline spotting
@@ -387,9 +387,14 @@ inline void generate_firebrand_spots(
 #endif
 
     // Second pass: generate spots stochastically
-    // Note: All arrays (xarray, yarray, probabilities, wind_x, wind_y, crown_activity_arr, etc.)
-    // are populated in a synchronized manner during fire-front collection.
-    // Array synchronization is maintained through a single collection loop and MPI AllGather operations.
+    // NOTE ON ARRAY SYNCHRONIZATION:
+    // All source cell data arrays (xarray, yarray, zarray, probabilities, wind_x, wind_y, 
+    // wind_z, src_fuel_model, crown_activity_arr) are populated in a single synchronized
+    // loop during fire-front collection. After population, all arrays are gathered via
+    // MPI AllGather in the same order. Therefore, all arrays have identical sizes and
+    // the index idx correctly corresponds to the same fire-front cell across all arrays.
+    // For example: xarray[idx], wind_x[idx], and crown_activity_arr[idx] all refer to
+    // the same fire-front cell and are guaranteed to be in sync.
     std::vector<Real> spot_x, spot_y;
 #if (AMREX_SPACEDIM == 3)
     std::vector<Real> spot_z;
@@ -420,7 +425,7 @@ inline void generate_firebrand_spots(
 
             // Apply crown fire scaling to spotting distance
             // Active crown fire increases spotting distance based on crown_activity at source
-            // crown_activity_arr is synchronized with xarray/yarray/probabilities (all populated together)
+            // All source cell arrays are synchronized during collection and MPI AllGather
             Real crown_mult = amrex::Real(1.0);
             if (has_ecology && idx < static_cast<int>(crown_activity_arr.size())) {
                 crown_mult = compute_crown_fire_spotting_multiplier(crown_activity_arr[idx]);
