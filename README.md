@@ -120,7 +120,11 @@ fire.finalize()
 - Custom fire-weather coupling strategies
 - Integration with WRF, WRF-Fire, or other atmospheric models
 
-See [PYTHON_API_IMPLEMENTATION.md](PYTHON_API_IMPLEMENTATION.md) for full API documentation and examples.
+**Documentation:**
+- [Python API Guide](https://hgopalan.github.io/wildfire_levelset/python_api.html) - Complete API reference and examples
+- [PYTHON_API_IMPLEMENTATION.md](PYTHON_API_IMPLEMENTATION.md) - Implementation details
+- [Python API Regression Tests](regtest/python_api/README.md) - How to run tests and integrate wind solvers
+- [massconsistent_amr](https://github.com/hgopalan/massconsistent_amr) - Compatible 3D wind solver
 
 ## Core Capabilities
 
