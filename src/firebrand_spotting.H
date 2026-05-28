@@ -47,7 +47,9 @@ using namespace amrex;
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
 {
-    // Clamp crown_activity to integer range [0,2]
+    // Round crown_activity to nearest integer: 0, 1, or 2
+    // Using 2.5 upper bound ensures rounding works correctly for floating-point values
+    // that may slightly exceed 2.0 due to numerical precision
     int ca = static_cast<int>(amrex::max(amrex::Real(0.0), amrex::min(amrex::Real(2.5), crown_activity)) + amrex::Real(0.5));
     ca = amrex::max(0, amrex::min(2, ca));
     
@@ -381,6 +383,9 @@ inline void generate_firebrand_spots(
 #endif
 
     // Second pass: generate spots stochastically
+    // Note: All arrays (xarray, yarray, probabilities, wind_x, wind_y, crown_activity_arr, etc.)
+    // are populated in a synchronized manner during fire-front collection.
+    // Array synchronization is maintained through a single collection loop and MPI AllGather operations.
     std::vector<Real> spot_x, spot_y;
 #if (AMREX_SPACEDIM == 3)
     std::vector<Real> spot_z;
@@ -410,9 +415,10 @@ inline void generate_firebrand_spots(
             distance = amrex::max(distance, sp.spot_radius * Real(2.0)); // Min 2x spot radius
 
             // Apply crown fire scaling to spotting distance
-            // Active crown fire increases spotting distance
+            // Active crown fire increases spotting distance based on crown_activity at source
+            // crown_activity_arr is synchronized with xarray/yarray/probabilities (all populated together)
             Real crown_mult = amrex::Real(1.0);
-            if (idx >= 0 && idx < static_cast<int>(crown_activity_arr.size())) {
+            if (has_ecology && idx < static_cast<int>(crown_activity_arr.size())) {
                 crown_mult = compute_crown_fire_spotting_multiplier(crown_activity_arr[idx]);
             }
             distance *= crown_mult;
