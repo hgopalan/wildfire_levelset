@@ -693,6 +693,21 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
    * - ``wind_terrain.k_canyon_wn``
      - 0.5
      - Canyon channeling coefficient (``windninja_ridge_canyon`` model)
+   * - ``wind_terrain.k_ridge_farsite``
+     - 1.5
+     - Ridge speed-up coefficient (``farsite_wind`` model)
+   * - ``wind_terrain.k_shelter``
+     - 0.6
+     - Lee-side sheltering coefficient (``farsite_wind`` model)
+   * - ``wind_terrain.k_valley``
+     - 0.8
+     - Valley channeling coefficient (``farsite_wind`` model)
+   * - ``wind_terrain.k_deflection``
+     - 0.3
+     - Wind direction deflection coefficient (``farsite_wind`` model)
+   * - ``wind_terrain.min_curvature``
+     - 0.0001
+     - Minimum curvature threshold [m⁻¹] (``farsite_wind`` model)
    * - **Heat Flux**
      -
      -
@@ -1918,7 +1933,7 @@ Wind-Terrain Feedback Model Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **wind_terrain.model** (default: ``"none"``)
-  Selects the wind-terrain feedback model. Seven options are available:
+  Selects the wind-terrain feedback model. Eight options are available:
 
   - ``none`` – Option 1: default behaviour; no wind modification
   - ``viegas_ros`` – Option 2: override spread rate with
@@ -1935,8 +1950,10 @@ Wind-Terrain Feedback Model Parameters
     :math:`U_{\text{eff}} = U \exp(k_{\text{pimont}} \tan\varphi)`
   - ``windninja_ridge_canyon`` – Option 7: WindNinja empirical ridge/canyon
     speed-up based on wind-slope alignment (see below)
+  - ``farsite_wind`` – Option 8: FARSITE empirical wind stream simulation
+    using terrain curvature; modifies both speed and direction (see below)
 
-  Example: ``wind_terrain.model = windninja_ridge_canyon``
+  Example: ``wind_terrain.model = farsite_wind``
 
 **wind_terrain.k_canyon** (default: 1.0)
   Terrain channeling coefficient for Option 4 (``canyon_wind``). Must be > 0.
@@ -1961,6 +1978,41 @@ Wind-Terrain Feedback Model Parameters
   :math:`f = 1 + k_{\text{canyon\_wn}} \tan\varphi \cdot |\text{alignment}|`. Must be > 0.
 
   Example: ``wind_terrain.k_canyon_wn = 0.8``
+
+**wind_terrain.k_ridge_farsite** (default: 1.5)
+  Ridge speed-up coefficient for Option 8 (``farsite_wind``).
+  Scales the speed-up on ridges (positive curvature):
+  :math:`f = 1 + k_{\text{ridge,FARSITE}} \kappa (1 + a)`. Must be > 0.
+
+  Example: ``wind_terrain.k_ridge_farsite = 1.8``
+
+**wind_terrain.k_shelter** (default: 0.6)
+  Lee-side sheltering coefficient for Option 8 (``farsite_wind``).
+  Scales the speed reduction in sheltered areas downwind of ridges:
+  :math:`f = 1 - k_{\text{shelter}} |\kappa| (1 - a)`. Must be ≥ 0.
+
+  Example: ``wind_terrain.k_shelter = 0.5``
+
+**wind_terrain.k_valley** (default: 0.8)
+  Valley channeling coefficient for Option 8 (``farsite_wind``).
+  Scales the speed-up through valleys (negative curvature):
+  :math:`f = 1 + k_{\text{valley}} |\kappa| (1 - a^2)`. Must be > 0.
+
+  Example: ``wind_terrain.k_valley = 1.0``
+
+**wind_terrain.k_deflection** (default: 0.3)
+  Wind direction deflection coefficient for Option 8 (``farsite_wind``).
+  Scales the deflection angle to follow terrain contours:
+  :math:`\Delta\theta = k_{\text{deflection}} \sin(\alpha_s - \theta_{\text{wind}}) \tan\varphi`. Must be ≥ 0.
+
+  Example: ``wind_terrain.k_deflection = 0.4``
+
+**wind_terrain.min_curvature** (default: 0.0001)
+  Minimum terrain curvature threshold [m⁻¹] for Option 8 (``farsite_wind``).
+  Below this threshold, terrain is considered flat and no wind modifications
+  are applied. Must be ≥ 0.
+
+  Example: ``wind_terrain.min_curvature = 0.0002``
 
 Heat Flux Parameters
 ^^^^^^^^^^^^^^^^^^^^^
