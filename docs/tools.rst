@@ -688,6 +688,52 @@ Three independent parameters are perturbed:
 * ``burn_probability.csv`` — ``X, Y, P_burn`` columns; one row per grid cell
 * ``burn_probability.geojson`` — optional GeoJSON probability field (when ``--geojson`` is given)
 
+**Advanced Features (FSim-Style Probabilistic Simulation)**
+
+Beyond the original wind-speed / direction / moisture perturbations, the ensemble driver now also supports:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 25 45
+
+   * - Feature
+     - Flag
+     - Description
+   * - **Probabilistic ignition locations**
+     - ``--ignition-prob-csv``
+     - Weighted random draw of ignition centre from a GIS raster (CSV with ``x_m``, ``y_m``, ``weight``)
+   * - **Containment probability**
+     - ``--containment-prob P`` ``--suppression-file F``
+     - Bernoulli draw per run: enables/disables suppression schedule with probability P
+   * - **Crown fire probability map**
+     - ``--crown-fire-prob`` ``--crown-fire-out F``
+     - Accumulates P(crown fire) per cell from the ``crown_fraction`` plotfile field
+   * - **Burn probability map**
+     - ``--out``
+     - P_burn per cell (existing)
+   * - **Flame-length exceedance**
+     - ``--fl-thresholds``
+     - P(FL > M) per cell for each threshold (existing)
+   * - **Area exceedance CCDF**
+     - ``--area-exceedance``
+     - P(burned area ≥ A) curve across runs (existing)
+
+**Example combining all advanced features:**
+
+.. code-block:: bash
+
+   python3 tools/ensemble_burn_probability.py \
+       --exe ./wildfire_levelset \
+       --inputs my_scenario/inputs.i \
+       --n-runs 200 \
+       --ignition-prob-csv ignition_risk.csv \
+       --containment-prob 0.35 \
+       --suppression-file suppression_lines.csv \
+       --crown-fire-prob \
+       --area-exceedance \
+       --fl-thresholds 1.0 2.0 4.0 \
+       --seed 42
+
 **Dependencies**: none required; ``scipy`` for Latin hypercube sampling (falls back to pure-Python LHS otherwise).
 
 ``satellite_goes_to_csv.py`` / Satellite Fire Detection Assimilation

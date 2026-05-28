@@ -121,121 +121,44 @@ fire.finalize()
 
 ## Ensemble / FSim-Style Probabilistic Simulation
 
-`tools/ensemble_burn_probability.py` implements an FSim-style Monte Carlo
-driver.  Beyond the original wind-speed / direction / moisture perturbations it
-now also supports:
+The `tools/ensemble_burn_probability.py` tool implements FSim-style Monte Carlo simulation with perturbations of wind, moisture, and ignition parameters. It supports probabilistic ignition locations, containment probability, crown fire probability mapping, and burn probability analysis.
 
-| Feature | Flag | Description |
-|---|---|---|
-| **Probabilistic ignition locations** | `--ignition-prob-csv` | Weighted random draw of ignition centre from a GIS raster (CSV with `x_m`, `y_m`, `weight`). |
-| **Containment probability** | `--containment-prob P` `--suppression-file F` | Bernoulli draw per run: enables/disables suppression schedule with probability P. |
-| **Crown fire probability map** | `--crown-fire-prob` `--crown-fire-out F` | Accumulates P(crown fire) per cell from the `crown_fraction` plotfile field. |
-| **Burn probability map** | `--out` | P_burn per cell (existing). |
-| **Flame-length exceedance** | `--fl-thresholds` | P(FL > M) per cell for each threshold (existing). |
-| **Area exceedance CCDF** | `--area-exceedance` | P(burned area ≥ A) curve across runs (existing). |
-
-Quick example combining all new features:
-```bash
-python3 tools/ensemble_burn_probability.py \
-    --exe ./wildfire_levelset \
-    --inputs my_scenario/inputs.i \
-    --n-runs 200 \
-    --ignition-prob-csv ignition_risk.csv \
-    --containment-prob 0.35 \
-    --suppression-file suppression_lines.csv \
-    --crown-fire-prob \
-    --area-exceedance \
-    --fl-thresholds 1.0 2.0 4.0 \
-    --seed 42
-```
+See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html#ensemble-burn-probability-py-ensemble-burn-probability-driver) for complete feature list and usage examples.
 
 ## Regression Tests
 
-Tests are organised into sub-folders under `regtest/`, all using UTM Zone 11N coordinates
-(Southern California reference: 330000 E, 3775000 N):
+Comprehensive regression tests are organized in `regtest/` subdirectories covering surface spread, crown fire, spotting, terrain, moisture, fuel, ignition, wind, diagnostics, and Python API functionality. All tests use UTM Zone 11N coordinates (Southern California reference: 330000 E, 3775000 N).
 
-| Sub-folder | Tests |
-|---|---|
-| `surface_spread/` | basic_levelset, farsite_ellipse, rothermel_fuel, anderson_lw, catchpole_demestre, wilson_spread, alexander_lemniscate, ellipse_sdf, reinitialization, fbp_o1a_grassfire, fbp_s1_slash, lautenberger_spread |
-| `crown_fire/` | crown_initiation, cruz_crown_continental_us, fmc_seasonal, rothermel1991_crown |
-| `spotting/` | firebrand_spotting, albini_spotting, **albini_spotting_3d_wind** *(new)*, **ember_cascade_flux** *(new)*, **vorticity_enhanced_spotting** *(new)* |
-| `terrain/` | terrain_wind, balbi_viegas_heatflux, windninja_ridge_canyon, **solar_horizon_shading** *(new)*, **terrain_gradient_correction** *(new)* |
-| `moisture/` | fmd_moisture, cheney_gould_grassfire, precip_wetting, spatial_moisture_output, **wtr_diurnal** *(new)*, **wtr_rain_wetting** *(new)* |
-| `fuel/` | fuel_adj_file |
-| `ignition/` | barrier_polygons, **satellite_assimilation** *(new)*, fire_perimeter_output, polygon_ignition, polyline_ignition, **kml_perimeter** *(new)* |
-| `wind/` | time_dependent_wind, turb_wind, wind_dir_schedule, **waf_andrews**, **waf_behaviorplus** |
-| `diagnostics/` | scott_reinhardt_indices, scott_reinhardt_full_ti_ci, **fl_exceedance** *(new)*, **farsite_fsa_pst** *(new)*, **conditional_weather_bi** *(new)* |
-| `misc/` | 3d_sphere, eb_implicit, mtt_propagation, bulk_fuel_consumption, landfire_farsite, **nonburnable_mask**, **smoke_plume_rise** *(new)*, **reentry_spotting** *(new)* |
-| `python_api/` | **basic_fire_solver**, **coupled_wind_fire** *(Python bindings)* |
-
-The `albini_spotting_3d_wind` and `ember_cascade_flux` tests require a Python pre-step to generate the synthetic plt wind file:
-
-```bash
-cd regtest/spotting/albini_spotting_3d_wind
-python3 generate_plt_wind.py   # creates plt_wind_3d/ directory
-
-cd ../ember_cascade_flux
-python3 generate_plt_wind.py   # creates plt_wind_3d/ directory
-```
-
+**Run all tests:**
 ```bash
 cmake -S . -B build -DLEVELSET_DIM_2D=ON
 cmake --build build -j
 cd build && ctest -L regtest --output-on-failure
 ```
 
+See the [regression tests documentation](https://hgopalan.github.io/wildfire_levelset/regtests.html) for complete test descriptions and requirements.
+
 ## Tools
 
-Python utilities in `tools/` for terrain download, weather parsing, GIS export, ensemble analysis, and post-processing.
+Python utilities in `tools/` for terrain download, weather parsing, GIS export, ensemble analysis, and post-processing. Categories include ensemble simulation, fire analysis, GIS/export, input preparation, and BehavePlus-style worksheets.
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| **Ensemble** | `ensemble_burn_probability.py` | FSim-style Monte Carlo driver |
-| | `plot_burn_probability.py` | Visualise burn probability maps |
-| | `values_at_risk.py` | FSPro-style values-at-risk overlay |
-| **Fire Analysis** | `fire_size_summary.py` | Fire statistics with **percentile analysis** |
-| | `fire_period_analysis.py` | **Day/night burn classification** |
-| | `minimum_travel_path.py` | **MTT path extraction** |
-| | `isochrone_extractor.py` | Arrival-time isochrones with **visualization** |
-| | `farsite_fsa_pst_reader.py` | FARSITE .fsa/.pst file reader |
-| **GIS/Export** | `plotfile_to_geotiff.py` | AMReX plotfiles → GeoTIFF/GeoJSON |
-| | `perimeter_to_shapefile.py` | Fire perimeter → Esri Shapefile |
-| **Input Prep** | `landscape_writer.py` | LANDFIRE → FARSITE .lcp |
-| | `srtm_terrain_reader.py` | SRTM elevation → terrain CSV |
-| | `farsite_weather_reader.py` | FARSITE .wtr → wind CSV |
-| | `historical_wildfires.py` | 29 major US fires (2009–2024) database |
-| **Worksheets** | `surface_fire_worksheet.py` | BehavePlus-style surface fire |
-| | `crown_fire_worksheet.py` | Van Wagner crown fire |
-| | `ignition_probability_table.py` | Anderson P_ignition |
-| | `behavior_matrix.py` | Rothermel behavior matrices |
+See the [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) for complete tool descriptions and usage examples.
 
-**New FARSITE-parity features:** `fire_size_summary.py` (percentile statistics), `isochrone_extractor.py` (visualization with time labels), `minimum_travel_path.py` (MTT path extraction), `fire_period_analysis.py` (day/night burn classification). See [tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html) and `tools/NEW_FARSITE_FEATURES.md`.
+## Documentation and References
 
-## References
+Full documentation is available at [https://hgopalan.github.io/wildfire_levelset/](https://hgopalan.github.io/wildfire_levelset/), including:
 
-- Albini, F.A. (1979). Spot fire distance from burning trees — a predictive model. USDA For. Serv. Gen. Tech. Rep. INT-56.
-- Albini, F.A. (1983). Potential spotting distance from wind-driven surface fires. USDA For. Serv. Res. Pap. INT-309.
-- Andrews, P.L. (2018). The Rothermel surface fire spread model and associated developments. USDA For. Serv. Gen. Tech. Rep. RMRS-GTR-371.
-- Briggs, G.A. (1965). A plume rise model compared with observations. JAPCA 15(9):433–438.
-- Byram, G.M. (1959). Combustion of forest fuels. In: Davis, K.P. (ed.) Forest Fire: Control and Use. McGraw-Hill.
-- Cheney, N.P. & Gould, J.S. (1995). Fire growth in grassland fuels. Int. J. Wildland Fire 5(4):237–247.
-- Cruz, M.G., Alexander, M.E. & Wakimoto, R.H. (2005). Development and testing of models for predicting crown fire rate of spread in conifer forest stands. Can. J. For. Res. 35:1626–1639.
-- Finney, M.A. (2004). FARSITE: Fire Area Simulator — Model Development and Evaluation. USDA For. Serv. Res. Pap. RMRS-RP-4 Revised.
-- Lautenberger, C. (2013). Wildland fire modeling with an Eulerian level set method and automated calibration. Fire Safety J. 62:477–485.
-- Nelson, R.M. Jr. (2000). Prediction of diurnal change in 10-h fuel stick moisture content. Can. J. For. Res. 30:1071–1087.
-- Richards, G.D. (1990). An elliptical growth model of forest fire fronts and its numerical solution. Int. J. Numer. Meth. Eng. 30:1163–1179.
-- Rothermel, R.C. (1972). A mathematical model for predicting fire spread in wildland fuels. USDA For. Serv. Res. Pap. INT-115.
-- Rothermel, R.C. (1991). Predicting behavior and size of crown fires in the Northern Rocky Mountains. USDA For. Serv. Res. Pap. INT-438.
-- Scott, J.H. & Reinhardt, E.D. (2001). Assessing crown fire potential by linking models of surface and crown fire behavior. USDA For. Serv. Res. Pap. RMRS-RP-29.
-- Van Wagner, C.E. (1977). Conditions for the start and spread of crown fire. Can. J. For. Res. 7:23–34.
+* [Mathematical Models](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html) - Complete model equations and references
+* [Usage Guide](https://hgopalan.github.io/wildfire_levelset/usage.html) - Input parameters and configuration
+* [Python API](https://hgopalan.github.io/wildfire_levelset/python_api.html) - Coupled simulation interface
+* [Tools](https://hgopalan.github.io/wildfire_levelset/tools.html) - Pre/post-processing utilities
+* [Comparison](https://hgopalan.github.io/wildfire_levelset/comparison.html) - Feature comparison with FARSITE, FlamMap, WRF-SFIRE
 
 ## Satellite Fire Detection Assimilation
 
-Active-fire detections from GOES-16/17/18 (public NOAA AWS S3), VIIRS (NASA FIRMS REST API),
-or a pre-downloaded CSV can be ingested to constrain the initial fire perimeter or to correct
-the simulated perimeter during a running simulation.  Enable with `satellite.enable = 1` and
-set `satellite.source` to `file`, `viirs`, or `goes`.  See the
-[Python Tools documentation](docs/tools.rst) for the full parameter reference and usage examples.
+Active-fire detections from GOES-16/17/18, VIIRS, or CSV can be ingested to constrain the initial fire perimeter or correct the simulated perimeter during simulation.
+
+See the [satellite assimilation section in tools documentation](https://hgopalan.github.io/wildfire_levelset/tools.html#satellite-goes-to-csv-py-satellite-fire-detection-assimilation) for parameter reference and usage examples.
 
 ## License
 
