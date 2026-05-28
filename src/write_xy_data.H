@@ -815,7 +815,8 @@ inline void write_fire_stats_header(const std::string& filename)
     }
     out << "step,time_s,burned_area_ha,perimeter_km,"
            "active_front_cells,head_ros_ms,max_flame_length_m,"
-           "total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2\n";
+           "total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2,"
+           "growth_rate_ha_min,major_axis_m,minor_axis_m\n";
     out.close();
 }
 
@@ -929,41 +930,32 @@ inline std::pair<Real, Real> get_previous_fire_stats(const std::string& filename
 }
 
 // ============================================================================
-// Write initial header for fire_stats.csv if file is empty
+// append_fire_stats
+//
+// Computes burned area [ha], perimeter length [km], active front cell count,
+// head ROS [m/s] (maximum ROS in perimeter cells), maximum flame length [m],
+// domain-mean emission totals, fire growth rate [ha/min], and fire ellipse axes,
+// then appends one row to the CSV file.
+//
+// Burned area and perimeter are based on arrival_time_mf >= 0 (every cell
+// that has ever been ignited, including the burned interior).  In the FARSITE
+// propagation mode phi is reset to 0 after each step so phi < 0 only marks
+// the thin current fire-front ring; arrival_time correctly accumulates the
+// full burned region for all propagation modes.
+//
+// emissions_mf is optional (pass nullptr to skip emission stats).
+// R_mf is optional (pass nullptr to skip head ROS tracking).
+// flame_length_mf is optional (pass nullptr to skip max flame length tracking).
 // ============================================================================
-inline void write_fire_stats_header_if_needed(const std::string& filename)
-{
-    std::ifstream check(filename);
-    bool file_exists = check.good();
-    check.close();
-    
-    if (!file_exists) {
-        std::ofstream out(filename, std::ios::out);
-        if (out.is_open()) {
-            out << "step,time_s,burned_area_ha,perimeter_km,active_front_cells,"
-                << "head_ros_ms,max_flame_length_m,total_co2_kg_m2,total_co_kg_m2,"
-                << "total_pm25_kg_m2,growth_rate_ha_min,major_axis_m,minor_axis_m\n";
-            out.close();
-        }
-    }
-}
-
 inline void append_fire_stats(const MultiFab& phi,
-                               const Geometry& geom,
-                               const MultiFab* emissions_mf,
-                               int step, Real time_s,
-                               const std::string& filename,
-                               const MultiFab& arrival_time_mf,
-                               const MultiFab* R_mf = nullptr,
-                               const MultiFab* flame_length_mf = nullptr)
+                              const Geometry& geom,
+                              const MultiFab* emissions_mf,
+                              int step, Real time_s,
+                              const std::string& filename,
+                              const MultiFab& arrival_time_mf,
+                              const MultiFab* R_mf = nullptr,
+                              const MultiFab* flame_length_mf = nullptr)
 {
-    // Ensure CSV header exists
-    if (step == 0 || !ParallelDescriptor::IOProcessor()) {
-        if (step == 0 && ParallelDescriptor::IOProcessor()) {
-            write_fire_stats_header_if_needed(filename);
-        }
-        ParallelDescriptor::Barrier();
-    }
     const auto dxx = geom.CellSize();
     Real cell_area = dxx[0] * dxx[1];
 
