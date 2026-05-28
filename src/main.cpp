@@ -1371,14 +1371,15 @@ int main(int argc, char* argv[])
 	
 	// --- Step 5: Apply crown/spotting sub-models
 	if (inputs.spotting.enable == 1 && (step % inputs.spotting.check_interval == 0)) {
-	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get());
+	  compute_spotting_probability(spotting_data, phi, vel, geom, inputs.rothermel, inputs.spotting, terrain_slopes.get(), &ecology_mf);
 	  generate_firebrand_spots(phi, spotting_data, vel, geom, inputs.spotting, step,
 	                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
 	                           !inputs.rothermel.landscape_file.empty() ? &inputs.rothermel.landscape_fuel_type : nullptr,
 	                           (inputs.fuel_depletion.adjust_spotting_reentry == 1)
 	                               ? &residual_fuel_mf : nullptr,
 	                           inputs.fuel_depletion.spotting_fuel_threshold,
-	                           &spotting_lineage_mf);
+	                           &spotting_lineage_mf,
+	                           &ecology_mf);
 	}
 	// Albini (1983) firebrand spotting with 2-D trajectory integration
 	if (inputs.albini_spotting.enable == 1 && (step % inputs.albini_spotting.check_interval == 0)) {

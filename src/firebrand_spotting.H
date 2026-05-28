@@ -31,6 +31,37 @@
 using namespace amrex;
 
 // ============================================================================
+// Crown Fire Scaling Multiplier
+// ============================================================================
+// Computes intensity scaling factors for firebrand spotting based on crown
+// fire activity state. FARSITE model increases spotting probability and
+// distance during active crown fire.
+//
+// Crown activity values from ecology_mf component 3:
+//   0 = surface fire     → multiplier = 1.0 (baseline)
+//   1 = passive crown    → multiplier = 1.25 (25% enhancement)
+//   2 = active crown     → multiplier = 1.75 (75% enhancement)
+//
+// This function is called per-cell to get the appropriate scaling factor.
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
+{
+    using namespace amrex;
+    
+    // Clamp crown_activity to integer range [0,2]
+    int ca = static_cast<int>(amrex::max(Real(0.0), amrex::min(Real(2.0), crown_activity)));
+    
+    if (ca == 0) {
+        return Real(1.0);    // Surface fire: baseline spotting
+    } else if (ca == 1) {
+        return Real(1.25);   // Passive crown fire: 25% enhancement
+    } else {
+        return Real(1.75);   // Active crown fire: 75% enhancement
+    }
+}
+
+// ============================================================================
 // Compute per-cell spot-fire catching (ignition) probability
 //
 // Returns a spatially-varying raster:
@@ -84,7 +115,8 @@ inline void compute_spotting_probability(
     const Geometry & /*geom*/,
     const RothermelParams &rp,
     const InputParameters::SpottingParams &sp,
-    const MultiFab * /*slopes*/ = nullptr)
+    const MultiFab * /*slopes*/ = nullptr,
+    const MultiFab* ecology_mf = nullptr)
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
@@ -110,6 +142,7 @@ inline void compute_spotting_probability(
     const Real rp_M_x         = rp.M_x;
     const Real rp_M_f         = rp.M_f;
     const Real rp_h_heat      = rp.h_heat;
+    const bool has_ecology    = (ecology_mf != nullptr);
 
     // Loop over all boxes
     for (MFIter mfi(spotting_data); mfi.isValid(); ++mfi) {
@@ -117,6 +150,9 @@ inline void compute_spotting_probability(
         auto const p = phi.const_array(mfi);
         auto const v = vel.const_array(mfi);
         auto spot = spotting_data.array(mfi);
+        
+        Array4<const Real> eco_arr;
+        if (has_ecology) eco_arr = ecology_mf->const_array(mfi);
         
         ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
             // Initialize all components to zero
@@ -157,8 +193,15 @@ inline void compute_spotting_probability(
             Real intensity = R * rp_h_heat; // Simplified intensity (BTU/ft²/min)
             Real f_intensity = amrex::min(Real(1.0), intensity / sp_I_critical);
             
-            // Combined probability
-            Real P_spot = sp_P_base * f_wind * f_intensity * f_moisture;
+            // Crown fire scaling: increase spotting probability during active crown fire
+            Real crown_mult = Real(1.0);
+            if (has_ecology) {
+                Real crown_activity = eco_arr(i, j, k, 3);
+                crown_mult = compute_crown_fire_spotting_multiplier(crown_activity);
+            }
+            
+            // Combined probability with crown fire enhancement
+            Real P_spot = crown_mult * sp_P_base * f_wind * f_intensity * f_moisture;
             P_spot = amrex::min(Real(1.0), amrex::max(Real(0.0), P_spot));
             
             // Store probability in component 0
@@ -181,7 +224,8 @@ inline void generate_firebrand_spots(
     const std::string* fuel_system   = nullptr,  // "13" or "40" (optional)
     const MultiFab* residual_fuel_mf = nullptr,  // per-cell residual fuel fraction (optional)
     Real reentry_fuel_threshold      = Real(0.05), // min fuel fraction to allow ignition
-    MultiFab* spotting_lineage_mf    = nullptr)  // lineage output: src (x,y) per landing cell
+    MultiFab* spotting_lineage_mf    = nullptr,  // lineage output: src (x,y) per landing cell
+    const MultiFab* ecology_mf       = nullptr)  // per-cell ecology including crown_activity (optional)
 {
     if (sp.enable == 0) {
         return; // Spotting disabled
@@ -198,6 +242,7 @@ inline void generate_firebrand_spots(
     const Real *prob_lo = geom.ProbLo();
     const Real *prob_hi = geom.ProbHi();
     Real domain_length = prob_hi[0] - prob_lo[0];
+    const bool has_ecology = (ecology_mf != nullptr);
     
 #if (AMREX_SPACEDIM == 3)
     GpuArray<Real, AMREX_SPACEDIM> gdx{dx[0], dx[1], dx[2]};
@@ -243,6 +288,7 @@ inline void generate_firebrand_spots(
     std::vector<Real> wind_z;
 #endif
     std::vector<int> src_fuel_model;  // fuel model code at each source cell
+    std::vector<Real> crown_activity_arr;  // crown activity at each source cell
 
     const bool has_fm_sp = (fuel_model_mf != nullptr);
     
@@ -255,6 +301,9 @@ inline void generate_firebrand_spots(
 
         Array4<const Real> fm_arr;
         if (has_fm_sp) fm_arr = fuel_model_mf->const_array(mfi);
+        
+        Array4<const Real> eco_arr;
+        if (has_ecology) eco_arr = ecology_mf->const_array(mfi);
 
         const auto lo = lbound(bx);
         const auto hi = ubound(bx);
@@ -275,6 +324,8 @@ inline void generate_firebrand_spots(
                         wind_y.push_back(v(i, j, k, 1));
                         src_fuel_model.push_back(has_fm_sp
                             ? static_cast<int>(fm_arr(i, j, k)) : 0);
+                        crown_activity_arr.push_back(has_ecology
+                            ? eco_arr(i, j, k, 3) : Real(0.0));
 #if (AMREX_SPACEDIM == 3)
                         Real z = prob_lo[2] + (k + 0.5) * gdx[2];
                         zarray.push_back(z);
@@ -313,6 +364,7 @@ inline void generate_firebrand_spots(
         allgatherv_real(probabilities);
         allgatherv_real(wind_x);
         allgatherv_real(wind_y);
+        allgatherv_real(crown_activity_arr);
 #if (AMREX_SPACEDIM == 3)
         allgatherv_real(zarray);
         allgatherv_real(wind_z);
@@ -357,6 +409,13 @@ inline void generate_firebrand_spots(
             // Clamp distance to reasonable bounds
             distance = amrex::min(distance, Real(0.5) * domain_length); // Max 50% of domain
             distance = amrex::max(distance, sp.spot_radius * Real(2.0)); // Min 2x spot radius
+
+            // Apply crown fire scaling to spotting distance
+            // Active crown fire increases spotting distance
+            Real crown_mult = compute_crown_fire_spotting_multiplier(
+                (idx < static_cast<int>(crown_activity_arr.size()))
+                    ? crown_activity_arr[idx] : Real(0.0));
+            distance *= crown_mult;
 
             // ---- Scott/Albini (1979) per-fuel-model maximum spotting distance cap ----
             if (has_fm_sp && fuel_system != nullptr) {
