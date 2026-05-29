@@ -42,8 +42,9 @@ crown.CH = 15.0        # canopy height [m]
 # CFSA-specific parameters
 # k_sa controls the surface area coefficient [m²/kg]
 # Higher CBD and canopy depth → higher CFSA
-# Expected CFSA = CBD × (CH - CBH) × k_sa
-#               = 0.20 × (15.0 - 3.0) × 6.0 = 14.4 (clamped to max_cfsa=3.0)
+# Expected CFSA (uncapped) = CBD × (CH - CBH) × k_sa
+#                          = 0.20 × (15.0 - 3.0) × 6.0 = 14.4
+# Expected CFSA (capped)   = min(14.4, max_cfsa) = min(14.4, 3.0) = 3.0
 crown.cfsa_k_sa = 6.0
 crown.cfsa_max = 3.0
 

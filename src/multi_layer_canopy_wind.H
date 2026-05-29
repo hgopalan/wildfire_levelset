@@ -112,7 +112,7 @@ Real compute_canopy_wind_attenuation_coefficient(Real LAI)
     constexpr Real beta  = Real(2.5);
     constexpr Real gamma = Real(0.5);
     
-    const Real alpha = beta * std::pow(LAI, gamma);
+    const Real alpha = beta * std::sqrt(LAI);  // Optimized: gamma = 0.5
     
     // Clamp to physically reasonable range
     return amrex::min(amrex::max(alpha, CanopyWindConst::ALPHA_SPARSE),
