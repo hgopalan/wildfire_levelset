@@ -133,4 +133,10 @@ using namespace amrex;
 #include "flame_front_depth.H"
 #include "mcarthur_ffdi.H"
 
+// ---- Project headers: new moisture and fuel models ----
+#include "canadian_fwi.H"
+#include "two_fuel_blending.H"
+#include "duff_moisture_smoldering.H"
+#include "moisture_of_extinction.H"
+
 #endif // WILDFIRE_INCLUDES_H

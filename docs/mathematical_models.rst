@@ -4232,3 +4232,45 @@ Each feature is supported by scientific literature:
 8. Finney et al. (2015), Linn et al. (2002) - Plume entrainment
 9. Finney (1998), Andrews (2018) - Spatial variation
 10. Drysdale (2011), Quintiere (2006), Balbi (2009) - Critical heat flux
+
+Canadian Forest Fire Weather Index (FWI) System
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/canadian_fwi.H``
+
+**Purpose:** Full implementation of the Canadian FWI System for fire danger rating and fuel moisture tracking.
+
+**Key Functions:**
+
+* ``compute_ffmc()`` - Fine Fuel Moisture Code (1-2 hour timelag)
+* ``compute_dmc()`` - Duff Moisture Code (10-20 day timelag)
+* ``compute_dc()`` - Drought Code (seasonal timelag, 50+ days)
+* ``compute_isi()`` - Initial Spread Index (combines FFMC and wind)
+* ``compute_bui()`` - Buildup Index (combines DMC and DC)
+* ``compute_fwi()`` - Fire Weather Index (overall fire danger rating)
+
+**Physics:** Van Wagner (1987) equations for moisture code evolution and fire danger indices. Provides standardized fire danger rating used operationally in Canada and many other countries.
+
+**Value:** Operationally-tested indices for fire danger assessment, fuel moisture estimation, and fire weather monitoring.
+
+Two-Fuel Model Blending
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/two_fuel_blending.H``
+
+**Purpose:** Blend rate of spread from two different fuel models for heterogeneous landscapes.
+
+**Methods:** Linear, harmonic mean, maximum, and Finney (1998) FARSITE-style weighted quadratic blending of ROS values.
+
+**Value:** Handles fuel transitions (grass/timber), heterogeneous fuel distributions, and multi-model scenarios.
+
+Duff Moisture and Smoldering Combustion
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**File:** ``src/duff_moisture_smoldering.H``
+
+**Purpose:** Track deep organic layer moisture and smoldering combustion following fire passage.
+
+**Physics:** Exponential decay smoldering model with moisture-dependent time constants. Tracks long-duration heat release from deep organic layers.
+
+**Value:** Captures post-frontal heat release, spotting from smoldering logs, and smoke production. Similar to FARSITE/FLAMMAP duff moisture tracking (DMC).

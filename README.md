@@ -67,25 +67,29 @@ fire.finalize()
 
 ## Core Capabilities
 
-**Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger)
+**Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger) • Two-fuel model blending *(new)*
 
-**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt *(new)* • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI *(new)*
+**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)*
 
-**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling *(new)* • Enhanced phenology models *(new)*
+**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) *(new)* • Dynamic moisture of extinction (M_x) *(new)* • Duff moisture with smoldering combustion *(new)*
 
-**Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition *(new)*
+**Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition
 
 **Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor *(new)* • Multi-station interpolation
 
 **Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
 
 **New Enhancement Features** *(2026)*:
+- **Canadian FWI System**: Full implementation of FFMC, DMC, DC, BUI, FWI fire danger indices *(new)*
+- **Two-fuel model blending**: Linear, harmonic, maximum, and Finney-style ROS blending for heterogeneous fuels *(new)*
+- **Duff moisture & smoldering combustion**: Deep organic layer moisture tracking with long-duration heat release *(new)*
+- **Fire acceleration models**: Anderson (1983) temporal and size-based models for non-equilibrium ROS growth *(new)*
 - McArthur-style moisture response time scaling
 - FMC phenology: sinusoidal & growing degree day models  
 - Ember accumulation tracking with decay & probabilistic ignition
 - Periodic wind gust factor
 - Slope-dependent flame tilt for radiation
-- Fire behavior diagnostics: Byram convective number, flame tilt angle, packing ratio, flame depth, McArthur FFDI
+- Fire behavior diagnostics: Byram convective number, flame tilt angle, packing ratio (β/β_opt), flame depth, McArthur FFDI
 
 See [full documentation](https://hgopalan.github.io/wildfire_levelset/) for complete feature list, model equations, and parameters.
 

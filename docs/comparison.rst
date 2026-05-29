@@ -37,9 +37,9 @@ Tools are grouped into three columns to keep the table compact:
      - **Group B** — QUIC-Fire / FIRETEC
      - **Group C** — WRF-Fire (WRF-SFIRE)
    * - **Surface spread model**
-     - Rothermel (1972), Balbi (2009), and 5 others
-       (Cheney–Gould, Cruz crown, FBP, Lautenberger,
-       plus Viegas eruptive option)
+     - Rothermel (1972), Balbi (2009), Cheney–Gould (1995),
+       Cruz (2005), FBP (1992), Lautenberger (2013),
+       plus Viegas eruptive option
      - Rothermel (1972) in all three
      - Semi-empirical QUIC; physics LES FIRETEC
      - Rothermel (1972)
@@ -67,19 +67,18 @@ Tools are grouped into three columns to keep the table compact:
      - 3-D mass-consistent (QUIC-URB) or LES
      - WRF-derived; WAF in coupling layer
    * - **Fuel models**
-     - FBFM13 + FBFM40; FBP grass/slash;
-       Lautenberger; per-cell LCP
+     - FBFM13, FBFM40, FBP grass/slash, Lautenberger,
+       per-cell LCP; two-fuel blending *(new)*
      - FARSITE/FlamMap: FBFM13 + FBFM40;
        BehavePlus: FBFM13 + FBFM40
      - Custom 3-D bulk density per cell
      - FBFM13
    * - **Fuel moisture**
-     - All size classes; FMD schedule;
-       Nelson (2000) diurnal EMC;
-       precipitation wetting; solar shading;
-       per-cell .fms; spatial output in plotfiles
-     - FARSITE/FlamMap: dead/live + FMD +
-       conditioning;
+     - All size classes; FMD schedule; Nelson (2000) diurnal EMC;
+       precipitation wetting; solar shading; per-cell .fms;
+       Canadian FWI (FFMC/DMC/DC/BUI/FWI) *(new)*;
+       dynamic M_x *(new)*; duff moisture & smoldering *(new)*
+     - FARSITE/FlamMap: dead/live + FMD + conditioning;
        BehavePlus: dead/live per class
      - Bulk moisture per cell
      - Dead/live (prescribed)
@@ -90,8 +89,8 @@ Tools are grouped into three columns to keep the table compact:
      - Partial (fuel mask)
    * - **Flame diagnostics**
      - Byram intensity + flame length + tilt + convective number;
-       packing ratio; flame depth; scorch height; tree mortality; TI/CI;
-       NFDRS ERC; McArthur FFDI
+       packing ratio (β/β_opt); flame depth; scorch height; tree mortality;
+       TI/CI; NFDRS ERC; McArthur FFDI; fire acceleration *(new)*
      - FARSITE: intensity + flame length;
        FlamMap: full outputs;
        BehavePlus: full outputs
