@@ -1058,3 +1058,230 @@ GeoTIFF by ``plotfile_to_geotiff.py`` (now included in the default
     python3 tools/plotfile_to_geotiff.py plt0200 \
         -v residual_fuel fuel_consumption arrival_time \
         --utm-origin 500000 3700000 --epsg 32611 --outdir gis_out
+
+
+Scott & Reinhardt (2001) Crown Fire Surface Area (CFSA)
+--------------------------------------------------------
+
+**Header**: ``src/scott_reinhardt_cfsa.H``
+
+The Crown Fire Surface Area (CFSA) model computes the effective burning surface
+area per unit ground area during active crown fire, accounting for 3-D canopy
+structure. This provides improved crown fire heat release and emissions estimates.
+
+**Model equation:**
+
+.. math::
+
+   \mathrm{CFSA} = \min(\mathrm{CBD} \times (\mathrm{CH} - \mathrm{CBH}) \times k_{sa},\, \mathrm{CFSA}_{\max})
+
+where:
+
+* :math:`\mathrm{CBD}` = canopy bulk density [kg/m³]
+* :math:`\mathrm{CH}` = canopy height [m]
+* :math:`\mathrm{CBH}` = canopy base height [m]
+* :math:`k_{sa}` = surface area coefficient [m²/kg] (typical: 4-8)
+* :math:`\mathrm{CFSA}_{\max}` = maximum CFSA [dimensionless] (typical: 2-4)
+
+**Functions:**
+
+* ``compute_crown_fire_surface_area(CBD, CH, CBH, k_sa, max_cfsa)`` — returns CFSA
+* ``compute_crown_heat_release_with_cfsa(cfsa, w_crown, h_crown, tau_crown)`` — heat release [kW/m²]
+* ``estimate_crown_fuel_loading_from_cbd(CBD, canopy_depth)`` — crown fuel loading [kg/m²]
+
+**Input parameters** (prefix ``crown.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``cfsa_k_sa``
+     - 6.0
+     - Surface area coefficient [m²/kg]
+   * - ``cfsa_max``
+     - 3.0
+     - Maximum CFSA [dimensionless]
+
+**Applications**: Crown fire heat release calculations, emissions modeling,
+radiation heat flux, plume rise and smoke production.
+
+**Test**: ``regtest/crown_fire/scott_reinhardt_cfsa/``
+
+**Reference**: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing Crown Fire Potential
+by Linking Models of Surface and Crown Fire Behavior.* USDA Forest Service
+Research Paper RMRS-RP-29.
+
+
+Multi-Layer Canopy Wind Profile
+--------------------------------
+
+**Header**: ``src/multi_layer_canopy_wind.H``
+
+Implements vertical wind profile through multi-layer canopy following exponential
+attenuation (Massman 1997, Inoue 1963). Provides realistic wind speed variation
+with height for improved surface vs. crown fire modeling.
+
+**Within-canopy exponential profile** (z < h):
+
+.. math::
+
+   u(z) = u_h \times \exp\!\left(-\alpha \left(1 - \frac{z}{h}\right)\right)
+
+**Above-canopy logarithmic profile** (z > h):
+
+.. math::
+
+   u(z) = u_h \times \frac{\ln\!\left(\frac{z-d}{z_0}\right)}{\ln\!\left(\frac{h-d}{z_0}\right)}
+
+where :math:`\alpha` is the attenuation coefficient related to LAI via
+:math:`\alpha \approx 2.5 \times \mathrm{LAI}^{0.5}`.
+
+**Functions:**
+
+* ``compute_canopy_wind_attenuation_coefficient(LAI)`` — returns α from LAI
+* ``compute_wind_speed_at_height_within_canopy(u_h, z, h, alpha)`` — wind at height z
+* ``compute_wind_speed_at_height_above_canopy(u_h, z, h, d_ratio, z0_ratio)`` — wind above canopy
+* ``compute_multi_layer_wind_profile(...)`` — computes wind at N vertical layers
+* ``compute_effective_wind_speed_for_layer(...)`` — wind for surface/crown fire layers
+
+**Input parameters** (prefix ``canopy_wind.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to activate multi-layer canopy wind
+   * - ``n_layers``
+     - 5
+     - Number of vertical layers
+   * - ``alpha``
+     - 2.5
+     - Attenuation coefficient [dimensionless]
+   * - ``LAI``
+     - 4.0
+     - Leaf area index [m²/m²]
+   * - ``d_ratio``
+     - 0.7
+     - Displacement height ratio d/h
+   * - ``z0_ratio``
+     - 0.1
+     - Roughness length ratio z₀/h
+   * - ``z_ref``
+     - 10.0
+     - Reference height for input wind [m]
+
+**Test**: ``regtest/wind/multi_layer_canopy/``
+
+**References**: Massman, W.J. (1997). *An analytical one-dimensional model of
+momentum transfer by vegetation of arbitrary structure.* Boundary-Layer
+Meteorology, 83(3), 407-421. Inoue, E. (1963). *On the turbulent structure of
+airflow within crop canopies.* Journal of the Meteorological Society of Japan, 41, 317-326.
+
+
+Fine Fuel Moisture Time-Lag Differential Equations
+---------------------------------------------------
+
+**Header**: ``src/fuel_moisture_timelag_de.H``
+
+Implements physically-based fuel moisture dynamics using time-lag differential
+equations (Nelson 2000, Viney 1991). Provides continuous moisture evolution with
+hysteresis and temperature correction.
+
+**Governing equation:**
+
+.. math::
+
+   \frac{dM}{dt} = \frac{M_e - M}{\tau_{\text{eff}}} + P(t)
+
+where :math:`M` is fuel moisture [fraction], :math:`M_e` is equilibrium moisture
+content (EMC), :math:`\tau_{\text{eff}}` is the effective time-lag [hours], and
+:math:`P(t)` is precipitation wetting [1/hour].
+
+**Equilibrium moisture with hysteresis** (Nelson 2000):
+
+* **Adsorption** (wetting): :math:`M_e = 0.03229 + 0.2810 H + 0.4093 H^2 - 1.3560 H^3 + 1.6596 H^4`
+* **Desorption** (drying): :math:`M_e = 0.05800 + 0.1985 H + 0.6250 H^2 - 1.1830 H^3 + 1.0570 H^4`
+
+where :math:`H = \mathrm{RH}/100`.
+
+**Temperature correction:**
+
+.. math::
+
+   \tau_{\text{eff}} = \tau \times \exp\!\left(-0.015 (T - 20)\right)
+
+Higher temperature accelerates drying by reducing effective time lag.
+
+**Functions:**
+
+* ``compute_emc_adsorption(RH)`` — EMC for wetting [fraction]
+* ``compute_emc_desorption(RH)`` — EMC for drying [fraction]
+* ``compute_emc_with_hysteresis(RH, M_current)`` — EMC with hysteresis
+* ``compute_temperature_correction_factor(T)`` — temperature factor
+* ``compute_precipitation_wetting_rate(rain_rate)`` — wetting term P(t)
+* ``update_fuel_moisture_timelag_de(M, RH, T, rain, dt, tau)`` — forward Euler update
+* ``update_multi_class_fuel_moisture(...)`` — update 1hr/10hr/100hr/1000hr simultaneously
+
+**Input parameters** (prefix ``fuel_moisture_de.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable``
+     - 0
+     - 1 to activate time-lag DE model
+   * - ``method``
+     - ``"timelag_de"``
+     - Solver method
+   * - ``T_ambient``
+     - 25.0
+     - Ambient temperature [°C]
+   * - ``RH``
+     - 40.0
+     - Relative humidity [%]
+   * - ``tau_1hr``
+     - 1.0
+     - 1-hour time lag [hours]
+   * - ``tau_10hr``
+     - 10.0
+     - 10-hour time lag [hours]
+   * - ``tau_100hr``
+     - 100.0
+     - 100-hour time lag [hours]
+   * - ``tau_1000hr``
+     - 1000.0
+     - 1000-hour time lag [hours]
+   * - ``use_hysteresis``
+     - 1
+     - Enable adsorption/desorption hysteresis
+   * - ``temp_correction``
+     - 1
+     - Enable temperature-dependent drying
+   * - ``M_1hr_init``
+     - 0.12
+     - Initial 1-hr moisture [fraction]
+   * - ``M_10hr_init``
+     - 0.15
+     - Initial 10-hr moisture [fraction]
+   * - ``M_100hr_init``
+     - 0.18
+     - Initial 100-hr moisture [fraction]
+   * - ``rain_rate``
+     - 0.0
+     - Precipitation rate [mm/h]
+
+**Test**: ``regtest/moisture/fuel_moisture_timelag_de/``
+
+**References**: Nelson, R.M. (2000). *Prediction of diurnal change in 10-h fuel
+stick moisture content.* Canadian Journal of Forest Research, 30, 1071-1087.
+Viney, N.R. (1991). *A review of fine fuel moisture modelling.* International
+Journal of Wildland Fire, 1(4), 215-234.
