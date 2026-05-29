@@ -354,33 +354,38 @@ falls back to synthetic data if the download fails)
 
 ---
 
-## Testing Checklist
+## New Feature Tests (2026)
 
-Use this checklist to verify all capabilities:
+The following tests validate the 2026 enhancement features:
 
-- [ ] **Basic Advection**: `basic_levelset` runs successfully
-- [ ] **FARSITE**: `farsite_ellipse` produces elliptical spread
-- [ ] **Fuel Models**: `rothermel_fuel` correctly applies fuel properties
-- [ ] **Cheney–Gould**: `cheney_gould_grassfire` produces asymmetric grassland spread
-- [ ] **Terrain**: `terrain_wind` handles external elevation data
-- [ ] **Wind Fields**: `terrain_wind` interpolates spatially-varying wind
-- [ ] **Anderson L/W**: `anderson_lw` computes dynamic coefficients
-- [ ] **Reinitialization**: `reinitialization` maintains |∇φ|=1
-- [ ] **Elliptical SDF**: `ellipse_sdf` creates elliptical initial conditions
-- [ ] **EB Capabilities**: `eb_implicit` uses implicit function geometries
-- [ ] **3D Capability**: `3d_sphere` runs in 3D mode
-- [ ] **LANDFIRE/FARSITE**: `landfire_farsite` runs with landscape file
-- [ ] **Catchpole–de Mestre shape**: `catchpole_demestre` produces double-ellipse perimeter
-- [ ] **Wilson shape**: `wilson_spread` produces ellipse with origin at rear focus
-- [ ] **Lemniscate shape**: `alexander_lemniscate` produces limaçon perimeter
-- [ ] **Turbulent wind**: `turb_wind` (2-D build) adds stochastic gusts (2-D only)
-- [ ] **Cruz crown fire**: `cruz_crown_continental_us` spreads at expected ROS
-- [ ] **Perimeter output**: `fire_perimeter_output` writes CSV, GeoJSON, and fire_stats.csv
-- [ ] **FMD moisture**: `fmd_moisture` interpolates time-varying fuel moisture
-- [ ] **Fuel adjustment**: `fuel_adj_file` scales ROS by per-fuel-model multiplier
-- [ ] **MTT propagation**: `mtt_propagation` spreads fire via minimum travel time ⭐ NEW
-- [ ] **Barrier polygons**: `barrier_polygons` extinguishes fire at barrier cells ⭐ NEW
-- [ ] **Terrain gradient correction**: `terrain_gradient_correction` exercises surface arc-length gradient ⭐ NEW
+### McArthur Moisture Scaling
+**Test**: `mcarthur_scaling` (in `moisture/`)
+
+Tests temperature/RH-dependent moisture response time scaling. McArthur formula adjusts fuel moisture drying rates based on ambient temperature and relative humidity, with faster drying in hot, dry conditions and slower drying in cool, humid conditions.
+
+### Ember Accumulation
+**Test**: `ember_accumulation` (in `spotting/`)
+
+Tests ember density tracking with exponential decay (burnout) and probabilistic ignition. Combines Albini spotting with ember accumulation model where landed embers persist, decay over time, and trigger ignition when density exceeds threshold.
+
+### Periodic Wind Gust Factor
+**Test**: `periodic_gust_factor` (in `wind/`)
+
+Tests sinusoidal wind modulation representing thermal turbulence. Wind speed varies as V(t) = V_base × (1 + A × sin(2πt/T)), causing fire spread to accelerate and decelerate cyclically.
+
+### Slope-Dependent Flame Tilt
+**Test**: `slope_flame_tilt_radiation` (in `terrain/`)
+
+Tests radiation preheating enhancement via slope-dependent flame tilt. On upslope fires, terrain slope increases flame tilt angle, projecting radiant heat further downslope and accelerating fire spread.
+
+### FMC Phenology Models
+**Tests**: `fmc_phenology_sinusoidal` and `fmc_phenology_gdd` (in `crown_fire/`)
+
+Tests seasonal foliar moisture content variation affecting crown fire initiation:
+- **Sinusoidal model**: Simple seasonal curve with peak greenup day
+- **GDD model**: Growing degree day accumulation drives spring greenup
+
+Both models modify Van Wagner crown fire initiation threshold based on seasonal FMC.
 
 ## Build Configurations
 
