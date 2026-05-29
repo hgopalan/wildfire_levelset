@@ -39,37 +39,55 @@
 // Parameters:
 //   CBH: Canopy base height [m or ft] - height to bottom of live canopy
 //   FMC: Foliar moisture content [%] - moisture of canopy foliage (dry basis)
+//   ladder_fuel_height: height of ladder fuels (shrubs) [m] (default: 0.0, disabled)
+//   ladder_fuel_coeff: fraction of shrub layer acting as ladder (default: 0.6)
 //
 // Returns:
 //   I_o: Critical surface fire intensity [kW/m or BTU/ft/s]
 //
 // Formula:
-//   I_o = (0.010 * CBH * (460 + 25.9 * FMC))
+//   CBH_effective = CBH - ladder_fuel_coeff × ladder_fuel_height
+//   I_o = (0.010 * CBH_effective * (460 + 25.9 * FMC))
 //
 // Physical Interpretation:
 //   - Higher canopy base height → higher critical intensity needed
 //   - Higher foliar moisture → higher critical intensity needed
+//   - Ladder fuels (shrubs, small trees) reduce effective CBH
 //   - Typical values: I_o = 50-500 kW/m for various forest types
 //
 // Unit Notes:
 //   - If CBH in meters and FMC in %, I_o is in kW/m
 //   - If CBH in feet and FMC in %, I_o is in BTU/ft/s
 //   - For conversion: 1 kW/m ≈ 88.05 BTU/ft/s
+//
+// Reference:
+//   Scott, J.H., & Reinhardt, E.D. (2001). Assessing crown fire potential by 
+//   linking models of surface and crown fire behavior. USDA Forest Service 
+//   Research Paper RMRS-RP-29.
 // ============================================================================
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_critical_surface_intensity(
     amrex::Real CBH,
-    amrex::Real FMC)
+    amrex::Real FMC,
+    amrex::Real ladder_fuel_height = amrex::Real(0.0),
+    amrex::Real ladder_fuel_coeff = amrex::Real(0.6))
 {
     using namespace amrex;
     
+    // Apply ladder fuel adjustment (Scott & Reinhardt 2001)
+    // Ladder fuels reduce effective CBH by allowing fire to climb
+    Real CBH_effective = CBH;
+    if (ladder_fuel_height > Real(0.0)) {
+        CBH_effective = CBH - ladder_fuel_coeff * ladder_fuel_height;
+    }
+    
     // Ensure positive values
-    CBH = amrex::max(CBH, Real(0.1));  // Minimum 0.1 m or ft
+    CBH_effective = amrex::max(CBH_effective, Real(0.1));  // Minimum 0.1 m or ft
     FMC = amrex::max(FMC, Real(50.0)); // Minimum 50% moisture
     
     // Van Wagner's critical intensity equation
-    // I_o [kW/m or BTU/ft/s] = 0.010 * CBH * (460 + 25.9 * FMC)
-    Real I_o = Real(0.010) * CBH * (Real(460.0) + Real(25.9) * FMC);
+    // I_o [kW/m or BTU/ft/s] = 0.010 * CBH_effective * (460 + 25.9 * FMC)
+    Real I_o = Real(0.010) * CBH_effective * (Real(460.0) + Real(25.9) * FMC);
     
     return I_o;
 }

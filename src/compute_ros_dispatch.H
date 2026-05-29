@@ -82,6 +82,19 @@ inline void dispatch_compute_ros(
                             has_spatial_crown ? cc_mf         : nullptr,
                             has_spatial_crown ? canopy_height_mf : nullptr);
     }
+    
+    // Apply minimum spread rate floor if enabled (FARSITE/FlamMap practice)
+    // Real fires exhibit smoldering/creeping spread even when Rothermel predicts zero ROS
+    if (inputs.rothermel.minimum_ros_m_min > 0.0) {
+        const amrex::Real R_min_m_s = inputs.rothermel.minimum_ros_m_min / 60.0;  // convert m/min to m/s
+        for (amrex::MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
+            const amrex::Box& bx = mfi.validbox();
+            auto R_arr = R_mf.array(mfi);
+            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                R_arr(i, j, k) = amrex::max(R_arr(i, j, k), R_min_m_s);
+            });
+        }
+    }
 }
 
 #endif // COMPUTE_ROS_DISPATCH_H
