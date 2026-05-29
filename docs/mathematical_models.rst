@@ -956,6 +956,40 @@ Reference: Van Wagner, C.E. (1977). *Conditions for the start and spread of crow
 fire.* Canadian Journal of Forest Research, 7(1), 23–34.
 
 
+Scott & Reinhardt (2001) Crown Fire Surface Area (CFSA)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Scott & Reinhardt (2001) Crown Fire Surface Area (CFSA) model computes the
+effective burning surface area per unit ground area during active crown fire.
+This accounts for the 3-D structure of the canopy layer.
+
+**Model equation:**
+
+.. math::
+
+   \mathrm{CFSA} = \min(\mathrm{CBD} \times (\mathrm{CH} - \mathrm{CBH}) \times k_{sa},\, \mathrm{CFSA}_{\max})
+
+where:
+
+* :math:`\mathrm{CBD}` is the canopy bulk density [kg/m³]
+* :math:`\mathrm{CH}` is the canopy height [m]
+* :math:`\mathrm{CBH}` is the canopy base height [m]
+* :math:`k_{sa}` is the surface area coefficient [m²/kg] (typical: 4-8 m²/kg)
+* :math:`\mathrm{CFSA}_{\max}` is the maximum CFSA [dimensionless] (typical: 2-4)
+
+The surface area coefficient :math:`k_{sa}` relates fuel loading to effective burning
+surface area, accounting for foliage clumping, branch geometry, and crown architecture.
+
+**Applications:** Crown fire heat release calculations, emissions modeling, radiation
+heat flux from active crown fires, plume rise and smoke production.
+
+Parameters: ``crown.cfsa_k_sa`` (default: 6.0), ``crown.cfsa_max`` (default: 3.0).
+
+Reference: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing Crown Fire Potential
+by Linking Models of Surface and Crown Fire Behavior.* USDA Forest Service
+Research Paper RMRS-RP-29.
+
+
 Scott & Reinhardt (2001) Bisection-Based TI and CI
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1342,6 +1376,50 @@ accuracy of the Rothermel surface fire spread model when wind input is from NWP
 or WRF (20-ft / 10-m height).  Both are optional flags that can be enabled
 independently.
 
+
+Multi-Layer Canopy Wind Profile
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The multi-layer canopy wind profile model (Massman 1997, Inoue 1963) provides
+a physically realistic representation of wind speed variation with height through
+forest canopies. This improves accuracy for surface vs. crown fire transitions
+and layered fuel structures.
+
+**Within-canopy exponential profile** (z < h):
+
+.. math::
+
+   u(z) = u_h \times \exp\!\left(-\alpha \left(1 - \frac{z}{h}\right)\right)
+
+where:
+
+* :math:`u_h` is the wind speed at canopy top h [m/s]
+* :math:`\alpha` is the attenuation coefficient [dimensionless]
+* :math:`z` is height above ground [m]
+* :math:`h` is canopy height [m]
+
+**Above-canopy logarithmic profile** (z > h):
+
+.. math::
+
+   u(z) = u_h \times \frac{\ln\!\left(\frac{z-d}{z_0}\right)}{\ln\!\left(\frac{h-d}{z_0}\right)}
+
+where :math:`d = 0.7h` is the displacement height and :math:`z_0 = 0.1h` is the
+roughness length.
+
+The attenuation coefficient :math:`\alpha` is related to leaf area index (LAI)
+via :math:`\alpha \approx 2.5 \times \mathrm{LAI}^{0.5}` (Massman 1997).
+
+Parameters: ``canopy_wind.enable``, ``canopy_wind.n_layers`` (default: 5),
+``canopy_wind.alpha`` (default: 2.5), ``canopy_wind.LAI``,
+``canopy_wind.d_ratio`` (default: 0.7), ``canopy_wind.z0_ratio`` (default: 0.1).
+
+References: Massman, W.J. (1997). *An analytical one-dimensional model of momentum
+transfer by vegetation of arbitrary structure.* Boundary-Layer Meteorology, 83(3), 407-421.
+Inoue, E. (1963). *On the turbulent structure of airflow within crop canopies.*
+Journal of the Meteorological Society of Japan, 41, 317-326.
+
+
 Wind Adjustment Factor (WAF)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1664,6 +1742,76 @@ Per size-class time constants (Rothermel 1983):
    * - ``diurnal_moisture.M_sat``
      - 1.20
      - Saturation moisture content [fraction]
+
+
+Fine Fuel Moisture Time-Lag Differential Equations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The time-lag differential equation model (Nelson 2000, Viney 1991) provides
+physically-based fuel moisture dynamics with continuous evolution driven by
+ambient conditions.
+
+**Governing equation:**
+
+.. math::
+
+   \frac{dM}{dt} = \frac{M_e - M}{\tau_{\text{eff}}} + P(t)
+
+where:
+
+* :math:`M` is fuel moisture content [fraction]
+* :math:`M_e` is equilibrium moisture content (EMC) [fraction]
+* :math:`\tau_{\text{eff}}` is the effective time-lag constant [hours]
+* :math:`P(t)` is the precipitation wetting term [1/hour]
+
+**Equilibrium moisture content with hysteresis** (Nelson 2000):
+
+Adsorption (wetting):
+
+.. math::
+
+   M_e = 0.03229 + 0.2810 H + 0.4093 H^2 - 1.3560 H^3 + 1.6596 H^4
+
+Desorption (drying):
+
+.. math::
+
+   M_e = 0.05800 + 0.1985 H + 0.6250 H^2 - 1.1830 H^3 + 1.0570 H^4
+
+where :math:`H = \mathrm{RH}/100` is relative humidity as a fraction.
+
+**Temperature correction:**
+
+.. math::
+
+   \tau_{\text{eff}} = \tau \times \exp\!\left(-k (T - T_{\text{ref}})\right)
+
+where :math:`T` is temperature [°C], :math:`T_{\text{ref}} = 20°\text{C}`,
+and :math:`k = 0.015` °C⁻¹. Higher temperature accelerates drying.
+
+**Time-lag constants:**
+
++----------+------------+
+| Class    | τ [hours]  |
++==========+============+
+| 1-hr     | 1          |
++----------+------------+
+| 10-hr    | 10         |
++----------+------------+
+| 100-hr   | 100        |
++----------+------------+
+| 1000-hr  | 1000       |
++----------+------------+
+
+Parameters: ``fuel_moisture_de.enable``, ``fuel_moisture_de.method = "timelag_de"``,
+``fuel_moisture_de.T_ambient``, ``fuel_moisture_de.RH``,
+``fuel_moisture_de.tau_1hr`` (default: 1.0), ``fuel_moisture_de.tau_10hr`` (default: 10.0),
+``fuel_moisture_de.use_hysteresis`` (default: 1), ``fuel_moisture_de.temp_correction`` (default: 1).
+
+References: Nelson, R.M. (2000). *Prediction of diurnal change in 10-h fuel stick
+moisture content.* Canadian Journal of Forest Research, 30, 1071-1087.
+Viney, N.R. (1991). *A review of fine fuel moisture modelling.* International
+Journal of Wildland Fire, 1(4), 215-234.
 
 
 Per-Cell Live Canopy Moisture from FMS File

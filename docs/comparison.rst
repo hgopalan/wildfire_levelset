@@ -52,16 +52,16 @@ Tools are grouped into three columns to keep the table compact:
      - Eulerian CFD (QUIC-URB / HIGRAD-FIRETEC)
      - Eulerian level-set on WRF grid
    * - **Crown fire**
-     - Van Wagner (1977) + Rothermel (1991) + Cruz
-       et al. (2005) + Scott–Reinhardt (2001) TI/CI
+     - Van Wagner (1977), Rothermel (1991), Cruz (2005);
+       Scott–Reinhardt (2001) TI/CI; CFSA *(new)*
      - Van Wagner (1977); FARSITE/FlamMap active
        via R\ :sub:`c`\ = 3.34 R\ :sub:`s`;
        BehavePlus: Van Wagner point calc.
      - Physics-based combustion
      - Van Wagner (1977)
    * - **Wind adjustment**
-     - WAF (Andrews 2018); MEWS cap;
-       8 wind-terrain feedback models (Viegas, canyon, ridge, WindNinja, FARSITE)
+     - WAF (Andrews 2018); MEWS cap; multi-layer canopy *(new)*;
+       8 wind-terrain models
      - FARSITE/FlamMap: WAF + MEWS (internal);
        BehavePlus: user-specified WAF
      - 3-D mass-consistent (QUIC-URB) or LES
@@ -74,10 +74,8 @@ Tools are grouped into three columns to keep the table compact:
      - Custom 3-D bulk density per cell
      - FBFM13
    * - **Fuel moisture**
-     - All size classes; FMD schedule; Nelson (2000) diurnal EMC;
-       precipitation wetting; solar shading; per-cell .fms;
-       Canadian FWI (FFMC/DMC/DC/BUI/FWI) *(new)*;
-       dynamic M_x *(new)*; duff moisture & smoldering *(new)*
+     - All size classes; FMD/Nelson diurnal; precipitation;
+       FWI system; time-lag DE *(new)*; duff/smolder *(new)*
      - FARSITE/FlamMap: dead/live + FMD + conditioning;
        BehavePlus: dead/live per class
      - Bulk moisture per cell
