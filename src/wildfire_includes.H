@@ -28,6 +28,9 @@
 
 using namespace amrex;
 
+// ---- Project headers: constants ----
+#include "constants.H"
+
 // ---- Project headers: core numerics and geometry ----
 #include "numerical_schemes.H"
 #include "initial_conditions.H"
@@ -138,5 +141,10 @@ using namespace amrex;
 #include "two_fuel_blending.H"
 #include "duff_moisture_smoldering.H"
 #include "moisture_of_extinction.H"
+
+// ---- Project headers: advanced crown fire and moisture models ----
+#include "scott_reinhardt_cfsa.H"
+#include "multi_layer_canopy_wind.H"
+#include "fuel_moisture_timelag_de.H"
 
 #endif // WILDFIRE_INCLUDES_H

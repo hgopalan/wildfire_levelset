@@ -69,21 +69,24 @@ fire.finalize()
 
 **Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger) • Two-fuel model blending *(new)*
 
-**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)*
+**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)* • Scott & Reinhardt Crown Fire Surface Area (CFSA) *(new)*
 
-**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) *(new)* • Dynamic moisture of extinction (M_x) *(new)* • Duff moisture with smoldering combustion *(new)*
+**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) *(new)* • Dynamic moisture of extinction (M_x) *(new)* • Duff moisture with smoldering combustion *(new)* • Fine fuel moisture time-lag differential equations *(new)*
 
 **Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition
 
-**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor *(new)* • Multi-station interpolation
+**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor *(new)* • Multi-station interpolation • Multi-layer canopy wind profile *(new)*
 
 **Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
 
 **New Enhancement Features** *(2026)*:
-- **Canadian FWI System**: Full implementation of FFMC, DMC, DC, BUI, FWI fire danger indices *(new)*
-- **Two-fuel model blending**: Linear, harmonic, maximum, and Finney-style ROS blending for heterogeneous fuels *(new)*
-- **Duff moisture & smoldering combustion**: Deep organic layer moisture tracking with long-duration heat release *(new)*
-- **Fire acceleration models**: Anderson (1983) temporal and size-based models for non-equilibrium ROS growth *(new)*
+- **Scott & Reinhardt Crown Fire Surface Area (CFSA)**: 3-D canopy structure-based burning area for crown fire heat release *(new)*
+- **Multi-layer canopy wind profile**: Exponential/logarithmic vertical wind distribution through forest canopies *(new)*
+- **Fine fuel moisture time-lag differential equations**: Physics-based moisture dynamics with hysteresis and temperature correction *(new)*
+- **Canadian FWI System**: Full implementation of FFMC, DMC, DC, BUI, FWI fire danger indices
+- **Two-fuel model blending**: Linear, harmonic, maximum, and Finney-style ROS blending for heterogeneous fuels
+- **Duff moisture & smoldering combustion**: Deep organic layer moisture tracking with long-duration heat release
+- **Fire acceleration models**: Anderson (1983) temporal and size-based models for non-equilibrium ROS growth
 - McArthur-style moisture response time scaling
 - FMC phenology: sinusoidal & growing degree day models  
 - Ember accumulation tracking with decay & probabilistic ignition
