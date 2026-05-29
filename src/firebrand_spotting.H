@@ -52,9 +52,11 @@ constexpr amrex::Real CROWN_ACTIVITY_UPPER_BOUND = amrex::Real(2.5);
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
 {
+    // Set to 2.5 so values in range [1.5, 2.5) round to 2
+    constexpr amrex::Real crown_activity_upper_bound = amrex::Real(2.5);
     // Round crown_activity to nearest integer: 0, 1, or 2
     // Clamp to valid range, then round to nearest integer
-    amrex::Real clamped = amrex::max(amrex::Real(0.0), amrex::min(CROWN_ACTIVITY_UPPER_BOUND, crown_activity));
+    amrex::Real clamped = amrex::max(amrex::Real(0.0), amrex::min(crown_activity_upper_bound, crown_activity));
     int ca = static_cast<int>(std::round(clamped));
     
     if (ca == 0) {
