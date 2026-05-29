@@ -126,6 +126,65 @@ inline void write_wildfire_plotfile(
     // Compute fire intensity class (Byram 1959 6-class system)
     compute_fire_intensity_class(fire_intensity_class_mf, fireline_intensity_mf);
 
+    // ---- Compute new fire behavior diagnostics ----
+    // Create temporary residence time MultiFab for diagnostics
+    MultiFab residence_time_temp(ba, dm, 1, 0);
+    residence_time_temp.setVal(inputs.farsite.tau_residence);
+
+    // Byram convective number
+    compute_byram_convective_number(f.convective_number_mf,
+                                    fireline_intensity_mf,
+                                    residence_time_temp,
+                                    vel);
+
+    // Flame tilt angle
+    compute_flame_tilt_angle(f.flame_tilt_mf,
+                             fireline_intensity_mf,
+                             vel);
+
+    // Packing ratio diagnostics
+    compute_packing_ratio(f.packing_ratio_mf,
+                          f.relative_packing_mf,
+                          inputs.rothermel);
+
+    // Flame front depth
+    compute_flame_front_depth(f.flame_depth_mf,
+                              R_mf,
+                              residence_time_temp);
+
+    // McArthur FFDI
+    // Default parameters: T=25°C, RH=50%, drought_factor=5.0
+    // TODO: Add these to InputParameters when multi-station weather is fully integrated
+    const Real default_temp_C = 25.0;
+    const Real default_RH_pct = 50.0;
+    const Real default_drought = 5.0;
+    
+    // Compute wind magnitude for FFDI
+    Real wind_ms = 0.0;
+    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const u = vel.const_array(mfi);
+        Real local_max = 0.0;
+        ReduceOps<ReduceOpMax> reduce_op;
+        ReduceData<Real> reduce_data(reduce_op);
+        using ReduceTuple = typename decltype(reduce_data)::Type;
+        
+        reduce_op.eval(bx, reduce_data,
+        [=] AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTuple {
+            const Real u_mag = std::sqrt(u(i,j,k,0)*u(i,j,k,0) + u(i,j,k,1)*u(i,j,k,1));
+            return u_mag;
+        });
+        
+        ReduceTuple hv = reduce_data.value();
+        local_max = amrex::get<0>(hv);
+        wind_ms = amrex::max(wind_ms, local_max);
+    }
+    ParallelDescriptor::ReduceRealMax(wind_ms);
+    
+    compute_mcarthur_ffdi_uniform(f.mcarthur_ffdi_mf,
+                                   default_temp_C, default_RH_pct, wind_ms,
+                                   default_drought);
+
     // ---- Build output variable name list ----
     Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
@@ -135,6 +194,8 @@ inline void write_wildfire_plotfile(
         "albini_Hz", "albini_count", "albini_dist", "albini_active",
         "elevation", "slope", "aspect", "fuel_model",
         "fireline_intensity", "flame_length", "fire_intensity_class",
+        "convective_number", "flame_tilt", "packing_ratio", "relative_packing",
+        "flame_depth", "mcarthur_ffdi",
         "weise_flame_height", "weise_flame_tilt",
         "weise_whirl_height", "weise_whirl_radius",
         "weise_angular_velocity", "weise_max_tang_vel",
@@ -163,6 +224,8 @@ inline void write_wildfire_plotfile(
         "albini_Hz", "albini_count", "albini_dist", "albini_active",
         "elevation", "slope", "aspect", "fuel_model",
         "fireline_intensity", "flame_length", "fire_intensity_class",
+        "convective_number", "flame_tilt", "packing_ratio", "relative_packing",
+        "flame_depth", "mcarthur_ffdi",
         "weise_flame_height", "weise_flame_tilt",
         "weise_whirl_height", "weise_whirl_radius",
         "weise_angular_velocity", "weise_max_tang_vel",
@@ -198,11 +261,12 @@ inline void write_wildfire_plotfile(
     //   1+2*DIM+6                                : crown_fraction (1)
     //   1+2*DIM+7                                : albini_data (4)
     //   1+2*DIM+11                               : elevation, slope, aspect, fuel_model (1 each = 4)
-    //   1+2*DIM+15                               : fireline_intensity, flame_length (2)
-    //   1+2*DIM+17                               : weise_data (WEISE_NCOMP)
-    //   1+2*DIM+17+WEISE                         : viegas_data (VIEGAS_NCOMP)
-    //   1+2*DIM+17+WEISE+VIEGAS                  : ecology_mf (ECOLOGY_NCOMP)
-    //   1+2*DIM+17+WEISE+VIEGAS+ECOLOGY          : emissions_mf (EMISSIONS_NCOMP)
+    //   1+2*DIM+15                               : fireline_intensity, flame_length, fire_intensity_class (3)
+    //   1+2*DIM+18                               : convective_number, flame_tilt, packing_ratio, relative_packing, flame_depth, mcarthur_ffdi (6)
+    //   1+2*DIM+24                               : weise_data (WEISE_NCOMP)
+    //   1+2*DIM+24+WEISE                         : viegas_data (VIEGAS_NCOMP)
+    //   1+2*DIM+24+WEISE+VIEGAS                  : ecology_mf (ECOLOGY_NCOMP)
+    //   1+2*DIM+24+WEISE+VIEGAS+ECOLOGY          : emissions_mf (EMISSIONS_NCOMP)
     //   ...+EMISSIONS                            : arrival_time (1)
     //   ...+EMISSIONS+1                          : heat_per_unit_area (1)
     //   ...+EMISSIONS+2                          : vorticity_z (1)
@@ -222,7 +286,7 @@ inline void write_wildfire_plotfile(
     //   ...+EMISSIONS+18+FMS_MOISTURE_NCOMP+SPOT_LINEAGE_NCOMP : ember_cascade (2)
     //   ...+EMISSIONS+20+FMS_MOISTURE_NCOMP+SPOT_LINEAGE_NCOMP : fl_exceedance (1)
     constexpr int D = AMREX_SPACEDIM;
-    const int ncomp = 1 + D + D + 1 + 4 + 1 + 1 + 4 + 1 + 5
+    const int ncomp = 1 + D + D + 1 + 4 + 1 + 1 + 4 + 4 + 3 + 6  // +6 for new diagnostics
                     + WEISE_NCOMP + VIEGAS_NCOMP + ECOLOGY_NCOMP + EMISSIONS_NCOMP
                     + 13 + FMS_MOISTURE_NCOMP + 1  // +1 for plume_rise_m
                     + 2 + 1 + SPOT_LINEAGE_NCOMP   // spread_dir(2), spot_catch_prob(1), lineage(4)
@@ -247,6 +311,12 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, fireline_intensity_mf, 0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, flame_length_mf,       0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, fire_intensity_class_mf, 0, c, 1,         0); c += 1;
+    MultiFab::Copy(plotmf, f.convective_number_mf, 0, c, 1,          0); c += 1;
+    MultiFab::Copy(plotmf, f.flame_tilt_mf,       0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, f.packing_ratio_mf,    0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, f.relative_packing_mf, 0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, f.flame_depth_mf,      0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, f.mcarthur_ffdi_mf,    0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, weise_data,            0, c, WEISE_NCOMP,    0); c += WEISE_NCOMP;
     MultiFab::Copy(plotmf, viegas_data,           0, c, VIEGAS_NCOMP,   0); c += VIEGAS_NCOMP;
     MultiFab::Copy(plotmf, ecology_mf,            0, c, ECOLOGY_NCOMP,  0); c += ECOLOGY_NCOMP;

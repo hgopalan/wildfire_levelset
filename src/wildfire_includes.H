@@ -126,4 +126,11 @@ using namespace amrex;
 #include "smoke_plume_rise.H"
 #include "sim_datetime.H"
 
+// ---- Project headers: new fire behavior diagnostics ----
+#include "byram_convective_number.H"
+#include "flame_tilt_angle.H"
+#include "packing_ratio.H"
+#include "flame_front_depth.H"
+#include "mcarthur_ffdi.H"
+
 #endif // WILDFIRE_INCLUDES_H

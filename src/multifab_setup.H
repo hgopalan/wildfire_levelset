@@ -202,6 +202,12 @@ struct WildfireFields {
         , fireline_intensity_mf(ba, dm, 1,                 0)
         , flame_length_mf      (ba, dm, 1,                 0)
         , fire_intensity_class_mf(ba, dm, 1,               0)
+        , convective_number_mf (ba, dm, 1,                 0)
+        , flame_tilt_mf        (ba, dm, 1,                 0)
+        , packing_ratio_mf     (ba, dm, 1,                 0)
+        , relative_packing_mf  (ba, dm, 1,                 0)
+        , flame_depth_mf       (ba, dm, 1,                 0)
+        , mcarthur_ffdi_mf     (ba, dm, 1,                 0)
         // Ecology / emissions
         , ecology_mf           (ba, dm, ECOLOGY_NCOMP,     0)
         , emissions_mf         (ba, dm, EMISSIONS_NCOMP,   0)
@@ -260,6 +266,12 @@ struct WildfireFields {
         fireline_intensity_mf.setVal(Real(0.0));
         flame_length_mf      .setVal(Real(0.0));
         fire_intensity_class_mf.setVal(Real(0.0));
+        convective_number_mf .setVal(Real(0.0));
+        flame_tilt_mf        .setVal(Real(0.0));
+        packing_ratio_mf     .setVal(Real(0.0));
+        relative_packing_mf  .setVal(Real(1.0));  // β/β_opt default ~1
+        flame_depth_mf       .setVal(Real(0.0));
+        mcarthur_ffdi_mf     .setVal(Real(0.0));
         ecology_mf           .setVal(Real(0.0));
         emissions_mf         .setVal(Real(0.0));
         arrival_time_mf      .setVal(Real(-1.0)); // -1 = not yet burned
