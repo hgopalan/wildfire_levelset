@@ -67,6 +67,12 @@ struct WildfireFields {
     MultiFab fireline_intensity_mf;      // Byram fireline intensity [kW/m] (1 comp)
     MultiFab flame_length_mf;            // Byram flame length [m] (1 comp)
     MultiFab fire_intensity_class_mf;    // Fire intensity class (1-6, Byram 1959) (1 comp)
+    MultiFab convective_number_mf;       // Byram convective number Nc [-] (1 comp)
+    MultiFab flame_tilt_mf;              // Flame tilt angle [degrees from vertical] (1 comp)
+    MultiFab packing_ratio_mf;           // Packing ratio β [-] (1 comp)
+    MultiFab relative_packing_mf;        // Relative packing ratio β/β_opt [-] (1 comp)
+    MultiFab flame_depth_mf;             // Flame front depth D_f = R × τ_res [m] (1 comp)
+    MultiFab mcarthur_ffdi_mf;           // McArthur Forest Fire Danger Index [-] (1 comp)
 
     // ---- Fire ecology (ECOLOGY_NCOMP components) ----
     //   0 scorch_height, 1 prob_ignition, 2 tree_mortality, 3 crown_activity,
