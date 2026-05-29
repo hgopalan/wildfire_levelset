@@ -239,6 +239,8 @@ endif()
 # integration/ – multi-feature integration scenarios
 # ===========================================================================
 add_regression_test(diurnal_chaparral_fire   integration/diurnal_chaparral_fire)
+add_regression_test(crown_fire_phenology     integration/crown_fire_phenology)
+add_regression_test(spotting_cascade_terrain integration/spotting_cascade_terrain)
 
 # ===========================================================================
 # python_api/ – Python bindings and coupled simulation tests
@@ -349,7 +351,8 @@ message(STATUS "  misc/           : sphere_2d, eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, smoke_plume_rise,")
 message(STATUS "                    reentry_spotting, timing_benchmark,")
 message(STATUS "                    landfire_farsite, nonburnable_mask")
-message(STATUS "  integration/    : diurnal_chaparral_fire")
+message(STATUS "  integration/    : diurnal_chaparral_fire, crown_fire_phenology,")
+message(STATUS "                    spotting_cascade_terrain")
 message(STATUS "")
 message(STATUS "All tests use 2-D (AMReX_SPACEDIM=2) builds only.")
 message(STATUS "")

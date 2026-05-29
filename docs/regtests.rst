@@ -600,11 +600,15 @@ grouped by physical category:
 +------------------+---------------------------------------------------------+
 | ``diagnostics``  | scott_reinhardt_indices                                 |
 +------------------+---------------------------------------------------------+
+| ``integration``  | **diurnal_chaparral_fire**, **crown_fire_phenology**,  |
+|                  | **spotting_cascade_terrain**                           |
++------------------+---------------------------------------------------------+
 | ``misc``         | 3d_sphere, eb_implicit, mtt_propagation,                |
 |                  | bulk_fuel_consumption, timing_benchmark,                |
 |                  | landfire_farsite, nonburnable_mask                      |
 +------------------+---------------------------------------------------------+
-| ``python_api``   | **basic_fire_solver**, **coupled_wind_fire**           |
+| ``python_api``   | **basic_fire_solver**, **coupled_wind_fire**,          |
+|                  | **integrated_features_demo**                           |
 |                  | (Python bindings, requires pybind11)                   |
 +------------------+---------------------------------------------------------+
 
@@ -778,3 +782,231 @@ The coupled_wind_fire test is designed to work with any wind solver. Common patt
        return u_3d, v_3d, w_3d, nz, zmin, zmax
 
 See the `Python API documentation <python_api.html>`_ for complete integration examples.
+
+integrated_features_demo (python_api/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Comprehensive demonstration of the Python API with 2026 enhancement features.
+
+This advanced demo showcases:
+
+* Integration with all 2026 enhancement features:
+  - McArthur moisture scaling
+  - FMC phenology (sinusoidal model)
+  - Ember accumulation
+  - Albini physics-based spotting
+  - Periodic wind gusts
+  - Slope-dependent flame tilt
+
+* Real-time monitoring and state extraction
+* Fire growth analysis and statistics
+* Optional visualization generation (matplotlib)
+* Custom diagnostics and analysis
+
+**Key Features**:
+
+.. code-block:: python
+
+   from wildfire_solver import WildfireSolver
+   import numpy as np
+   
+   # Initialize with 2026 features enabled
+   fire = WildfireSolver("inputs.i")
+   
+   # Monitor fire growth in real-time
+   history = []
+   for step in range(total_steps):
+       fire.step()
+       state = fire.get_state()
+       
+       # Extract and analyze state
+       burned_area = np.sum(state['phi'] <= 0.0) * fire.dx * fire.dy
+       max_ros = np.max(state['ros'])
+       max_intensity = np.max(state['intensity'])
+       
+       history.append({
+           'time': state['time'],
+           'burned_area': burned_area,
+           'max_ros': max_ros,
+           'max_intensity': max_intensity
+       })
+   
+   # Analyze fire growth patterns
+   analyze_growth(history)
+   create_visualizations(history)
+   
+   fire.finalize()
+
+**Build**: 2D build with Python bindings::
+
+   cmake -S . -B build -DLEVELSET_DIM_2D=ON -DLEVELSET_BUILD_PYTHON_BINDINGS=ON
+
+**Run**::
+
+   cd regtest/python_api/integrated_features_demo
+   python3 demo_integrated_features.py
+
+**Output**: Fire growth statistics, analysis plots (if matplotlib available)
+
+This demo serves as a template for building custom Python-based wildfire simulation
+workflows with advanced features and real-time analysis.
+
+
+Integration Scenarios
+----------------------
+
+The ``integration/`` sub-folder contains multi-feature integration tests that combine
+multiple wildfire modeling capabilities into realistic operational scenarios.
+
+diurnal_chaparral_fire (integration/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Integration Scenario A - Complete 24-hour Southern California chaparral wildfire.
+
+Combines ALL 2026 enhancement features in a single realistic simulation:
+
+* McArthur moisture scaling (diurnal temperature/RH variation)
+* FMC sinusoidal phenology (mid-summer conditions)
+* Ember accumulation with probabilistic ignition
+* Periodic wind gusts (afternoon thermal turbulence)
+* Slope-dependent flame tilt for radiation preheating
+
+Plus existing features:
+
+* FARSITE elliptical expansion with Anderson L/W ratio
+* Terrain (Gaussian hill with slope/aspect)
+* Albini spotting (physics-based firebrand transport)
+* Radiation preheating (view factor-based)
+* Burn period gate (10:00-20:00 local time)
+* Bulk fuel consumption
+
+**Scenario**: 24-hour simulation, 2 km × 2 km domain, 128×128 grid, FM4 chaparral,
+hot dry afternoon conditions (28°C, 25% RH), moderate westerly wind with gusts.
+
+**Build**: 2D build
+
+**Run**::
+
+   cd regtest/integration/diurnal_chaparral_fire
+   ../../build/levelset inputs.i
+
+crown_fire_phenology (integration/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Integration Scenario B - Crown fire behavior modulated by seasonal FMC phenology.
+
+Demonstrates active crown fire spread in Sierra Nevada mixed-conifer forest during
+the critical spring greenup period.
+
+**Key Features**:
+
+* Cruz crown fire model (empirical active crown fire ROS)
+* GDD-based FMC phenology (growing degree day spring greenup model)
+* Van Wagner crown fire initiation criteria
+* Rothermel1991 crown fire spread (surface-to-crown transition)
+* McArthur moisture scaling
+* Radiation preheating
+* Bulk fuel consumption
+
+**Scenario**: 2-hour simulation, 3 km × 3 km domain, 96×96 grid, dense mixed-conifer
+(CBD=0.18 kg/m³), spring greenup (late May, GDD=250), moderate Santa Ana-like wind
+(8 m/s easterly), 10% eastward slope.
+
+**Physical Interpretation**: Captures transition period when spring greenup increases
+foliar moisture, affecting crown fire vulnerability and spread rate.
+
+**Build**: 2D build
+
+**Run**::
+
+   cd regtest/integration/crown_fire_phenology
+   ../../build/levelset inputs.i
+
+spotting_cascade_terrain (integration/)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Integration Scenario C - Multi-generation spotting cascade across complex terrain.
+
+Demonstrates extreme fire behavior where spot fires create their own spot fires,
+leapfrogging across topographic barriers.
+
+**Key Features**:
+
+* Albini physics-based spotting with multi-generation cascade
+* Ember accumulation with lowered ignition thresholds
+* Complex ridge-valley terrain system
+* Slope-dependent flame tilt
+* Periodic wind gusts (extreme conditions, 45% amplitude)
+* McArthur moisture scaling
+* Spotting diagnostics (tracks up to 5 generations)
+
+**Scenario**: 4-hour extreme fire weather simulation, 4 km × 4 km domain, 128×128 grid,
+chaparral (FM4), two parallel N-S ridges (250m & 200m high) with central valley,
+extreme conditions (12 m/s wind, 35°C, 15% RH).
+
+**Physical Interpretation**: 
+- Primary fire on windward ridge generates embers
+- Strong winds carry embers across valley
+- Spot fires ignite on leeward ridge
+- Intense spot fires generate their own embers (cascade effect)
+- 3-5 generations of spotting create exponential area growth
+
+**Build**: 2D build
+
+**Run**::
+
+   cd regtest/integration/spotting_cascade_terrain
+   ../../build/levelset inputs.i
+
+**Output**: ``fire_stats.csv`` (time series), ``spotting_events.csv`` (generation tracking)
+
+Performance Benchmarks
+----------------------
+
+timing_benchmark (misc/)
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Purpose**: Multi-resolution wall-clock timing benchmark for performance regression detection.
+
+Tests solver scaling across grid resolutions for multiple fire spread models:
+
+1. Level-set advection (Rothermel FM4)
+2. FARSITE ellipse propagation
+3. Balbi (2009) physics-based spread
+4. Cruz crown fire model
+5. Cheney-Gould grassfire model
+6. Canadian FBP O1A grassfire
+7. Lautenberger physics-based model
+
+**Grid sizes**:
+
+* 2D: 32, 64, 128, 256 cells per side
+* 3D: 16, 32, 64 cells per side
+
+**Pass criteria**:
+
+* Solver exits successfully for all resolutions
+* Wall-clock time is monotonically non-decreasing with grid size (5% tolerance)
+* Empirical scaling exponent α in T ∝ N^α falls in range [0.8·dim, 1.6·dim]
+
+**Run manually**::
+
+   cd build
+   # Run default benchmarks (levelset and farsite)
+   python3 ../regtest/misc/timing_benchmark/run_benchmark.py \
+       --exe ./levelset --dim 2 --nsteps 20
+   
+   # Run all model benchmarks
+   python3 ../regtest/misc/timing_benchmark/run_benchmark.py \
+       --exe ./levelset --dim 2 --nsteps 20 \
+       --scenarios levelset farsite balbi cruz_crown cheney_gould fbp_o1a lautenberger
+   
+   # Run specific model benchmark
+   python3 ../regtest/misc/timing_benchmark/run_benchmark.py \
+       --exe ./levelset --dim 2 --nsteps 20 \
+       --scenarios balbi
+
+**Output**: ``timing_results.csv`` with timing data, printed summary table, pass/fail verdict
+
+Use ``--dry-run`` to preview generated inputs, ``--skip-scaling`` to suppress
+scaling-law check on resource-limited CI systems.
