@@ -204,4 +204,111 @@ inline double get_fmc_at_time(const FMCSchedule& sched, double t_s)
     return prev->fmc_pct + t * (it->fmc_pct - prev->fmc_pct);
 }
 
+// ============================================================================
+// build_sinusoidal_fmc_phenology
+//
+// Build FMC schedule using a sinusoidal phenology curve based on day-of-year.
+// This provides a smooth seasonal variation suitable for temperate and
+// subtropical climates.
+//
+// Formula:
+//   FMC(doy) = FMC_min + (FMC_max - FMC_min) *
+//              sin²(π * (doy - doy_offset) / 365)
+//
+// where doy_offset controls the phase (default: 0 = peak at mid-year ~day 182).
+//
+// References:
+//   Jolly, W.M., et al. (2005). A generalized, bioclimatic index to predict
+//     foliar phenology in response to climate. Global Change Biology, 11(4):619-632.
+//   Dennison, P.E., et al. (2008). Use of normalized difference water index for
+//     monitoring live fuel moisture. International J. of Remote Sensing, 29(8):2369-2375.
+// ============================================================================
+inline void build_sinusoidal_fmc_phenology(FMCSchedule& sched,
+                                           int    start_doy    = 1,
+                                           double fmc_min      = 85.0,
+                                           double fmc_max      = 140.0,
+                                           double doy_offset   = 0.0)
+{
+    sched.records.clear();
+    sched.start_doy = start_doy;
+
+    const double pi = 3.141592653589793;
+    
+    // Build curve at 5-day intervals for smooth interpolation
+    for (int doy = 1; doy <= 365; doy += 5) {
+        const double phase = pi * double(doy - doy_offset) / 365.0;
+        const double sin_val = std::sin(phase);
+        const double fmc = fmc_min + (fmc_max - fmc_min) * sin_val * sin_val;
+        sched.records.push_back({double(doy), fmc});
+    }
+    // Ensure we cover doy=365
+    const double phase_365 = pi * double(365 - doy_offset) / 365.0;
+    const double sin_365 = std::sin(phase_365);
+    const double fmc_365 = fmc_min + (fmc_max - fmc_min) * sin_365 * sin_365;
+    sched.records.push_back({365.0, fmc_365});
+
+    amrex::Print() << "FMC schedule: built sinusoidal phenology curve"
+                   << "  FMC=[" << fmc_min << "," << fmc_max << "]%"
+                   << "  doy_offset=" << doy_offset << "\n";
+}
+
+// ============================================================================
+// GDDState
+//
+// Growing Degree Day (GDD) accumulator for phenology modeling.
+// Tracks cumulative heat units to predict foliar development.
+// ============================================================================
+struct GDDState {
+    double gdd_cumulative = 0.0;  // Accumulated growing degree days [°C·day]
+    bool initialized = false;
+};
+
+// ============================================================================
+// compute_gdd_fmc
+//
+// Compute FMC based on Growing Degree Days (GDD) accumulation.
+// Simple empirical model where FMC increases sigmoidally with accumulated GDD.
+//
+// GDD accumulation (daily average temp T_avg):
+//   dGDD = max(0, T_avg - T_base)
+//
+// FMC(GDD):
+//   FMC = FMC_min + (FMC_max - FMC_min) / (1 + exp(-k * (GDD - GDD_mid)))
+//
+// where:
+//   T_base   – base temperature for growth [°C] (default: 5.0°C)
+//   GDD_mid  – midpoint GDD for green-up [°C·day] (default: 500.0)
+//   k        – logistic growth rate (default: 0.01)
+//
+// References:
+//   Jolly, W.M., et al. (2005). A generalized, bioclimatic index to predict
+//     foliar phenology in response to climate. Global Change Biology, 11(4):619-632.
+// ============================================================================
+inline double compute_gdd_fmc(GDDState& gdd_state,
+                              double T_avg_C,
+                              double dt_days,
+                              double fmc_min   = 85.0,
+                              double fmc_max   = 140.0,
+                              double T_base    = 5.0,
+                              double GDD_mid   = 500.0,
+                              double k         = 0.01)
+{
+    // Accumulate GDD
+    const double dGDD = std::max(0.0, T_avg_C - T_base) * dt_days;
+    gdd_state.gdd_cumulative += dGDD;
+    
+    // Reset GDD at end of year (simple annual cycle)
+    // In practice this would be triggered by doy==1 or similar
+    if (gdd_state.gdd_cumulative > 2000.0) {
+        gdd_state.gdd_cumulative = std::fmod(gdd_state.gdd_cumulative, 2000.0);
+    }
+    
+    // Logistic FMC response
+    const double exponent = -k * (gdd_state.gdd_cumulative - GDD_mid);
+    const double sigmoid = 1.0 / (1.0 + std::exp(exponent));
+    const double fmc = fmc_min + (fmc_max - fmc_min) * sigmoid;
+    
+    return fmc;
+}
+
 #endif // FMC_SCHEDULE_H

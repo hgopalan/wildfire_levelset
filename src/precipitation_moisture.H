@@ -56,6 +56,48 @@ struct PrecipState {
 };
 
 // ============================================================================
+// compute_mcarthur_tau_scale
+//
+// McArthur (1967) / Noble et al. (1980) temperature-dependent time constant
+// scaling for fine fuel moisture response. Higher temperatures increase drying
+// rate (reduce tau); higher relative humidity slows drying (increases tau).
+//
+// Empirical formula:
+//   f_scale = exp(-k_T * (T_C - T_ref) / T_ref) * exp(k_RH * RH_frac)
+//
+// where:
+//   T_C      – ambient temperature [°C]
+//   RH_frac  – relative humidity [0-1]
+//   T_ref    – reference temperature [°C] (default: 20°C)
+//   k_T      – temperature sensitivity coefficient (default: 0.05)
+//   k_RH     – humidity sensitivity coefficient (default: 0.3)
+//
+// References:
+//   McArthur, A.G. (1967). Fire behaviour in eucalypt forests.
+//     Forestry & Timber Bureau, Canberra, Australia.
+//   Noble, I.R., Bary, G.A.V., & Gill, A.M. (1980). McArthur's fire-danger
+//     meters expressed as equations. Australian Journal of Ecology, 5(2):201-203.
+// ============================================================================
+inline float compute_mcarthur_tau_scale(
+    float T_C,
+    float RH_frac,
+    float T_ref = 20.0f,
+    float k_T   = 0.05f,
+    float k_RH  = 0.3f)
+{
+    // Temperature effect: higher T → faster drying → smaller tau → smaller scale factor
+    const float temp_factor = std::exp(-k_T * (T_C - T_ref) / std::max(T_ref, 1.0f));
+    
+    // Humidity effect: higher RH → slower drying → larger tau → larger scale factor
+    const float humid_factor = std::exp(k_RH * RH_frac);
+    
+    const float scale = temp_factor * humid_factor;
+    
+    // Apply reasonable bounds to prevent extreme values
+    return std::max(0.1f, std::min(scale, 10.0f));
+}
+
+// ============================================================================
 // apply_precipitation_moisture
 //
 // Update dead fuel moisture for one timestep dt_s [s].
@@ -68,6 +110,9 @@ struct PrecipState {
 //   dt_s            – timestep size [s]
 //   precip_threshold_mm_hr – minimum rain rate to trigger wetting (default 0.25 mm/hr)
 //   M_sat           – saturation moisture content [fraction] (default: 1.20)
+//   use_mcarthur_scaling – 1 to enable McArthur temperature/RH scaling (default: 0)
+//   T_C             – ambient temperature [°C] for McArthur scaling (default: 20.0)
+//   RH_frac         – relative humidity [0-1] for McArthur scaling (default: 0.5)
 // ============================================================================
 inline void apply_precipitation_moisture(
     PrecipState&               state,
@@ -75,7 +120,10 @@ inline void apply_precipitation_moisture(
     float                      rain_rate_mm_hr,
     float                      dt_s,
     float                      precip_threshold_mm_hr = 0.25f,
-    float                      M_sat                  = 1.20f)
+    float                      M_sat                  = 1.20f,
+    int                        use_mcarthur_scaling   = 0,
+    float                      T_C                    = 20.0f,
+    float                      RH_frac                = 0.5f)
 {
     // Per size-class wetting / drying time constants [s]
     constexpr float TAU_WET_1HR    =  3600.0f;
@@ -89,17 +137,26 @@ inline void apply_precipitation_moisture(
     constexpr float TAU_WET_1000HR = 28800.0f;
     constexpr float TAU_DRY_1000HR = 2160000.0f;
 
+    // Apply McArthur temperature/humidity scaling if enabled
+    float tau_scale = 1.0f;
+    if (use_mcarthur_scaling == 1) {
+        tau_scale = compute_mcarthur_tau_scale(T_C, RH_frac);
+    }
+
     const bool raining = (rain_rate_mm_hr > precip_threshold_mm_hr);
 
     auto update = [&](float M_old, float M_emc_val,
                       float tau_wet, float tau_dry) -> float {
+        // Apply scaling to drying time constant only (wetting is less sensitive)
+        const float tau_dry_scaled = tau_dry * tau_scale;
+        
         if (raining) {
             // Exponential wetting towards saturation
             const float w = std::exp(-dt_s / tau_wet);
             return M_sat * (1.0f - w) + M_old * w;
         } else {
-            // Exponential drying towards EMC
-            const float d = std::exp(-dt_s / tau_dry);
+            // Exponential drying towards EMC (with optional McArthur scaling)
+            const float d = std::exp(-dt_s / tau_dry_scaled);
             return M_emc_val + (M_old - M_emc_val) * d;
         }
     };
