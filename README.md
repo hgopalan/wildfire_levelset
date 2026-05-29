@@ -99,6 +99,32 @@ fire.finalize()
 | | Spatial moisture from FARSITE .fms files | `.fms` support |
 | | Moisture fields (d1/d10/d100/lh/lw) in every plotfile | Auto output |
 | | Spatially varying fuel bed bulk density/loading | `fuel_loading_variation.*` |
+| | McArthur temperature/RH-dependent drying (new) | `mcarthur_moisture.*` |
+| | Enhanced FMC phenology: sinusoidal & GDD models (new) | `fmc_phenology.*` |
+| **Spotting & Embers** | Firebrand spotting: Albini (1983) trajectory + torching-tree (1979) | `firebrand.*` |
+| | Vorticity-enhanced spotting: Weise & Biging (1996) fire whirl effects | `weise_biging.enhance_spotting` |
+| | Ember cascade: Gaussian flux field (Sardoy 2007 approach) | `ember_cascade.*` |
+| | Ember accumulation with probabilistic ignition (new) | `ember_accumulation.*` |
+| | GPU-accelerated 3-D wind interpolation (CUDA/HIP/SYCL) | Optional from massconsistent_amr |
+| | Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` |
+| | Plume entrainment momentum feedback on surface wind | `plume_momentum.*` |
+| **Terrain & Weather** | Slope/aspect from FARSITE LCP or XYZ; 8-direction horizon scan | `terrain.*` |
+| | Time-varying, turbulent (OU/spectral), direction-schedule winds | `wind.*` |
+| | Periodic wind gust factor (new) | `wind_gust.*` |
+| | Multi-station weather with IDW interpolation | `multi_wtr_file` |
+| **Fire Behavior** | Wind Adjustment Factor: Andrews logarithmic or BehavePlus linear | `rothermel.waf_formula` |
+| | Wind-terrain feedback: 8 models (Viegas, canyon, ridge, WindNinja, FARSITE) | `wind_terrain.model` |
+| | Wind-fuel interaction: canopy sheltering via LAI-based attenuation | `wind_fuel.*` |
+| | Crown fire: Van Wagner (1977) + Cruz et al. (2005) + Rothermel (1991) | `crown.*` |
+| | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
+| | Intensity-dependent flame residence time (Byram 1959) | `intensity_residence.*` |
+| | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
+| | Radiation-driven preheating distance ahead of fire front | `preheating.*` |
+| | Slope-dependent flame tilt for radiation (new) | `flame_tilt.*` |
+| | Fuel particle temperature evolution for ignition timing | `fuel_temperature.*` |
+| | Critical heat flux for moisture-dependent ignition | `critical_heat_flux.*` |
+| | Fuel moisture of extinction gradient (SAV-dependent) | `M_x.*` |
+| | Flame intermittency factor for heat transfer efficiency | `intermittency.*` |
 | **Ignition & Suppression** | Point CSV, polygon, polyline ignitions | `ignition.*` |
 | | Retardant drop zones (zero ROS & spotting) | `retardant.*` |
 | | Satellite fire detection (GOES/VIIRS) assimilation | `satellite.*` |
