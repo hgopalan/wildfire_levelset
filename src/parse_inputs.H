@@ -1174,6 +1174,77 @@ struct InputParameters {
     int sim_start_month;       // simulation start calendar month (default: 0 → auto)
     int sim_start_day;         // simulation start calendar day   (default: 0 → auto)
 
+    // ============================================================================
+    // McArthur-style Moisture Response Time Scaling
+    // ============================================================================
+    // Temperature and humidity-dependent time constant scaling for dead fuel
+    // moisture drying. Higher temperatures and lower humidity accelerate drying.
+    // Input prefix: "mcarthur_moisture."
+    // References: McArthur (1967), Noble et al. (1980)
+    struct McArthurMoistureParams {
+        int enable;                  // 1 to enable McArthur scaling (default: 0)
+        amrex::Real T_ref;           // reference temperature [°C] (default: 20.0)
+        amrex::Real k_T;             // temperature sensitivity coefficient (default: 0.05)
+        amrex::Real k_RH;            // humidity sensitivity coefficient (default: 0.3)
+    } mcarthur_moisture;
+
+    // ============================================================================
+    // Enhanced FMC Phenology Models
+    // ============================================================================
+    // Additional phenology models beyond the FARSITE curve in FMCScheduleParams.
+    // Input prefix: "fmc_phenology."
+    // References: Jolly et al. (2005), Dennison et al. (2008)
+    struct FMCPhenologyParams {
+        std::string model;           // "none", "sinusoidal", "gdd" (default: "none")
+        amrex::Real fmc_min;         // minimum FMC [%] (default: 85.0)
+        amrex::Real fmc_max;         // maximum FMC [%] (default: 140.0)
+        amrex::Real doy_offset;      // day-of-year offset for sinusoidal (default: 0.0)
+        // GDD parameters
+        amrex::Real T_base;          // base temperature for GDD [°C] (default: 5.0)
+        amrex::Real GDD_mid;         // midpoint GDD for green-up [°C·day] (default: 500.0)
+        amrex::Real k_gdd;           // logistic growth rate (default: 0.01)
+    } fmc_phenology;
+
+    // ============================================================================
+    // Ember Accumulation Model
+    // ============================================================================
+    // Tracks accumulated ember density and computes probabilistic ignition.
+    // Extends ember_cascade and Albini spotting with persistence/burnout.
+    // Input prefix: "ember_accumulation."
+    // References: Sardoy et al. (2007), Koo et al. (2010)
+    struct EmberAccumulationParams {
+        int enable;                  // 1 to enable ember accumulation (default: 0)
+        amrex::Real k_decay;         // decay rate [1/s] (default: 1/600 = 10 min burnout)
+        amrex::Real rho_threshold;   // minimum density for ignition [embers/m²] (default: 10.0)
+        amrex::Real k_ignition;      // ignition rate coefficient (default: 1.0)
+        amrex::Real spot_radius;     // radius of ignition zone [m] (default: 5.0)
+        int use_moisture_damping;    // 1 to apply fuel moisture damping (default: 1)
+    } ember_accumulation;
+
+    // ============================================================================
+    // Periodic Wind Gust Model
+    // ============================================================================
+    // Simple deterministic sinusoidal gust factor for wind variability.
+    // Input prefix: "wind_gust."
+    // References: Finney et al. (2015), Linn et al. (2012)
+    struct WindGustParams {
+        int enable;                  // 1 to enable periodic gusts (default: 0)
+        amrex::Real amplitude;       // fractional amplitude ±X% (default: 0.2 = ±20%)
+        amrex::Real period;          // period of gust cycle [s] (default: 300 = 5 min)
+    } wind_gust;
+
+    // ============================================================================
+    // Slope-Dependent Flame Tilt Enhancement
+    // ============================================================================
+    // Enhanced radiation preheating with explicit slope effects on flame tilt.
+    // Input prefix: "flame_tilt."
+    // References: Anderson (1968), Butler et al. (2004)
+    struct FlameTiltParams {
+        int enable;                  // 1 to enable slope-dependent tilt (default: 0)
+        amrex::Real k_slope;         // slope tilt coefficient (default: 0.5)
+        amrex::Real view_factor;     // radiative view factor (default: 0.4)
+    } flame_tilt;
+
     // ---- Real-time satellite fire detection assimilation ----
     // Full configuration is documented in satellite_assimilation.H.
     // Input prefix: "satellite."

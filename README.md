@@ -67,59 +67,33 @@ fire.finalize()
 
 ## Core Capabilities
 
-| Category | Feature | Key Reference |
-|----------|---------|---------------|
-| **Fire Spread Models** | Rothermel (1972) surface fire with Anderson 13 & Scott-Burgan 40 fuel databases | `rothermel.*` |
-| | FARSITE elliptical expansion (Richards 1990) + Anderson L/W ratio | `farsite.*` |
-| | Alternative models: Balbi (2009), Cheney-Gould (1995), Cruz-Alexander-Wakimoto (2005) | `balbi.*`, `cheney.*`, `cruz.*` |
-| | Canadian FBP System (O1a/O1b grass, S1/S2/S3 slash) | `fbp.*` |
-| | Lautenberger (2013) physics-based spread | `lautenberger.*` |
-| **Fire Behavior** | Wind Adjustment Factor: Andrews logarithmic or BehavePlus linear | `rothermel.waf_formula` |
-| | Wind-terrain feedback: 8 models (Viegas, canyon, ridge, WindNinja, FARSITE) | `wind_terrain.model` |
-| | Wind-fuel interaction: canopy sheltering via LAI-based attenuation | `wind_fuel.*` |
-| | Crown fire: Van Wagner (1977) + Cruz et al. (2005) + Rothermel (1991) | `crown.*` |
-| | Per-fuel burnout time (Rothermel 1983 residence time) | Auto from landscape |
-| | Intensity-dependent flame residence time (Byram 1959) | `intensity_residence.*` |
-| | Burn-period daytime window (FARSITE/FSPro concept) | `burn_period.enable` |
-| | Radiation-driven preheating distance ahead of fire front | `preheating.*` |
-| | Fuel particle temperature evolution for ignition timing | `fuel_temperature.*` |
-| | Critical heat flux for moisture-dependent ignition | `critical_heat_flux.*` |
-| | Fuel moisture of extinction gradient (SAV-dependent) | `M_x.*` |
-| | Flame intermittency factor for heat transfer efficiency | `intermittency.*` |
-| **Spotting & Embers** | Firebrand spotting: Albini (1983) trajectory + torching-tree (1979) | `firebrand.*` |
-| | Vorticity-enhanced spotting: Weise & Biging (1996) fire whirl effects | `weise_biging.enhance_spotting` |
-| | Ember cascade: Gaussian flux field (Sardoy 2007 approach) | `ember_cascade.*` |
-| | GPU-accelerated 3-D wind interpolation (CUDA/HIP/SYCL) | Optional from massconsistent_amr |
-| | Post-fire fuel adjustment for re-entry spots | `fuel_depletion.adjust_spotting_reentry` |
-| | Plume entrainment momentum feedback on surface wind | `plume_momentum.*` |
-| **Terrain & Weather** | Slope/aspect from FARSITE LCP or XYZ; 8-direction horizon scan | `terrain.*` |
-| | Time-varying, turbulent (OU/spectral), direction-schedule winds | `wind.*` |
-| | Multi-station weather with IDW interpolation | `multi_wtr_file` |
-| **Fuel Moisture** | FMD schedule, diurnal (Nelson 2000), precipitation wetting, FMC phenology | `fuel_moisture.*` |
-| | Spatial moisture from FARSITE .fms files | `.fms` support |
-| | Moisture fields (d1/d10/d100/lh/lw) in every plotfile | Auto output |
-| | Spatially varying fuel bed bulk density/loading | `fuel_loading_variation.*` |
-| **Ignition & Suppression** | Point CSV, polygon, polyline ignitions | `ignition.*` |
-| | Retardant drop zones (zero ROS & spotting) | `retardant.*` |
-| | Satellite fire detection (GOES/VIIRS) assimilation | `satellite.*` |
-| **Diagnostics & Output** | Fire ecology: scorch height, tree mortality, TI/CI ratios | `ecology.*` |
-| | Smoke plume rise (Briggs 1965/1969) | `smoke_plume.enable` |
-| | Vorticity field: vertical component for fire whirl identification | Auto in plotfiles |
-| | Fire whirl characteristics: Weise & Biging (1996) model | `weise_biging.enable` |
-| | Fire emissions: CO₂, CO, PM₂.₅ (WRF-Fire) | Auto output |
-| | KML perimeter export (UTM → WGS-84) | `write_perimeter_kml` |
-| | FARSITE .fsa/.pst files | `fsa_file`, `pst_file` |
-| | Flame length exceedance raster | `fl_exceedance` in `plot_vars` |
-| | Post-frontal fuel consumption raster | Auto in plotfiles |
-| | Simulation date/time display | `sim_datetime.*` |
-| | Fire line intensity classification (Byram I–VI) in HTML report | `fire_report_file` |
-| | Fire line intensity rate of change (dI/dt) for blow-up detection | `intensity_rate_of_change.*` |
-| **Technical** | AMReX-based: GPU kernels (CUDA/HIP/SYCL), AMR, MPI | Build options |
-| | MTT (Minimum Travel Time) Dijkstra propagation | `mtt.*` |
-| | Non-burnable masking (codes 91–99 / NB1–NB9) | Auto from fuel codes |
-| | ROS stall threshold (FARSITE-compatible 1×10⁻⁴ m/s) | Built-in |
-| | Vectorial slope/wind combination | `rothermel.use_slope_wind_vectors` |
-| | Conditional weather ERC/BI/SC trigger | `conditional_weather_trigger` |
+**Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger)
+
+**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt *(new)*
+
+**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling *(new)* • Enhanced phenology models *(new)*
+
+**Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition *(new)*
+
+**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor *(new)* • Multi-station interpolation
+
+**Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
+
+**New Enhancement Features** *(2026)*:
+- McArthur-style moisture response time scaling
+- FMC phenology: sinusoidal & growing degree day models  
+- Ember accumulation tracking with decay & probabilistic ignition
+- Periodic wind gust factor
+- Slope-dependent flame tilt for radiation
+
+See [full documentation](https://hgopalan.github.io/wildfire_levelset/) for complete feature list, model equations, and parameters.
+
+**Documentation Links:**
+- [Mathematical Models](https://hgopalan.github.io/wildfire_levelset/mathematical_models.html)
+- [Usage Guide & Parameters](https://hgopalan.github.io/wildfire_levelset/usage.html)
+- [Python API](https://hgopalan.github.io/wildfire_levelset/python_api.html)
+- [Tools & Utilities](https://hgopalan.github.io/wildfire_levelset/tools.html)
+- [Scientific References](https://hgopalan.github.io/wildfire_levelset/references.html)
 
 ## Ensemble / FSim-Style Probabilistic Simulation
 

@@ -1722,4 +1722,102 @@ void parse_inputs(InputParameters& p)
             Print() << "  local_cache_file=" << p.satellite.local_cache_file << "\n";
     }
 
+    // ============================================================================
+    // New Enhancement Features Parsing
+    // ============================================================================
+    
+    // McArthur moisture scaling
+    ParmParse pp_mcarthur("mcarthur_moisture");
+    p.mcarthur_moisture.enable = 0;
+    p.mcarthur_moisture.T_ref = 20.0;
+    p.mcarthur_moisture.k_T = 0.05;
+    p.mcarthur_moisture.k_RH = 0.3;
+    pp_mcarthur.query("enable", p.mcarthur_moisture.enable);
+    pp_mcarthur.query("T_ref", p.mcarthur_moisture.T_ref);
+    pp_mcarthur.query("k_T", p.mcarthur_moisture.k_T);
+    pp_mcarthur.query("k_RH", p.mcarthur_moisture.k_RH);
+    if (p.mcarthur_moisture.enable == 1) {
+        Print() << "McArthur moisture scaling: enabled"
+                << "  T_ref=" << p.mcarthur_moisture.T_ref << "°C"
+                << "  k_T=" << p.mcarthur_moisture.k_T
+                << "  k_RH=" << p.mcarthur_moisture.k_RH << "\n";
+    }
+
+    // FMC phenology enhancements
+    ParmParse pp_fmc_pheno("fmc_phenology");
+    p.fmc_phenology.model = "none";
+    p.fmc_phenology.fmc_min = 85.0;
+    p.fmc_phenology.fmc_max = 140.0;
+    p.fmc_phenology.doy_offset = 0.0;
+    p.fmc_phenology.T_base = 5.0;
+    p.fmc_phenology.GDD_mid = 500.0;
+    p.fmc_phenology.k_gdd = 0.01;
+    pp_fmc_pheno.query("model", p.fmc_phenology.model);
+    pp_fmc_pheno.query("fmc_min", p.fmc_phenology.fmc_min);
+    pp_fmc_pheno.query("fmc_max", p.fmc_phenology.fmc_max);
+    pp_fmc_pheno.query("doy_offset", p.fmc_phenology.doy_offset);
+    pp_fmc_pheno.query("T_base", p.fmc_phenology.T_base);
+    pp_fmc_pheno.query("GDD_mid", p.fmc_phenology.GDD_mid);
+    pp_fmc_pheno.query("k_gdd", p.fmc_phenology.k_gdd);
+    if (p.fmc_phenology.model != "none") {
+        Print() << "FMC phenology: model=" << p.fmc_phenology.model
+                << "  FMC=[" << p.fmc_phenology.fmc_min << "," << p.fmc_phenology.fmc_max << "]%";
+        if (p.fmc_phenology.model == "sinusoidal") {
+            Print() << "  doy_offset=" << p.fmc_phenology.doy_offset;
+        } else if (p.fmc_phenology.model == "gdd") {
+            Print() << "  T_base=" << p.fmc_phenology.T_base << "°C"
+                    << "  GDD_mid=" << p.fmc_phenology.GDD_mid;
+        }
+        Print() << "\n";
+    }
+
+    // Ember accumulation
+    ParmParse pp_ember_accum("ember_accumulation");
+    p.ember_accumulation.enable = 0;
+    p.ember_accumulation.k_decay = 1.0/600.0;
+    p.ember_accumulation.rho_threshold = 10.0;
+    p.ember_accumulation.k_ignition = 1.0;
+    p.ember_accumulation.spot_radius = 5.0;
+    p.ember_accumulation.use_moisture_damping = 1;
+    pp_ember_accum.query("enable", p.ember_accumulation.enable);
+    pp_ember_accum.query("k_decay", p.ember_accumulation.k_decay);
+    pp_ember_accum.query("rho_threshold", p.ember_accumulation.rho_threshold);
+    pp_ember_accum.query("k_ignition", p.ember_accumulation.k_ignition);
+    pp_ember_accum.query("spot_radius", p.ember_accumulation.spot_radius);
+    pp_ember_accum.query("use_moisture_damping", p.ember_accumulation.use_moisture_damping);
+    if (p.ember_accumulation.enable == 1) {
+        Print() << "Ember accumulation: enabled"
+                << "  k_decay=" << p.ember_accumulation.k_decay << "/s"
+                << "  rho_threshold=" << p.ember_accumulation.rho_threshold << " embers/m²"
+                << "  spot_radius=" << p.ember_accumulation.spot_radius << " m\n";
+    }
+
+    // Periodic wind gust
+    ParmParse pp_gust("wind_gust");
+    p.wind_gust.enable = 0;
+    p.wind_gust.amplitude = 0.2;
+    p.wind_gust.period = 300.0;
+    pp_gust.query("enable", p.wind_gust.enable);
+    pp_gust.query("amplitude", p.wind_gust.amplitude);
+    pp_gust.query("period", p.wind_gust.period);
+    if (p.wind_gust.enable == 1) {
+        Print() << "Periodic wind gust: enabled"
+                << "  amplitude=±" << (p.wind_gust.amplitude*100.0) << "%"
+                << "  period=" << p.wind_gust.period << " s\n";
+    }
+
+    // Slope-dependent flame tilt
+    ParmParse pp_tilt("flame_tilt");
+    p.flame_tilt.enable = 0;
+    p.flame_tilt.k_slope = 0.5;
+    p.flame_tilt.view_factor = 0.4;
+    pp_tilt.query("enable", p.flame_tilt.enable);
+    pp_tilt.query("k_slope", p.flame_tilt.k_slope);
+    pp_tilt.query("view_factor", p.flame_tilt.view_factor);
+    if (p.flame_tilt.enable == 1) {
+        Print() << "Slope-dependent flame tilt: enabled"
+                << "  k_slope=" << p.flame_tilt.k_slope
+                << "  view_factor=" << p.flame_tilt.view_factor << "\n";
+    }
+
 }
