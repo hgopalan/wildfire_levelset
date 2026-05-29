@@ -91,6 +91,17 @@ struct RothermelParams {
     // When no terrain data is present, falls back to scalar additive.
     // Reference: Finney (1998) FARSITE; Rothermel (1983) GTR INT-143.
     int         use_slope_wind_vectors; // 1 = FARSITE vectorial mode (default: 0)
+    // --- Minimum spread rate floor (FARSITE/FlamMap practice) ---
+    // Real fires exhibit smoldering/creeping spread even when Rothermel predicts zero ROS
+    amrex::Real minimum_ros_m_min;      // minimum ROS [m/min] (default: 0.03, 0.0 = disabled)
+    // --- Fuel temperature offset for heat of preignition (Rothermel 1986, BehavePlus) ---
+    // Dead fuel temperature affects Q_ig. Fuel surface temperature differs from air temp
+    // based on solar radiation and fuel thermal properties.
+    amrex::Real fuel_temp_sunny_offset;  // temperature offset in sunny conditions [°C] (default: 8.3°C = 15°F)
+    amrex::Real fuel_temp_shaded_offset; // temperature offset in shaded conditions [°C] (default: 2.8°C = 5°F)
+    // --- ROS uncertainty bounds (for ensemble forecasting) ---
+    int         enable_ros_uncertainty;  // 1 to enable stochastic ROS perturbation (default: 0)
+    amrex::Real ros_std_dev;             // ROS standard deviation fraction (default: 0.30 = ±30%)
 };
 
 struct InputParameters {
@@ -244,6 +255,11 @@ struct InputParameters {
         amrex::Real a_crown;                 // head fire ellipse coefficient for crown fire (default: 1.5)
         amrex::Real b_crown;                 // flank fire ellipse coefficient for crown fire (default: 0.4)
         amrex::Real c_crown;                 // backing fire ellipse coefficient for crown fire (default: 0.1)
+        // Ladder fuel adjustment for effective CBH (Scott & Reinhardt 2001):
+        // Ladder fuels (shrubs, small trees) reduce effective canopy base height
+        //   CBH_effective = CBH_canopy - k_ladder × shrub_height
+        amrex::Real ladder_fuel_height;      // ladder fuel (shrub) height [m] (default: 0.0, disabled)
+        amrex::Real ladder_fuel_coefficient; // fraction of shrub layer acting as ladder (default: 0.6)
     } crown;
     
     // Cheney & Gould (1995) / Cheney, Gould & Catchpole (1998) grassland fire

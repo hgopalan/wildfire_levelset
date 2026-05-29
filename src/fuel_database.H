@@ -46,6 +46,12 @@ struct FuelModel {
     amrex::Real sigma_lh = 0.0;  // live herbaceous SAV [ft⁻¹]
     amrex::Real w_lw    = 0.0;  // live woody load [lb/ft²]
     amrex::Real sigma_lw = 0.0;  // live woody SAV [ft⁻¹]
+    // --- Fuel bed compactness factor (Andrews 2018) ---
+    // Adjusts effective SAV based on fuel arrangement (matted vs. fluffy)
+    //   Effective σ = σ_nominal × (1 + k_compact × β)
+    //   For matted fuels: k_compact = -0.1 to -0.3
+    //   For fluffy fuels: k_compact = 0.0 to 0.1
+    amrex::Real compactness_factor = 0.0;  // default: no adjustment
 };
 
 // ============================================================================

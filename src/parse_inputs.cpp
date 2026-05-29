@@ -186,6 +186,29 @@ void parse_inputs(InputParameters& p)
         Print() << "Slope/wind vectorial combination enabled (FARSITE-style): "
                    "R = R₀(1 + |φ_w·wind_hat + φ_s·slope_hat|)\n";
     }
+    
+    // --- NEW FEATURES (2026 Easy Features) ---
+    // Minimum spread rate floor (FARSITE/FlamMap practice)
+    p.rothermel.minimum_ros_m_min = 0.03;  // default 0.03 m/min
+    pp.query("rothermel.minimum_ros_m_min", p.rothermel.minimum_ros_m_min);
+    if (p.rothermel.minimum_ros_m_min > 0.0) {
+        Print() << "Minimum ROS floor enabled: " << p.rothermel.minimum_ros_m_min << " m/min\n";
+    }
+    
+    // Fuel temperature offset for heat of preignition (Rothermel 1986, BehavePlus)
+    p.rothermel.fuel_temp_sunny_offset  = 8.3;   // default 8.3°C (15°F)
+    p.rothermel.fuel_temp_shaded_offset = 2.8;   // default 2.8°C (5°F)
+    pp.query("rothermel.fuel_temp_sunny_offset",  p.rothermel.fuel_temp_sunny_offset);
+    pp.query("rothermel.fuel_temp_shaded_offset", p.rothermel.fuel_temp_shaded_offset);
+    
+    // ROS uncertainty bounds (for ensemble forecasting)
+    p.rothermel.enable_ros_uncertainty = 0;     // default disabled
+    p.rothermel.ros_std_dev = 0.30;             // default ±30%
+    pp.query("rothermel.enable_ros_uncertainty", p.rothermel.enable_ros_uncertainty);
+    pp.query("rothermel.ros_std_dev", p.rothermel.ros_std_dev);
+    if (p.rothermel.enable_ros_uncertainty == 1) {
+        Print() << "ROS uncertainty enabled: σ = " << p.rothermel.ros_std_dev * 100.0 << "%\n";
+    }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
@@ -348,6 +371,14 @@ void parse_inputs(InputParameters& p)
     p.crown.a_crown = 1.5;  pp.query("crown.a_crown", p.crown.a_crown);
     p.crown.b_crown = 0.4;  pp.query("crown.b_crown", p.crown.b_crown);
     p.crown.c_crown = 0.1;  pp.query("crown.c_crown", p.crown.c_crown);
+    
+    // Ladder fuel adjustment for effective CBH (NEW FEATURE - Scott & Reinhardt 2001)
+    p.crown.ladder_fuel_height = 0.0;            pp.query("crown.ladder_fuel_height", p.crown.ladder_fuel_height);
+    p.crown.ladder_fuel_coefficient = 0.6;       pp.query("crown.ladder_fuel_coefficient", p.crown.ladder_fuel_coefficient);
+    if (p.crown.ladder_fuel_height > 0.0) {
+        Print() << "Ladder fuel CBH adjustment enabled: height=" << p.crown.ladder_fuel_height
+                << " m, coefficient=" << p.crown.ladder_fuel_coefficient << "\n";
+    }
 
     // Validate crown fire parameters
     if (p.crown.enable == 1) {
