@@ -965,9 +965,6 @@ void parse_inputs(InputParameters& p)
     p.diurnal_moisture.conditioning_1h   = 1.0; pp.query("diurnal_moisture.conditioning_1h",   p.diurnal_moisture.conditioning_1h);
     p.diurnal_moisture.conditioning_10h  = 1.0; pp.query("diurnal_moisture.conditioning_10h",  p.diurnal_moisture.conditioning_10h);
     p.diurnal_moisture.conditioning_100h = 1.0; pp.query("diurnal_moisture.conditioning_100h", p.diurnal_moisture.conditioning_100h);
-    p.diurnal_moisture.conditioning_1h   = 1.0; pp.query("diurnal_moisture.conditioning_1h",   p.diurnal_moisture.conditioning_1h);
-    p.diurnal_moisture.conditioning_10h  = 1.0; pp.query("diurnal_moisture.conditioning_10h",  p.diurnal_moisture.conditioning_10h);
-    p.diurnal_moisture.conditioning_100h = 1.0; pp.query("diurnal_moisture.conditioning_100h", p.diurnal_moisture.conditioning_100h);
 
     if (p.diurnal_moisture.enable == 1) {
         if (p.diurnal_moisture.T_max <= p.diurnal_moisture.T_min)
@@ -1322,6 +1319,9 @@ void parse_inputs(InputParameters& p)
     p.solar_radiation.timezone_offset     = -8.0;
     p.solar_radiation.solar_heating_C     = 17.0;
     p.solar_radiation.use_canopy_shading  = 1;
+    p.solar_radiation.enable_aspect_moisture = 0;
+    p.solar_radiation.aspect_emc_strength = 0.15;
+    p.solar_radiation.aspect_slope_exponent = 1.0;
 
     pp.query("solar_radiation.enable",             p.solar_radiation.enable);
     pp.query("solar_radiation.latitude",           p.solar_radiation.latitude);
@@ -1333,6 +1333,9 @@ void parse_inputs(InputParameters& p)
     pp.query("solar_radiation.timezone_offset",    p.solar_radiation.timezone_offset);
     pp.query("solar_radiation.solar_heating_C",    p.solar_radiation.solar_heating_C);
     pp.query("solar_radiation.use_canopy_shading", p.solar_radiation.use_canopy_shading);
+    pp.query("solar_radiation.enable_aspect_moisture", p.solar_radiation.enable_aspect_moisture);
+    pp.query("solar_radiation.aspect_emc_strength", p.solar_radiation.aspect_emc_strength);
+    pp.query("solar_radiation.aspect_slope_exponent", p.solar_radiation.aspect_slope_exponent);
     p.solar_radiation.cloud_cover = 0.0;
     pp.query("solar_radiation.cloud_cover",        p.solar_radiation.cloud_cover);
 
@@ -1360,6 +1363,10 @@ void parse_inputs(InputParameters& p)
             amrex::Abort("solar_radiation.timezone_offset must be in [-14, 14] hours");
         if (p.solar_radiation.solar_heating_C < 0.0)
             amrex::Abort("solar_radiation.solar_heating_C must be >= 0");
+        if (p.solar_radiation.aspect_emc_strength < 0.0)
+            amrex::Abort("solar_radiation.aspect_emc_strength must be >= 0");
+        if (p.solar_radiation.aspect_slope_exponent < 0.0)
+            amrex::Abort("solar_radiation.aspect_slope_exponent must be >= 0");
 
         // Warn when diurnal_moisture is off: shading will have no T/RH to work with.
         if (p.diurnal_moisture.enable != 1) {
@@ -1386,6 +1393,10 @@ void parse_inputs(InputParameters& p)
         Print() << "  Solar heating: " << p.solar_radiation.solar_heating_C << " °C\n";
         if (p.solar_radiation.use_canopy_shading == 1)
             Print() << "  Canopy shading: enabled (uses canopy_cover from LCP if available)\n";
+        if (p.solar_radiation.enable_aspect_moisture == 1)
+            Print() << "  Aspect moisture adjustment: enabled (strength="
+                    << p.solar_radiation.aspect_emc_strength
+                    << ", slope_exp=" << p.solar_radiation.aspect_slope_exponent << ")\n";
         if (p.solar_radiation.cloud_cover > 0.0)
             Print() << "  Cloud cover: " << p.solar_radiation.cloud_cover
                     << " (domain-uniform; reduces solar heating by "

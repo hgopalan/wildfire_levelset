@@ -51,7 +51,10 @@ inline void dispatch_compute_ros(
     const MultiFab* cc_mf,
     const MultiFab* canopy_height_mf,
     bool heat_flux_active,
-    const MultiFab* heat_flux_mf)
+    const MultiFab* heat_flux_mf,
+    int cellsize_enable = 0,
+    amrex::Real cellsize_dx_ref = 30.0,
+    amrex::Real cellsize_correction_exp = 0.1)
 {
     if (inputs.fire_spread_model == "balbi") {
         compute_balbi_R(R_mf, vel_for_model, geom, inputs.rothermel, inputs.balbi,
@@ -79,22 +82,11 @@ inline void dispatch_compute_ros(
                             terrain_slopes,
                             fuel_model_mf,
                             d_fuel_table_ptr, fuel_table_size,
-                            has_spatial_crown ? cc_mf         : nullptr,
-                            has_spatial_crown ? canopy_height_mf : nullptr);
+                            has_spatial_crown ? cc_mf : nullptr,
+                            has_spatial_crown ? canopy_height_mf : nullptr,
+                            cellsize_enable, cellsize_dx_ref, cellsize_correction_exp);
     }
-    
-    // Apply minimum spread rate floor if enabled (FARSITE/FlamMap practice)
-    // Real fires exhibit smoldering/creeping spread even when Rothermel predicts zero ROS
-    if (inputs.rothermel.minimum_ros_m_min > 0.0) {
-        const amrex::Real R_min_m_s = inputs.rothermel.minimum_ros_m_min / 60.0;  // convert m/min to m/s
-        for (amrex::MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
-            const amrex::Box& bx = mfi.validbox();
-            auto R_arr = R_mf.array(mfi);
-            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
-                R_arr(i, j, k) = amrex::max(R_arr(i, j, k), R_min_m_s);
-            });
-        }
-    }
+
 }
 
 #endif // COMPUTE_ROS_DISPATCH_H

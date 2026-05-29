@@ -505,6 +505,51 @@ inline void compute_topographic_horizon_angles(
 //   RH_pct              – relative humidity [%] at current timestep
 //   solar_heating_C     – maximum solar heating increment [°C] (FARSITE default ≈ 17)
 // ============================================================================
+inline void apply_dead_fuel_moisture_adjustments(
+    MultiFab&    spatial_moisture_mf,
+    const MultiFab* slope_mf,
+    const MultiFab* aspect_mf,
+    amrex::Real  conditioning_1h,
+    amrex::Real  conditioning_10h,
+    amrex::Real  conditioning_100h,
+    int          enable_aspect_moisture,
+    amrex::Real  aspect_emc_strength,
+    amrex::Real  aspect_slope_exponent)
+{
+    const bool use_aspect = (enable_aspect_moisture == 1 && slope_mf != nullptr && aspect_mf != nullptr);
+    const amrex::Real cond_1h   = amrex::max(amrex::Real(0.0), conditioning_1h);
+    const amrex::Real cond_10h  = amrex::max(amrex::Real(0.0), conditioning_10h);
+    const amrex::Real cond_100h = amrex::max(amrex::Real(0.0), conditioning_100h);
+    const amrex::Real strength  = amrex::max(amrex::Real(0.0), aspect_emc_strength);
+    const amrex::Real slope_exp = amrex::max(amrex::Real(0.0), aspect_slope_exponent);
+
+    for (MFIter mfi(spatial_moisture_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto sm = spatial_moisture_mf.array(mfi);
+        Array4<const Real> slope_arr;
+        Array4<const Real> aspect_arr;
+        if (use_aspect) {
+            slope_arr = slope_mf->const_array(mfi);
+            aspect_arr = aspect_mf->const_array(mfi);
+        }
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            amrex::Real factor = amrex::Real(1.0);
+            if (use_aspect) {
+                const amrex::Real slope_rad = slope_arr(i, j, k) * WildfireConst::PI / amrex::Real(180.0);
+                const amrex::Real aspect_rad = aspect_arr(i, j, k) * WildfireConst::PI / amrex::Real(180.0);
+                const amrex::Real slope_weight = std::pow(amrex::max(amrex::Real(0.0), std::sin(slope_rad)), slope_exp);
+                const amrex::Real northness = std::cos(aspect_rad);
+                factor += strength * northness * slope_weight;
+                factor = amrex::max(amrex::Real(0.05), factor);
+            }
+            sm(i, j, k, 0) *= cond_1h * factor;
+            sm(i, j, k, 1) *= cond_10h * factor;
+            sm(i, j, k, 2) *= cond_100h * factor;
+        });
+    }
+}
+
 inline void apply_solar_emc_to_spatial_moisture(
     MultiFab&       spatial_moisture_mf,
     const MultiFab& shade_mf,
@@ -789,6 +834,16 @@ inline void apply_solar_radiation_step(
             static_cast<amrex::Real>(T_C),
             static_cast<amrex::Real>(RH_p),
             inputs.solar_radiation.solar_heating_C);
+        apply_dead_fuel_moisture_adjustments(
+            spatial_moisture_mf,
+            &slope_mf,
+            &aspect_mf,
+            inputs.diurnal_moisture.conditioning_1h,
+            inputs.diurnal_moisture.conditioning_10h,
+            inputs.diurnal_moisture.conditioning_100h,
+            inputs.solar_radiation.enable_aspect_moisture,
+            inputs.solar_radiation.aspect_emc_strength,
+            inputs.solar_radiation.aspect_slope_exponent);
     }
 }
 
@@ -880,6 +935,16 @@ inline void apply_solar_radiation_step(
         T_C_mf,
         RH_pct_mf,
         inputs.solar_radiation.solar_heating_C);
+    apply_dead_fuel_moisture_adjustments(
+        spatial_moisture_mf,
+        &slope_mf,
+        &aspect_mf,
+        inputs.diurnal_moisture.conditioning_1h,
+        inputs.diurnal_moisture.conditioning_10h,
+        inputs.diurnal_moisture.conditioning_100h,
+        inputs.solar_radiation.enable_aspect_moisture,
+        inputs.solar_radiation.aspect_emc_strength,
+        inputs.solar_radiation.aspect_slope_exponent);
 }
 
 #endif // SOLAR_RADIATION_H

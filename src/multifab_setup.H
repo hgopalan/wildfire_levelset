@@ -133,6 +133,8 @@ struct WildfireFields {
 
     // ---- Smoke plume rise (Briggs 1965) ----
     MultiFab plume_rise_mf;     // Plume-rise height [m] per fire-front cell (1 comp)
+    MultiFab preheating_distance_mf; // Radiation-driven preheating distance [m] (1 comp)
+    MultiFab flame_depth_mf;         // Estimated flame depth = ROS × residence time [m] (1 comp)
 
     // ---- Spread direction raster (2 comps: spread_vel_x, spread_vel_y) ----
     // Stores the fire spread velocity vector at each cell:
@@ -232,6 +234,8 @@ struct WildfireFields {
         , spatial_moisture_mf  (ba, dm, FMS_MOISTURE_NCOMP, 0)
         // Plume rise
         , plume_rise_mf        (ba, dm, 1,                 0)
+        , preheating_distance_mf(ba, dm, 1,                0)
+        , flame_depth_mf       (ba, dm, 1,                 0)
         // Spread direction raster
         , spread_dir_mf        (ba, dm, 2,                 0)
         // Spot catching probability
@@ -289,6 +293,8 @@ struct WildfireFields {
         temperature_mf.setVal(Real(25.0));  // 25°C default
         humidity_mf.setVal(Real(30.0));     // 30% RH default
         plume_rise_mf.setVal(Real(0.0));
+        preheating_distance_mf.setVal(Real(0.0));
+        flame_depth_mf.setVal(Real(0.0));
         // Spread direction and spot catching probability
         spread_dir_mf      .setVal(Real(0.0));
         spot_catch_prob_mf .setVal(Real(0.0));

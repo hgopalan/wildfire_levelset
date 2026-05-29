@@ -51,6 +51,11 @@ inline void compute_rothermel_R(MultiFab& R_mf,
     const Real beta = rc.beta;  // Packing ratio for terrain-based phi_s calculation
     const Real wind_conv = rc.wind_conv;
     const Real ros_conv = rc.ros_conv;
+    const Real minimum_ros_ms = (rp.minimum_ros_m_min > Real(0.0))
+        ? rp.minimum_ros_m_min / Real(60.0)
+        : Real(0.0);
+    const int enable_uncertainty = rp.enable_ros_uncertainty;
+    const Real ros_std_dev = rp.ros_std_dev;
     // Slope/wind cross-term
     const int  use_sw_cross  = rc.use_slope_wind_cross;
     const Real k_sw_cross    = rc.k_slope_wind_cross;
@@ -297,11 +302,26 @@ inline void compute_rothermel_R(MultiFab& R_mf,
                 phi_combined = phi_w + phi_s + cross;
             }
 
-            // Apply FARSITE-style stall floor: cells below ROS_MIN are zeroed
-            const Real R_raw = std::max(cell_R0 * (Real(1.0) + phi_combined), Real(0.0)) * ros_conv;
+            // Apply FARSITE-style stall floor, optional minimum creeping spread,
+            // and optional deterministic ROS uncertainty perturbation.
+            Real R_raw = std::max(cell_R0 * (Real(1.0) + phi_combined), Real(0.0)) * ros_conv;
             // Apply cell size effects correction if enabled
-            const Real R_corrected = R_raw * cellsize_factor;
-            R(i,j,k) = (R_corrected >= WildfireConst::ROS_MIN_MS) ? R_corrected : Real(0.0);
+            Real R_corrected = R_raw * cellsize_factor;
+            if (enable_uncertainty == 1 && R_corrected > Real(0.0)) {
+                const unsigned int hash = static_cast<unsigned int>(i * 73856093u)
+                                        ^ static_cast<unsigned int>(j * 19349663u)
+                                        ^ static_cast<unsigned int>((k + 1) * 83492791u);
+                const Real u01 = Real(hash & 0x00ffffffu) / Real(0x01000000u);
+                const Real perturb = Real(2.0) * u01 - Real(1.0);
+                R_corrected *= std::max(Real(0.0), Real(1.0) + ros_std_dev * perturb);
+            }
+            // Apply minimum ROS floor if configured
+            if (minimum_ros_ms > Real(0.0) && R_corrected > Real(0.0)) {
+                R_corrected = std::max(R_corrected, minimum_ros_ms);
+            } else if (R_corrected < WildfireConst::ROS_MIN_MS) {
+                R_corrected = Real(0.0);
+            }
+            R(i,j,k) = R_corrected;
         });
     }
 }

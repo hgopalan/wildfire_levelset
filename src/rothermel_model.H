@@ -116,6 +116,28 @@ inline RothermelParams apply_herb_curing_transfer(const RothermelParams& rp,
     return rp_out;
 }
 
+inline amrex::Real compute_live_load_reduction_fraction(amrex::Real moisture,
+                                                        amrex::Real reference_moisture,
+                                                        amrex::Real min_fraction,
+                                                        amrex::Real exponent)
+{
+    using namespace amrex;
+    if (reference_moisture <= Real(0.0)) return Real(1.0);
+    const Real ratio = max(Real(0.0), moisture / reference_moisture);
+    const Real scaled = std::pow(ratio, max(Real(0.0), exponent));
+    return min(Real(1.0), max(min_fraction, scaled));
+}
+
+inline amrex::Real compute_temperature_adjusted_qig(amrex::Real moisture,
+                                                    amrex::Real sunny_offset_C,
+                                                    amrex::Real shaded_offset_C)
+{
+    using namespace amrex;
+    const Real mean_offset_C = Real(0.5) * (sunny_offset_C + shaded_offset_C);
+    const Real Q_ig_base = Real(250.0) + Real(1116.0) * moisture;
+    return max(Real(1.0), Q_ig_base - mean_offset_C);
+}
+
 // ============================================================================
 // Compute Rothermel (1972) fire spread parameters
 // ============================================================================
@@ -129,11 +151,20 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     constexpr Real SIGMA_D10  = WildfireConst::SIGMA_D10;
     constexpr Real SIGMA_D100 = WildfireConst::SIGMA_D100;
 
+    RothermelParams rp_eff = rp;
+    if (rp_eff.enable_live_load_reduction == 1) {
+        const Real min_frac = amrex::max(Real(0.0), amrex::min(Real(1.0), rp_eff.live_load_min_fraction));
+        rp_eff.w_lh *= compute_live_load_reduction_fraction(
+            rp_eff.M_lh, rp_eff.live_load_reference_m_lh, min_frac, rp_eff.live_load_reduction_exp);
+        rp_eff.w_lw *= compute_live_load_reduction_fraction(
+            rp_eff.M_lw, rp_eff.live_load_reference_m_lw, min_frac, rp_eff.live_load_reduction_exp);
+    }
+
     // -----------------------------------------------------------------------
     // Determine which computation path to use
     // -----------------------------------------------------------------------
-    const Real total_per_class = rp.w_d1 + rp.w_d10 + rp.w_d100
-                                + rp.w_lh + rp.w_lw;
+    const Real total_per_class = rp_eff.w_d1 + rp_eff.w_d10 + rp_eff.w_d100
+                                + rp_eff.w_lh + rp_eff.w_lw;
     const bool use_multiclass = (total_per_class > 0.0);
 
     // -----------------------------------------------------------------------
@@ -163,37 +194,41 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         // the large mass of coarse dead fuel, pulling sigma_c far below the
         // tabulated reference values (e.g. 1739 ft⁻¹ for FM4) and inflating
         // the wind coefficient C and thereby phi_w.
-        mc_A_d1   = (rp.w_d1   > 0.0 && rp.sigma_d1 > 0.0)
-                    ? rp.w_d1   * rp.sigma_d1  * std::exp(-138.0 / rp.sigma_d1) : 0.0;
-        mc_A_d10  = (rp.w_d10  > 0.0)
-                    ? rp.w_d10  * SIGMA_D10    * std::exp(-138.0 / SIGMA_D10)   : 0.0;
-        mc_A_d100 = (rp.w_d100 > 0.0)
-                    ? rp.w_d100 * SIGMA_D100   * std::exp(-138.0 / SIGMA_D100)  : 0.0;
-        mc_A_lh   = (rp.w_lh   > 0.0 && rp.sigma_lh > 0.0)
-                    ? rp.w_lh   * rp.sigma_lh  * std::exp(-138.0 / rp.sigma_lh) : 0.0;
-        mc_A_lw   = (rp.w_lw   > 0.0 && rp.sigma_lw > 0.0)
-                    ? rp.w_lw   * rp.sigma_lw  * std::exp(-138.0 / rp.sigma_lw) : 0.0;
+        mc_A_d1   = (rp_eff.w_d1   > 0.0 && rp_eff.sigma_d1 > 0.0)
+                    ? rp_eff.w_d1   * rp_eff.sigma_d1  * std::exp(-138.0 / rp_eff.sigma_d1) : 0.0;
+        mc_A_d10  = (rp_eff.w_d10  > 0.0)
+                    ? rp_eff.w_d10  * SIGMA_D10    * std::exp(-138.0 / SIGMA_D10)   : 0.0;
+        mc_A_d100 = (rp_eff.w_d100 > 0.0)
+                    ? rp_eff.w_d100 * SIGMA_D100   * std::exp(-138.0 / SIGMA_D100)  : 0.0;
+        mc_A_lh   = (rp_eff.w_lh   > 0.0 && rp_eff.sigma_lh > 0.0)
+                    ? rp_eff.w_lh   * rp_eff.sigma_lh  * std::exp(-138.0 / rp_eff.sigma_lh) : 0.0;
+        mc_A_lw   = (rp_eff.w_lw   > 0.0 && rp_eff.sigma_lw > 0.0)
+                    ? rp_eff.w_lw   * rp_eff.sigma_lw  * std::exp(-138.0 / rp_eff.sigma_lw) : 0.0;
 
         const Real A_sigma_tot = mc_A_d1 + mc_A_d10 + mc_A_d100 + mc_A_lh + mc_A_lw;
 
         // A-factor weighted characteristic SAV (BEHAVE / FARSITE formulation).
         // Falls back to load-weighted if all A-factors are zero (degenerate).
         if (A_sigma_tot > 0.0) {
-            sigma_c = (mc_A_d1   * rp.sigma_d1
+            sigma_c = (mc_A_d1   * rp_eff.sigma_d1
                      + mc_A_d10  * SIGMA_D10
                      + mc_A_d100 * SIGMA_D100
-                     + mc_A_lh   * rp.sigma_lh
-                     + mc_A_lw   * rp.sigma_lw) / A_sigma_tot;
+                     + mc_A_lh   * rp_eff.sigma_lh
+                     + mc_A_lw   * rp_eff.sigma_lw) / A_sigma_tot;
         } else {
-            sigma_c = (rp.w_d1 * rp.sigma_d1 + rp.w_d10 * SIGMA_D10 + rp.w_d100 * SIGMA_D100
-                     + rp.w_lh * rp.sigma_lh  + rp.w_lw * rp.sigma_lw) / w_total;
+            sigma_c = (rp_eff.w_d1 * rp_eff.sigma_d1 + rp_eff.w_d10 * SIGMA_D10 + rp_eff.w_d100 * SIGMA_D100
+                     + rp_eff.w_lh * rp_eff.sigma_lh  + rp_eff.w_lw * rp_eff.sigma_lw) / w_total;
         }
-        rho_b = w_total / rp.delta;
+        rho_b = w_total / rp_eff.delta;
     } else {
-        sigma_c = rp.sigma;
-        rho_b   = rp.w0 / rp.delta;      // Eq. 24 (single-class)
+        sigma_c = rp_eff.sigma;
+        rho_b   = rp_eff.w0 / rp_eff.delta;      // Eq. 24 (single-class)
     }
-    beta = rho_b / rp.rho_p;
+    beta = rho_b / rp_eff.rho_p;
+    if (rp_eff.compactness_factor != Real(0.0)) {
+        const Real compact_mult = amrex::max(Real(0.25), Real(1.0) + rp_eff.compactness_factor * beta);
+        sigma_c *= compact_mult;
+    }
 
     // -----------------------------------------------------------------------
     // Optimum packing ratio and reaction velocity (Eqs. 36–38)
@@ -227,8 +262,8 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         Real eta_M_dead = 0.0;
         Real rm_dead_val = 0.0;  // saved for Eq. 88 live M'_x calculation
         if (A_dead > 0.0) {
-            Real rm_dead = (A_d1 * rp.M_d1 + A_d10 * rp.M_d10 + A_d100 * rp.M_d100)
-                           / (A_dead * rp.M_x);
+            Real rm_dead = (A_d1 * rp_eff.M_d1 + A_d10 * rp_eff.M_d10 + A_d100 * rp_eff.M_d100)
+                           / (A_dead * rp_eff.M_x);
             rm_dead = std::min(rm_dead, 1.0);
             rm_dead_val = rm_dead;
             eta_M_dead = std::max(1.0 - 2.59*rm_dead
@@ -241,8 +276,8 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         // where W'_nd and W'_nl are the dead and live net fuel loads [lb/ft²],
         // and M'_f / M'_x is the dead weighted-mean moisture ratio (= rm_dead_val).
         // Net loads are computed once here and reused below for I_R.
-        const Real w_n_dead = (rp.w_d1 + rp.w_d10 + rp.w_d100) * (1.0 - rp.S_T);
-        const Real w_n_live = (rp.w_lh + rp.w_lw)               * (1.0 - rp.S_T);
+        const Real w_n_dead = (rp_eff.w_d1 + rp_eff.w_d10 + rp_eff.w_d100) * (1.0 - rp_eff.S_T);
+        const Real w_n_live = (rp_eff.w_lh + rp_eff.w_lw)               * (1.0 - rp_eff.S_T);
 
         Real eta_M_live = 0.0;
         if (A_live > 0.0) {
@@ -255,7 +290,7 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
                                         * (1.0 - rm_dead_val) - 0.226;
                 M_x_live = std::max(mx_live_calc, 0.30);
             }
-            Real rm_live = (A_lh * rp.M_lh + A_lw * rp.M_lw)
+            Real rm_live = (A_lh * rp_eff.M_lh + A_lw * rp_eff.M_lw)
                            / (A_live * M_x_live);
             rm_live = std::min(rm_live, 1.0);
             eta_M_live = std::max(1.0 - 2.59*rm_live
@@ -264,16 +299,17 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         }
 
         // Mineral damping (Eq. 30) — same for all classes
-        const Real eta_s = 0.174 * std::pow(rp.S_e, -0.19);
+        const Real eta_s = 0.174 * std::pow(rp_eff.S_e, -0.19);
 
         // Reaction intensity: sum of dead and live contributions (Eq. 27)
         // w_n_dead and w_n_live were already computed above for Eq. 88
-        I_R = Gamma_prime * (w_n_dead * rp.h_heat * eta_M_dead
-                           + w_n_live * rp.h_heat * eta_M_live) * eta_s;
+        I_R = Gamma_prime * (w_n_dead * rp_eff.h_heat * eta_M_dead
+                           + w_n_live * rp_eff.h_heat * eta_M_live) * eta_s;
 
         // Use dead 1-hr moisture for heat of preignition (fine fuel preignition)
-        const Real M_f_preignition = (rp.w_d1 > 0.0) ? rp.M_d1 : rp.M_f;
-        const Real Q_ig  = 250.0 + 1116.0 * M_f_preignition;                  // Eq. 12
+        const Real M_f_preignition = (rp_eff.w_d1 > 0.0) ? rp_eff.M_d1 : rp_eff.M_f;
+        const Real Q_ig  = compute_temperature_adjusted_qig(M_f_preignition,
+            rp_eff.fuel_temp_sunny_offset, rp_eff.fuel_temp_shaded_offset);
         const Real eps_h = std::exp(-138.0 / sigma_c);                         // Eq. 14
         const Real xi    = std::exp((0.792 + 0.681 * std::sqrt(sigma_c))
                                     * (beta + 0.1))
@@ -286,22 +322,22 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         // ----------------------------------------------------------------
         // Single-class path (original formulation, unchanged)
         // ----------------------------------------------------------------
-        const Real w0     = rp.w0;
-        const Real M_f    = rp.M_f;
-        const Real M_x    = rp.M_x;
+        const Real w0     = rp_eff.w0;
+        const Real M_f    = rp_eff.M_f;
+        const Real M_x    = rp_eff.M_x;
 
         // Net fuel load (Eq. 24)
-        const Real w_n = w0 * (1.0 - rp.S_T);
+        const Real w_n = w0 * (1.0 - rp_eff.S_T);
 
         // Moisture damping (Eq. 29)
         const Real rm    = std::min(M_f / M_x, 1.0);
         const Real eta_M = std::max(1.0 - 2.59*rm + 5.11*rm*rm - 3.52*rm*rm*rm, 0.0);
 
         // Mineral damping (Eq. 30)
-        const Real eta_s = 0.174 * std::pow(rp.S_e, -0.19);
+        const Real eta_s = 0.174 * std::pow(rp_eff.S_e, -0.19);
 
         // Reaction intensity (Eq. 27)
-        I_R = Gamma_prime * w_n * rp.h_heat * eta_M * eta_s;
+        I_R = Gamma_prime * w_n * rp_eff.h_heat * eta_M * eta_s;
 
         // Propagating flux ratio (Eq. 42)
         const Real xi    = std::exp((0.792 + 0.681 * std::sqrt(sigma_c)) * (beta + 0.1))
@@ -311,7 +347,8 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
         const Real eps_h = std::exp(-138.0 / sigma_c);
 
         // Heat of preignition (Eq. 12)
-        const Real Q_ig  = 250.0 + 1116.0 * M_f;
+        const Real Q_ig  = compute_temperature_adjusted_qig(M_f,
+            rp_eff.fuel_temp_sunny_offset, rp_eff.fuel_temp_shaded_offset);
 
         // No-wind, no-slope rate of spread (Eq. 1)
         rc.R0 = I_R * xi / (rho_b * eps_h * Q_ig);
@@ -328,32 +365,32 @@ inline RothermelComputed compute_rothermel_params(const RothermelParams& rp)
     rc.beta_ratio_E = std::pow(beta_ratio, -E);
 
     // Slope factor (Eq. 51)
-    const Real tan_phi_sq = rp.slope_x * rp.slope_x + rp.slope_y * rp.slope_y;
+    const Real tan_phi_sq = rp_eff.slope_x * rp_eff.slope_x + rp_eff.slope_y * rp_eff.slope_y;
     rc.phi_s = std::max(5.275 * std::pow(beta, -0.3) * tan_phi_sq, 0.0);
 
     // Store beta for terrain-based phi_s recalculation in GPU kernel
     rc.beta = beta;
 
     // Unit-conversion scalars for the GPU kernel
-    rc.wind_conv = rp.wind_conv;
-    rc.ros_conv  = rp.ros_conv;
+    rc.wind_conv = rp_eff.wind_conv;
+    rc.ros_conv  = rp_eff.ros_conv;
 
     // -----------------------------------------------------------------------
     // Andrews (2018) wind adjustments
     // -----------------------------------------------------------------------
     // Wind Adjustment Factor: use the formula selected by waf_formula
-    if (rp.waf_formula == "behaviorplus") {
-        rc.waf = compute_waf_behaviorplus(rp.delta);
+    if (rp_eff.waf_formula == "behaviorplus") {
+        rc.waf = compute_waf_behaviorplus(rp_eff.delta);
     } else {
-        rc.waf = compute_waf_unsheltered(rp.delta);
+        rc.waf = compute_waf_unsheltered(rp_eff.delta);
     }
     // Maximum effective wind speed: prevents unrealistically large phi_w
     rc.U_max_ftmin = compute_max_ews_ftmin(I_R, rc.C, rc.B, rc.beta_ratio_E);
 
     // Slope/wind cross-term settings
-    rc.use_slope_wind_cross   = rp.use_slope_wind_cross;
-    rc.k_slope_wind_cross     = rp.k_slope_wind_cross;
-    rc.use_slope_wind_vectors = rp.use_slope_wind_vectors;
+    rc.use_slope_wind_cross   = rp_eff.use_slope_wind_cross;
+    rc.k_slope_wind_cross     = rp_eff.k_slope_wind_cross;
+    rc.use_slope_wind_vectors = rp_eff.use_slope_wind_vectors;
 
     return rc;
 }

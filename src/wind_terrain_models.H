@@ -310,6 +310,35 @@ inline void apply_wind_terrain_effective_velocity(
     }
 }
 
+
+inline void apply_upslope_convection_velocity(
+    MultiFab&              vel_eff,
+    const MultiFab*        terrain_slopes,
+    const InputParameters& inputs)
+{
+    if (inputs.upslope_convection.enable != 1 || terrain_slopes == nullptr) return;
+
+    const Real coeff = inputs.upslope_convection.coefficient;
+    const Real tan_min = std::tan(inputs.upslope_convection.min_slope_deg * WildfireConst::PI / Real(180.0));
+    const Real max_added = inputs.upslope_convection.max_added_speed;
+
+    for (MFIter mfi(vel_eff); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto ve = vel_eff.array(mfi);
+        auto const slopes = terrain_slopes->const_array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const Real sx = slopes(i, j, k, 0);
+            const Real sy = slopes(i, j, k, 1);
+            const Real tan_phi = std::sqrt(sx*sx + sy*sy);
+            if (tan_phi < tan_min || tan_phi <= Real(1.0e-12)) return;
+            const Real added = amrex::min(max_added, amrex::max(Real(0.0), coeff * tan_phi));
+            const Real inv = Real(1.0) / tan_phi;
+            ve(i, j, k, 0) += added * sx * inv;
+            ve(i, j, k, 1) += added * sy * inv;
+        });
+    }
+}
+
 // ============================================================================
 // apply_viegas_ros_override
 //

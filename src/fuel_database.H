@@ -880,6 +880,7 @@ inline void apply_fuel_model(const FuelModel& model, RothermelParams& params) {
     params.sigma_lh = model.sigma_lh;
     params.w_lw     = model.w_lw;
     params.sigma_lw = model.sigma_lw;
+    params.compactness_factor = model.compactness_factor;
     // Note: M_f (fuel moisture), per-class moistures, slope, and unit
     // conversions are NOT changed here as they are environmental/simulation-
     // specific parameters set by the user.

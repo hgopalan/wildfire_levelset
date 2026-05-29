@@ -89,6 +89,8 @@ int main(int argc, char* argv[])
     MultiFab& temperature_mf        = f.temperature_mf;
     MultiFab& humidity_mf           = f.humidity_mf;
     MultiFab& plume_rise_mf         = f.plume_rise_mf;
+    MultiFab& preheating_distance_mf = f.preheating_distance_mf;
+    MultiFab& flame_depth_mf        = f.flame_depth_mf;
     std::unique_ptr<MultiFab>& terrain_slopes = f.terrain_slopes;
 
     // New diagnostic fields
@@ -238,51 +240,7 @@ int main(int argc, char* argv[])
                                     inputs.fmd_start_hour);
     }
 
-    // Helper lambda: update RothermelParams from the FMD schedule at time t_s.
-    // When no FMD schedule is provided but the diurnal moisture model is enabled,
-    // moisture is computed from the Nelson (2000) EMC diurnal cycle instead.
-    // Rebuilds fuel and Balbi tables to reflect the new moisture values.
-    auto apply_fmd_moisture = [&](Real t_s) {
-        RothermelMoistures m;
-        bool moisture_updated = false;
-
-        if (!fmd_sched.empty()) {
-            // FMD schedule takes priority
-            m = get_moisture_at_time(
-                fmd_sched, static_cast<double>(t_s), inputs.fmd_fuel_model,
-                {static_cast<float>(inputs.rothermel.M_d1),
-                 static_cast<float>(inputs.rothermel.M_d10),
-                 static_cast<float>(inputs.rothermel.M_d100),
-                 static_cast<float>(inputs.rothermel.M_d1000),
-                 static_cast<float>(inputs.rothermel.M_lh),
-                 static_cast<float>(inputs.rothermel.M_lw)});
-            moisture_updated = true;
-        } else if (inputs.diurnal_moisture.enable == 1) {
-            // Diurnal EMC model (Nelson 2000)
-            m = compute_diurnal_emc(
-                inputs.diurnal_moisture,
-                static_cast<double>(t_s),
-                {static_cast<float>(inputs.rothermel.M_d1),
-                 static_cast<float>(inputs.rothermel.M_d10),
-                 static_cast<float>(inputs.rothermel.M_d100),
-                 static_cast<float>(inputs.rothermel.M_d1000),
-                 static_cast<float>(inputs.rothermel.M_lh),
-                 static_cast<float>(inputs.rothermel.M_lw)});
-            moisture_updated = true;
-        }
-
-        if (!moisture_updated) return;
-
-        inputs.rothermel.M_d1    = static_cast<amrex::Real>(m.M_d1);
-        inputs.rothermel.M_d10   = static_cast<amrex::Real>(m.M_d10);
-        inputs.rothermel.M_d100  = static_cast<amrex::Real>(m.M_d100);
-        inputs.rothermel.M_d1000 = static_cast<amrex::Real>(m.M_d1000);
-        inputs.rothermel.M_lh    = static_cast<amrex::Real>(m.M_lh);
-        inputs.rothermel.M_lw    = static_cast<amrex::Real>(m.M_lw);
-        // Also keep the single-class M_f in sync with the 1-hr dead value
-        inputs.rothermel.M_f    = static_cast<amrex::Real>(m.M_d1);
-
-        // Rebuild per-cell Rothermel table with updated moisture
+    auto rebuild_rothermel_fuel_table = [&]() {
         if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
             std::vector<RothermelComputed> h_table =
                 build_fuel_rothermel_table(inputs.rothermel,
@@ -297,258 +255,195 @@ int main(int argc, char* argv[])
         }
     };
 
-    // Apply FMD at t=0 so initial plotfile uses correct moisture
-    apply_fmd_moisture(Real(0.0));
-
-    // ---- Solar radiation shading at t=0 (initial state) ----
-    // Apply shade-adjusted EMC to spatial_moisture_mf for the initial plotfile.
-    if (inputs.solar_radiation.enable == 1) {
-        apply_solar_radiation_step(inputs, shade_fraction_mf,
-                                   slope_mf, aspect_mf,
-                                   has_spatial_crown, cc_mf,
-                                   spatial_moisture_mf,
-                                   /*elapsed_s=*/Real(0.0),
-                                   horizon_mf.get(),
-                                   /*print_position=*/true);
-    }
-
-    // ---- All time-varying schedules, weather, and events ------------------
-    ScheduleData sd = setup_schedules(inputs, vel, phi, geom, ba, dm,
-                                      use_indicator);
-    // Unpack into names used by the rest of main.cpp.
-    FMCSchedule&          fmc_sched       = sd.fmc_sched;
-    HerbMoistureSchedule& herb_sched      = sd.herb_sched;
-    WindDirSchedule&      wind_dir_sched  = sd.wind_dir_sched;
-    WtrWeatherData&       wtr_data        = sd.wtr_data;
-    const bool            wtr_active      = sd.wtr_active;
-    MultiWtrWeather&      multi_wtr       = sd.multi_wtr;
-    const bool            multi_wtr_active= sd.multi_wtr_active;
-    RetardantDropList&    retardant_drops = sd.retardant_drops;
-    IgnitionSchedule&     ignition_sched  = sd.ignition_sched;
-    PrecipState&          precip_state    = sd.precip_state;
-    std::vector<std::pair<double,double>>& precip_schedule = sd.precip_schedule;
-
-    // ---- Conditional weather table (ERC/BI/SC percentile lookup) -----------
-    ConditionalWeatherTable cond_weather_table =
-        load_conditional_weather(inputs.conditional_weather_file);
-
-    // Initialize from file (2D only) or uniform value
-    {
-        const bool hf_active = (inputs.heat_flux.enable_upward == 1 ||
-                                 inputs.heat_flux.enable_induced == 1);
-        if (hf_active) {
-#if (AMREX_SPACEDIM == 2)
-            if (!inputs.heat_flux.heat_flux_file.empty()) {
-                init_heat_flux_from_file(heat_flux_mf, geom,
-                                         inputs.heat_flux.heat_flux_file);
-                amrex::Print() << "Initialized heat flux from file: "
-                               << inputs.heat_flux.heat_flux_file << "\n";
-            } else {
-                init_heat_flux_from_value(heat_flux_mf,
-                                          inputs.heat_flux.heat_flux_value);
-                amrex::Print() << "Initialized uniform heat flux: "
-                               << inputs.heat_flux.heat_flux_value << " W/m2\n";
-            }
-#else
-            // In 3D, only uniform value is supported for now
-            init_heat_flux_from_value(heat_flux_mf,
-                                      inputs.heat_flux.heat_flux_value);
-            if (!inputs.heat_flux.heat_flux_file.empty()) {
-                amrex::Print() << "WARNING: heat_flux.file is only supported in 2D builds; "
-                                  "using heat_flux.value instead.\n";
-            } else {
-                amrex::Print() << "Initialized uniform heat flux: "
-                               << inputs.heat_flux.heat_flux_value << " W/m2\n";
-            }
-#endif
-        }
-    }
     const bool heat_flux_active = (inputs.heat_flux.enable_upward == 1 ||
                                    inputs.heat_flux.enable_induced == 1);
+    if (heat_flux_active) {
+#if (AMREX_SPACEDIM == 2)
+        if (!inputs.heat_flux.heat_flux_file.empty()) {
+            init_heat_flux_from_file(heat_flux_mf, geom,
+                                     inputs.heat_flux.heat_flux_file);
+            amrex::Print() << "Initialized heat flux from file: "
+                           << inputs.heat_flux.heat_flux_file << "\n";
+        } else {
+            init_heat_flux_from_value(heat_flux_mf,
+                                      inputs.heat_flux.heat_flux_value);
+            amrex::Print() << "Initialized uniform heat flux: "
+                           << inputs.heat_flux.heat_flux_value << " W/m2\n";
+        }
+#else
+        init_heat_flux_from_value(heat_flux_mf,
+                                  inputs.heat_flux.heat_flux_value);
+        if (!inputs.heat_flux.heat_flux_file.empty()) {
+            amrex::Print() << "WARNING: heat_flux.file is only supported in 2D builds; "
+                              "using heat_flux.value instead.\n";
+        } else {
+            amrex::Print() << "Initialized uniform heat flux: "
+                           << inputs.heat_flux.heat_flux_value << " W/m2\n";
+        }
+#endif
+    }
 
-    // ---------------- Wind-terrain model setup ------------------
-    // wind_terrain_modifies_vel: true for Options 3-7 which produce vel_effective.
-    // For "none" (Option 1) and "viegas_ros" (Option 2) the original vel is used.
     const bool wind_terrain_modifies_vel = wind_terrain_modifies_velocity(inputs);
-
-    // use_precomp_R_for_advection: when a wind-terrain model or a non-Rothermel
-    // spread model is active, pass R_mf as the pre-computed ROS to advection so
-    // that the advection kernel does not internally recompute Rothermel with the
-    // unmodified vel.  This ensures the advected ROS matches what was computed
-    // above (including any terrain-corrected velocity or Viegas ROS override).
     const bool use_precomp_R_for_advection =
         (wind_terrain_modifies_vel ||
-         heat_flux_active                              ||
-         inputs.wind_terrain.model == "viegas_ros"    ||
-         inputs.fire_spread_model  == "balbi"         ||
-         inputs.fire_spread_model  == "cheney_gould"  ||
-         inputs.fire_spread_model  == "cruz_crown"    ||
-         inputs.fire_spread_model  == "fbp_o1a"       ||
-         inputs.fire_spread_model  == "fbp_o1b"       ||
-         inputs.fire_spread_model  == "fbp_s1"        ||
-         inputs.fire_spread_model  == "fbp_s2"        ||
-         inputs.fire_spread_model  == "fbp_s3"        ||
-         inputs.fire_spread_model  == "lautenberger");
-
-    // Helper flag for Viegas+Balbi coupling
+         heat_flux_active ||
+         inputs.upslope_convection.enable == 1 ||
+         inputs.wind_terrain.model == "viegas_ros" ||
+         inputs.fire_spread_model == "balbi" ||
+         inputs.fire_spread_model == "cheney_gould" ||
+         inputs.fire_spread_model == "cruz_crown" ||
+         inputs.fire_spread_model == "fbp_o1a" ||
+         inputs.fire_spread_model == "fbp_o1b" ||
+         inputs.fire_spread_model == "fbp_s1" ||
+         inputs.fire_spread_model == "fbp_s2" ||
+         inputs.fire_spread_model == "fbp_s3" ||
+         inputs.fire_spread_model == "lautenberger");
     const bool use_balbi_for_viegas = (inputs.fire_spread_model == "balbi");
 
-    // ---------------- dt from CFL --------------------------
-    Real dt=(inputs.propagation_method == "farsite") ? inputs.farsite.dt : 10.0; 
-    const bool use_levelset = (inputs.propagation_method == "levelset");
-    const bool use_mtt      = (inputs.propagation_method == "mtt");
-    if (use_levelset)
-      {
-        // Apply wind-terrain velocity modification (Options 3-8) before ROS computation
+    auto prepare_effective_velocity = [&]() -> const MultiFab& {
         apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
-
-        // Apply heat flux wind corrections (upward velocity + induced inflow)
-        if (heat_flux_active) {
-            apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi,
-                                inputs.heat_flux);
-        }
-
-        const MultiFab& vel_for_model = (wind_terrain_modifies_vel || heat_flux_active)
-                                        ? vel_effective : vel;
-
-        if (inputs.fire_spread_model == "balbi") {
-            compute_balbi_R(R_mf, vel_for_model, geom, inputs.rothermel, inputs.balbi,
-                             terrain_slopes.get(),
-                             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                             d_balbi_table_ptr, balbi_table_size,
-                             heat_flux_active ? &heat_flux_mf : nullptr,
-                             heat_flux_active ? &inputs.heat_flux : nullptr);
-        } else if (inputs.fire_spread_model == "cheney_gould") {
-            compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
-        } else if (inputs.fire_spread_model == "cruz_crown") {
-            compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
-        } else if (inputs.fire_spread_model == "fbp_o1a" ||
-                   inputs.fire_spread_model == "fbp_o1b" ||
-                   inputs.fire_spread_model == "fbp_s1"  ||
-                   inputs.fire_spread_model == "fbp_s2"  ||
-                   inputs.fire_spread_model == "fbp_s3") {
-            compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
-        } else if (inputs.fire_spread_model == "lautenberger") {
-            compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
-                                    terrain_slopes.get());
-        } else {
-            // Compute Rothermel wind speed R (levelset path - no cell size correction)
-            compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
-                                 terrain_slopes.get(),
-                                 !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                                 d_fuel_table_ptr, fuel_table_size,
-                                 has_spatial_crown ? &cc_mf : nullptr,
-                                 has_spatial_crown ? &canopy_height_mf : nullptr,
-                                 0,  // cellsize_enable = 0 (disabled for levelset)
-                                 30.0, 0.1);  // default parameters (unused)
-        }
-        dt = compute_dt(R_mf, geom, inputs.cfl);
-        amrex::Print() << "Computed dt = " << dt << "\n";
-      } else if (use_mtt) {
-      // For MTT: compute the ROS field now (same as levelset path),
-      // then run the Dijkstra fast-march to fill arrival_time_mf,
-      // and set a sensible dt based on the ROS field.
-      {
-        apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
+        apply_upslope_convection_velocity(vel_effective, terrain_slopes.get(), inputs);
         if (heat_flux_active) {
             apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
         }
-        const MultiFab& vel_for_mtt = (wind_terrain_modifies_vel || heat_flux_active)
-                                      ? vel_effective : vel;
-        if (inputs.fire_spread_model == "balbi") {
-            compute_balbi_R(R_mf, vel_for_mtt, geom, inputs.rothermel, inputs.balbi,
+        return (wind_terrain_modifies_vel || heat_flux_active || inputs.upslope_convection.enable == 1)
+            ? static_cast<const MultiFab&>(vel_effective)
+            : static_cast<const MultiFab&>(vel);
+    };
+
+    auto update_preheating_outputs = [&](const MultiFab& vel_for_diag) {
+        const bool write_preheat = (inputs.flame_tilt.output_preheating == 1);
+        const bool write_flame_depth = (inputs.flame_tilt.output_flame_depth == 1);
+        const Real tau_res = inputs.farsite.tau_residence;
+        const bool write_flame_depth = (inputs.flame_tilt.output_flame_depth == 1);
+        for (MFIter mfi(preheating_distance_mf); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto pre = preheating_distance_mf.array(mfi);
+            auto dep = flame_depth_mf.array(mfi);
+            auto const fl = flame_length_mf.const_array(mfi);
+            auto const ros = R_mf.const_array(mfi);
+            auto const v = vel_for_diag.const_array(mfi);
+            auto const slope = slope_mf.const_array(mfi);
+            const Real view_factor = inputs.flame_tilt.view_factor;
+            const Real k_slope = inputs.flame_tilt.k_slope;
+            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                dep(i,j,k) = (write_flame_depth && tau_res > Real(0.0)) 
+                    ? amrex::max(Real(0.0), ros(i,j,k) * tau_res) 
+                    : Real(0.0);
+                if (!write_preheat) {
+                    pre(i,j,k) = Real(0.0);
+                    return;
+                }
+                const Real Lf = fl(i,j,k);
+                if (Lf <= Real(0.0)) {
+                    pre(i,j,k) = Real(0.0);
+                    return;
+                }
+                const Real U_mag = std::sqrt(v(i,j,k,0) * v(i,j,k,0) + v(i,j,k,1) * v(i,j,k,1));
+                const Real v_buoy = std::sqrt(WildfireConst::GRAVITY * Lf);
+                Real tan_tilt = (v_buoy > Real(1.0e-6)) ? U_mag / v_buoy : Real(0.0);
+                if (inputs.flame_tilt.enable == 1) {
+                    tan_tilt += k_slope * std::tan(slope(i,j,k) * WildfireConst::PI / Real(180.0));
+                }
+                const Real cos_tilt = Real(1.0) / std::sqrt(Real(1.0) + tan_tilt * tan_tilt);
+                pre(i,j,k) = Lf * cos_tilt * view_factor;
+            });
+        }
+    };
+
+    auto apply_fmd_moisture = [&](Real t_s) {
+        RothermelMoistures defaults;
+        defaults.M_d1 = inputs.rothermel.M_d1;
+        defaults.M_d10 = inputs.rothermel.M_d10;
+        defaults.M_d100 = inputs.rothermel.M_d100;
+        defaults.M_d1000 = inputs.rothermel.M_d1000;
+        defaults.M_lh = inputs.rothermel.M_lh;
+        defaults.M_lw = inputs.rothermel.M_lw;
+
+        RothermelMoistures m = defaults;
+        bool moisture_updated = false;
+        if (!fmd_sched.empty()) {
+            m = get_moisture_at_time(fmd_sched, static_cast<double>(t_s), 0, defaults);
+            moisture_updated = true;
+        } else if (inputs.diurnal_moisture.enable == 1) {
+            m = compute_diurnal_emc(inputs.diurnal_moisture, static_cast<double>(t_s), defaults);
+            moisture_updated = true;
+        }
+        if (!moisture_updated) return;
+
+        inputs.rothermel.M_d1 = m.M_d1;
+        inputs.rothermel.M_d10 = m.M_d10;
+        inputs.rothermel.M_d100 = m.M_d100;
+        inputs.rothermel.M_d1000 = m.M_d1000;
+        inputs.rothermel.M_lh = m.M_lh;
+        inputs.rothermel.M_lw = m.M_lw;
+        spatial_moisture_mf.setVal(m.M_d1, 0, 1, 0);
+        spatial_moisture_mf.setVal(m.M_d10, 1, 1, 0);
+        spatial_moisture_mf.setVal(m.M_d100, 2, 1, 0);
+        spatial_moisture_mf.setVal(m.M_lh, 3, 1, 0);
+        spatial_moisture_mf.setVal(m.M_lw, 4, 1, 0);
+        rebuild_rothermel_fuel_table();
+    };
+
+    Real dt = (inputs.propagation_method == "farsite") ? inputs.farsite.dt : 10.0;
+    const bool use_levelset = (inputs.propagation_method == "levelset");
+    const bool use_mtt      = (inputs.propagation_method == "mtt");
+    const MultiFab* ros_velocity_mf = &vel;
+
+    if (use_levelset) {
+        const MultiFab& vel_for_model = prepare_effective_velocity();
+        ros_velocity_mf = &vel_for_model;
+        dispatch_compute_ros(R_mf, vel_for_model, geom, inputs,
                              terrain_slopes.get(),
                              !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                              d_balbi_table_ptr, balbi_table_size,
-                             heat_flux_active ? &heat_flux_mf : nullptr,
-                             heat_flux_active ? &inputs.heat_flux : nullptr);
-        } else if (inputs.fire_spread_model == "cheney_gould") {
-            compute_cheney_gould_R(R_mf, vel_for_mtt, inputs.cheney_gould);
-        } else if (inputs.fire_spread_model == "cruz_crown") {
-            compute_cruz_crown_R(R_mf, vel_for_mtt, inputs.cruz_crown);
-        } else if (inputs.fire_spread_model == "fbp_o1a" ||
-                   inputs.fire_spread_model == "fbp_o1b" ||
-                   inputs.fire_spread_model == "fbp_s1"  ||
-                   inputs.fire_spread_model == "fbp_s2"  ||
-                   inputs.fire_spread_model == "fbp_s3") {
-            compute_fbp_R(R_mf, vel_for_mtt, inputs.fbp);
-        } else if (inputs.fire_spread_model == "lautenberger") {
-            compute_lautenberger_R(R_mf, vel_for_mtt, inputs.rothermel, inputs.lautenberger,
-                                    terrain_slopes.get());
-        } else {
-            compute_rothermel_R(R_mf, vel_for_mtt, geom, inputs.rothermel,
-                                 terrain_slopes.get(),
-                                 !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                                 d_fuel_table_ptr, fuel_table_size,
-                                 has_spatial_crown ? &cc_mf : nullptr,
-                                 has_spatial_crown ? &canopy_height_mf : nullptr,
-                                 0,  // cellsize_enable = 0 (disabled for MTT)
-                                 30.0, 0.1);  // default parameters (unused)
-        }
+                             d_fuel_table_ptr, fuel_table_size,
+                             has_spatial_crown,
+                             &cc_mf, &canopy_height_mf,
+                             heat_flux_active, &heat_flux_mf,
+                             0, 30.0, 0.1);
+        dt = compute_dt(R_mf, geom, inputs.cfl);
+        amrex::Print() << "Computed dt = " << dt << "\n";
+    } else if (use_mtt) {
+        const MultiFab& vel_for_mtt = prepare_effective_velocity();
+        ros_velocity_mf = &vel_for_mtt;
+        dispatch_compute_ros(R_mf, vel_for_mtt, geom, inputs,
+                             terrain_slopes.get(),
+                             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                             d_balbi_table_ptr, balbi_table_size,
+                             d_fuel_table_ptr, fuel_table_size,
+                             has_spatial_crown,
+                             &cc_mf, &canopy_height_mf,
+                             heat_flux_active, &heat_flux_mf,
+                             0, 30.0, 0.1);
         dt = compute_dt(R_mf, geom, inputs.cfl);
         amrex::Print() << "MTT: pre-computing arrival times (dt = " << dt << ") ...\n";
         compute_mtt_arrival_times(arrival_time_mf, phi, R_mf, geom);
-        // Set phi from arrival times at t=0
         apply_mtt_phi_update(phi, arrival_time_mf, Real(0.0));
         fill_boundary_extrap(phi, geom);
-      }
-      } else {
-      // FARSITE: compute initial ROS field and CFL-based dt (same as levelset/MTT paths).
-      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
-      if (heat_flux_active) {
-          apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, inputs.heat_flux);
-      }
-      const MultiFab& vel_for_farsite_init = (wind_terrain_modifies_vel || heat_flux_active)
-                                              ? vel_effective : vel;
-      if (inputs.fire_spread_model == "balbi") {
-          compute_balbi_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel, inputs.balbi,
-                           terrain_slopes.get(),
-                           !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                           d_balbi_table_ptr, balbi_table_size,
-                           heat_flux_active ? &heat_flux_mf : nullptr,
-                           heat_flux_active ? &inputs.heat_flux : nullptr);
-      } else if (inputs.fire_spread_model == "cheney_gould") {
-          compute_cheney_gould_R(R_mf, vel_for_farsite_init, inputs.cheney_gould);
-      } else if (inputs.fire_spread_model == "cruz_crown") {
-          compute_cruz_crown_R(R_mf, vel_for_farsite_init, inputs.cruz_crown);
-      } else if (inputs.fire_spread_model == "fbp_o1a" ||
-                 inputs.fire_spread_model == "fbp_o1b" ||
-                 inputs.fire_spread_model == "fbp_s1"  ||
-                 inputs.fire_spread_model == "fbp_s2"  ||
-                 inputs.fire_spread_model == "fbp_s3") {
-          compute_fbp_R(R_mf, vel_for_farsite_init, inputs.fbp);
-      } else if (inputs.fire_spread_model == "lautenberger") {
-          compute_lautenberger_R(R_mf, vel_for_farsite_init, inputs.rothermel, inputs.lautenberger,
-                                  terrain_slopes.get());
-      } else {
-          compute_rothermel_R(R_mf, vel_for_farsite_init, geom, inputs.rothermel,
-                               terrain_slopes.get(),
-                               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                               d_fuel_table_ptr, fuel_table_size,
-                               has_spatial_crown ? &cc_mf : nullptr,
-                               has_spatial_crown ? &canopy_height_mf : nullptr,
-                               inputs.cellsize.enable,  // cellsize_enable
-                               inputs.cellsize.dx_ref,  // cellsize_dx_ref
-                               inputs.cellsize.correction_exponent);  // cellsize_correction_exp
-      }
-      amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
+    } else {
+        const MultiFab& vel_for_farsite_init = prepare_effective_velocity();
+        ros_velocity_mf = &vel_for_farsite_init;
+        dispatch_compute_ros(R_mf, vel_for_farsite_init, geom, inputs,
+                             terrain_slopes.get(),
+                             !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
+                             d_balbi_table_ptr, balbi_table_size,
+                             d_fuel_table_ptr, fuel_table_size,
+                             has_spatial_crown,
+                             &cc_mf, &canopy_height_mf,
+                             heat_flux_active, &heat_flux_mf,
+                             inputs.cellsize.enable,
+                             inputs.cellsize.dx_ref,
+                             inputs.cellsize.correction_exponent);
+        amrex::Print() << "Using FARSITE propagation; dt = " << dt << "\n";
     }
+
     compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
-    // Update flame-length exceedance raster (element-wise max over time)
-    for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
-        const Box& bx = mfi.validbox();
-        auto ex  = fl_exceedance_mf.array(mfi);
-        auto const fl = flame_length_mf.const_array(mfi);
-        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
-        });
-    }
     if (inputs.weise_biging.enable == 1) {
         compute_weise_biging_whirl(weise_data, fireline_intensity_mf, flame_length_mf,
                                    vel, terrain_slopes.get(), inputs.weise_biging);
     }
     if (inputs.viegas.enable == 1) {
-        // For Balbi+Viegas: pass Balbi table so diagnostic uses Balbi amplitude
         compute_viegas_diagnostics(viegas_data, R_mf, vel, inputs.rothermel, inputs.viegas,
                                    terrain_slopes.get(),
                                    !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
@@ -557,103 +452,40 @@ int main(int argc, char* argv[])
                                    use_balbi_for_viegas ? &bc_global_default : nullptr,
                                    use_balbi_for_viegas ? d_balbi_table_ptr : nullptr,
                                    use_balbi_for_viegas ? balbi_table_size : 0);
-        // Option 2: override R_mf with max(primary, R_viegas) in eruptive cells
         if (inputs.wind_terrain.model == "viegas_ros") {
             apply_viegas_ros_override(R_mf, viegas_data);
             if (use_levelset) dt = compute_dt(R_mf, geom, inputs.cfl);
         }
     }
-    // Fire ecology diagnostics (scorch height, prob. ignition, tree mortality,
-    // crown activity) – always computed, always written to plotfile
+
     compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                          inputs.rothermel, inputs.fire_ecology, inputs.crown);
-
-    // Ecology → propagation coupling (initial step):
-    //   (a) P_ignition scales R_mf when fire_ecology.couple_to_ros = 1
-    //   (b) Active crown fire (crown_activity == 2) overrides R_mf with the
-    //       Cruz et al. (2005) crown ROS (when crown.use_cruz_crown = 1) or
-    //       the Van Wagner 3/CBD proxy (when crown.use_cruz_crown = 0).
     apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, inputs.fire_ecology);
 
-    // Cap 8: Active crown fire ROS feedback (initial dt computation).
-    // Apply the same crown-ROS override used in the time loop so the initial
-    // CFL dt correctly accounts for any active crown fire cells.
     if (inputs.crown.enable == 1 && use_levelset) {
-        const Real CBD_global_i = Real(inputs.crown.CBD);
-        const Real FMC_global_i = Real(inputs.crown.FMC);
-        const Real mf_i = amrex::max(Real(0.3),
-                              amrex::min(Real(1.0),
-                              Real(1.0) - (FMC_global_i - Real(100.0)) / Real(200.0)));
-        // Global crown ROS (Van Wagner proxy) for dt guard
-        const Real R_crown_g_ms_init = (Real(3.0) / amrex::max(CBD_global_i, Real(0.01)))
-                                       * mf_i / Real(60.0);
-        const bool use_cruz_init          = (inputs.crown.use_cruz_crown == 1);
-        const bool use_roth1991_init      = (inputs.crown.use_rothermel1991_crown == 1);
-        const bool use_passive_blend_init = (inputs.crown.use_passive_blend == 1);
-        const Real CBH_init = Real(inputs.crown.CBH);
-        const Real FMC_init = FMC_global_i;
-        const Real I_o_init = Real(0.010) * CBH_init * (Real(460.0) + Real(25.9) * FMC_init);
-        CruzCrownComputed ccc_init;
-        if (use_cruz_init) { ccc_init = ccc_global; }
-
-        for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
-            const Box& bx  = mfi.validbox();
-            auto       R   = R_mf.array(mfi);
-            auto const eco = ecology_mf.const_array(mfi);
-            auto const v   = vel.const_array(mfi);
-            auto const fi  = fireline_intensity_mf.const_array(mfi);
-            const bool use_sp_i = has_spatial_crown;
-            Array4<const Real> cbd_arr_i;
-            if (use_sp_i) {
-                cbd_arr_i = cbd_mf.const_array(mfi);
-            }
-            const Real CBD_g_i  = CBD_global_i;
-            const Real mf_val_i = mf_i;
-            const Real MC10_i   = Real(inputs.cruz_crown.MC10);
-            const bool use_cruz_i    = use_cruz_init;
-            const bool use_roth91_i  = use_roth1991_init;
-            const bool use_passive_i = use_passive_blend_init;
-            const Real I_o_i = I_o_init;
-            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive crown
-                Real R_surface = R(i, j, k);
-                Real R_crown_ms;
-                if (use_roth91_i) {
-                    // Rothermel (1991): R_crown = 3.34 x R_surface
-                    R_crown_ms = compute_rothermel_1991_crown_ros(R_surface);
-                } else if (use_cruz_i) {
-                    // Cruz, Alexander & Wakimoto (2005) active crown ROS
-                    Real ux = v(i,j,k,0);
-                    Real uy = v(i,j,k,1);
-                    Real wind_mag = std::sqrt(ux*ux + uy*uy);
-                    Real CBD_c = use_sp_i ? cbd_arr_i(i,j,k) : CBD_g_i;
-                    R_crown_ms = compute_crown_fire_spread_rate_cruz(wind_mag, CBD_c, MC10_i);
-                } else {
-                    // Van Wagner (1977) simplified proxy
-                    Real CBD_c = use_sp_i ? cbd_arr_i(i,j,k) : CBD_g_i;
-                    CBD_c = amrex::max(CBD_c, Real(0.01));
-                    R_crown_ms = (Real(3.0) / CBD_c) * mf_val_i / Real(60.0);
-                }
-                if (use_passive_i) {
-                    const Real I_B_kwm = fi(i, j, k);
-                    R(i, j, k) = compute_van_wagner_passive_blend(
-                        R_surface, R_crown_ms, I_B_kwm, I_o_i);
-                } else {
-                    R(i, j, k) = amrex::max(R_surface, R_crown_ms);
-                }
-            });
-        }
-        // Recompute dt when crown ROS is positive and could tighten the CFL.
+        const Real R_crown_g_ms_init = apply_crown_ros_override(
+            R_mf, ecology_mf, *ros_velocity_mf, fireline_intensity_mf,
+            has_spatial_crown, cbh_mf, cbd_mf,
+            inputs.crown, inputs.cruz_crown, ccc_global);
         if (R_crown_g_ms_init > Real(0.0)) {
             dt = compute_dt(R_mf, geom, inputs.cfl);
         }
     }
 
-    // Fire emissions (CO₂, CO, PM₂.₅) from fuel load × consumption fraction
+    compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+    for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto ex  = fl_exceedance_mf.array(mfi);
+        auto const fl = flame_length_mf.const_array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
+        });
+    }
+    update_preheating_outputs(*ros_velocity_mf);
+
     compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,
                            inputs.rothermel, inputs.emissions);
 
-    // ---- Initial smoke plume rise (t=0) ----
     if (inputs.smoke_plume.enable == 1) {
         compute_smoke_plume_rise(plume_rise_mf, fireline_intensity_mf,
                                  vel, inputs.smoke_plume);
@@ -818,19 +650,7 @@ int main(int argc, char* argv[])
           inputs.rothermel.M_lh = static_cast<amrex::Real>(m_lh_pct / 100.0);
           // Propagate into the spatial moisture MultiFab component 3 (M_lh)
           spatial_moisture_mf.setVal(inputs.rothermel.M_lh, 3, 1, 0);
-          // Rebuild fuel lookup table if per-cell landscape is active
-          if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
-              std::vector<RothermelComputed> h_herb_table =
-                  build_fuel_rothermel_table(inputs.rothermel,
-                                             inputs.rothermel.landscape_fuel_type);
-              if (!inputs.fuel_adj_file.empty()) {
-                  auto adjs = parse_fuel_adjustment_file(inputs.fuel_adj_file);
-                  apply_fuel_adjustment_to_table(h_herb_table, adjs);
-              }
-              Gpu::copy(Gpu::hostToDevice,
-                        h_herb_table.begin(), h_herb_table.end(),
-                        d_fuel_table.begin());
-          }
+          rebuild_rothermel_fuel_table();
       }
 
       // Update wind from compact direction schedule (overrides constant wind)
@@ -923,19 +743,7 @@ int main(int argc, char* argv[])
           inputs.rothermel.M_d100  = static_cast<amrex::Real>(precip_state.M_d100);
           inputs.rothermel.M_d1000 = static_cast<amrex::Real>(precip_state.M_d1000);
           inputs.rothermel.M_f     = static_cast<amrex::Real>(precip_state.M_d1);
-          // Rebuild fuel table with updated moisture
-          if (!inputs.rothermel.landscape_file.empty() && fuel_table_size > 0) {
-              std::vector<RothermelComputed> h_table =
-                  build_fuel_rothermel_table(inputs.rothermel,
-                                             inputs.rothermel.landscape_fuel_type);
-              if (!inputs.fuel_adj_file.empty()) {
-                  auto adjs = parse_fuel_adjustment_file(inputs.fuel_adj_file);
-                  apply_fuel_adjustment_to_table(h_table, adjs);
-              }
-              Gpu::copy(Gpu::hostToDevice,
-                        h_table.begin(), h_table.end(),
-                        d_fuel_table.begin());
-          }
+          rebuild_rothermel_fuel_table();
       }
 
       // ---- Live fuel moisture FMC seasonal link ----
@@ -959,6 +767,9 @@ int main(int argc, char* argv[])
               inputs.live_fuel_seasonal.M_lw_winter +
               frac * (inputs.live_fuel_seasonal.M_lw_summer -
                       inputs.live_fuel_seasonal.M_lw_winter));
+          spatial_moisture_mf.setVal(inputs.rothermel.M_lh, 3, 1, 0);
+          spatial_moisture_mf.setVal(inputs.rothermel.M_lw, 4, 1, 0);
+          rebuild_rothermel_fuel_table();
       }
 
       // ---- Elevation lapse-rate T/RH correction for per-cell solar EMC ----
@@ -1040,51 +851,19 @@ int main(int argc, char* argv[])
               });
           }
       }
-
       // --- Step 2: Compute surface ROS via selected fire spread model
-      // Apply wind-terrain velocity modification (Options 3-8) before ROS computation
-      apply_wind_terrain_effective_velocity(vel_effective, vel, terrain_slopes.get(), geom, inputs);
-
-      // Apply heat flux wind corrections (upward velocity + induced inflow)
-      if (heat_flux_active) {
-          apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi,
-                              inputs.heat_flux);
-      }
-
-      const MultiFab& vel_for_model = (wind_terrain_modifies_vel || heat_flux_active)
-                                      ? vel_effective : vel;
-
-      if (inputs.fire_spread_model == "balbi") {
-          compute_balbi_R(R_mf, vel_for_model, geom, inputs.rothermel, inputs.balbi,
+      const MultiFab& vel_for_model = prepare_effective_velocity();
+      dispatch_compute_ros(R_mf, vel_for_model, geom, inputs,
                            terrain_slopes.get(),
                            !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
                            d_balbi_table_ptr, balbi_table_size,
-                           heat_flux_active ? &heat_flux_mf : nullptr,
-                           heat_flux_active ? &inputs.heat_flux : nullptr);
-      } else if (inputs.fire_spread_model == "cheney_gould") {
-          compute_cheney_gould_R(R_mf, vel_for_model, inputs.cheney_gould);
-      } else if (inputs.fire_spread_model == "cruz_crown") {
-          compute_cruz_crown_R(R_mf, vel_for_model, inputs.cruz_crown);
-      } else if (inputs.fire_spread_model == "fbp_o1a" ||
-                 inputs.fire_spread_model == "fbp_o1b" ||
-                 inputs.fire_spread_model == "fbp_s1"  ||
-                 inputs.fire_spread_model == "fbp_s2"  ||
-                 inputs.fire_spread_model == "fbp_s3") {
-          compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
-      } else if (inputs.fire_spread_model == "lautenberger") {
-          compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
-                                  terrain_slopes.get());
-      } else {
-          compute_rothermel_R(R_mf, vel_for_model, geom, inputs.rothermel,
-                               terrain_slopes.get(),
-                               !inputs.rothermel.landscape_file.empty() ? &fuel_model_mf : nullptr,
-                               d_fuel_table_ptr, fuel_table_size,
-                               has_spatial_crown ? &cc_mf : nullptr,
-                               has_spatial_crown ? &canopy_height_mf : nullptr,
-                               inputs.cellsize.enable,  // cellsize_enable
-                               inputs.cellsize.dx_ref,  // cellsize_dx_ref
-                               inputs.cellsize.correction_exponent);  // cellsize_correction_exp
-      }
+                           d_fuel_table_ptr, fuel_table_size,
+                           has_spatial_crown,
+                           &cc_mf, &canopy_height_mf,
+                           heat_flux_active, &heat_flux_mf,
+                           inputs.cellsize.enable,
+                           inputs.cellsize.dx_ref,
+                           inputs.cellsize.correction_exponent);
       compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
       // Update flame-length exceedance raster (element-wise max over time)
       for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
@@ -1176,67 +955,22 @@ int main(int argc, char* argv[])
       // Route: Cruz, Alexander & Wakimoto (2005) when use_cruz_crown = 1;
       //        Van Wagner (1977) 3/CBD proxy otherwise.
       if (inputs.crown.enable == 1 && use_levelset) {
-          const Real CBD_global   = Real(inputs.crown.CBD);
-          const Real FMC_global   = Real(inputs.crown.FMC);
-          const Real m_factor_g   = amrex::max(Real(0.3),
-                                        amrex::min(Real(1.0),
-                                        Real(1.0) - (FMC_global - Real(100.0)) / Real(200.0)));
-          const bool use_cruz_tl          = (inputs.crown.use_cruz_crown == 1);
-          const bool use_roth1991_tl      = (inputs.crown.use_rothermel1991_crown == 1);
-          const bool use_passive_blend_tl = (inputs.crown.use_passive_blend == 1);
-          const Real CBH_tl = Real(inputs.crown.CBH);
-          const Real I_o_tl = Real(0.010) * CBH_tl * (Real(460.0) + Real(25.9) * FMC_global);
-          CruzCrownComputed ccc_tl;
-          if (use_cruz_tl) { ccc_tl = ccc_global; }
-          const Real MC10_tl = Real(inputs.cruz_crown.MC10);
-
-          for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
-              const Box& bx   = mfi.validbox();
-              auto       R    = R_mf.array(mfi);
-              auto const eco  = ecology_mf.const_array(mfi);
-              auto const v    = vel.const_array(mfi);
-              auto const fi   = fireline_intensity_mf.const_array(mfi);
-              const bool use_sp = has_spatial_crown;
-              Array4<const Real> cbd_arr;
-              if (use_sp) {
-                  cbd_arr = cbd_mf.const_array(mfi);
-              }
-              const Real CBD_g   = CBD_global;
-              const Real mf_val  = m_factor_g;
-              const bool use_passive_tl = use_passive_blend_tl;
-              const Real I_o_tl_k = I_o_tl;
-
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                  if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive
-                  Real R_surface = R(i, j, k);
-                  Real R_crown_ms;
-                  if (use_roth1991_tl) {
-                      R_crown_ms = compute_rothermel_1991_crown_ros(R_surface);
-                  } else if (use_cruz_tl) {
-                      Real ux = v(i,j,k,0);
-                      Real uy = v(i,j,k,1);
-                      Real wind_mag = std::sqrt(ux*ux + uy*uy);
-                      Real CBD_c = use_sp ? cbd_arr(i,j,k) : CBD_g;
-                      R_crown_ms = compute_crown_fire_spread_rate_cruz(wind_mag, CBD_c, MC10_tl);
-                  } else {
-                      Real CBD_c = use_sp ? cbd_arr(i,j,k) : CBD_g;
-                      CBD_c = amrex::max(CBD_c, Real(0.01));
-                      R_crown_ms = (Real(3.0) / CBD_c) * mf_val / Real(60.0);
-                  }
-                  if (use_passive_tl) {
-                      const Real I_B_kwm = fi(i, j, k);
-                      R(i, j, k) = compute_van_wagner_passive_blend(
-                          R_surface, R_crown_ms, I_B_kwm, I_o_tl_k);
-                  } else {
-                      R(i, j, k) = amrex::max(R_surface, R_crown_ms);
-                  }
-              });
-          }
-          amrex::Print() << "  Crown ROS override applied (crown.enable=1"
-                         << (use_roth1991_tl ? ", Rothermel1991"
-                             : use_cruz_tl   ? ", Cruz 2005"
-                                             : ", Van Wagner 1977") << ").\n";
+          apply_crown_ros_override(R_mf, ecology_mf, vel_for_model, fireline_intensity_mf,
+                                   has_spatial_crown, cbh_mf, cbd_mf,
+                                   inputs.crown, inputs.cruz_crown, ccc_global);
+          amrex::Print() << "  Crown ROS override applied.\n";
       }
+
+      compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, inputs.rothermel);
+      for (MFIter mfi(fl_exceedance_mf); mfi.isValid(); ++mfi) {
+          const Box& bx = mfi.validbox();
+          auto ex  = fl_exceedance_mf.array(mfi);
+          auto const fl = flame_length_mf.const_array(mfi);
+          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
+          });
+      }
+      update_preheating_outputs(vel_for_model);
 
       // Fire emissions (CO₂, CO, PM₂.₅)
       compute_fire_emissions(emissions_mf, phi, fuel_consumption_mf,

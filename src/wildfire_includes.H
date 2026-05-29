@@ -93,6 +93,7 @@ using namespace amrex;
 #include "precipitation_moisture.H"
 #include "fms_moisture.H"
 #include "solar_radiation.H"
+#include "radiation_preheating.H"
 
 // ---- Project headers: propagation methods ----
 #include "mtt_propagation.H"
