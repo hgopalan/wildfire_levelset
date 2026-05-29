@@ -29,6 +29,11 @@
 #define PLOT_RESULTS_H
 
 #include "fire_intensity_class.H"
+#include "byram_convective_number.H"
+#include "flame_tilt_angle.H"
+#include "packing_ratio.H"
+#include "flame_front_depth.H"
+#include "mcarthur_ffdi.H"
 #include <unordered_map>
 // ============================================================================
 // write_wildfire_plotfile
