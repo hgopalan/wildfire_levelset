@@ -139,4 +139,9 @@ using namespace amrex;
 #include "duff_moisture_smoldering.H"
 #include "moisture_of_extinction.H"
 
+// ---- Project headers: advanced crown fire and moisture models ----
+#include "scott_reinhardt_cfsa.H"
+#include "multi_layer_canopy_wind.H"
+#include "fuel_moisture_timelag_de.H"
+
 #endif // WILDFIRE_INCLUDES_H
