@@ -1899,6 +1899,120 @@ To selectively output only this field::
 
 Implementation: ``src/fire_intensity_class.H`` provides GPU-compatible classification functions.
 
+
+Byram Convective Number
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Byram's (1959) convective number :math:`N_c` classifies fire behavior as wind-driven vs. plume-dominated:
+
+.. math::
+
+   N_c = \frac{g \times I_B \times \tau_{\text{res}}}{\rho_{\text{air}} \times C_p \times T_a \times U^3}
+
+where:
+
+* :math:`g = 9.81` m/s² — gravitational acceleration
+* :math:`I_B` [kW/m] — Byram fireline intensity
+* :math:`\tau_{\text{res}}` [s] — flame residence time
+* :math:`\rho_{\text{air}} = 1.2` kg/m³ — air density
+* :math:`C_p = 1005` J/(kg·K) — specific heat of air
+* :math:`T_a = 300` K — ambient temperature
+* :math:`U` [m/s] — wind speed magnitude
+
+When :math:`N_c > 1`, fire is plume-dominated (strong vertical convection, increased spotting).
+When :math:`N_c < 1`, fire is wind-driven (horizontal spread dominates).
+
+Output variable: ``convective_number``
+
+
+Flame Tilt Angle
+~~~~~~~~~~~~~~~~~
+
+Flame tilt angle from vertical due to wind and buoyancy forces:
+
+.. math::
+
+   \theta_f = \arctan\left(\frac{U}{v_b}\right)
+
+where :math:`v_b = \sqrt{(g \times I_B) / (\rho_{\text{air}} \times C_p \times T_a)}` is the
+buoyancy-driven vertical velocity.
+
+Output in degrees from vertical (0° = vertical flame, 90° = horizontal).
+
+Output variable: ``flame_tilt``
+
+
+Packing Ratio
+~~~~~~~~~~~~~
+
+Rothermel (1972) fuel bed packing ratio and relative packing ratio:
+
+.. math::
+
+   \beta = \frac{\rho_b}{\rho_p} = \frac{w_0 / \delta}{\rho_p}
+
+.. math::
+
+   \beta_{\text{opt}} = 3.348 \times \sigma^{-0.8189}
+
+.. math::
+
+   \text{Relative packing} = \frac{\beta}{\beta_{\text{opt}}}
+
+where :math:`w_0` is fuel loading [lb/ft²], :math:`\delta` is fuel bed depth [ft],
+:math:`\rho_p` is particle density [lb/ft³], and :math:`\sigma` is the surface-area-to-volume
+ratio [ft⁻¹]. Values of :math:`\beta/\beta_{\text{opt}}` near 1.0 indicate near-optimal
+fuel bed compaction for fire spread.
+
+Output variables: ``packing_ratio``, ``relative_packing``
+
+
+Flame Front Depth
+~~~~~~~~~~~~~~~~~
+
+Spatial thickness of the actively burning zone:
+
+.. math::
+
+   D_f = R \times \tau_{\text{res}}
+
+where :math:`R` [m/s] is the rate of spread and :math:`\tau_{\text{res}}` [s] is the
+flame residence time. This diagnostic is useful for heat transfer calculations, backing
+fire behavior, and fire line construction planning.
+
+Output variable: ``flame_depth``
+
+
+McArthur Forest Fire Danger Index
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The McArthur Mark 5 Forest Fire Danger Index (FFDI) is the Australian standard for
+forest fire danger assessment (McArthur 1967, Noble et al. 1980):
+
+.. math::
+
+   \text{FFDI} = 2 \times \exp\bigl(-0.45 + 0.987 \ln(DF) - 0.0345 H + 0.0338 T + 0.0234 V\bigr)
+
+where:
+
+* :math:`DF` — Drought Factor (0–10, default: 5.0 for moderate drought)
+* :math:`H` [%] — Relative humidity (clamped to 1–100%)
+* :math:`T` [°C] — Air temperature
+* :math:`V` [km/h] — Wind speed
+
+FFDI interpretation:
+
+* 0–5: Low–Moderate fire danger
+* 5–12: High fire danger
+* 12–24: Very High fire danger
+* 24–50: Severe fire danger
+* 50–100: Extreme fire danger
+* 100+: Catastrophic (Code Red)
+
+Output variable: ``mcarthur_ffdi``
+
+**References:** Byram (1959), McArthur (1967), Rothermel (1972), Noble et al. (1980)
+
 Advanced Physics Features
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 

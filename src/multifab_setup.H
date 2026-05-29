@@ -67,6 +67,12 @@ struct WildfireFields {
     MultiFab fireline_intensity_mf;      // Byram fireline intensity [kW/m] (1 comp)
     MultiFab flame_length_mf;            // Byram flame length [m] (1 comp)
     MultiFab fire_intensity_class_mf;    // Fire intensity class (1-6, Byram 1959) (1 comp)
+    MultiFab convective_number_mf;       // Byram convective number Nc [-] (1 comp)
+    MultiFab flame_tilt_mf;              // Flame tilt angle [degrees from vertical] (1 comp)
+    MultiFab packing_ratio_mf;           // Packing ratio β [-] (1 comp)
+    MultiFab relative_packing_mf;        // Relative packing ratio β/β_opt [-] (1 comp)
+    MultiFab flame_depth_mf;             // Flame front depth D_f = R × τ_res [m] (1 comp)
+    MultiFab mcarthur_ffdi_mf;           // McArthur Forest Fire Danger Index [-] (1 comp)
 
     // ---- Fire ecology (ECOLOGY_NCOMP components) ----
     //   0 scorch_height, 1 prob_ignition, 2 tree_mortality, 3 crown_activity,
@@ -196,6 +202,12 @@ struct WildfireFields {
         , fireline_intensity_mf(ba, dm, 1,                 0)
         , flame_length_mf      (ba, dm, 1,                 0)
         , fire_intensity_class_mf(ba, dm, 1,               0)
+        , convective_number_mf (ba, dm, 1,                 0)
+        , flame_tilt_mf        (ba, dm, 1,                 0)
+        , packing_ratio_mf     (ba, dm, 1,                 0)
+        , relative_packing_mf  (ba, dm, 1,                 0)
+        , flame_depth_mf       (ba, dm, 1,                 0)
+        , mcarthur_ffdi_mf     (ba, dm, 1,                 0)
         // Ecology / emissions
         , ecology_mf           (ba, dm, ECOLOGY_NCOMP,     0)
         , emissions_mf         (ba, dm, EMISSIONS_NCOMP,   0)
@@ -254,6 +266,12 @@ struct WildfireFields {
         fireline_intensity_mf.setVal(Real(0.0));
         flame_length_mf      .setVal(Real(0.0));
         fire_intensity_class_mf.setVal(Real(0.0));
+        convective_number_mf .setVal(Real(0.0));
+        flame_tilt_mf        .setVal(Real(0.0));
+        packing_ratio_mf     .setVal(Real(0.0));
+        relative_packing_mf  .setVal(Real(1.0));  // β/β_opt default ~1
+        flame_depth_mf       .setVal(Real(0.0));
+        mcarthur_ffdi_mf     .setVal(Real(0.0));
         ecology_mf           .setVal(Real(0.0));
         emissions_mf         .setVal(Real(0.0));
         arrival_time_mf      .setVal(Real(-1.0)); // -1 = not yet burned

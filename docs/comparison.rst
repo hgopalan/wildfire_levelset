@@ -89,9 +89,9 @@ Tools are grouped into three columns to keep the table compact:
      - N/A (3-D grid)
      - Partial (fuel mask)
    * - **Flame diagnostics**
-     - Byram intensity + flame length;
-       scorch height; tree mortality; TI/CI;
-       NFDRS ERC
+     - Byram intensity + flame length + tilt + convective number;
+       packing ratio; flame depth; scorch height; tree mortality; TI/CI;
+       NFDRS ERC; McArthur FFDI
      - FARSITE: intensity + flame length;
        FlamMap: full outputs;
        BehavePlus: full outputs
