@@ -1011,6 +1011,169 @@ Post-frontal Fuel Consumption Raster Output
 Two complementary rasters quantify post-frontal fuel state:
 
 * **``fuel_consumption``** — instantaneous bulk fuel consumption fraction
+
+
+Easy-to-Implement Valuable Features (2026)
+===========================================
+
+This section documents 10 easy features with minor code changes that provide significant value based on wildfire literature and operational tools.
+
+Minimum Spread Rate Floor
+--------------------------
+
+**Headers**: ``src/compute_ros_dispatch.H``
+
+Real fires exhibit smoldering/creeping spread even when Rothermel predicts zero ROS. A minimum floor prevents unrealistic stalling in low-wind/high-moisture conditions.
+
+**Formula**: :math:`R_\text{effective} = \max(R_\text{model}, R_\text{min})`
+
+**Input parameters** (prefix ``rothermel.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``minimum_ros_m_min``
+     - 0.03
+     - Minimum ROS floor [m/min]; set to 0.0 to disable
+
+**Example**::
+
+    rothermel.minimum_ros_m_min = 0.05   # 0.05 m/min minimum spread
+
+**Literature**: FARSITE/FlamMap practice (Finney 2004)
+
+**Status**: ✅ Implemented
+
+Crown Base Height Ladder Fuel Adjustment
+-----------------------------------------
+
+**Headers**: ``src/crown_initiation.H``
+
+Ladder fuels (shrubs, small trees) reduce effective canopy base height, making crown fire initiation more realistic in mixed forests.
+
+**Formula**: :math:`\text{CBH}_\text{eff} = \text{CBH} - k_\text{ladder} \times h_\text{shrub}`
+
+**Input parameters** (prefix ``crown.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``ladder_fuel_height``
+     - 0.0
+     - Ladder fuel (shrub) height [m]; 0.0 = disabled
+   * - ``ladder_fuel_coefficient``
+     - 0.6
+     - Fraction of shrub layer acting as ladder
+
+**Example**::
+
+    crown.enable               = 1
+    crown.CBH                  = 4.0
+    crown.ladder_fuel_height   = 2.0   # 2 m tall shrubs
+    crown.ladder_fuel_coefficient = 0.6
+    # Effective CBH = 4.0 - 0.6 × 2.0 = 2.8 m
+
+**Literature**: Scott & Reinhardt (2001) RMRS-RP-29
+
+**Status**: ✅ Implemented
+
+Fuel Temperature Offset for Heat of Preignition
+------------------------------------------------
+
+**Headers**: ``src/compute_rothermel_R.H``
+
+Dead fuel surface temperature differs from ambient air temperature based on solar radiation. Affects heat of preignition :math:`Q_{ig}`.
+
+**Formula**: :math:`T_\text{fuel} = T_\text{air} + \Delta T_\text{offset}`
+
+**Input parameters** (prefix ``rothermel.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``fuel_temp_sunny_offset``
+     - 8.3
+     - Temperature offset in sunny conditions [°C] (15°F)
+   * - ``fuel_temp_shaded_offset``
+     - 2.8
+     - Temperature offset in shaded conditions [°C] (5°F)
+
+**Literature**: Rothermel (1986), BehavePlus
+
+**Status**: ⏳ Parameters added, implementation in progress
+
+ROS Uncertainty Bounds
+-----------------------
+
+**Headers**: ``src/compute_rothermel_R.H``
+
+Adds optional stochastic perturbation for ensemble forecasting and uncertainty quantification.
+
+**Formula**: :math:`R_\text{actual} = R_\text{model} \times (1 + \varepsilon)` where :math:`\varepsilon \sim \mathcal{N}(0, \sigma_R)`
+
+**Input parameters** (prefix ``rothermel.``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``enable_ros_uncertainty``
+     - 0
+     - 1 to enable stochastic ROS perturbation
+   * - ``ros_std_dev``
+     - 0.30
+     - ROS standard deviation fraction (±30%)
+
+**Example**::
+
+    rothermel.enable_ros_uncertainty = 1
+    rothermel.ros_std_dev = 0.25   # ±25% uncertainty
+
+**Literature**: Rothermel model uncertainty ~±30% (empirical)
+
+**Status**: ⏳ Parameters added, implementation in progress
+
+Fuel Bed Compactness Factor
+----------------------------
+
+**Headers**: ``src/fuel_database.H``, ``src/compute_rothermel_R.H``
+
+Distinguishes compact (slash) vs. fluffy (grass) fuels by adjusting effective SAV.
+
+**Formula**: :math:`\sigma_\text{eff} = \sigma_\text{nominal} \times (1 + k_\text{compact} \times \beta)`
+
+For matted fuels: :math:`k_\text{compact} = -0.1` to :math:`-0.3`  
+For fluffy fuels: :math:`k_\text{compact} = 0.0` to :math:`0.1`
+
+**Input**: Per-fuel-model ``compactness_factor`` in ``FuelModel`` struct
+
+**Literature**: Andrews (2018) RMRS-GTR-371
+
+**Status**: ⏳ Parameters added, implementation in progress
+
+Additional Features in Development
+-----------------------------------
+
+The following features have parameter infrastructure complete and are in active development:
+
+* **Flame Depth Estimation** — :math:`d_\text{flame} = 0.0775 \times R^{0.46}` (Thomas 1963)
+* **Fine Dead Fuel Moisture Conditioning** — Time-of-day dependent conditioning (Nelson 2000)
+* **Aspect-Based Moisture Adjustment** — North/south facing slope moisture differences
+* **Upslope Draft Effect** — Convective acceleration :math:`U_\text{induced} = k \sqrt{I_B \sin(\theta)}`
+* **Live Fuel Load Dynamic Reduction** — Track consumed live fuel, update ROS
+
+Full implementation details and status tracking available in repository documentation.
   :math:`f_c \in [0, 1]` computed during the FARSITE spread step when
   ``farsite.use_bulk_fuel_consumption = 1``.  Based on fire intensity and
   residence time (Albini 1976 / Rothermel 1983 per-class exponential burnout).
