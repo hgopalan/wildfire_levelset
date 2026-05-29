@@ -47,7 +47,7 @@ using namespace amrex;
 
 // Upper bound for crown_activity clamping before rounding
 // Set to 2.5 to ensure values in range [1.5, 2.5) round to 2
-static constexpr amrex::Real CROWN_ACTIVITY_UPPER_BOUND = amrex::Real(2.5);
+constexpr amrex::Real CROWN_ACTIVITY_UPPER_BOUND = amrex::Real(2.5);
 
 static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real compute_crown_fire_spotting_multiplier(amrex::Real crown_activity)
