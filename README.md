@@ -69,7 +69,7 @@ fire.finalize()
 
 **Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger)
 
-**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt *(new)*
+**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt *(new)* • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI *(new)*
 
 **Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling *(new)* • Enhanced phenology models *(new)*
 
@@ -85,6 +85,7 @@ fire.finalize()
 - Ember accumulation tracking with decay & probabilistic ignition
 - Periodic wind gust factor
 - Slope-dependent flame tilt for radiation
+- Fire behavior diagnostics: Byram convective number, flame tilt angle, packing ratio, flame depth, McArthur FFDI
 
 See [full documentation](https://hgopalan.github.io/wildfire_levelset/) for complete feature list, model equations, and parameters.
 
