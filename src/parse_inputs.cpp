@@ -105,6 +105,12 @@ void parse_inputs(InputParameters& p)
     p.rothermel.sigma_lh= 0.0;
     p.rothermel.w_lw    = 0.0;
     p.rothermel.sigma_lw= 0.0;
+    p.rothermel.compactness_factor = 0.0;
+    p.rothermel.enable_live_load_reduction = 0;
+    p.rothermel.live_load_min_fraction   = 0.25;
+    p.rothermel.live_load_reduction_exp  = 1.0;
+    p.rothermel.live_load_reference_m_lh = 1.20;
+    p.rothermel.live_load_reference_m_lw = 1.50;
     // Per-class moistures are set after M_f has its final value (see below)
     
     // Apply fuel model from database if specified
@@ -208,6 +214,22 @@ void parse_inputs(InputParameters& p)
     pp.query("rothermel.ros_std_dev", p.rothermel.ros_std_dev);
     if (p.rothermel.enable_ros_uncertainty == 1) {
         Print() << "ROS uncertainty enabled: σ = " << p.rothermel.ros_std_dev * 100.0 << "%\n";
+    }
+
+    pp.query("rothermel.compactness_factor", p.rothermel.compactness_factor);
+    pp.query("rothermel.enable_live_load_reduction", p.rothermel.enable_live_load_reduction);
+    pp.query("rothermel.live_load_min_fraction", p.rothermel.live_load_min_fraction);
+    pp.query("rothermel.live_load_reduction_exp", p.rothermel.live_load_reduction_exp);
+    pp.query("rothermel.live_load_reference_m_lh", p.rothermel.live_load_reference_m_lh);
+    pp.query("rothermel.live_load_reference_m_lw", p.rothermel.live_load_reference_m_lw);
+    if (p.rothermel.compactness_factor != 0.0) {
+        Print() << "Fuel-bed compactness enabled: k = "
+                << p.rothermel.compactness_factor << "\n";
+    }
+    if (p.rothermel.enable_live_load_reduction == 1) {
+        Print() << "Dynamic live fuel load reduction enabled: min_fraction="
+                << p.rothermel.live_load_min_fraction
+                << "  exp=" << p.rothermel.live_load_reduction_exp << "\n";
     }
 
     // Per-class fuel load overrides (take precedence over fuel model database)
@@ -713,6 +735,10 @@ void parse_inputs(InputParameters& p)
     p.wind_terrain.k_valley        = 0.8;   pp.query("wind_terrain.k_valley",        p.wind_terrain.k_valley);
     p.wind_terrain.k_deflection    = 0.3;   pp.query("wind_terrain.k_deflection",    p.wind_terrain.k_deflection);
     p.wind_terrain.min_curvature   = 0.0001; pp.query("wind_terrain.min_curvature",  p.wind_terrain.min_curvature); // [m⁻¹]
+    p.upslope_convection.enable         = 0;   pp.query("upslope_convection.enable",         p.upslope_convection.enable);
+    p.upslope_convection.coefficient    = 1.0; pp.query("upslope_convection.coefficient",    p.upslope_convection.coefficient);
+    p.upslope_convection.min_slope_deg  = 5.0; pp.query("upslope_convection.min_slope_deg",  p.upslope_convection.min_slope_deg);
+    p.upslope_convection.max_added_speed= 8.0; pp.query("upslope_convection.max_added_speed",p.upslope_convection.max_added_speed);
 
     // Validate model name
     if (p.wind_terrain.model != "none"                   &&
@@ -813,6 +839,12 @@ void parse_inputs(InputParameters& p)
         Print() << "  Valley channeling:   k_valley = " << p.wind_terrain.k_valley << "\n";
         Print() << "  Direction deflection: k_deflection = " << p.wind_terrain.k_deflection << "\n";
         Print() << "  Min curvature threshold: " << p.wind_terrain.min_curvature << "\n";
+    }
+    if (p.upslope_convection.enable == 1) {
+        Print() << "Upslope convection draft enabled: coeff="
+                << p.upslope_convection.coefficient
+                << "  min_slope_deg=" << p.upslope_convection.min_slope_deg
+                << "  max_added_speed=" << p.upslope_convection.max_added_speed << "\n";
     }
 
     // -------- Heat flux MultiFab parameters --------
@@ -930,6 +962,12 @@ void parse_inputs(InputParameters& p)
     p.diurnal_moisture.RH_max      = 60.0;    pp.query("diurnal_moisture.RH_max",      p.diurnal_moisture.RH_max);
     p.diurnal_moisture.t_start_s   = 36000.0; pp.query("diurnal_moisture.t_start_s",   p.diurnal_moisture.t_start_s);
     p.diurnal_moisture.t_T_peak_s  = 50400.0; pp.query("diurnal_moisture.t_T_peak_s",  p.diurnal_moisture.t_T_peak_s);
+    p.diurnal_moisture.conditioning_1h   = 1.0; pp.query("diurnal_moisture.conditioning_1h",   p.diurnal_moisture.conditioning_1h);
+    p.diurnal_moisture.conditioning_10h  = 1.0; pp.query("diurnal_moisture.conditioning_10h",  p.diurnal_moisture.conditioning_10h);
+    p.diurnal_moisture.conditioning_100h = 1.0; pp.query("diurnal_moisture.conditioning_100h", p.diurnal_moisture.conditioning_100h);
+    p.diurnal_moisture.conditioning_1h   = 1.0; pp.query("diurnal_moisture.conditioning_1h",   p.diurnal_moisture.conditioning_1h);
+    p.diurnal_moisture.conditioning_10h  = 1.0; pp.query("diurnal_moisture.conditioning_10h",  p.diurnal_moisture.conditioning_10h);
+    p.diurnal_moisture.conditioning_100h = 1.0; pp.query("diurnal_moisture.conditioning_100h", p.diurnal_moisture.conditioning_100h);
 
     if (p.diurnal_moisture.enable == 1) {
         if (p.diurnal_moisture.T_max <= p.diurnal_moisture.T_min)
@@ -1842,13 +1880,19 @@ void parse_inputs(InputParameters& p)
     p.flame_tilt.enable = 0;
     p.flame_tilt.k_slope = 0.5;
     p.flame_tilt.view_factor = 0.4;
+    p.flame_tilt.output_preheating = 1;
+    p.flame_tilt.output_flame_depth = 1;
     pp_tilt.query("enable", p.flame_tilt.enable);
     pp_tilt.query("k_slope", p.flame_tilt.k_slope);
     pp_tilt.query("view_factor", p.flame_tilt.view_factor);
+    pp_tilt.query("output_preheating", p.flame_tilt.output_preheating);
+    pp_tilt.query("output_flame_depth", p.flame_tilt.output_flame_depth);
     if (p.flame_tilt.enable == 1) {
         Print() << "Slope-dependent flame tilt: enabled"
                 << "  k_slope=" << p.flame_tilt.k_slope
-                << "  view_factor=" << p.flame_tilt.view_factor << "\n";
+                << "  view_factor=" << p.flame_tilt.view_factor
+                << "  output_preheating=" << p.flame_tilt.output_preheating
+                << "  output_flame_depth=" << p.flame_tilt.output_flame_depth << "\n";
     }
 
 }

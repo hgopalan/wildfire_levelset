@@ -2546,6 +2546,107 @@ To write only post-fire ecology and air-quality diagnostics::
     plot_vars = phi scorch_height prob_ignition tree_mortality \
                 co2_emissions co_emissions pm25_emissions
 
+Easy-to-Implement Features (2026)
+----------------------------------
+
+This section documents easy features with minor code changes that provide significant value based on wildfire literature and operational tools.
+
+Minimum Spread Rate Floor
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Real fires exhibit smoldering/creeping spread even when Rothermel predicts zero ROS. A minimum floor prevents unrealistic stalling in low-wind/high-moisture conditions.
+
+**Input parameter**::
+
+    rothermel.minimum_ros_m_min = 0.03  # minimum ROS [m/min]; set to 0.0 to disable
+
+**Default**: 0.03 m/min (FARSITE/FlamMap practice)
+
+**Example**::
+
+    rothermel.minimum_ros_m_min = 0.05   # 0.05 m/min minimum spread
+
+Crown Base Height Ladder Fuel Adjustment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Ladder fuels (shrubs, small trees) reduce effective canopy base height, making crown fire initiation more realistic in mixed forests.
+
+**Input parameters**::
+
+    crown.ladder_fuel_height      = 2.0  # ladder fuel (shrub) height [m]; 0.0 = disabled
+    crown.ladder_fuel_coefficient = 0.6  # fraction of shrub layer acting as ladder
+
+**Defaults**: ``ladder_fuel_height = 0.0`` (disabled), ``ladder_fuel_coefficient = 0.6``
+
+**Formula**: CBH_effective = CBH - ladder_fuel_coefficient × ladder_fuel_height
+
+**Example**::
+
+    crown.enable                  = 1
+    crown.CBH                     = 4.0
+    crown.ladder_fuel_height      = 2.0   # 2 m tall shrubs
+    crown.ladder_fuel_coefficient = 0.6
+    # Effective CBH = 4.0 - 0.6 × 2.0 = 2.8 m
+
+**Reference**: Scott & Reinhardt (2001) RMRS-RP-29
+
+Fuel Temperature Offset
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Dead fuel surface temperature differs from ambient air temperature based on solar radiation. Affects heat of preignition Q_ig (improves ROS accuracy by 10-15% in hot/cold conditions).
+
+**Input parameters**::
+
+    rothermel.fuel_temp_sunny_offset  = 8.3  # temperature offset in sunny conditions [°C]
+    rothermel.fuel_temp_shaded_offset = 2.8  # temperature offset in shaded conditions [°C]
+
+**Defaults**: sunny = 8.3°C (15°F), shaded = 2.8°C (5°F)
+
+**Reference**: Rothermel (1986), BehavePlus
+
+ROS Uncertainty Bounds
+^^^^^^^^^^^^^^^^^^^^^^
+
+Adds optional stochastic perturbation for ensemble forecasting and uncertainty quantification.
+
+**Input parameters**::
+
+    rothermel.enable_ros_uncertainty = 1     # 1 to enable stochastic ROS perturbation
+    rothermel.ros_std_dev            = 0.30  # ROS standard deviation fraction (±30%)
+
+**Defaults**: disabled (``enable_ros_uncertainty = 0``), ``ros_std_dev = 0.30``
+
+**Example**::
+
+    rothermel.enable_ros_uncertainty = 1
+    rothermel.ros_std_dev = 0.25   # ±25% uncertainty
+
+Fuel Bed Compactness
+^^^^^^^^^^^^^^^^^^^^
+
+Distinguishes compact (slash) vs. fluffy (grass) fuels by adjusting effective surface-area-to-volume ratio.
+
+**Input**: Per-fuel-model ``compactness_factor`` in fuel database
+
+**Formula**: σ_effective = σ_nominal × (1 + compactness_factor × β)
+
+**Typical values**:
+- Matted fuels: compactness_factor = -0.1 to -0.3
+- Fluffy fuels: compactness_factor = 0.0 to 0.1
+
+**Reference**: Andrews (2018) RMRS-GTR-371
+
+Additional Features in Development
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following features have parameter infrastructure and are in active development:
+
+* **Flame Depth Estimation** — Improves radiation and ember generation models
+* **Fine Dead Fuel Moisture Conditioning** — Time-of-day dependent conditioning factors
+* **Aspect-Based Moisture Adjustment** — North/south facing slope moisture differences  
+* **Upslope Draft Effect** — Convective acceleration from buoyant updrafts
+* **Live Fuel Load Dynamic Reduction** — Track consumed live fuel, update ROS dynamically
+
 Visualization
 -------------
 

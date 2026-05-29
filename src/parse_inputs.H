@@ -38,6 +38,16 @@ struct RothermelParams {
     amrex::Real sigma_lh;     // live herbaceous SAV [ft⁻¹]                default: 0.0
     amrex::Real w_lw;         // live woody load [lb/ft²]                  default: 0.0
     amrex::Real sigma_lw;     // live woody SAV [ft⁻¹]                     default: 0.0
+    // Fuel-bed arrangement adjustment carried through from FuelModel.
+    // Positive values represent fluffier beds (higher effective SAV), negative
+    // values represent more compact / matted fuels.
+    amrex::Real compactness_factor; // effective SAV adjustment coefficient (default: 0.0)
+    // Optional dynamic reduction of live fuel load as live fuels cure/dry.
+    int         enable_live_load_reduction; // 1 to scale w_lh/w_lw from live moisture (default: 0)
+    amrex::Real live_load_min_fraction;     // lower bound on retained live load fraction (default: 0.25)
+    amrex::Real live_load_reduction_exp;    // exponent on moisture ratio scaling (default: 1.0)
+    amrex::Real live_load_reference_m_lh;   // reference M_lh for full live herb load (default: 1.20)
+    amrex::Real live_load_reference_m_lw;   // reference M_lw for full live woody load (default: 1.50)
     // --- Terrain slope (constant over domain) ---
     amrex::Real slope_x;      // ∂z/∂x = tan(slope angle in x-direction)  default: 0.0
     amrex::Real slope_y;      // ∂z/∂y = tan(slope angle in y-direction)  default: 0.0
@@ -418,6 +428,17 @@ struct InputParameters {
         amrex::Real min_curvature;    // minimum curvature threshold (default: 0.0001)
     } wind_terrain;
 
+    // Optional upslope-convection velocity added on top of the ambient/effective
+    // wind field.  This is a lightweight, GPU-safe analogue of buoyancy-driven
+    // upslope draft: U_conv = coeff × tan(phi), capped by max_added_speed.
+    // Input prefix: "upslope_convection."
+    struct UpslopeConvectionParams {
+        int enable;                    // 1 to enable upslope convection draft (default: 0)
+        amrex::Real coefficient;       // draft coefficient [m/s per tan(phi)] (default: 1.0)
+        amrex::Real min_slope_deg;     // activate only above this slope [deg] (default: 5.0)
+        amrex::Real max_added_speed;   // cap on added upslope speed [m/s] (default: 8.0)
+    } upslope_convection;
+
     // Heat flux MultiFab parameters for fire-induced wind corrections.
     // Provides upward velocity (fire plume buoyancy) and induced horizontal
     // inflow (fire entrainment) based on WindNinja-style parameterisations.
@@ -676,6 +697,10 @@ struct InputParameters {
         amrex::Real RH_max;     // maximum daily relative humidity [%] (default: 60.0)
         amrex::Real t_start_s;  // seconds from midnight at t=0 (default: 36000 = 10:00)
         amrex::Real t_T_peak_s; // seconds from midnight when T is maximum (default: 50400 = 14:00)
+        // Optional conditioning factors for dead-fuel classes.
+        amrex::Real conditioning_1h;   // multiplier on 1-hr EMC-derived moisture (default: 1.0)
+        amrex::Real conditioning_10h;  // multiplier on 10-hr EMC-derived moisture (default: 1.0)
+        amrex::Real conditioning_100h; // multiplier on 100-hr EMC-derived moisture (default: 1.0)
     } diurnal_moisture;
 
     // ---- Cap 10: Custom fuel model (text-based, inline in inputs file) ----
@@ -911,6 +936,9 @@ struct InputParameters {
         amrex::Real solar_heating_C; // max solar heating of fuel above air temp [°C] (default: 17.0)
         int use_canopy_shading;      // 1 to include canopy cover in shade fraction (default: 1)
         amrex::Real cloud_cover;     // domain-uniform cloud fraction [0, 1] (0 = clear sky; default: 0.0)
+        int enable_aspect_moisture;  // 1 to dry south-facing slopes / moisten north-facing slopes (default: 0)
+        amrex::Real aspect_emc_strength; // max fractional EMC adjustment from aspect (default: 0.15)
+        amrex::Real aspect_slope_exponent; // slope weighting exponent for aspect adjustment (default: 1.0)
         // FARSITE full topographic horizon scan (expensive – off by default).
         // For each cell, 8 compass-direction ray marches find the maximum terrain-
         // elevation angle (horizon angle); the cell is shaded when the solar
@@ -1138,6 +1166,8 @@ struct InputParameters {
     //   moisture_lh          – live herbaceous moisture [fraction]
     //   moisture_lw          – live woody moisture [fraction]
     //   plume_rise_m         – Briggs (1965) smoke plume-rise height [m]
+    //   preheating_distance  – radiation-driven preheating distance [m]
+    //   flame_depth          – estimated flame depth (ROS × residence time) [m]
     //   fl_exceedance        – maximum observed flame length per cell [m]
     std::vector<std::string> plot_vars;  // subset of variable names to write; empty = write all
 
@@ -1259,6 +1289,8 @@ struct InputParameters {
         int enable;                  // 1 to enable slope-dependent tilt (default: 0)
         amrex::Real k_slope;         // slope tilt coefficient (default: 0.5)
         amrex::Real view_factor;     // radiative view factor (default: 0.4)
+        int output_preheating;       // 1 to write preheating distance field (default: 1)
+        int output_flame_depth;      // 1 to write flame depth field (default: 1)
     } flame_tilt;
 
     // ---- Real-time satellite fire detection assimilation ----
