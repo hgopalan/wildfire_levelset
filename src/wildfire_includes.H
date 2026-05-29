@@ -28,6 +28,9 @@
 
 using namespace amrex;
 
+// ---- Project headers: constants ----
+#include "constants.H"
+
 // ---- Project headers: core numerics and geometry ----
 #include "numerical_schemes.H"
 #include "initial_conditions.H"

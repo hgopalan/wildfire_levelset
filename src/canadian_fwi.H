@@ -523,7 +523,7 @@ inline void compute_fwi_moisture_codes(
     // Fill MultiFab
     for (MFIter mfi(fwi_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
-        auto fwi = fwi_mf.array(mfi);
+        auto fwi_arr = fwi_mf.array(mfi);
         
         const Real ffmc = state.FFMC;
         const Real dmc  = state.DMC;
@@ -533,12 +533,12 @@ inline void compute_fwi_moisture_codes(
         const Real fwi  = state.FWI;
         
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-            fwi(i, j, k, 0) = ffmc;  // FFMC
-            fwi(i, j, k, 1) = dmc;   // DMC
-            fwi(i, j, k, 2) = dc;    // DC
-            fwi(i, j, k, 3) = isi;   // ISI
-            fwi(i, j, k, 4) = bui;   // BUI
-            fwi(i, j, k, 5) = fwi;   // FWI
+            fwi_arr(i, j, k, 0) = ffmc;  // FFMC
+            fwi_arr(i, j, k, 1) = dmc;   // DMC
+            fwi_arr(i, j, k, 2) = dc;    // DC
+            fwi_arr(i, j, k, 3) = isi;   // ISI
+            fwi_arr(i, j, k, 4) = bui;   // BUI
+            fwi_arr(i, j, k, 5) = fwi;   // FWI
         });
     }
 }
