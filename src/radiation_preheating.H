@@ -156,4 +156,79 @@ inline void compute_preheating_distance_scalar(MultiFab& preheating_dist_mf,
     }
 }
 
+// ============================================================================
+// compute_preheating_distance_with_slope
+//
+// Enhanced version that includes explicit slope effects on flame tilt.
+// Upslope fires have flames tilted forward by slope angle, increasing
+// preheating distance.
+//
+// Flame tilt angle combines wind and slope effects:
+//   tan(θ_tilt) = (U_eff + v_slope) / v_buoyancy
+//   v_slope = k_slope × tan(slope_angle) × sqrt(g × L_f)
+//
+// where k_slope is an empirical coefficient (default: 0.5).
+//
+// Parameters:
+//   preheating_dist_mf – output: preheating distance [m]
+//   flame_length_mf    – input:  Byram flame length [m]
+//   wind_speed_mf      – input:  effective wind speed magnitude [m/s]
+//   slope_mf           – input:  slope angle [radians] (positive = upslope)
+//   view_factor        – radiative view factor (default: 0.4)
+//   k_slope            – slope tilt coefficient (default: 0.5)
+//
+// References:
+//   Anderson, H.E. (1968). Sundance fire: An analysis of fire phenomena.
+//     USDA Forest Service Research Paper INT-56.
+//   Butler, B.W., et al. (2004). A method for evaluating the effectiveness of
+//     firefighter escape routes.
+// ============================================================================
+inline void compute_preheating_distance_with_slope(
+    MultiFab&       preheating_dist_mf,
+    const MultiFab& flame_length_mf,
+    const MultiFab& wind_speed_mf,
+    const MultiFab& slope_mf,
+    Real            view_factor = Real(0.4),
+    Real            k_slope     = Real(0.5))
+{
+    constexpr Real g = WildfireConst::GRAVITY;
+
+    for (MFIter mfi(preheating_dist_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const Lf     = flame_length_mf.const_array(mfi);
+        auto const U      = wind_speed_mf.const_array(mfi);
+        auto const slope  = slope_mf.const_array(mfi);
+        auto d_pre        = preheating_dist_mf.array(mfi);
+        const Real Fv     = view_factor;
+        const Real k_s    = k_slope;
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const Real L_flame = Lf(i, j, k);
+            
+            if (L_flame <= Real(0.0)) {
+                d_pre(i, j, k) = Real(0.0);
+                return;
+            }
+
+            const Real U_mag      = U(i, j, k);
+            const Real slope_rad  = slope(i, j, k);
+            const Real v_buoy     = std::sqrt(g * L_flame);
+            
+            // Slope contribution to forward tilt (Anderson 1968 / Butler 2004)
+            // Upslope fires: slope tilts flame forward, increasing preheating
+            const Real v_slope = k_s * std::tan(slope_rad) * v_buoy;
+            
+            // Combined wind + slope tilt
+            const Real tan_tilt = (v_buoy > Real(1e-6))
+                                 ? (U_mag + v_slope) / v_buoy
+                                 : Real(0.0);
+            const Real cos_tilt = Real(1.0) / std::sqrt(Real(1.0) + 
+                                                        tan_tilt * tan_tilt);
+            
+            // Preheating distance with slope enhancement
+            d_pre(i, j, k) = L_flame * cos_tilt * Fv;
+        });
+    }
+}
+
 #endif // RADIATION_PREHEATING_H

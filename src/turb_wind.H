@@ -516,5 +516,62 @@ inline void apply_turb_wind(MultiFab&         vel,
     }
 }
 
+// ============================================================================
+// apply_periodic_gust_factor
+//
+// Simple deterministic wind gust model using sinusoidal variation.
+// Modulates the base wind field with a periodic gust factor:
+//   U_effective = U_base × (1 + gust_amplitude × sin(2π × t / period))
+//
+// This provides controlled wind variability for testing fire response to
+// gusts without the complexity of stochastic turbulence models.
+//
+// Parameters:
+//   vel             – velocity field (modified in-place)
+//   vel_base        – base (unperturbed) velocity field
+//   time            – current simulation time [s]
+//   gust_amplitude  – fractional amplitude of gust (default: 0.2 = ±20%)
+//   gust_period     – period of gust cycle [s] (default: 300 = 5 min)
+//
+// References:
+//   Finney, M.A., et al. (2015). A study of flame spread in engineered
+//     cardboard fuelbeds: Part II - fire behavior model.
+//   Linn, R.R., et al. (2012). Using periodic line fires to gain a new
+//     perspective on multi-dimensional aspects of forward ROS.
+// ============================================================================
+inline void apply_periodic_gust_factor(MultiFab&       vel,
+                                       const MultiFab& vel_base,
+                                       Real            time,
+                                       Real            gust_amplitude = Real(0.2),
+                                       Real            gust_period    = Real(300.0))
+{
+    if (gust_amplitude <= Real(0.0)) return;
+
+    const Real phase = 2.0 * M_PI * time / gust_period;
+    const Real gust_factor = 1.0 + gust_amplitude * std::sin(phase);
+
+    for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto const vb = vel_base.const_array(mfi);
+        auto       v  = vel.array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            v(i, j, k, 0) = vb(i, j, k, 0) * gust_factor;
+            v(i, j, k, 1) = vb(i, j, k, 1) * gust_factor;
+            v(i, j, k, 2) = vb(i, j, k, 2) * gust_factor;
+        });
+    }
+
+    // Optional: print diagnostic every ~60 seconds
+    static int last_print_step = -1000;
+    const int current_step = static_cast<int>(time / 60.0);
+    if (current_step > last_print_step) {
+        amrex::Print() << "  Periodic gust factor: " << gust_factor
+                       << " (amplitude=" << gust_amplitude
+                       << ", period=" << gust_period << "s)\n";
+        last_print_step = current_step;
+    }
+}
+
 #endif // TURB_WIND_H
 
