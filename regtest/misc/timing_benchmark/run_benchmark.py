@@ -126,7 +126,9 @@ def _make_inputs_2d(n_cells: int, nsteps: int, scenario: str) -> str:
     centre    = 500.0
     mg        = min(n_cells, 64)   # max_grid_size
     prop      = ("farsite" if scenario == "farsite" else "levelset")
-    return textwrap.dedent(f"""\
+    
+    # Base configuration
+    base_config = f"""\
         # Timing benchmark – 2D {scenario}  n={n_cells}
         n_cell_x = {n_cells}
         n_cell_y = {n_cells}
@@ -154,17 +156,61 @@ def _make_inputs_2d(n_cells: int, nsteps: int, scenario: str) -> str:
 
         reinit_int = -1
 
-        rothermel.fuel_model = FM4
-        rothermel.M_f        = 0.08
-
         propagation_method   = {prop}
-        farsite.use_anderson_LW = 1
-        farsite.phi_threshold   = 0.1
-
+        
         fire_stats_file = ""
         write_perimeter_csv     = 0
         write_perimeter_geojson = 0
-    """)
+    """
+    
+    # Model-specific configuration
+    if scenario == "balbi":
+        model_config = """\
+        fire_spread_model = balbi
+        balbi.T_a = 300.0
+        balbi.T_f = 1000.0
+        balbi.T_i = 600.0
+        rothermel.fuel_model = FM4
+        rothermel.M_f = 0.08
+        """
+    elif scenario == "cruz_crown":
+        model_config = """\
+        fire_spread_model = cruz_crown
+        cruz_crown.CBD  = 0.15
+        cruz_crown.MC10 = 8.0
+        """
+    elif scenario == "cheney_gould":
+        model_config = """\
+        fire_spread_model = cheney_gould
+        cheney_gould.moisture = 8.0
+        cheney_gould.curing   = 1.0
+        """
+    elif scenario == "fbp_o1a":
+        model_config = """\
+        fire_spread_model = fbp_o1a
+        fbp.fuel_type = o1a
+        fbp.curing = 80.0
+        fbp.moisture = 8.0
+        """
+    elif scenario == "lautenberger":
+        model_config = """\
+        fire_spread_model = lautenberger
+        rothermel.fuel_model = FM4
+        rothermel.M_f = 0.08
+        lautenberger.A_L = 1.05e-5
+        lautenberger.B_L = 2.5
+        lautenberger.C_L = 0.45
+        lautenberger.D_L = 0.50
+        """
+    else:  # levelset or farsite
+        model_config = """\
+        rothermel.fuel_model = FM4
+        rothermel.M_f        = 0.08
+        farsite.use_anderson_LW = 1
+        farsite.phi_threshold   = 0.1
+        """
+    
+    return textwrap.dedent(base_config + model_config)
 
 
 def _make_inputs_3d(n_cells: int, nsteps: int, scenario: str) -> str:
@@ -174,7 +220,9 @@ def _make_inputs_3d(n_cells: int, nsteps: int, scenario: str) -> str:
     centre    = 500.0
     mg        = min(n_cells, 32)
     prop      = ("farsite" if scenario == "farsite" else "levelset")
-    return textwrap.dedent(f"""\
+    
+    # Base configuration
+    base_config = f"""\
         # Timing benchmark – 3D {scenario}  n={n_cells}
         n_cell_x = {n_cells}
         n_cell_y = {n_cells}
@@ -203,17 +251,61 @@ def _make_inputs_3d(n_cells: int, nsteps: int, scenario: str) -> str:
 
         reinit_int = -1
 
-        rothermel.fuel_model = FM4
-        rothermel.M_f        = 0.08
-
         propagation_method   = {prop}
-        farsite.use_anderson_LW = 1
-        farsite.phi_threshold   = 0.1
-
+        
         fire_stats_file = ""
         write_perimeter_csv     = 0
         write_perimeter_geojson = 0
-    """)
+    """
+    
+    # Model-specific configuration
+    if scenario == "balbi":
+        model_config = """\
+        fire_spread_model = balbi
+        balbi.T_a = 300.0
+        balbi.T_f = 1000.0
+        balbi.T_i = 600.0
+        rothermel.fuel_model = FM4
+        rothermel.M_f = 0.08
+        """
+    elif scenario == "cruz_crown":
+        model_config = """\
+        fire_spread_model = cruz_crown
+        cruz_crown.CBD  = 0.15
+        cruz_crown.MC10 = 8.0
+        """
+    elif scenario == "cheney_gould":
+        model_config = """\
+        fire_spread_model = cheney_gould
+        cheney_gould.moisture = 8.0
+        cheney_gould.curing   = 1.0
+        """
+    elif scenario == "fbp_o1a":
+        model_config = """\
+        fire_spread_model = fbp_o1a
+        fbp.fuel_type = o1a
+        fbp.curing = 80.0
+        fbp.moisture = 8.0
+        """
+    elif scenario == "lautenberger":
+        model_config = """\
+        fire_spread_model = lautenberger
+        rothermel.fuel_model = FM4
+        rothermel.M_f = 0.08
+        lautenberger.A_L = 1.05e-5
+        lautenberger.B_L = 2.5
+        lautenberger.C_L = 0.45
+        lautenberger.D_L = 0.50
+        """
+    else:  # levelset or farsite
+        model_config = """\
+        rothermel.fuel_model = FM4
+        rothermel.M_f        = 0.08
+        farsite.use_anderson_LW = 1
+        farsite.phi_threshold   = 0.1
+        """
+    
+    return textwrap.dedent(base_config + model_config)
 
 
 def make_inputs(n_cells: int, nsteps: int, scenario: str, dim: int) -> str:
@@ -418,9 +510,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip-scaling", action="store_true",
                    help="Skip the scaling-law check (still checks for run failures)")
     p.add_argument("--scenarios", nargs="+",
-                   choices=["levelset", "farsite"],
+                   choices=["levelset", "farsite", "balbi", "cruz_crown", 
+                            "cheney_gould", "fbp_o1a", "lautenberger"],
                    default=["levelset", "farsite"],
-                   help="Scenarios to benchmark (default: both)")
+                   help="Scenarios to benchmark (default: levelset and farsite)")
     return p
 
 

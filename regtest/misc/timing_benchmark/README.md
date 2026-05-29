@@ -7,8 +7,13 @@
 #
 # Scenarios
 # ----------
-# 1. Level-set advection (propagation_method=levelset)
-# 2. FARSITE ellipse propagation  (propagation_method=farsite)
+# 1. Level-set advection (propagation_method=levelset, Rothermel FM4)
+# 2. FARSITE ellipse propagation  (propagation_method=farsite, Rothermel FM4)
+# 3. Balbi (2009) physics-based spread (fire_spread_model=balbi)
+# 4. Cruz crown fire (fire_spread_model=cruz_crown)
+# 5. Cheney-Gould grassfire (fire_spread_model=cheney_gould)
+# 6. Canadian FBP O1A grassfire (fire_spread_model=fbp_o1a)
+# 7. Lautenberger physics-based (fire_spread_model=lautenberger)
 #
 # Grid sizes benchmarked
 # -----------------------
@@ -36,8 +41,19 @@
 # ----------------
 # From the build directory:
 #
+#   # Run default benchmarks (levelset and farsite)
 #   python3 ../regtest/timing_benchmark/run_benchmark.py \
 #       --exe ./levelset --dim 2 --nsteps 20
+#
+#   # Run all model benchmarks
+#   python3 ../regtest/timing_benchmark/run_benchmark.py \
+#       --exe ./levelset --dim 2 --nsteps 20 \
+#       --scenarios levelset farsite balbi cruz_crown cheney_gould fbp_o1a lautenberger
+#
+#   # Run specific model benchmark
+#   python3 ../regtest/timing_benchmark/run_benchmark.py \
+#       --exe ./levelset --dim 2 --nsteps 20 \
+#       --scenarios balbi
 #
 # Adjust --nsteps for faster / more accurate timings.
 # Use --dry-run to preview the generated inputs without running the solver.
