@@ -379,7 +379,6 @@ Real compute_bui(Real DMC, Real DC)
     if (DMC <= Real(0.4) * DC) {
         BUI = Real(0.8) * DMC * DC / (DMC + Real(0.4) * DC);
     } else {
-        const Real p = (DMC - Real(0.4) * DC) / (DMC + Real(0.4) * DC);
         BUI = DMC - (Real(1.0) - Real(0.8) * DC / (DMC + Real(0.4) * DC))
             * (Real(0.92) + std::pow((Real(0.0114) * DMC), Real(1.7)));
     }

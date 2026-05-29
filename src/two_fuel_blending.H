@@ -205,14 +205,12 @@ inline void apply_two_fuel_blending(
         auto R_2 = R_secondary_mf.const_array(mfi);
         auto f   = blend_fraction_mf.const_array(mfi);
         
-        const BlendMethod m = method;
-        
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             const Real R_primary   = R_1(i, j, k);
             const Real R_secondary = R_2(i, j, k);
             const Real fraction    = f(i, j, k);
             
-            R_1(i, j, k) = blend_two_fuel_ros(R_primary, R_secondary, fraction, m);
+            R_1(i, j, k) = blend_two_fuel_ros(R_primary, R_secondary, fraction, method);
         });
     }
 }
