@@ -115,12 +115,15 @@ add_regression_test(crown_initiation         crown_fire/crown_initiation)
 add_regression_test(cruz_crown_continental_us crown_fire/cruz_crown_continental_us)
 add_regression_test(fmc_seasonal             crown_fire/fmc_seasonal)
 add_regression_test(rothermel1991_crown      crown_fire/rothermel1991_crown)
+add_regression_test(fmc_phenology_sinusoidal crown_fire/fmc_phenology_sinusoidal)
+add_regression_test(fmc_phenology_gdd        crown_fire/fmc_phenology_gdd)
 
 # ===========================================================================
 # spotting/ – firebrand spotting models
 # ===========================================================================
 add_regression_test(firebrand_spotting       spotting/firebrand_spotting)
 add_regression_test(albini_spotting          spotting/albini_spotting)
+add_regression_test(ember_accumulation       spotting/ember_accumulation)
 if(Python3_FOUND)
     add_python_setup_regression_test(albini_spotting_3d_wind
                                      spotting/albini_spotting_3d_wind
@@ -138,6 +141,7 @@ add_regression_test(balbi_viegas_heatflux       terrain/balbi_viegas_heatflux)
 add_regression_test(windninja_ridge_canyon      terrain/windninja_ridge_canyon)
 add_regression_test(farsite_wind                terrain/farsite_wind)
 add_regression_test(terrain_gradient_correction terrain/terrain_gradient_correction)
+add_regression_test(slope_flame_tilt_radiation  terrain/slope_flame_tilt_radiation)
 if(Python3_FOUND)
     add_python_setup_regression_test(solar_horizon_shading
                                      terrain/solar_horizon_shading
@@ -155,6 +159,7 @@ endif()
 add_regression_test(cheney_gould_grassfire   moisture/cheney_gould_grassfire)
 add_regression_test(precip_wetting           moisture/precip_wetting)
 add_regression_test(spatial_moisture_output  moisture/spatial_moisture_output)
+add_regression_test(mcarthur_scaling         moisture/mcarthur_scaling)
 
 # ===========================================================================
 # fuel/ – fuel models and adjustment files
@@ -204,6 +209,7 @@ add_regression_test(turb_wind                wind/turb_wind)
 add_regression_test(wind_dir_schedule        wind/wind_dir_schedule)
 add_regression_test(waf_andrews              wind/waf_andrews)
 add_regression_test(waf_behaviorplus         wind/waf_behaviorplus)
+add_regression_test(periodic_gust_factor     wind/periodic_gust_factor)
 
 # ===========================================================================
 # diagnostics/ – fire ecology, emissions, Scott-Reinhardt TI/CI
@@ -228,6 +234,11 @@ if(Python3_FOUND)
     add_python_setup_regression_test(landfire_farsite misc/landfire_farsite create_landscape.py)
     add_python_setup_regression_test(nonburnable_mask misc/nonburnable_mask create_landscape.py)
 endif()
+
+# ===========================================================================
+# integration/ – multi-feature integration scenarios
+# ===========================================================================
+add_regression_test(diurnal_chaparral_fire   integration/diurnal_chaparral_fire)
 
 # ===========================================================================
 # python_api/ – Python bindings and coupled simulation tests
@@ -315,28 +326,30 @@ message(STATUS "                    wilson_spread, alexander_lemniscate, ellipse
 message(STATUS "                    reinitialization, fbp_o1a_grassfire, fbp_o1b_grassfire,")
 message(STATUS "                    fbp_s1_slash, fbp_s2_slash, fbp_s3_slash, lautenberger_spread")
 message(STATUS "  crown_fire/     : crown_initiation, cruz_crown_continental_us,")
-message(STATUS "                    fmc_seasonal, rothermel1991_crown")
-message(STATUS "  spotting/       : firebrand_spotting, albini_spotting,")
-message(STATUS "                    albini_spotting_3d_wind")
+message(STATUS "                    fmc_seasonal, rothermel1991_crown,")
+message(STATUS "                    fmc_phenology_sinusoidal, fmc_phenology_gdd")
+message(STATUS "  spotting/       : firebrand_spotting, albini_spotting, ember_accumulation,")
+message(STATUS "                    albini_spotting_3d_wind, ember_cascade_flux")
 message(STATUS "  terrain/        : terrain_wind, balbi_viegas_heatflux,")
 message(STATUS "                    windninja_ridge_canyon, farsite_wind,")
-message(STATUS "                    solar_horizon_shading,")
-message(STATUS "                    terrain_gradient_correction")
+message(STATUS "                    solar_horizon_shading, terrain_gradient_correction,")
+message(STATUS "                    slope_flame_tilt_radiation")
 message(STATUS "  moisture/       : fmd_moisture, cheney_gould_grassfire,")
 message(STATUS "                    precip_wetting, spatial_moisture_output,")
-message(STATUS "                    wtr_diurnal, wtr_rain_wetting")
+message(STATUS "                    wtr_diurnal, wtr_rain_wetting, mcarthur_scaling")
 message(STATUS "  fuel/           : fuel_adj_file")
 message(STATUS "  ignition/       : barrier_polygons, satellite_assimilation,")
 message(STATUS "                    fire_perimeter_output,")
 message(STATUS "                    polygon_ignition, polyline_ignition, kml_perimeter")
 message(STATUS "  wind/           : time_dependent_wind, turb_wind, wind_dir_schedule,")
-message(STATUS "                    waf_andrews, waf_behaviorplus")
+message(STATUS "                    waf_andrews, waf_behaviorplus, periodic_gust_factor")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci,")
 message(STATUS "                    fl_exceedance, farsite_fsa_pst, conditional_weather_bi")
 message(STATUS "  misc/           : sphere_2d, eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, smoke_plume_rise,")
 message(STATUS "                    reentry_spotting, timing_benchmark,")
 message(STATUS "                    landfire_farsite, nonburnable_mask")
+message(STATUS "  integration/    : diurnal_chaparral_fire")
 message(STATUS "")
 message(STATUS "All tests use 2-D (AMReX_SPACEDIM=2) builds only.")
 message(STATUS "")
