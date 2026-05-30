@@ -166,12 +166,14 @@ inline void update_moisture_simard(
     amrex::Real dt_seconds)
 {
     const Real dt_hours = dt_seconds / Real(3600.0);
+    const int ncomp = moisture_mf.nComp();
     
     for (MFIter mfi(moisture_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto moisture = moisture_mf.array(mfi);
         const Real M_equilibrium = M_eq;
         const Real dt_h = dt_hours;
+        const int nc = ncomp;
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
             // Update 1-hr moisture (component 0)
@@ -183,7 +185,7 @@ inline void update_moisture_simard(
                 moisture(i, j, k, 1), M_equilibrium, dt_h, Real(10.0));
             
             // Update 100-hr moisture (component 2)
-            if (moisture_mf.nComp() > 2) {
+            if (nc > 2) {
                 moisture(i, j, k, 2) = simard_moisture_update(
                     moisture(i, j, k, 2), M_equilibrium, dt_h, Real(100.0));
             }

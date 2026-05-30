@@ -1123,9 +1123,8 @@ int main(int argc, char* argv[])
       // ============================================================================
        
       // Feature 2: NFDRS Fire Danger Class (operational categories)
-      if (inputs.write_nfdrs_danger || true) {  // Always compute for output
-          compute_nfdrs_danger_class(f.fire_intensity_class_mf, fireline_intensity_mf);
-      }
+      // Always compute for output
+      compute_nfdrs_danger_class(f.fire_intensity_class_mf, fireline_intensity_mf);
 
       // Feature 3: Crown Fraction Burned (CFB) Diagnostic
       if (inputs.crown_fraction.enable == 1) {
@@ -1134,10 +1133,8 @@ int main(int argc, char* argv[])
               const Box& bx = mfi.validbox();
               auto cfb_arr = f.crown_fraction_burned_mf.array(mfi);
               auto const fi_arr = fireline_intensity_mf.const_array(mfi);
-              auto const eco_arr = ecology_mf.const_array(mfi);
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                  // eco_arr(i,j,k,3) is crown_activity: 0=none, 1=passive, 2=active
-                  // For now, use a simple proxy: CFB based on fire intensity class
+                  // CFB based on fire intensity magnitude as proxy
                   Real I_B = fi_arr(i, j, k);
                   if (I_B > Real(100.0)) {
                       cfb_arr(i, j, k) = amrex::min(Real(1.0), (I_B - Real(100.0)) / Real(5000.0));
@@ -1149,9 +1146,9 @@ int main(int argc, char* argv[])
       }
 
       // Feature 4: Effective Wind Speed (combined wind + slope)
-      if (inputs.effective_wind.enable == 1) {
+      if (inputs.effective_wind.enable == 1 && terrain_slopes.get() != nullptr) {
           compute_effective_wind_speed_field(f.effective_wind_speed_mf, vel, 
-                                            terrain_slopes.get(), geom);
+                                            *(terrain_slopes.get()));
       }
 
       // Feature 5: Thomas Flame Length Model (alternative to Byram)
@@ -1169,8 +1166,9 @@ int main(int argc, char* argv[])
       }
 
       // Feature 6: Fuel Boundary Smoothing
-      if (inputs.fuel_boundary.enable == 1) {
-          apply_fuel_boundary_smoothing(R_mf, inputs.fuel_boundary.transition_cells, geom);
+      if (inputs.fuel_boundary.enable == 1 && !inputs.rothermel.landscape_file.empty()) {
+          apply_fuel_boundary_smoothing(R_mf, fuel_model_mf,
+                                       inputs.n_cell_x, inputs.n_cell_y, inputs.n_cell_z);
       }
 
       // Feature 7: CSIRO Grassfire Acceleration (non-equilibrium growth)
@@ -1193,10 +1191,8 @@ int main(int argc, char* argv[])
           for (MFIter mfi(f.burnout_phases_mf); mfi.isValid(); ++mfi) {
               const Box& bx = mfi.validbox();
               auto phases_arr = f.burnout_phases_mf.array(mfi);
-              auto const at = arrival_time_mf.const_array(mfi);
-              auto const phi_arr = phi.const_array(mfi);
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                  Real tau_residence = inputs.farsite.tau_residence;
+                  Real tau_residence = Real(inputs.farsite.tau_residence);
                   // Default fuel type (fine fuels)
                   Real flaming_frac = inputs.burnout_separation.flaming_fraction_fine;
                   // Could be refined based on fuel_model_mf if available
