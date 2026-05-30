@@ -76,6 +76,25 @@ Fuel Moisture
 .. [Simard1968] Simard, A.J. (1968). The moisture content of forest fuels. 
    Forestry Branch Info. Rep. FF-X-14, Dept. of Forestry, Canada.
 
+.. [Frandsen1997] Frandsen, W.H. (1997). Ignition probability of organic soils. 
+   Canadian Journal of Forest Research, 27(9):1471-1477.
+
+.. [Anderson1969] Anderson, H.E. (1969). Heat transfer and fire spread. 
+   USDA Research Paper INT-69.
+
+.. [Deeming1977] Deeming, J.E., et al. (1977). The National Fire-Danger Rating 
+   System—1978. USDA GTR INT-39.
+
+.. [Scott2001] Scott, J.H., & Reinhardt, E.D. (2001). Assessing crown fire 
+   potential by linking models of surface and crown fire behavior. 
+   USDA RMRS-RP-29.
+
+.. [Thomas1963] Thomas, P.H. (1963). The size of flames from natural fires. 
+   Combustion Symposium, 9(1):844-859.
+
+.. [Urbanski2014] Urbanski, S.P. (2014). Wildfire emissions, carbon, and climate: 
+   Emission factors. Forest Ecology and Management, 317:1-8.
+
 .. [McArthur1967] McArthur, A.G. (1967). Fire behaviour in eucalypt forests. 
    Forestry & Timber Bureau, Canberra, Australia.
 
