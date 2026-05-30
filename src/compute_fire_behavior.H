@@ -34,15 +34,17 @@ using namespace amrex;
 //
 // Parameters:
 //   fireline_intensity_mf  – output: Byram fireline intensity [kW/m]
-//   flame_length_mf        – output: Byram flame length [m]
+//   flame_length_mf        – output: flame length [m]
 //   R_mf                   – input:  rate of spread [m/s] (simulation units)
 //   rp                     – Rothermel fuel parameters (provides fuel load
 //                            and heat content)
+//   flame_length_model     – "byram" (default) or "thomas"
 // ============================================================================
 inline void compute_fire_behavior(MultiFab& fireline_intensity_mf,
                                   MultiFab& flame_length_mf,
                                   const MultiFab& R_mf,
-                                  const RothermelParams& rp)
+                                  const RothermelParams& rp,
+                                  const std::string& flame_length_model = "byram")
 {
     // Heat content [kJ/kg]
     const Real h_kJ_kg = rp.h_heat * WildfireConst::BTU_LB_TO_KJ_KG;
@@ -56,6 +58,9 @@ inline void compute_fire_behavior(MultiFab& fireline_intensity_mf,
 
     const Real h_times_w = h_kJ_kg * w_net_kg_m2;  // kJ/m²
 
+    // Determine which flame length model to use
+    const bool use_thomas = (flame_length_model == "thomas");
+
     for (MFIter mfi(fireline_intensity_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
         auto const R  = R_mf.const_array(mfi);
@@ -68,10 +73,20 @@ inline void compute_fire_behavior(MultiFab& fireline_intensity_mf,
             Real I_B = hw * amrex::max(R(i, j, k), Real(0.0));
             fi(i, j, k) = I_B;
 
-            // Flame length [m] (Byram 1959, SI): L_f = 0.0775 * I_B^0.46
-            fl(i, j, k) = (I_B > Real(0.0))
-                          ? Real(0.0775) * std::pow(I_B, Real(0.46))
-                          : Real(0.0);
+            // Flame length [m]: Byram (1959) or Thomas (1963)
+            if (I_B > Real(0.0)) {
+                if (use_thomas) {
+                    // Thomas (1963): L_f = 0.0266 * I_B^0.667
+                    // Reference: Thomas, P.H. (1963). "The size of flames from natural fires."
+                    //   Symposium (International) on Combustion, 9(1):844-859.
+                    fl(i, j, k) = Real(0.0266) * std::pow(I_B, Real(0.667));
+                } else {
+                    // Byram (1959, SI): L_f = 0.0775 * I_B^0.46 (default)
+                    fl(i, j, k) = Real(0.0775) * std::pow(I_B, Real(0.46));
+                }
+            } else {
+                fl(i, j, k) = Real(0.0);
+            }
         });
     }
 }

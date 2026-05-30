@@ -46,6 +46,17 @@ struct FuelModel {
     amrex::Real sigma_lh = 0.0;  // live herbaceous SAV [ft⁻¹]
     amrex::Real w_lw    = 0.0;  // live woody load [lb/ft²]
     amrex::Real sigma_lw = 0.0;  // live woody SAV [ft⁻¹]
+    // Fuel continuity factor (horizontal fuel coverage) [0-1]
+    // Accounts for heterogeneous fuel distributions where fuels are discontinuous.
+    // 1.0 = continuous fuel bed (default)
+    // 0.5 = 50% fuel coverage (patchy fuels)
+    // 0.0 = no fuel (gaps)
+    // References:
+    //   Finney, M.A. (2006). "An overview of FlamMap fire modeling capabilities."
+    //     USDA Forest Service Proceedings RMRS-P-41, pp. 213-220.
+    //   Parsons, R.A., et al. (2017). "Linking 3D spatial models of fuels and fire."
+    //     Ecological Modelling, 222(3):679-691.
+    amrex::Real continuity = 1.0;  // fuel continuity factor [0-1]
 };
 
 // ============================================================================

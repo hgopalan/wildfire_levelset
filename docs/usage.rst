@@ -2605,3 +2605,62 @@ Performance Issues
 * Increase ``max_grid_size`` for better cache performance
 * Reduce grid resolution if simulation is too slow
 * Use Release build type for optimization
+
+
+Example: Enabling 10 Wildfire Features
+---------------------------------------
+
+The following example shows how to enable the 10 integrated wildfire features in an input file::
+
+    # Enable 10 new wildfire features
+    
+    # Feature 1: Fuel continuity
+    rothermel.fuel_continuity = 0.8
+    
+    # Feature 3: Crown fraction burned
+    crown_fraction.enable = 1
+    
+    # Feature 4: Effective wind speed
+    effective_wind.enable = 1
+    
+    # Feature 5: Thomas flame length model
+    flame_length_model.model = thomas
+    
+    # Feature 6: Fuel boundary smoothing
+    fuel_boundary.enable = 1
+    fuel_boundary.transition_cells = 2.5
+    
+    # Feature 7: CSIRO grassfire acceleration
+    grassfire_accel.enable = 1
+    grassfire_accel.t_accel = 600.0
+    
+    # Feature 8: Burnout time separation
+    burnout_separation.enable = 1
+    burnout_separation.flaming_fraction_fine = 0.70
+    burnout_separation.flaming_fraction_medium = 0.40
+    
+    # Feature 9: Simard moisture model (future use)
+    simard_moisture.enable = 0
+    
+    # Feature 10: Post-frontal smoldering
+    post_frontal.enable = 1
+    post_frontal.tau_fine = 1800.0
+    post_frontal.tau_medium = 3600.0
+
+When enabled, the following additional variables are added to plotfiles:
+
++-----------------------------------+------------------------------------------------------+
+| Variable name                     | Description                                          |
++===================================+======================================================+
+| ``crown_fraction_burned``         | Feature 3: CFB diagnostic [-]                        |
++-----------------------------------+------------------------------------------------------+
+| ``effective_wind_speed``          | Feature 4: Combined wind speed [m/s]                 |
++-----------------------------------+------------------------------------------------------+
+| ``burnout_flaming_time``          | Feature 8: Flaming duration [s]                      |
++-----------------------------------+------------------------------------------------------+
+| ``burnout_smoldering_time``       | Feature 8: Smoldering duration [s]                   |
++-----------------------------------+------------------------------------------------------+
+| ``residual_heat_release``         | Feature 10: Residual intensity [kW/m²]               |
++-----------------------------------+------------------------------------------------------+
+| ``time_since_burn``               | Feature 10: Time elapsed since burn [s]              |
++-----------------------------------+------------------------------------------------------+

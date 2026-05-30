@@ -1820,4 +1820,125 @@ void parse_inputs(InputParameters& p)
                 << "  view_factor=" << p.flame_tilt.view_factor << "\n";
     }
 
+    // ========================================================================
+    // Feature 3: Crown Fraction Burned
+    // ========================================================================
+    ParmParse pp_cfb("crown_fraction");
+    p.crown_fraction.enable = 0;
+    pp_cfb.query("enable", p.crown_fraction.enable);
+    if (p.crown_fraction.enable == 1) {
+        Print() << "Crown Fraction Burned: enabled\n";
+    }
+
+    // ========================================================================
+    // Feature 4: Effective Wind Speed
+    // ========================================================================
+    ParmParse pp_eff_wind("effective_wind");
+    p.effective_wind.enable = 0;
+    pp_eff_wind.query("enable", p.effective_wind.enable);
+    if (p.effective_wind.enable == 1) {
+        Print() << "Effective Wind Speed (Wind + Slope): enabled\n";
+    }
+
+    // ========================================================================
+    // Feature 5: Thomas Flame Length Model
+    // ========================================================================
+    ParmParse pp_fl_model("flame_length_model");
+    p.flame_length_model.model = "byram";  // default
+    pp_fl_model.query("model", p.flame_length_model.model);
+    if (p.flame_length_model.model == "thomas") {
+        Print() << "Flame Length Model: Thomas (1963) [L = 0.0266 * I^0.667]\n";
+    } else {
+        Print() << "Flame Length Model: Byram (1959) [L = 0.0775 * I^0.46] (default)\n";
+    }
+
+    // ========================================================================
+    // Feature 6: Fuel Boundary Smoothing
+    // ========================================================================
+    ParmParse pp_fuel_bd("fuel_boundary");
+    p.fuel_boundary.enable = 0;
+    p.fuel_boundary.transition_cells = 2.0;
+    pp_fuel_bd.query("enable", p.fuel_boundary.enable);
+    pp_fuel_bd.query("transition_cells", p.fuel_boundary.transition_cells);
+    if (p.fuel_boundary.enable == 1) {
+        Print() << "Fuel Boundary Smoothing: enabled"
+                << "  transition_cells=" << p.fuel_boundary.transition_cells << "\n";
+    }
+
+    // ========================================================================
+    // Feature 7: CSIRO Grassfire Acceleration
+    // ========================================================================
+    ParmParse pp_grass_accel("grassfire_accel");
+    p.grassfire_accel.enable = 0;
+    p.grassfire_accel.t_accel = 600.0;  // 10 minutes
+    pp_grass_accel.query("enable", p.grassfire_accel.enable);
+    pp_grass_accel.query("t_accel", p.grassfire_accel.t_accel);
+    if (p.grassfire_accel.enable == 1) {
+        Print() << "CSIRO Grassfire Acceleration: enabled"
+                << "  t_accel=" << p.grassfire_accel.t_accel << " s\n";
+    }
+
+    // ========================================================================
+    // Feature 8: Burnout Time Separation (Flaming vs Smoldering)
+    // ========================================================================
+    ParmParse pp_burnout_sep("burnout_separation");
+    p.burnout_separation.enable = 0;
+    p.burnout_separation.flaming_fraction_fine = 0.70;
+    p.burnout_separation.flaming_fraction_medium = 0.40;
+    p.burnout_separation.flaming_fraction_heavy = 0.20;
+    p.burnout_separation.flaming_fraction_duff = 0.10;
+    pp_burnout_sep.query("enable", p.burnout_separation.enable);
+    pp_burnout_sep.query("flaming_fraction_fine", p.burnout_separation.flaming_fraction_fine);
+    pp_burnout_sep.query("flaming_fraction_medium", p.burnout_separation.flaming_fraction_medium);
+    pp_burnout_sep.query("flaming_fraction_heavy", p.burnout_separation.flaming_fraction_heavy);
+    pp_burnout_sep.query("flaming_fraction_duff", p.burnout_separation.flaming_fraction_duff);
+    if (p.burnout_separation.enable == 1) {
+        Print() << "Burnout Time Separation (Flaming/Smoldering):\n"
+                << "  Fine fuels: " << (p.burnout_separation.flaming_fraction_fine*100.0) << "% flaming\n"
+                << "  Medium fuels: " << (p.burnout_separation.flaming_fraction_medium*100.0) << "% flaming\n"
+                << "  Heavy fuels: " << (p.burnout_separation.flaming_fraction_heavy*100.0) << "% flaming\n"
+                << "  Duff: " << (p.burnout_separation.flaming_fraction_duff*100.0) << "% flaming\n";
+    }
+
+    // ========================================================================
+    // Feature 9: Simard Moisture Model (Exponential Time-Lag)
+    // ========================================================================
+    ParmParse pp_simard("simard_moisture");
+    p.simard_moisture.enable = 0;
+    p.simard_moisture.tau_1hr = 1.0;
+    p.simard_moisture.tau_10hr = 10.0;
+    p.simard_moisture.tau_100hr = 100.0;
+    pp_simard.query("enable", p.simard_moisture.enable);
+    pp_simard.query("tau_1hr", p.simard_moisture.tau_1hr);
+    pp_simard.query("tau_10hr", p.simard_moisture.tau_10hr);
+    pp_simard.query("tau_100hr", p.simard_moisture.tau_100hr);
+    if (p.simard_moisture.enable == 1) {
+        Print() << "Simard Moisture Model (Exponential Time-Lag): enabled\n"
+                << "  1-hr lag: " << p.simard_moisture.tau_1hr << " hours\n"
+                << "  10-hr lag: " << p.simard_moisture.tau_10hr << " hours\n"
+                << "  100-hr lag: " << p.simard_moisture.tau_100hr << " hours\n";
+    }
+
+    // ========================================================================
+    // Feature 10: Post-Frontal Smoldering
+    // ========================================================================
+    ParmParse pp_post_frontal("post_frontal");
+    p.post_frontal.enable = 0;
+    p.post_frontal.tau_fine = 1800.0;      // 30 minutes
+    p.post_frontal.tau_medium = 3600.0;    // 1 hour
+    p.post_frontal.tau_heavy = 7200.0;     // 2 hours
+    p.post_frontal.tau_duff = 21600.0;     // 6 hours
+    pp_post_frontal.query("enable", p.post_frontal.enable);
+    pp_post_frontal.query("tau_fine", p.post_frontal.tau_fine);
+    pp_post_frontal.query("tau_medium", p.post_frontal.tau_medium);
+    pp_post_frontal.query("tau_heavy", p.post_frontal.tau_heavy);
+    pp_post_frontal.query("tau_duff", p.post_frontal.tau_duff);
+    if (p.post_frontal.enable == 1) {
+        Print() << "Post-Frontal Smoldering (Residual Heat Release): enabled\n"
+                << "  Fine fuels decay time: " << p.post_frontal.tau_fine << " s\n"
+                << "  Medium fuels decay time: " << p.post_frontal.tau_medium << " s\n"
+                << "  Heavy fuels decay time: " << p.post_frontal.tau_heavy << " s\n"
+                << "  Duff decay time: " << p.post_frontal.tau_duff << " s\n";
+    }
+
 }

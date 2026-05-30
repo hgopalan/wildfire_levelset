@@ -147,4 +147,12 @@ using namespace amrex;
 #include "multi_layer_canopy_wind.H"
 #include "fuel_moisture_timelag_de.H"
 
+// ---- Project headers: Feature integration (10 new wildfire features) ----
+#include "effective_wind_speed.H"
+#include "fire_intensity_class.H"
+#include "crown_initiation.H"
+#include "simard_moisture.H"
+#include "fuel_boundary_smoothing.H"
+#include "fire_acceleration.H"
+
 #endif // WILDFIRE_INCLUDES_H

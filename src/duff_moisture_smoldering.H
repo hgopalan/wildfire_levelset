@@ -361,4 +361,116 @@ inline void update_duff_smolder_state(
     }
 }
 
+// ============================================================================
+// Post-Frontal Residual Smoldering (Extended)
+// ============================================================================
+// Extends heat release beyond the flaming front, important for smoke and
+// air quality modeling. Tracks residual heat release in burned regions.
+//
+// This extends the existing duff smoldering with additional post-frontal
+// combustion features for surface fuels and general residual burning.
+//
+// References:
+//   Frandsen, W.H. (1997). "Ignition probability of organic soils."
+//     Canadian Journal of Forest Research, 27(9):1471-1477.
+//   Urbanski, S.P. (2014). "Wildland fire emissions, carbon, and climate."
+//     Forest Ecology and Management, 317:1-8.
+//
+// Model:
+//   HRR_residual(t) = HRR_initial * exp(-t/tau_residual)
+//
+// where:
+//   HRR_initial  - initial residual heat release rate [kW/m²]
+//   t            - time since flaming front passed [s]
+//   tau_residual - residual smoldering time constant [s] (typically 2-6 hours)
+// ============================================================================
+
+// Default parameters for post-frontal smoldering
+namespace PostFrontalConst {
+    // Residual smoldering time constants [s]
+    constexpr Real TAU_RESIDUAL_GRASS     = 1800.0;   // 30 minutes (light fuels)
+    constexpr Real TAU_RESIDUAL_BRUSH     = 7200.0;   // 2 hours (medium fuels)
+    constexpr Real TAU_RESIDUAL_TIMBER    = 14400.0;  // 4 hours (heavy fuels)
+    constexpr Real TAU_RESIDUAL_SLASH     = 21600.0;  // 6 hours (very heavy fuels)
+    
+    // Residual heat fraction (fraction of flaming heat that continues as smoldering)
+    constexpr Real RESIDUAL_HEAT_FRACTION = 0.15;  // 15% of flaming heat
+}
+
+// ============================================================================
+// compute_residual_smoldering_heat_release
+//
+// Computes residual heat release rate in burned regions using exponential decay.
+//
+// Parameters:
+//   HRR_flaming     - flaming heat release rate [kW/m²]
+//   time_since_front - time since flaming front passed [s]
+//   tau_residual    - residual smoldering time constant [s]
+//   residual_fraction - fraction of flaming heat that smolders (default: 0.15)
+//
+// Returns: residual heat release rate [kW/m²]
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_residual_smoldering_heat_release(
+    Real HRR_flaming,
+    Real time_since_front,
+    Real tau_residual = PostFrontalConst::TAU_RESIDUAL_BRUSH,
+    Real residual_fraction = PostFrontalConst::RESIDUAL_HEAT_FRACTION)
+{
+    using namespace amrex;
+    
+    // Ensure positive time constant
+    tau_residual = amrex::max(tau_residual, Real(60.0));
+    
+    // Initial residual heat release
+    const Real HRR_initial = HRR_flaming * residual_fraction;
+    
+    // Exponential decay
+    const Real HRR_residual = HRR_initial * std::exp(-time_since_front / tau_residual);
+    
+    return amrex::max(HRR_residual, Real(0.0));
+}
+
+// ============================================================================
+// get_residual_smoldering_time_constant_by_fuel
+//
+// Returns appropriate residual smoldering time constant based on fuel type.
+//
+// Parameters:
+//   fuel_type - 0: grass, 1: brush, 2: timber, 3: slash
+//
+// Returns: tau_residual [s]
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real get_residual_smoldering_time_constant_by_fuel(int fuel_type)
+{
+    using namespace PostFrontalConst;
+    
+    switch (fuel_type) {
+        case 0:  return TAU_RESIDUAL_GRASS;
+        case 1:  return TAU_RESIDUAL_BRUSH;
+        case 2:  return TAU_RESIDUAL_TIMBER;
+        case 3:  return TAU_RESIDUAL_SLASH;
+        default: return TAU_RESIDUAL_BRUSH;  // Default to medium fuels
+    }
+}
+
+// ============================================================================
+// compute_total_post_frontal_heat_release
+//
+// Combines duff smoldering and surface fuel residual smoldering for total
+// post-frontal heat release.
+//
+// Parameters:
+//   HRR_duff      - duff smoldering heat release [kW/m²]
+//   HRR_residual  - surface fuel residual smoldering [kW/m²]
+//
+// Returns: total post-frontal heat release rate [kW/m²]
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_total_post_frontal_heat_release(Real HRR_duff, Real HRR_residual)
+{
+    return amrex::max(HRR_duff, Real(0.0)) + amrex::max(HRR_residual, Real(0.0));
+}
+
 #endif // DUFF_MOISTURE_SMOLDERING_H

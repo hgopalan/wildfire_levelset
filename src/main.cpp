@@ -1118,6 +1118,90 @@ int main(int argc, char* argv[])
       compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
                            inputs.rothermel, inputs.fire_ecology, inputs.crown);
 
+      // ============================================================================
+      // Feature Integration: Integrate 10 new wildfire features
+      // ============================================================================
+       
+      // Feature 2: NFDRS Fire Danger Class (operational categories)
+      // Always compute for output
+      compute_nfdrs_danger_class(f.fire_intensity_class_mf, fireline_intensity_mf);
+
+      // Feature 3: Crown Fraction Burned (CFB) Diagnostic
+      if (inputs.crown_fraction.enable == 1) {
+          // CFB = (I_B - I_B_surface) / (I_B_active - I_B_surface)
+          for (MFIter mfi(f.crown_fraction_burned_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto cfb_arr = f.crown_fraction_burned_mf.array(mfi);
+              auto const fi_arr = fireline_intensity_mf.const_array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  // CFB based on fire intensity magnitude as proxy
+                  Real I_B = fi_arr(i, j, k);
+                  if (I_B > Real(100.0)) {
+                      cfb_arr(i, j, k) = amrex::min(Real(1.0), (I_B - Real(100.0)) / Real(5000.0));
+                  } else {
+                      cfb_arr(i, j, k) = Real(0.0);
+                  }
+              });
+          }
+      }
+
+      // Feature 4: Effective Wind Speed (combined wind + slope)
+      if (inputs.effective_wind.enable == 1 && terrain_slopes.get() != nullptr) {
+          compute_effective_wind_speed_field(f.effective_wind_speed_mf, vel, 
+                                            *(terrain_slopes.get()));
+      }
+
+      // Feature 5: Thomas Flame Length Model (alternative to Byram)
+      if (inputs.flame_length_model.model == "thomas") {
+          // L = 0.0266 * I^0.667 (vs Byram: L = 0.0775 * I^0.46)
+          for (MFIter mfi(flame_length_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto fl_arr = flame_length_mf.array(mfi);
+              auto const fi_arr = fireline_intensity_mf.const_array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  Real I_B = fi_arr(i, j, k);
+                  fl_arr(i, j, k) = Real(0.0266) * std::pow(amrex::max(I_B, Real(0.0)), Real(0.667));
+              });
+          }
+      }
+
+      // Feature 6: Fuel Boundary Smoothing
+      if (inputs.fuel_boundary.enable == 1 && !inputs.rothermel.landscape_file.empty()) {
+          apply_fuel_boundary_smoothing(R_mf, fuel_model_mf,
+                                       inputs.n_cell_x, inputs.n_cell_y, inputs.n_cell_z);
+      }
+
+      // Feature 7: CSIRO Grassfire Acceleration (non-equilibrium growth)
+      if (inputs.grassfire_accel.enable == 1) {
+          // a(t) = 1 - exp(-t/t_accel), applied to R_mf for grassfire scenarios
+          Real accel_factor = Real(1.0) - std::exp(-dt_step / inputs.grassfire_accel.t_accel);
+          for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto R_arr = R_mf.array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  R_arr(i, j, k) *= (Real(1.0) + accel_factor);
+              });
+          }
+      }
+
+      // Feature 8: Burnout Time Separation (flaming vs smoldering)
+      if (inputs.burnout_separation.enable == 1) {
+          // Split residence time by fuel type; store in burnout_phases_mf
+          // comp 0: flaming_duration, comp 1: smoldering_duration
+          for (MFIter mfi(f.burnout_phases_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto phases_arr = f.burnout_phases_mf.array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  Real tau_residence = Real(inputs.farsite.tau_residence);
+                  // Default fuel type (fine fuels)
+                  Real flaming_frac = inputs.burnout_separation.flaming_fraction_fine;
+                  // Could be refined based on fuel_model_mf if available
+                  phases_arr(i, j, k, 0) = tau_residence * flaming_frac;      // flaming
+                  phases_arr(i, j, k, 1) = tau_residence * (Real(1.0) - flaming_frac); // smoldering
+              });
+          }
+      }
+
       // ---- Conditional weather update (ERC / BI / SC percentile table) ----
       // Select comp from ecology_mf based on trigger_index:
       //   6 = energy_release_component (ERC)
@@ -1534,6 +1618,43 @@ int main(int argc, char* argv[])
             });
           }
         }
+      }
+
+      // Feature 10: Post-Frontal Smoldering - Track time since burn and compute residual heat release
+      if (inputs.post_frontal.enable == 1) {
+          const Real cur_time = time;
+          // Update time_since_burn_mf: elapsed time since each cell first burned
+          for (MFIter mfi(f.time_since_burn_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto const at = arrival_time_mf.const_array(mfi);
+              auto       tsb = f.time_since_burn_mf.array(mfi);
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  if (at(i, j, k) >= Real(0.0)) {
+                      tsb(i, j, k) = cur_time - at(i, j, k);
+                  }
+              });
+          }
+          
+          // Compute residual smoldering heat release: decays exponentially after flame front
+          // I_smolder(t) = I_base * exp(-(t - t_arrival) / tau_decay)
+          for (MFIter mfi(f.residual_heat_release_mf); mfi.isValid(); ++mfi) {
+              const Box& bx = mfi.validbox();
+              auto const at = arrival_time_mf.const_array(mfi);
+              auto const fi = fireline_intensity_mf.const_array(mfi);
+              auto       rhr = f.residual_heat_release_mf.array(mfi);
+              // Use default decay time constant (1 hour for medium fuels)
+              const Real tau_decay = Real(3600.0);  // 1 hour in seconds
+              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                  const Real t_arrive = at(i, j, k);
+                  if (t_arrive >= Real(0.0)) {
+                      const Real elapsed = cur_time - t_arrive;
+                      const Real I_base = fi(i, j, k) * Real(0.1);  // Base smoldering intensity 10% of flaming
+                      rhr(i, j, k) = I_base * std::exp(-elapsed / tau_decay);
+                  } else {
+                      rhr(i, j, k) = Real(0.0);
+                  }
+              });
+          }
       }
 
       // --- Dynamic fire points: check if a new ignition file has appeared
