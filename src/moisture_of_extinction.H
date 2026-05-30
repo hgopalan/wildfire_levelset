@@ -51,10 +51,10 @@ using namespace amrex;
 
 // Default parameters for M_x model
 namespace MoistureExtinctionConst {
-    constexpr Real M_X_MIN_DEFAULT    = 0.12;   // Minimum M_x
-    constexpr Real M_X_MAX_DEFAULT    = 0.45;   // Maximum M_x
-    constexpr Real SIGMA_REF_DEFAULT  = 1739.0; // Reference SAV [ft⁻¹] (1-hr fuel)
-    constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
+    inline constexpr Real M_X_MIN_DEFAULT    = 0.12;   // Minimum M_x
+    inline constexpr Real M_X_MAX_DEFAULT    = 0.45;   // Maximum M_x
+    inline constexpr Real SIGMA_REF_DEFAULT  = 1739.0; // Reference SAV [ft⁻¹] (1-hr fuel)
+    inline constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
 }
 
 // ============================================================================
