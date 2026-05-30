@@ -50,19 +50,7 @@
 using namespace amrex;
 
 // ============================================================================
-// Default parameters for M_x model
-// ============================================================================
-// These constants are defined at file scope (not in a namespace) so they can
-// be used as default arguments in AMREX_GPU_HOST_DEVICE functions. CUDA does
-// not allow namespace-scoped constants as default arguments in device functions.
-// ============================================================================
-constexpr Real M_X_MIN_DEFAULT    = 0.12;   // Minimum M_x
-constexpr Real M_X_MAX_DEFAULT    = 0.45;   // Maximum M_x
-constexpr Real SIGMA_REF_DEFAULT  = 1739.0; // Reference SAV [ft⁻¹] (1-hr fuel)
-constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
-
-// ============================================================================
-// Compute fuel-dependent moisture of extinction
+// Compute fuel-dependent moisture of extinction (full signature)
 //
 // M_x = 0.12 + 0.28 × (σ_fuel / σ_ref)^n
 //
@@ -73,12 +61,16 @@ constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
 //   exponent    – SAV exponent
 //
 // Returns: moisture of extinction [fraction]
+//
+// Note: CUDA does not reliably support default arguments that reference
+// external constants in AMREX_GPU_HOST_DEVICE functions. This version requires
+// all parameters to be explicitly passed. Use the overload below for defaults.
 // ============================================================================
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_moisture_of_extinction(Real sigma_fuel,
-                                    Real sigma_ref = SIGMA_REF_DEFAULT,
-                                    Real M_x_min   = M_X_MIN_DEFAULT,
-                                    Real exponent  = EXPONENT_DEFAULT)
+                                    Real sigma_ref,
+                                    Real M_x_min,
+                                    Real exponent)
 {
     // Avoid division by zero
     if (sigma_ref <= Real(0.0) || sigma_fuel <= Real(0.0)) {
@@ -92,15 +84,30 @@ Real compute_moisture_of_extinction(Real sigma_fuel,
     // Simplified: M_x = 0.12 + 0.28 × (σ_fuel / σ_ref)^(-0.3)
     Real M_x = M_x_min + Real(0.28) * std::pow(sigma_ratio, exponent);
     
-    // Apply reasonable bounds
-    M_x = amrex::max(M_x, M_X_MIN_DEFAULT);
-    M_x = amrex::min(M_x, M_X_MAX_DEFAULT);
+    // Apply reasonable bounds (inline literal values for CUDA compatibility)
+    M_x = amrex::max(M_x, Real(0.12));  // M_X_MIN_DEFAULT
+    M_x = amrex::min(M_x, Real(0.45));  // M_X_MAX_DEFAULT
     
     return M_x;
 }
 
 // ============================================================================
-// Alternative: Rothermel (1972) original formulation
+// Compute moisture of extinction with default parameters
+// (Convenience overload that supplies standard Rothermel defaults)
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_moisture_of_extinction(Real sigma_fuel)
+{
+    return compute_moisture_of_extinction(
+        sigma_fuel,
+        Real(1739.0),  // SIGMA_REF_DEFAULT - reference SAV [ft⁻¹] (1-hr fuel)
+        Real(0.12),    // M_X_MIN_DEFAULT - minimum M_x
+        Real(-0.3)     // EXPONENT_DEFAULT - SAV exponent
+    );
+}
+
+// ============================================================================
+// Alternative: Rothermel (1972) original formulation (full signature)
 //
 // M_x = M_x_base × f(mineral_content, SAV)
 //
@@ -115,8 +122,8 @@ Real compute_moisture_of_extinction(Real sigma_fuel,
 // ============================================================================
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_M_x_rothermel(Real sigma_fuel,
-                          Real S_T         = Real(0.0555),  // Default mineral content
-                          Real sigma_ref   = SIGMA_REF_DEFAULT)
+                          Real S_T,
+                          Real sigma_ref)
 {
     // Rothermel (1972) original empirical relationship
     // M_x ≈ 0.30 + 0.10 × ln(σ/1000)  [approximate]
@@ -133,11 +140,25 @@ Real compute_M_x_rothermel(Real sigma_fuel,
     Real mineral_factor = Real(1.0) - Real(0.5) * S_T;
     M_x *= mineral_factor;
     
-    // Apply bounds
-    M_x = amrex::max(M_x, M_X_MIN_DEFAULT);
-    M_x = amrex::min(M_x, M_X_MAX_DEFAULT);
+    // Apply bounds (inline literal values for CUDA compatibility)
+    M_x = amrex::max(M_x, Real(0.12));  // M_X_MIN_DEFAULT
+    M_x = amrex::min(M_x, Real(0.45));  // M_X_MAX_DEFAULT
     
     return M_x;
+}
+
+// ============================================================================
+// Rothermel formulation with default parameters
+// (Convenience overload)
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_M_x_rothermel(Real sigma_fuel)
+{
+    return compute_M_x_rothermel(
+        sigma_fuel,
+        Real(0.0555),  // Default mineral content
+        Real(1739.0)   // SIGMA_REF_DEFAULT
+    );
 }
 
 // ============================================================================
@@ -146,15 +167,15 @@ Real compute_M_x_rothermel(Real sigma_fuel,
 // Parameters:
 //   M_x_mf      – output: moisture of extinction [fraction]
 //   sigma_mf    – input: fuel SAV [ft⁻¹]
-//   sigma_ref   – reference SAV [ft⁻¹]
-//   M_x_min     – minimum M_x
-//   exponent    – SAV exponent
+//   sigma_ref   – reference SAV [ft⁻¹] (default: 1739.0)
+//   M_x_min     – minimum M_x (default: 0.12)
+//   exponent    – SAV exponent (default: -0.3)
 // ============================================================================
 inline void compute_M_x_field(MultiFab& M_x_mf,
                               const MultiFab& sigma_mf,
-                              Real sigma_ref = SIGMA_REF_DEFAULT,
-                              Real M_x_min   = M_X_MIN_DEFAULT,
-                              Real exponent  = EXPONENT_DEFAULT)
+                              Real sigma_ref = Real(1739.0),
+                              Real M_x_min   = Real(0.12),
+                              Real exponent  = Real(-0.3))
 {
     for (MFIter mfi(M_x_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -179,12 +200,12 @@ inline void compute_M_x_field(MultiFab& M_x_mf,
 //   M_x_mf      – output: moisture of extinction [fraction]
 //   sigma_mf    – input: fuel SAV [ft⁻¹]
 //   S_T_mf      – input: total mineral content [fraction]
-//   sigma_ref   – reference SAV [ft⁻¹]
+//   sigma_ref   – reference SAV [ft⁻¹] (default: 1739.0)
 // ============================================================================
 inline void compute_M_x_field_rothermel(MultiFab& M_x_mf,
                                         const MultiFab& sigma_mf,
                                         const MultiFab& S_T_mf,
-                                        Real sigma_ref = SIGMA_REF_DEFAULT)
+                                        Real sigma_ref = Real(1739.0))
 {
     for (MFIter mfi(M_x_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
