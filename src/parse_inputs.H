@@ -38,6 +38,18 @@ struct RothermelParams {
     amrex::Real sigma_lh;     // live herbaceous SAV [ft⁻¹]                default: 0.0
     amrex::Real w_lw;         // live woody load [lb/ft²]                  default: 0.0
     amrex::Real sigma_lw;     // live woody SAV [ft⁻¹]                     default: 0.0
+    // --- Fuel continuity (horizontal fuel coverage) ---
+    // Accounts for heterogeneous fuel distributions where fuels are discontinuous.
+    // Applied as a multiplicative factor to the computed ROS.
+    //   continuity = 1.0 → continuous fuel bed (default)
+    //   continuity = 0.5 → 50% fuel coverage (patchy fuels)
+    //   continuity = 0.0 → no fuel (gaps)
+    // References:
+    //   Finney, M.A. (2006). "An overview of FlamMap fire modeling capabilities."
+    //     USDA Forest Service Proceedings RMRS-P-41, pp. 213-220.
+    //   Parsons, R.A., et al. (2017). "Linking 3D spatial models of fuels and fire."
+    //     Ecological Modelling, 222(3):679-691.
+    amrex::Real fuel_continuity; // horizontal fuel continuity factor [0-1]  default: 1.0
     // --- Terrain slope (constant over domain) ---
     amrex::Real slope_x;      // ∂z/∂x = tan(slope angle in x-direction)  default: 0.0
     amrex::Real slope_y;      // ∂z/∂y = tan(slope angle in y-direction)  default: 0.0

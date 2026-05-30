@@ -455,4 +455,61 @@ amrex::Real compute_van_wagner_passive_blend(
          + amrex::max(R_crown_active_ms, R_surface_ms) * CF;
 }
 
+// ============================================================================
+// Crown Fraction Burned (CFB) Diagnostic
+// ============================================================================
+// Computes the crown fraction burned (CFB), which distinguishes between
+// passive (torching) and active crown fire, important for emissions and
+// fire effects modeling.
+//
+// CFB = 0:   surface fire only
+// CFB = 0-1: passive crown fire (intermittent torching)
+// CFB = 1:   active crown fire (continuous canopy involvement)
+//
+// Formula (Scott & Reinhardt 2001):
+//   CFB = (R - R_surface) / (R_active_crown - R_surface)
+//
+// References:
+//   Scott, J.H. & Reinhardt, E.D. (2001). "Assessing crown fire potential
+//     by linking models of surface and crown fire behavior." USDA Forest
+//     Service Research Paper RMRS-RP-29.
+//   Cruz, M.G., et al. (2005). "Development and testing of models for
+//     predicting crown fire rate of spread in conifer forest stands."
+//     Canadian Journal of Forest Research, 35(7):1626-1639.
+//
+// Parameters:
+//   R_total:         total (observed or modeled) ROS [m/s]
+//   R_surface:       surface fire ROS [m/s]
+//   R_active_crown:  active crown fire ROS [m/s]
+//
+// Returns:
+//   CFB: crown fraction burned [0-1]
+// ============================================================================
+static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real compute_crown_fraction_burned(
+    amrex::Real R_total,
+    amrex::Real R_surface,
+    amrex::Real R_active_crown) noexcept
+{
+    using namespace amrex;
+    
+    // Ensure positive rates
+    R_total = amrex::max(R_total, Real(0.0));
+    R_surface = amrex::max(R_surface, Real(0.0));
+    R_active_crown = amrex::max(R_active_crown, Real(0.0));
+    
+    // If active crown ROS is not greater than surface, no crown fire
+    if (R_active_crown <= R_surface + Real(1.0e-8)) {
+        return Real(0.0);
+    }
+    
+    // Scott & Reinhardt (2001) CFB formula
+    Real CFB = (R_total - R_surface) / (R_active_crown - R_surface);
+    
+    // Clamp to valid range [0, 1]
+    CFB = amrex::max(Real(0.0), amrex::min(Real(1.0), CFB));
+    
+    return CFB;
+}
+
 #endif // CROWN_INITIATION_H
