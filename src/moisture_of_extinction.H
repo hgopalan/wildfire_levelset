@@ -49,13 +49,17 @@
 
 using namespace amrex;
 
+// ============================================================================
 // Default parameters for M_x model
-namespace MoistureExtinctionConst {
-    inline constexpr Real M_X_MIN_DEFAULT    = 0.12;   // Minimum M_x
-    inline constexpr Real M_X_MAX_DEFAULT    = 0.45;   // Maximum M_x
-    inline constexpr Real SIGMA_REF_DEFAULT  = 1739.0; // Reference SAV [ft⁻¹] (1-hr fuel)
-    inline constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
-}
+// ============================================================================
+// These constants are defined at file scope (not in a namespace) so they can
+// be used as default arguments in AMREX_GPU_HOST_DEVICE functions. CUDA does
+// not allow namespace-scoped constants as default arguments in device functions.
+// ============================================================================
+constexpr Real M_X_MIN_DEFAULT    = 0.12;   // Minimum M_x
+constexpr Real M_X_MAX_DEFAULT    = 0.45;   // Maximum M_x
+constexpr Real SIGMA_REF_DEFAULT  = 1739.0; // Reference SAV [ft⁻¹] (1-hr fuel)
+constexpr Real EXPONENT_DEFAULT   = -0.3;   // SAV exponent
 
 // ============================================================================
 // Compute fuel-dependent moisture of extinction
@@ -72,9 +76,9 @@ namespace MoistureExtinctionConst {
 // ============================================================================
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_moisture_of_extinction(Real sigma_fuel,
-                                    Real sigma_ref = MoistureExtinctionConst::SIGMA_REF_DEFAULT,
-                                    Real M_x_min   = MoistureExtinctionConst::M_X_MIN_DEFAULT,
-                                    Real exponent  = MoistureExtinctionConst::EXPONENT_DEFAULT)
+                                    Real sigma_ref = SIGMA_REF_DEFAULT,
+                                    Real M_x_min   = M_X_MIN_DEFAULT,
+                                    Real exponent  = EXPONENT_DEFAULT)
 {
     // Avoid division by zero
     if (sigma_ref <= Real(0.0) || sigma_fuel <= Real(0.0)) {
@@ -89,8 +93,8 @@ Real compute_moisture_of_extinction(Real sigma_fuel,
     Real M_x = M_x_min + Real(0.28) * std::pow(sigma_ratio, exponent);
     
     // Apply reasonable bounds
-    M_x = amrex::max(M_x, MoistureExtinctionConst::M_X_MIN_DEFAULT);
-    M_x = amrex::min(M_x, MoistureExtinctionConst::M_X_MAX_DEFAULT);
+    M_x = amrex::max(M_x, M_X_MIN_DEFAULT);
+    M_x = amrex::min(M_x, M_X_MAX_DEFAULT);
     
     return M_x;
 }
@@ -112,7 +116,7 @@ Real compute_moisture_of_extinction(Real sigma_fuel,
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_M_x_rothermel(Real sigma_fuel,
                           Real S_T         = Real(0.0555),  // Default mineral content
-                          Real sigma_ref   = MoistureExtinctionConst::SIGMA_REF_DEFAULT)
+                          Real sigma_ref   = SIGMA_REF_DEFAULT)
 {
     // Rothermel (1972) original empirical relationship
     // M_x ≈ 0.30 + 0.10 × ln(σ/1000)  [approximate]
@@ -130,8 +134,8 @@ Real compute_M_x_rothermel(Real sigma_fuel,
     M_x *= mineral_factor;
     
     // Apply bounds
-    M_x = amrex::max(M_x, MoistureExtinctionConst::M_X_MIN_DEFAULT);
-    M_x = amrex::min(M_x, MoistureExtinctionConst::M_X_MAX_DEFAULT);
+    M_x = amrex::max(M_x, M_X_MIN_DEFAULT);
+    M_x = amrex::min(M_x, M_X_MAX_DEFAULT);
     
     return M_x;
 }
@@ -148,9 +152,9 @@ Real compute_M_x_rothermel(Real sigma_fuel,
 // ============================================================================
 inline void compute_M_x_field(MultiFab& M_x_mf,
                               const MultiFab& sigma_mf,
-                              Real sigma_ref = MoistureExtinctionConst::SIGMA_REF_DEFAULT,
-                              Real M_x_min   = MoistureExtinctionConst::M_X_MIN_DEFAULT,
-                              Real exponent  = MoistureExtinctionConst::EXPONENT_DEFAULT)
+                              Real sigma_ref = SIGMA_REF_DEFAULT,
+                              Real M_x_min   = M_X_MIN_DEFAULT,
+                              Real exponent  = EXPONENT_DEFAULT)
 {
     for (MFIter mfi(M_x_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
@@ -180,7 +184,7 @@ inline void compute_M_x_field(MultiFab& M_x_mf,
 inline void compute_M_x_field_rothermel(MultiFab& M_x_mf,
                                         const MultiFab& sigma_mf,
                                         const MultiFab& S_T_mf,
-                                        Real sigma_ref = MoistureExtinctionConst::SIGMA_REF_DEFAULT)
+                                        Real sigma_ref = SIGMA_REF_DEFAULT)
 {
     for (MFIter mfi(M_x_mf); mfi.isValid(); ++mfi) {
         const Box& bx = mfi.validbox();
