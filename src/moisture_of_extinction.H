@@ -84,8 +84,8 @@ Real compute_moisture_of_extinction(Real sigma_fuel,
     // Simplified: M_x = 0.12 + 0.28 × (σ_fuel / σ_ref)^(-0.3)
     Real M_x = M_x_min + Real(0.28) * std::pow(sigma_ratio, exponent);
     
-    // Apply reasonable bounds (inline literal values for CUDA compatibility)
-    M_x = amrex::max(M_x, Real(0.12));  // M_X_MIN_DEFAULT
+    // Apply reasonable bounds (use M_x_min parameter and M_X_MAX of 0.45)
+    M_x = amrex::max(M_x, M_x_min);
     M_x = amrex::min(M_x, Real(0.45));  // M_X_MAX_DEFAULT
     
     return M_x;
@@ -149,15 +149,15 @@ Real compute_M_x_rothermel(Real sigma_fuel,
 
 // ============================================================================
 // Rothermel formulation with default parameters
-// (Convenience overload)
+// (Convenience overload that supplies standard defaults)
 // ============================================================================
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_M_x_rothermel(Real sigma_fuel)
 {
     return compute_M_x_rothermel(
         sigma_fuel,
-        Real(0.0555),  // Default mineral content
-        Real(1739.0)   // SIGMA_REF_DEFAULT
+        Real(0.0555),  // S_T: Default total mineral content [fraction]
+        Real(1739.0)   // SIGMA_REF_DEFAULT: Reference SAV [ft⁻¹] (1-hr fuel)
     );
 }
 
