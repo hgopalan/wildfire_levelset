@@ -166,6 +166,29 @@ struct WildfireFields {
     // in each cell, regardless of whether the cell is actively burning.
     MultiFab fl_exceedance_mf;
 
+    // ---- Feature 3: Crown Fraction Burned diagnostic ----
+    // CFB = (I_B - I_B_surface) / (I_B_active_crown - I_B_surface) for crown fire analysis
+    MultiFab crown_fraction_burned_mf;
+
+    // ---- Feature 4: Effective Wind Speed (Wind + Slope combined) ----
+    // Scalar effective wind speed combining ambient wind and slope effects [m/s]
+    MultiFab effective_wind_speed_mf;
+
+    // ---- Feature 8: Burnout Time Separation ----
+    // Tracks flaming phase duration and smoldering phase separately
+    // comp 0: flaming_duration [s], comp 1: smoldering_duration [s]
+    MultiFab burnout_phases_mf;
+
+    // ---- Feature 10: Post-Frontal Residual Heat Release ----
+    // Tracks residual smoldering heat release post-flame-front [kW/m²]
+    // Decays exponentially after fire front passage
+    MultiFab residual_heat_release_mf;
+
+    // ---- Feature 10: Time-since-burnfront (for post-frontal decay) ----
+    // Records elapsed time since each cell was burned, for post-frontal decay
+    // -1 = not yet burned; >= 0 = seconds since arrival
+    MultiFab time_since_burn_mf;
+
     // ---- Terrain slopes helper (2 comps: slope_x, slope_y) ----
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
@@ -253,6 +276,15 @@ struct WildfireFields {
         , spotting_lineage_mf(ba, dm, SPOT_LINEAGE_NCOMP, 0)
         , humidity_mf(ba, dm, 1, 0)
         , fl_exceedance_mf     (ba, dm, 1,                 0)
+        // Feature 3: Crown fraction burned
+        , crown_fraction_burned_mf(ba, dm, 1,              0)
+        // Feature 4: Effective wind speed
+        , effective_wind_speed_mf(ba, dm, 1,              0)
+        // Feature 8: Burnout phases (flaming/smoldering)
+        , burnout_phases_mf    (ba, dm, 2,                 0)
+        // Feature 10: Residual heat release and time tracking
+        , residual_heat_release_mf(ba, dm, 1,             0)
+        , time_since_burn_mf   (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
         // accel_state_mf starts as nullptr; allocated if use_temporal = 1
@@ -314,6 +346,15 @@ struct WildfireFields {
         spotting_lineage_mf.setVal(Real(-1.0));
         // Flame-length exceedance: 0 = no fire observed yet
         fl_exceedance_mf.setVal(Real(0.0));
+        // Feature 3: Crown fraction burned (0-1, or -1 if disabled/not computed)
+        crown_fraction_burned_mf.setVal(Real(-1.0));
+        // Feature 4: Effective wind speed [m/s]
+        effective_wind_speed_mf.setVal(Real(0.0));
+        // Feature 8: Burnout phases
+        burnout_phases_mf.setVal(Real(0.0));  // comp 0: flaming, comp 1: smoldering
+        // Feature 10: Residual heat release and time tracking
+        residual_heat_release_mf.setVal(Real(0.0));
+        time_since_burn_mf.setVal(Real(-1.0));  // -1 = not yet burned
     }
 };
 

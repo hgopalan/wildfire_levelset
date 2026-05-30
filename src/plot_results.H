@@ -109,6 +109,13 @@ inline void write_wildfire_plotfile(
     MultiFab& ros_at_arrival_mf     = f.ros_at_arrival_mf;
     MultiFab& ember_cascade_mf      = f.ember_cascade_mf;
     MultiFab& fl_exceedance_mf      = f.fl_exceedance_mf;
+    
+    // New diagnostic fields for 10 feature integration
+    MultiFab& crown_fraction_burned_mf = f.crown_fraction_burned_mf;
+    MultiFab& effective_wind_speed_mf = f.effective_wind_speed_mf;
+    MultiFab& burnout_phases_mf = f.burnout_phases_mf;
+    MultiFab& residual_heat_release_mf = f.residual_heat_release_mf;
+    MultiFab& time_since_burn_mf = f.time_since_burn_mf;
 
     const bool has_landscape = !inputs.rothermel.landscape_file.empty();
 
@@ -221,7 +228,11 @@ inline void write_wildfire_plotfile(
         "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y",
         "ros_at_arrival",
         "ember_cascade_flux", "ember_cascade_ignition",
-        "fl_exceedance"
+        "fl_exceedance",
+        // New Feature 3-10 diagnostics
+        "crown_fraction_burned", "effective_wind_speed",
+        "burnout_flaming_time", "burnout_smoldering_time",
+        "residual_heat_release", "time_since_burn"
 #else
         , "farsite_dx", "farsite_dy", "R",
         "spot_prob", "spot_count", "spot_dist", "spot_active",
@@ -251,7 +262,11 @@ inline void write_wildfire_plotfile(
         "spot_lineage_x", "spot_lineage_y", "albini_lineage_x", "albini_lineage_y",
         "ros_at_arrival",
         "ember_cascade_flux", "ember_cascade_ignition",
-        "fl_exceedance"
+        "fl_exceedance",
+        // New Feature 3-10 diagnostics
+        "crown_fraction_burned", "effective_wind_speed",
+        "burnout_flaming_time", "burnout_smoldering_time",
+        "residual_heat_release", "time_since_burn"
 #endif
     };
 
@@ -297,7 +312,8 @@ inline void write_wildfire_plotfile(
                     + 2 + 1 + SPOT_LINEAGE_NCOMP   // spread_dir(2), spot_catch_prob(1), lineage(4)
                     + 1                             // ros_at_arrival (1)
                     + 2                             // ember_cascade (flux + ignition flag)
-                    + 1;                            // fl_exceedance (1)
+                    + 1                             // fl_exceedance (1)
+                    + 1 + 1 + 2 + 1 + 1;            // new Features: cfb(1), eff_wind(1), burnout_phases(2), residual_heat(1), time_since_burn(1)
     MultiFab plotmf(ba, dm, ncomp, 0);
 
     int c = 0;
@@ -346,7 +362,13 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, spotting_lineage_mf,   0, c, SPOT_LINEAGE_NCOMP, 0); c += SPOT_LINEAGE_NCOMP;
     MultiFab::Copy(plotmf, ros_at_arrival_mf,     0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, ember_cascade_mf,      0, c, 2,           0); c += 2;
-    MultiFab::Copy(plotmf, fl_exceedance_mf,      0, c, 1,           0);
+    MultiFab::Copy(plotmf, fl_exceedance_mf,      0, c, 1,           0); c += 1;
+    // New Feature diagnostics
+    MultiFab::Copy(plotmf, crown_fraction_burned_mf, 0, c, 1,        0); c += 1;
+    MultiFab::Copy(plotmf, effective_wind_speed_mf,  0, c, 1,        0); c += 1;
+    MultiFab::Copy(plotmf, burnout_phases_mf,       0, c, 2,        0); c += 2;
+    MultiFab::Copy(plotmf, residual_heat_release_mf, 0, c, 1,        0); c += 1;
+    MultiFab::Copy(plotmf, time_since_burn_mf,      0, c, 1,        0);
 
     // ---- Write plotfile ----
     char buf[64];

@@ -1257,6 +1257,102 @@ struct InputParameters {
         amrex::Real view_factor;     // radiative view factor (default: 0.4)
     } flame_tilt;
 
+    // ============================================================================
+    // Feature 3: Crown Fraction Burned (CFB) Diagnostic
+    // ============================================================================
+    // Computes crown fraction burned for passive/active crown fire distinction.
+    // Input prefix: "crown_fraction."
+    // References: Scott & Reinhardt (2001), Cruz et al. (2005)
+    struct CrownFractionParams {
+        int enable;                  // 1 to compute CFB diagnostic (default: 0)
+    } crown_fraction;
+
+    // ============================================================================
+    // Feature 4: Effective Wind Speed (Combined Wind + Slope)
+    // ============================================================================
+    // Vector combination of wind and slope-equivalent wind speeds.
+    // Input prefix: "effective_wind."
+    // References: Rothermel (1983), Sharples et al. (2008)
+    struct EffectiveWindParams {
+        int enable;                  // 1 to compute effective wind speed (default: 0)
+    } effective_wind;
+
+    // ============================================================================
+    // Feature 5: Thomas Flame Length Model Option
+    // ============================================================================
+    // Alternative flame length model: L = 0.0266 * I^0.667 (vs Byram 0.0775 * I^0.46)
+    // Input prefix: "flame_length_model."
+    // References: Thomas (1963), Nelson (1980)
+    struct FlameLengthModelParams {
+        std::string model;           // "byram" (default) or "thomas"
+    } flame_length_model;
+
+    // ============================================================================
+    // Feature 6: Fuel Boundary Smoothing
+    // ============================================================================
+    // Distance-weighted ROS blending at fuel boundaries to eliminate discontinuities.
+    // Input prefix: "fuel_boundary."
+    // References: Finney (1998, 2006)
+    struct FuelBoundaryParams {
+        int enable;                  // 1 to apply fuel boundary smoothing (default: 0)
+        amrex::Real transition_cells;// number of cells for transition zone (default: 2.0)
+    } fuel_boundary;
+
+    // ============================================================================
+    // Feature 7: CSIRO Grassfire Acceleration (Non-Equilibrium Growth)
+    // ============================================================================
+    // Models fire acceleration during initial spread phase.
+    // Input prefix: "grassfire_accel."
+    // References: Cheney & Gould (1995), Gould et al. (2007)
+    struct GrassfireAccelParams {
+        int enable;                  // 1 to enable grassfire acceleration (default: 0)
+        amrex::Real t_accel;         // acceleration time constant [s] (default: 600.0 = 10 min)
+    } grassfire_accel;
+
+    // ============================================================================
+    // Feature 8: Burnout Time Separation (Flaming vs Smoldering)
+    // ============================================================================
+    // Splits total residence time into flaming and smoldering phases by fuel type.
+    // Input prefix: "burnout_separation."
+    // References: Anderson (1969), Byram (1959), Frandsen (1997)
+    struct BurnoutSeparationParams {
+        int enable;                  // 1 to separate flaming/smoldering times (default: 0)
+        // Fraction of residence time that is flaming by fuel class
+        amrex::Real flaming_fraction_fine;    // fine fuels (default: 0.70 = 70%)
+        amrex::Real flaming_fraction_medium;  // medium fuels (default: 0.40 = 40%)
+        amrex::Real flaming_fraction_heavy;   // heavy fuels (default: 0.20 = 20%)
+        amrex::Real flaming_fraction_duff;    // duff/litter (default: 0.10 = 10%)
+    } burnout_separation;
+
+    // ============================================================================
+    // Feature 9: Simard Moisture Model (Exponential Time-Lag)
+    // ============================================================================
+    // Exponential time-lag moisture update: M(t+dt) = M_eq + (M(t) - M_eq) * exp(-dt/tau)
+    // Input prefix: "simard_moisture."
+    // References: Simard (1968), Fosberg (1975)
+    struct SimardMoistureParams {
+        int enable;                  // 1 to use Simard model (default: 0)
+        // Time constants [hours] for standard fuel classes
+        amrex::Real tau_1hr;         // 1-hour fuel lag (default: 1.0)
+        amrex::Real tau_10hr;        // 10-hour fuel lag (default: 10.0)
+        amrex::Real tau_100hr;       // 100-hour fuel lag (default: 100.0)
+    } simard_moisture;
+
+    // ============================================================================
+    // Feature 10: Post-Frontal Smoldering (Residual Heat Release)
+    // ============================================================================
+    // Models residual combustion after flame front passage for smoke/air quality.
+    // Input prefix: "post_frontal."
+    // References: Frandsen (1997), Urbanski (2014)
+    struct PostFrontalParams {
+        int enable;                  // 1 to track post-frontal smoldering (default: 0)
+        // Decay time constants [seconds] by fuel class
+        amrex::Real tau_fine;        // fine fuels (default: 1800 = 30 min)
+        amrex::Real tau_medium;      // medium fuels (default: 3600 = 1 hour)
+        amrex::Real tau_heavy;       // heavy fuels (default: 7200 = 2 hours)
+        amrex::Real tau_duff;        // duff/litter (default: 21600 = 6 hours)
+    } post_frontal;
+
     // ---- Real-time satellite fire detection assimilation ----
     // Full configuration is documented in satellite_assimilation.H.
     // Input prefix: "satellite."
