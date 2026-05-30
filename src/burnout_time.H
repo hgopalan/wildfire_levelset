@@ -143,4 +143,76 @@ inline void compute_burnout_time(MultiFab&             burnout_time_mf,
     }
 }
 
+// ============================================================================
+// Flaming vs Smoldering Combustion Separation
+// ============================================================================
+// Separates the total residence time into flaming and smoldering phases.
+//
+// Following Anderson (1969) and Byram (1959), the combustion process is
+// divided into:
+//   - Flaming phase: high-intensity, short-duration (typically 20-40% of total)
+//   - Smoldering phase: low-intensity, long-duration (typically 60-80% of total)
+//
+// References:
+//   Anderson, H.E. (1969). "Heat transfer and fire spread." USDA Forest
+//     Service Research Paper INT-69.
+//   Byram, G.M. (1959). "Combustion of forest fuels." In: Forest Fire:
+//     Control and Use, pp. 61-89.
+//   Frandsen, W.H. (1997). "Ignition probability of organic soils."
+//     Canadian Journal of Forest Research, 27(9):1471-1477.
+//
+// Parameters:
+//   tau_total       - total residence time [s]
+//   flaming_fraction - fraction of total time in flaming phase [0-1]
+//                      (default: 0.3 for typical forest fuels)
+//
+// Returns:
+//   pair of (tau_flaming, tau_smoldering) [s]
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void compute_flaming_smoldering_times(
+    amrex::Real tau_total,
+    amrex::Real& tau_flaming,
+    amrex::Real& tau_smoldering,
+    amrex::Real flaming_fraction = amrex::Real(0.3)) noexcept
+{
+    using namespace amrex;
+    
+    // Clamp flaming fraction to [0, 1]
+    flaming_fraction = amrex::max(Real(0.0), amrex::min(Real(1.0), flaming_fraction));
+    
+    // Compute phase durations
+    tau_flaming = tau_total * flaming_fraction;
+    tau_smoldering = tau_total * (Real(1.0) - flaming_fraction);
+}
+
+// ============================================================================
+// Fuel-type-dependent flaming fraction
+//
+// Different fuel types have different flaming/smoldering ratios:
+//   - Fine fuels (grass): higher flaming fraction (~0.6-0.8)
+//   - Medium fuels (brush): moderate flaming fraction (~0.3-0.5)
+//   - Heavy fuels (logs): lower flaming fraction (~0.1-0.3)
+//   - Duff/organic: very low flaming fraction (~0.05-0.15)
+//
+// Parameters:
+//   fuel_type - 0: fine (grass), 1: medium (brush), 2: heavy (logs), 3: duff
+//
+// Returns:
+//   flaming_fraction [0-1]
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real get_flaming_fraction_by_fuel_type(int fuel_type) noexcept
+{
+    using namespace amrex;
+    
+    switch (fuel_type) {
+        case 0:  return Real(0.7);   // Fine fuels (grass)
+        case 1:  return Real(0.4);   // Medium fuels (brush/chaparral)
+        case 2:  return Real(0.2);   // Heavy fuels (logs/slash)
+        case 3:  return Real(0.1);   // Duff/organic
+        default: return Real(0.3);   // Default (mixed forest)
+    }
+}
+
 #endif // BURNOUT_TIME_H
