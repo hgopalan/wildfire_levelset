@@ -69,9 +69,11 @@ fire.finalize()
 
 **Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger) • Two-fuel model blending *(new)*
 
-**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)* • Scott & Reinhardt Crown Fire Surface Area (CFSA) *(new)*
+**Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)* • Scott & Reinhardt Crown Fire Surface Area (CFSA) *(new)* • Backing fire ROS empirical ratios *(new)*
 
 **Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) *(new)* • Dynamic moisture of extinction (M_x) *(new)* • Duff moisture with smoldering combustion *(new)* • Fine fuel moisture time-lag differential equations *(new)*
+
+**Fire Danger Indices**: Keetch-Byram Drought Index (KBDI) *(new)* • Haines Index atmospheric stability *(new)* • McArthur FFDI • Canadian FWI System • NFDRS components
 
 **Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition
 
