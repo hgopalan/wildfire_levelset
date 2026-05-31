@@ -801,7 +801,7 @@ inline bool lookup_fuel_model(const std::string& fuel_name, FuelModel& out_model
     // Convert to uppercase for case-insensitive lookup
     std::string upper_name = fuel_name;
     std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     
     // Try direct lookup first
     auto it = database.find(upper_name);
