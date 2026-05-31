@@ -98,6 +98,24 @@ Fuel Moisture
 .. [McArthur1967] McArthur, A.G. (1967). Fire behaviour in eucalypt forests. 
    Forestry & Timber Bureau, Canberra, Australia.
 
+.. [KeetchByram1968] Keetch, J.J., & Byram, G.M. (1968). A drought index for 
+   forest fire control. USDA Forest Service Research Paper SE-38.
+
+.. [Janis2002] Janis, M.J., Johnson, M.B., & Forthun, G. (2002). Near-real time 
+   mapping of Keetch-Byram Drought Index in the south-eastern United States. 
+   International Journal of Wildland Fire, 11(4):281-289.
+
+.. [Haines1988] Haines, D.A. (1988). A lower atmosphere severity index for 
+   wildland fires. National Weather Digest, 13:23-27.
+
+.. [Werth1993] Werth, P.A., & Ochoa, R. (1993). The evaluation of Idaho wildfire 
+   growth using the Haines Index. Weather and Forecasting, 8(2):223-234.
+
+.. [MillsMcCaw2010] Mills, G.A., & McCaw, L. (2010). Atmospheric stability 
+   environments and fire weather in Australia — extending the Haines Index. 
+   CAWCR Technical Report No. 20, Centre for Australian Weather and Climate 
+   Research.
+
 .. [Noble1980] Noble, I.R., Bary, G.A.V., & Gill, A.M. (1980). McArthur's 
    fire-danger meters expressed as equations. Australian Journal of Ecology, 
    5(2):201-203.
