@@ -37,8 +37,8 @@ Tools are grouped into three columns to keep the table compact:
      - **Group B** — QUIC-Fire / FIRETEC
      - **Group C** — WRF-Fire (WRF-SFIRE)
    * - **Surface spread model**
-     - Rothermel (1972) plus six alternative models
-       (Balbi, Cheney–Gould, Cruz, FBP, Lautenberger, Viegas)
+     - Rothermel (1972) plus five alternative models
+       (Balbi, Cheney–Gould, Cruz, FBP, Lautenberger) + Viegas option
      - Rothermel (1972) in all three
      - Semi-empirical QUIC; physics LES FIRETEC
      - Rothermel (1972)
@@ -80,15 +80,15 @@ Tools are grouped into three columns to keep the table compact:
      - N/A (3-D grid)
      - Partial (fuel mask)
    * - **Flame diagnostics**
-     - Byram intensity • Flame length/tilt • Convective number •
-       Packing ratio • Scorch height • TI/CI • NFDRS ERC • McArthur FFDI
+     - Byram intensity • Flame length/tilt/depth • Convective number •
+       Packing ratio • Scorch height • Tree mortality • TI/CI • NFDRS ERC • McArthur FFDI • Fire acceleration
      - FARSITE: intensity + flame length •
        FlamMap/BehavePlus: full outputs
      - Physics-based heat release
      - Intensity + flame length
    * - **Firebrand spotting**
-     - Albini (1983) trajectory • Ember cascade •
-       Probabilistic ignition
+     - Albini (1983) trajectory • Torching model •
+       Ember cascade • Stochastic distance • Probabilistic ignition
      - FARSITE: Albini empirical •
        FlamMap: optional • BehavePlus: point only
      - Select FIRETEC versions
