@@ -1637,3 +1637,456 @@ Integration Architecture
 - **Computational Cost:** Features are only computed when explicitly enabled
 - **Memory Overhead:** Additional MultiFabs for diagnostics add ~50 MB per feature for 512³ domain
 - **Physics-Based:** All formulas based on peer-reviewed wildfire literature
+
+Easy-to-Implement Operational Fire Danger Indices (2026)
+=========================================================
+
+This section documents additional fire danger and fire behavior indices added in 2026
+based on operational wildfire management tools. These features require minimal code changes
+and provide high operational value for fire danger rating and decision support.
+
+Keetch-Byram Drought Index (KBDI)
+-----------------------------------
+
+**Header**: ``src/kbdi_index.H``
+
+The Keetch-Byram Drought Index is a widely-used measure of soil moisture deficit
+and fire potential, particularly in the southeastern United States. The KBDI ranges
+from 0 (no moisture deficit) to 800 (extreme drought).
+
+**Model Formulation**
+
+The KBDI represents the net effect of evapotranspiration and precipitation on soil
+moisture depletion. Daily increment (Keetch & Byram 1968, Janis et al. 2002):
+
+.. math::
+
+   dQ = (800 - Q) \times DF \times ET \times 10^{-3}
+
+where:
+
+.. math::
+
+   ET = 0.968 \times \exp(0.0875 \times T_{\max} + 1.5552) - 8.3
+
+   DF = \frac{1}{1 + 10.88 \times \exp(-0.001736 \times R_A)}
+
+* :math:`Q` = current KBDI value (0-800)
+* :math:`T_{\max}` = daily maximum temperature [°C]
+* :math:`R_A` = mean annual precipitation [mm] (default: 1000 mm)
+* :math:`ET` = evapotranspiration factor (temperature-dependent)
+* :math:`DF` = drought factor (precipitation-dependent)
+
+Precipitation reduces KBDI:
+
+.. math::
+
+   Q_{\text{new}} = \max(0, Q_{\text{old}} - (P - 5))  \quad \text{if } P > 5 \text{ mm}
+
+where :math:`P` is daily precipitation [mm].
+
+**KBDI Interpretation**
+
+.. list-table::
+   :header-rows: 1
+
+   * - KBDI Range
+     - Soil Condition
+     - Fire Potential
+   * - 0-200
+     - Moist soil and duff layers
+     - Low
+   * - 200-400
+     - Soil and duff drying
+     - Increasing
+   * - 400-600
+     - Significant moisture depletion
+     - High
+   * - 600-800
+     - Severe drought
+     - Extreme
+
+**Drought Factor Conversion**
+
+The KBDI can be converted to the McArthur Drought Factor (DF) used in the
+Australian Forest Fire Danger Index (Noble et al. 1980):
+
+.. math::
+
+   DF = 10.5 \times [1 - \exp(-Q/800)] \times [1 - 0.25 \times \exp(-Q/200)]
+
+This provides a 0-10 drought factor scale compatible with ``mcarthur_ffdi.H``.
+
+**API Functions**
+
+Scalar KBDI update (daily):
+
+.. code-block:: cpp
+
+   KBDIState kbdi_state;
+   kbdi_state.Q = 100.0;  // Initial KBDI
+   update_kbdi_scalar(kbdi_state, T_max, precip_mm, annual_precip);
+
+Spatially-varying KBDI (MultiFab):
+
+.. code-block:: cpp
+
+   update_kbdi_field(kbdi_mf, temperature_mf, precip_mf, annual_precip);
+
+Drought factor conversion:
+
+.. code-block:: cpp
+
+   Real drought_factor = compute_drought_factor_from_kbdi(kbdi_state.Q);
+
+**Input Parameters**
+
+KBDI should be updated once per day (not every timestep). Typical usage in a
+daily weather update loop:
+
+.. code-block:: text
+
+   kbdi.enable = 1                # Enable KBDI calculation
+   kbdi.initial_value = 100.0     # Initial KBDI (0-800)
+   kbdi.annual_precip_mm = 1000.0 # Mean annual precipitation [mm]
+
+**References:**
+
+* Keetch, J.J. & Byram, G.M. (1968). "A drought index for forest fire control."
+  USDA Forest Service Research Paper SE-38.
+* Janis, M.J., et al. (2002). "Monitoring the Keetch-Byram Drought Index."
+  International Journal of Wildland Fire, 11:217-222.
+* Noble, I.R., Bary, G.A.V., & Gill, A.M. (1980). "McArthur's fire-danger
+  meters expressed as equations." Australian Journal of Ecology, 5(2):201-203.
+
+Haines Index (Lower Atmospheric Severity Index)
+------------------------------------------------
+
+**Header**: ``src/haines_index.H``
+
+The Haines Index indicates the potential for large plume-dominated wildfires
+and erratic fire behavior based on atmospheric stability and moisture content.
+Values range from 2 (very low potential) to 6 (high potential for extreme behavior).
+
+**Model Formulation**
+
+The Haines Index combines two components:
+
+.. math::
+
+   HI = A + B
+
+where :math:`A` = stability term (1-3) and :math:`B` = moisture term (1-3).
+
+**Elevation Variants**
+
+Three variants exist for different terrain elevations:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 20 35 30
+
+   * - Variant
+     - Elevation
+     - Stability (A)
+     - Moisture (B)
+   * - LOW
+     - < 3000 ft
+     - :math:`\Delta T` = T₉₅₀ - T₈₅₀
+     - T-Td at 850 mb
+   * - MID
+     - 3000-7000 ft
+     - :math:`\Delta T` = T₈₅₀ - T₇₀₀
+     - T-Td at 850 mb
+   * - HIGH
+     - > 7000 ft
+     - :math:`\Delta T` = T₇₀₀ - T₅₀₀
+     - T-Td at 700 mb
+
+**Stability Term (A)**
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variant
+     - A = 1 (Stable)
+     - A = 2 (Moderate)
+     - A = 3 (Unstable)
+   * - LOW
+     - ΔT < 4°C
+     - 4°C ≤ ΔT < 8°C
+     - ΔT ≥ 8°C
+   * - MID
+     - ΔT < 6°C
+     - 6°C ≤ ΔT < 11°C
+     - ΔT ≥ 11°C
+   * - HIGH
+     - ΔT < 18°C
+     - 18°C ≤ ΔT < 22°C
+     - ΔT ≥ 22°C
+
+**Moisture Term (B)**
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variant
+     - B = 1 (Moist)
+     - B = 2 (Moderate)
+     - B = 3 (Dry)
+   * - LOW
+     - T-Td < 6°C
+     - 6°C ≤ T-Td < 10°C
+     - T-Td ≥ 10°C
+   * - MID
+     - T-Td < 6°C
+     - 6°C ≤ T-Td < 13°C
+     - T-Td ≥ 13°C
+   * - HIGH
+     - T-Td < 15°C
+     - 15°C ≤ T-Td < 21°C
+     - T-Td ≥ 21°C
+
+**Haines Index Interpretation**
+
+.. list-table::
+   :header-rows: 1
+
+   * - HI Value
+     - Fire Potential
+   * - 2-3
+     - Very low
+   * - 4
+     - Low
+   * - 5
+     - Moderate
+   * - 6
+     - High (extreme fire behavior likely)
+
+**API Functions**
+
+From upper-air sounding data:
+
+.. code-block:: cpp
+
+   int HI = compute_haines_index(T_lower, T_upper, Td_lower, HainesVariant::MID);
+
+From surface observations (approximation):
+
+.. code-block:: cpp
+
+   int HI = compute_haines_index_surface(T_surface, RH_surface, elevation_m);
+
+Spatially-varying Haines Index:
+
+.. code-block:: cpp
+
+   compute_haines_field(haines_mf, T_lower_mf, T_upper_mf, Td_lower_mf, 
+                        HainesVariant::MID);
+
+**Input Parameters**
+
+When upper-air data is available:
+
+.. code-block:: text
+
+   haines.enable = 1
+   haines.variant = MID        # LOW, MID, or HIGH
+   haines.T_lower = 15.0       # Temperature at lower level [°C]
+   haines.T_upper = 5.0        # Temperature at upper level [°C]
+   haines.Td_lower = 8.0       # Dewpoint at lower level [°C]
+
+When only surface data is available:
+
+.. code-block:: text
+
+   haines.enable = 1
+   haines.use_surface_approximation = 1
+   # Uses existing temperature and humidity fields
+
+**References:**
+
+* Haines, D.A. (1988). "A lower atmosphere severity index for wildland fires."
+  National Weather Digest, 13:23-27.
+* Werth, P.A. & Ochoa, R. (1993). "The evaluation of Idaho wildfire growth
+  using the Haines Index." Weather and Forecasting, 8(2):223-234.
+* Mills, G.A. & McCaw, L. (2010). "Atmospheric stability environments and
+  fire weather in Australia." CAWCR Technical Report No. 20.
+
+Backing Fire Rate of Spread
+----------------------------
+
+**Header**: ``src/backing_fire_ros.H``
+
+The backing fire is the portion of the fire perimeter spreading against the wind
+direction. It exhibits significantly lower rate of spread (ROS) than the heading
+fire, typically 10-40% depending on wind speed and fuel conditions.
+
+**Empirical Backing Fire Ratios**
+
+The backing fire ROS ratio :math:`c/a` (backing coefficient / heading coefficient)
+decreases with increasing wind speed:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Wind Speed
+     - Backing Ratio (c/a)
+     - Typical Range
+   * - Light (< 5 mph)
+     - 0.30-0.40
+     - 30-40% of heading ROS
+   * - Moderate (5-15 mph)
+     - 0.15-0.25
+     - 15-25% of heading ROS
+   * - High (> 15 mph)
+     - 0.10-0.15
+     - 10-15% of heading ROS
+
+**Model Formulation**
+
+In the Richards (1990) ellipse model, fire spread is computed as:
+
+Heading direction (cos θ > 0):
+
+.. math::
+
+   R = (a \cos\theta + b \sin\theta) \times R_{\text{head}}
+
+Backing direction (cos θ < 0):
+
+.. math::
+
+   R = (b \sin\theta - c \cos\theta) \times R_{\text{head}}
+
+where:
+
+* :math:`a` = head fire coefficient (maximum spread, downwind)
+* :math:`b` = flank fire coefficient (crosswind spread)
+* :math:`c` = backing fire coefficient (minimum spread, upwind)
+* :math:`\theta` = angle between fire normal and wind direction
+
+**Backing Coefficient Adjustment**
+
+The backing coefficient :math:`c` can be computed from wind-dependent empirical
+ratios:
+
+.. math::
+
+   c = \frac{c}{a} \times a
+
+where :math:`c/a` is the backing fire ratio from field observations.
+
+**API Functions**
+
+Compute backing fire ratio from wind speed:
+
+.. code-block:: cpp
+
+   Real backing_ratio = compute_backing_fire_ratio(wind_speed_mph);
+
+Compute backing ROS directly:
+
+.. code-block:: cpp
+
+   Real R_backing = compute_backing_ros_from_heading(R_heading, wind_speed_mph);
+
+Adjust ellipse coefficient:
+
+.. code-block:: cpp
+
+   Real coeff_c = adjust_backing_coefficient(coeff_a, wind_speed_mph);
+
+**Integration with FARSITE Ellipse Model**
+
+The backing fire formulation is already integrated into ``farsite_ellipse.H``
+through the Richards (1990) ellipse coefficients. The ``backing_fire_ros.H``
+header provides documentation and helper functions for ensuring coefficients
+match empirical observations.
+
+**References:**
+
+* Rothermel, R.C. (1972). "A mathematical model for predicting fire spread
+  in wildland fuels." USDA Forest Service Research Paper INT-115.
+* Anderson, H.E. (1983). "Predicting wind-driven wildland fire size and shape."
+  USDA Forest Service Research Paper INT-305.
+* Richards, G.D. (1990). "An elliptical growth model of forest fire fronts."
+  International Journal of Numerical Methods in Engineering, 30(6):1163-1179.
+* Finney, M.A. (1998). "FARSITE: Fire Area Simulator." USDA Forest Service
+  Research Paper RMRS-RP-4.
+
+Fire Spread Direction Output
+-----------------------------
+
+**Header**: ``src/plot_results.H``
+
+Fire spread direction vectors (``spread_dir_x``, ``spread_dir_y``) are written
+to every plotfile for visualization and validation. These components represent
+the direction of maximum fire spread based on the ROS gradient field.
+
+**Model Formulation**
+
+The spread direction is computed from the level-set advection velocity:
+
+.. math::
+
+   \mathbf{d} = \frac{\nabla \phi}{|\nabla \phi|}
+
+where :math:`\phi` is the level-set function. The spread direction points
+toward the unburned region (increasing :math:`\phi`).
+
+**Plotfile Variables**
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variable Name
+     - Description
+     - Units
+   * - ``spread_dir_x``
+     - X-component of spread direction
+     - Dimensionless (unit vector)
+   * - ``spread_dir_y``
+     - Y-component of spread direction
+     - Dimensionless (unit vector)
+
+**Visualization**
+
+Spread direction arrows can be visualized in ParaView or VisIt using the
+vector field ``(spread_dir_x, spread_dir_y)``. This is valuable for:
+
+* Validating elliptical fire spread models
+* Identifying wind-terrain interaction effects
+* Debugging fire front propagation
+* Operational fire behavior briefings
+
+**Note:** Fire spread direction is automatically computed and written to
+plotfiles. No additional input parameters are required.
+
+Summary of 2026 Easy-Implementation Features
+---------------------------------------------
+
+Four new operational fire danger indices have been added:
+
+1. **Keetch-Byram Drought Index (KBDI)** - Soil moisture deficit (0-800)
+2. **Haines Index** - Atmospheric stability for plume-dominated fires (2-6)
+3. **Backing Fire ROS** - Empirical backing fire rate reductions (10-40%)
+4. **Fire Spread Direction** - Spread direction vectors for visualization
+
+**Key Characteristics:**
+
+* **Minimal Code Changes:** Each feature implemented as single header file (~100-250 lines)
+* **High Operational Value:** Used by fire management agencies worldwide
+* **GPU Compatible:** All functions use ``AMREX_GPU_HOST_DEVICE`` macros
+* **Literature-Based:** Formulas from peer-reviewed wildfire research
+* **Easy Integration:** Drop-in additions to existing simulation workflow
+
+**Implementation Pattern:**
+
+All features follow the established codebase conventions:
+
+* Single-header implementation (``src/*.H``)
+* GPU-compatible device functions
+* No external dependencies beyond AMReX
+* Minimal computational overhead
+* Well-documented with references
