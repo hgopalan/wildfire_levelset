@@ -593,8 +593,6 @@ int main(int argc, char* argv[])
         const Real CBH_init = Real(inputs.crown.CBH);
         const Real FMC_init = FMC_global_i;
         const Real I_o_init = Real(0.010) * CBH_init * (Real(460.0) + Real(25.9) * FMC_init);
-        CruzCrownComputed ccc_init;
-        if (use_cruz_init) { ccc_init = ccc_global; }
 
         for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
             const Box& bx  = mfi.validbox();

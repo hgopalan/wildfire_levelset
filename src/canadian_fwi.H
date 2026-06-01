@@ -111,7 +111,7 @@ Real compute_ffmc(Real FFMC_prev, Real T, Real RH, Real W, Real rain)
     }
     
     // Logarithmic drying rate (function of wind and EMC)
-    Real k_d, k_l, k_w;
+    Real k_l, k_w;
     if (m_r > E_d) {
         k_l = Real(0.424) * (Real(1.0) - std::pow((RH / Real(100.0)), Real(1.7)))
             + Real(0.0694) * std::sqrt(W) * (Real(1.0) - std::pow((RH / Real(100.0)), Real(8.0)));
