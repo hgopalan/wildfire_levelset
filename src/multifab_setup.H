@@ -271,11 +271,11 @@ struct WildfireFields {
         , spread_dir_mf        (ba, dm, 2,                 0)
         // Spot catching probability
         , spot_catch_prob_mf   (ba, dm, 1,                 0)
-        // Spotfire lineage
-        , spotting_lineage_mf(ba, dm, SPOT_LINEAGE_NCOMP, 0)
         // Weather fields
         , temperature_mf(ba, dm, 1, 0)
         , humidity_mf(ba, dm, 1, 0)
+        // Spotfire lineage
+        , spotting_lineage_mf(ba, dm, SPOT_LINEAGE_NCOMP, 0)
         , fl_exceedance_mf     (ba, dm, 1,                 0)
         // Feature 3: Crown fraction burned
         , crown_fraction_burned_mf(ba, dm, 1,              0)
