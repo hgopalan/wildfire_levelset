@@ -253,6 +253,9 @@ struct WildfireFields {
         , viegas_data          (ba, dm, VIEGAS_NCOMP,      0)
         // Solar
         , shade_fraction_mf    (ba, dm, 1,                 0)
+        // Weather fields
+        , temperature_mf(ba, dm, 1, 0)
+        , humidity_mf(ba, dm, 1, 0)
         // Terrain / landscape
         , elevation_mf         (ba, dm, 1,                 0)
         , slope_mf             (ba, dm, 1,                 0)
@@ -271,9 +274,6 @@ struct WildfireFields {
         , spread_dir_mf        (ba, dm, 2,                 0)
         // Spot catching probability
         , spot_catch_prob_mf   (ba, dm, 1,                 0)
-        // Weather fields
-        , temperature_mf(ba, dm, 1, 0)
-        , humidity_mf(ba, dm, 1, 0)
         // Spotfire lineage
         , spotting_lineage_mf(ba, dm, SPOT_LINEAGE_NCOMP, 0)
         , fl_exceedance_mf     (ba, dm, 1,                 0)
