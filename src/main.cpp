@@ -1185,13 +1185,12 @@ int main(int argc, char* argv[])
       if (inputs.burnout_separation.enable == 1) {
           // Split residence time by fuel type; store in burnout_phases_mf
           // comp 0: flaming_duration, comp 1: smoldering_duration
+          const Real tau_residence = Real(inputs.farsite.tau_residence);
+          const Real flaming_frac = Real(inputs.burnout_separation.flaming_fraction_fine);
           for (MFIter mfi(f.burnout_phases_mf); mfi.isValid(); ++mfi) {
               const Box& bx = mfi.validbox();
               auto phases_arr = f.burnout_phases_mf.array(mfi);
               ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
-                  Real tau_residence = Real(inputs.farsite.tau_residence);
-                  // Default fuel type (fine fuels)
-                  Real flaming_frac = inputs.burnout_separation.flaming_fraction_fine;
                   // Could be refined based on fuel_model_mf if available
                   phases_arr(i, j, k, 0) = tau_residence * flaming_frac;      // flaming
                   phases_arr(i, j, k, 1) = tau_residence * (Real(1.0) - flaming_frac); // smoldering
