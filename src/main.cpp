@@ -538,7 +538,7 @@ int main(int argc, char* argv[])
         const Box& bx = mfi.validbox();
         auto ex  = fl_exceedance_mf.array(mfi);
         auto const fl = flame_length_mf.const_array(mfi);
-        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(bx, [ex, fl] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
         });
     }
@@ -611,7 +611,7 @@ int main(int argc, char* argv[])
             const bool use_roth91_i  = use_roth1991_init;
             const bool use_passive_i = use_passive_blend_init;
             const Real I_o_i = I_o_init;
-            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            ParallelFor(bx, [R, eco, v, fi, use_sp_i, cbd_arr_i, CBD_g_i, mf_val_i, MC10_i, use_cruz_i, use_roth91_i, use_passive_i, I_o_i] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive crown
                 Real R_surface = R(i, j, k);
                 Real R_crown_ms;
@@ -1000,7 +1000,7 @@ int main(int argc, char* argv[])
               auto sm = spatial_moisture_mf.array(mfi);
               auto const elev = elevation_mf.const_array(mfi);
               auto const shade = shade_fraction_mf.const_array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [sm, elev, shade, lapse, elev0, T_ref_r, RH_ref_r, sol_C, MAGNUS_A, MAGNUS_B] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   const amrex::Real dT_lapse = lapse * (elev(i,j,k) - elev0);
                   amrex::Real T_cell = T_ref_r - dT_lapse;
                   // Clausius–Clapeyron RH correction using the Magnus formula approximation:
@@ -1088,7 +1088,7 @@ int main(int argc, char* argv[])
           const Box& bx = mfi.validbox();
           auto ex  = fl_exceedance_mf.array(mfi);
           auto const fl = flame_length_mf.const_array(mfi);
-          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+          ParallelFor(bx, [ex, fl] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
               ex(i, j, k) = amrex::max(ex(i, j, k), fl(i, j, k));
           });
       }
@@ -1130,7 +1130,7 @@ int main(int argc, char* argv[])
               const Box& bx = mfi.validbox();
               auto cfb_arr = f.crown_fraction_burned_mf.array(mfi);
               auto const fi_arr = fireline_intensity_mf.const_array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [cfb_arr, fi_arr] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   // CFB based on fire intensity magnitude as proxy
                   Real I_B = fi_arr(i, j, k);
                   if (I_B > Real(100.0)) {
@@ -1155,7 +1155,7 @@ int main(int argc, char* argv[])
               const Box& bx = mfi.validbox();
               auto fl_arr = flame_length_mf.array(mfi);
               auto const fi_arr = fireline_intensity_mf.const_array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [fl_arr, fi_arr] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   Real I_B = fi_arr(i, j, k);
                   fl_arr(i, j, k) = Real(0.0266) * std::pow(amrex::max(I_B, Real(0.0)), Real(0.667));
               });
@@ -1175,7 +1175,7 @@ int main(int argc, char* argv[])
           for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {
               const Box& bx = mfi.validbox();
               auto R_arr = R_mf.array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [R_arr, accel_factor] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   R_arr(i, j, k) *= (Real(1.0) + accel_factor);
               });
           }
@@ -1190,7 +1190,7 @@ int main(int argc, char* argv[])
           for (MFIter mfi(f.burnout_phases_mf); mfi.isValid(); ++mfi) {
               const Box& bx = mfi.validbox();
               auto phases_arr = f.burnout_phases_mf.array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [phases_arr, tau_residence, flaming_frac] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   // Could be refined based on fuel_model_mf if available
                   phases_arr(i, j, k, 0) = tau_residence * flaming_frac;      // flaming
                   phases_arr(i, j, k, 1) = tau_residence * (Real(1.0) - flaming_frac); // smoldering
@@ -1284,7 +1284,7 @@ int main(int argc, char* argv[])
               const bool use_passive_tl = use_passive_blend_tl;
               const Real I_o_tl_k = I_o_tl;
 
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [R, eco, v, fi, use_sp, cbd_arr, CBD_g, mf_val, use_roth1991_tl, use_cruz_tl, MC10_tl, use_passive_tl, I_o_tl_k] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   if (eco(i, j, k, 3) < Real(1.5)) return; // surface or passive
                   Real R_surface = R(i, j, k);
                   Real R_crown_ms;
@@ -1406,7 +1406,7 @@ int main(int argc, char* argv[])
               auto const v  = vel_for_model.const_array(mfi);
               auto const R  = R_mf.const_array(mfi);
               auto sd = spread_dir_mf.array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+              ParallelFor(bx, [v, R, sd, min_wind_mag] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
                   Real ux = v(i, j, k, 0);
                   Real uy = v(i, j, k, 1);
                   Real wind_mag = std::sqrt(ux * ux + uy * uy);
@@ -1568,7 +1568,7 @@ int main(int argc, char* argv[])
           auto const R   = R_mf.const_array(mfi);
           auto       at  = arrival_time_mf.array(mfi);
           auto       rar = ros_at_arrival_mf.array(mfi);
-          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+          ParallelFor(bx, [p, R, at, rar, cur_time] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             if (p(i, j, k) < Real(0.0) && at(i, j, k) < Real(0.0)) {
               at(i, j, k)  = cur_time;
               rar(i, j, k) = R(i, j, k);  // freeze ROS at time of arrival
@@ -1588,7 +1588,7 @@ int main(int argc, char* argv[])
           const Box& bx = mfi.validbox();
           auto const at = arrival_time_mf.const_array(mfi);
           auto       rf = residual_fuel_mf.array(mfi);
-          ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+          ParallelFor(bx, [at, rf, cur_time, tau_b] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             const Real t_arrive = at(i, j, k);
             if (t_arrive >= Real(0.0)) {
               const Real elapsed = cur_time - t_arrive;
@@ -1604,7 +1604,7 @@ int main(int argc, char* argv[])
             auto const at      = arrival_time_mf.const_array(mfi);
             auto const rf      = residual_fuel_mf.const_array(mfi);
             auto       R       = R_mf.array(mfi);
-            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            ParallelFor(bx, [phi_arr, at, rf, R] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
               // Scale only unburned cells where fuel was previously depleted (re-entry)
               if (at(i, j, k) >= Real(0.0) && phi_arr(i, j, k) >= Real(0.0)) {
                 R(i, j, k) *= rf(i, j, k);
@@ -1622,7 +1622,7 @@ int main(int argc, char* argv[])
               const Box& bx = mfi.validbox();
               auto const at = arrival_time_mf.const_array(mfi);
               auto       tsb = f.time_since_burn_mf.array(mfi);
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [at, tsb, cur_time] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   if (at(i, j, k) >= Real(0.0)) {
                       tsb(i, j, k) = cur_time - at(i, j, k);
                   }
@@ -1638,10 +1638,11 @@ int main(int argc, char* argv[])
               auto       rhr = f.residual_heat_release_mf.array(mfi);
               // Use default decay time constant (1 hour for medium fuels)
               const Real tau_decay = Real(3600.0);  // 1 hour in seconds
-              ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              const Real cur_time_c = cur_time;
+              ParallelFor(bx, [at, fi, rhr, tau_decay, cur_time_c] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   const Real t_arrive = at(i, j, k);
                   if (t_arrive >= Real(0.0)) {
-                      const Real elapsed = cur_time - t_arrive;
+                      const Real elapsed = cur_time_c - t_arrive;
                       const Real I_base = fi(i, j, k) * Real(0.1);  // Base smoldering intensity 10% of flaming
                       rhr(i, j, k) = I_base * std::exp(-elapsed / tau_decay);
                   } else {
