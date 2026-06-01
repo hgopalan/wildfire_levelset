@@ -37,9 +37,8 @@ Tools are grouped into three columns to keep the table compact:
      - **Group B** — QUIC-Fire / FIRETEC
      - **Group C** — WRF-Fire (WRF-SFIRE)
    * - **Surface spread model**
-     - Rothermel (1972), Balbi (2009), Cheney–Gould (1995),
-       Cruz (2005), FBP (1992), Lautenberger (2013),
-       plus Viegas eruptive option
+     - Many models (Rothermel, Balbi, Cheney–Gould, Cruz,
+       Canadian FBP, Lautenberger, Viegas eruptive)
      - Rothermel (1972) in all three
      - Semi-empirical QUIC; physics LES FIRETEC
      - Rothermel (1972)
@@ -52,15 +51,15 @@ Tools are grouped into three columns to keep the table compact:
      - Eulerian CFD (QUIC-URB / HIGRAD-FIRETEC)
      - Eulerian level-set on WRF grid
    * - **Crown fire**
-     - Van Wagner (1977), Rothermel (1991), Cruz (2005);
-       Scott–Reinhardt (2001) TI/CI; CFSA *(new)*
-     - Van Wagner (1977); FARSITE/FlamMap active
+     - Van Wagner, Rothermel, Cruz models;
+       Scott–Reinhardt TI/CI; CFSA
+     - Van Wagner; FARSITE/FlamMap active
        via R\ :sub:`c`\ = 3.34 R\ :sub:`s`;
        BehavePlus: Van Wagner point calc.
      - Physics-based combustion
-     - Van Wagner (1977)
+     - Van Wagner
    * - **Wind adjustment**
-     - WAF (Andrews 2018); MEWS cap; multi-layer canopy *(new)*;
+     - WAF (Andrews); MEWS cap; multi-layer canopy;
        8 wind-terrain models
      - FARSITE/FlamMap: WAF + MEWS (internal);
        BehavePlus: user-specified WAF
@@ -68,14 +67,14 @@ Tools are grouped into three columns to keep the table compact:
      - WRF-derived; WAF in coupling layer
    * - **Fuel models**
      - FBFM13, FBFM40, FBP grass/slash, Lautenberger,
-       per-cell LCP; two-fuel blending *(new)*
+       per-cell LCP; two-fuel blending
      - FARSITE/FlamMap: FBFM13 + FBFM40;
        BehavePlus: FBFM13 + FBFM40
      - Custom 3-D bulk density per cell
      - FBFM13
    * - **Fuel moisture**
      - All size classes; FMD/Nelson diurnal; precipitation;
-       FWI system; time-lag DE *(new)*; duff/smolder *(new)*
+       FWI system; time-lag DE; duff/smolder
      - FARSITE/FlamMap: dead/live + FMD + conditioning;
        BehavePlus: dead/live per class
      - Bulk moisture per cell
@@ -88,14 +87,14 @@ Tools are grouped into three columns to keep the table compact:
    * - **Flame diagnostics**
      - Byram intensity + flame length + tilt + convective number;
        packing ratio (β/β_opt); flame depth; scorch height; tree mortality;
-       TI/CI; NFDRS ERC; McArthur FFDI; fire acceleration *(new)*
+       TI/CI; NFDRS ERC; McArthur FFDI; fire acceleration
      - FARSITE: intensity + flame length;
        FlamMap: full outputs;
        BehavePlus: full outputs
      - Physics heat release
      - Intensity + flame length
    * - **Firebrand spotting**
-     - Albini (1983) 2-D trajectory + torching;
+     - Albini 2-D trajectory + torching;
        stochastic distance model
      - FARSITE: Albini empirical;
        FlamMap: not standard;
@@ -171,16 +170,15 @@ Key Differences from FARSITE
 -----------------------------
 
 * **Eulerian level-set vs. explicit Huygens wavelets**: Wildfire-AMR embeds
-  the same Richards (1990) elliptical directional spread as FARSITE inside an
+  the same Richards elliptical directional spread as FARSITE inside an
   Eulerian level-set (WENO5-Z/RK3). The fire perimeter is the zero contour of
   a signed-distance function; merging fronts and islands are handled
   automatically without explicit connectivity management.
 
-* **Extended spread model library**: In addition to Rothermel (1972),
-  Wildfire-AMR includes Balbi (2009) physics-based, Cheney–Gould (1995)
-  Australian grassland, Cruz et al. (2005) crown fire, Canadian FBP
-  O1a/O1b/S1–S3 (Forestry Canada 1992), and Lautenberger (2013)
-  physics-based. FARSITE ships only with Rothermel (1972).
+* **Extended spread model library**: In addition to Rothermel, Wildfire-AMR
+  includes several alternative models (Balbi physics-based, Cheney–Gould
+  Australian grassland, Cruz crown fire, Canadian FBP fuel types, and
+  Lautenberger physics-based). FARSITE ships only with Rothermel.
 
 * **Non-burnable cell masking**: Fuel model codes 91–99 and NB1–NB9 (water,
   rock, urban, bare ground) are explicitly zeroed in the ROS kernel so fire
@@ -216,7 +214,7 @@ Key Differences from WRF-Fire (WRF-SFIRE)
   ``rothermel.use_waf = 1`` to convert NWP wind to midflame height.
   WRF-SFIRE handles this inside the coupled framework.
 
-* **Richer fire behaviour models**: WRF-SFIRE uses Rothermel (1972) only.
+* **Richer fire behaviour models**: WRF-SFIRE uses Rothermel only.
   Wildfire-AMR supports seven additional spread models and a richer crown fire
   pipeline (see above).
 
@@ -233,9 +231,9 @@ Key Differences from FlamMap
   (no time stepping); Wildfire-AMR evolves the fire front dynamically via
   level-set, FARSITE Huygens, or MTT.
 
-* **Crown fire depth**: FlamMap provides the full Scott & Reinhardt (2001)
+* **Crown fire depth**: FlamMap provides the full Scott & Reinhardt
   crown fire assessment. Wildfire-AMR matches this with bisection-based
-  TI/CI plus Van Wagner (1977) passive blending and Cruz et al. (2005) active
+  TI/CI plus Van Wagner passive blending and Cruz et al. active
   crown ROS.
 
 * **GPU / open source**: FlamMap is a closed-source Windows binary; Wildfire-AMR
