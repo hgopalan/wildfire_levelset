@@ -1270,8 +1270,6 @@ int main(int argc, char* argv[])
           const bool use_passive_blend_tl = (inputs.crown.use_passive_blend == 1);
           const Real CBH_tl = Real(inputs.crown.CBH);
           const Real I_o_tl = Real(0.010) * CBH_tl * (Real(460.0) + Real(25.9) * FMC_global);
-          CruzCrownComputed ccc_tl;
-          if (use_cruz_tl) { ccc_tl = ccc_global; }
           const Real MC10_tl = Real(inputs.cruz_crown.MC10);
 
           for (MFIter mfi(R_mf); mfi.isValid(); ++mfi) {

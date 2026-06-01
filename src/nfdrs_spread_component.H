@@ -72,24 +72,24 @@ using namespace amrex;
 // ============================================================================
 namespace NFDRSSCConst {
     // SC calibration constants (Deeming et al. 1977)
-    constexpr Real A_COEFF = Real(0.792);
-    constexpr Real B_COEFF = Real(0.0404);
-    constexpr Real C_COEFF = Real(2.988);
+    static constexpr Real A_COEFF = Real(0.792);
+    static constexpr Real B_COEFF = Real(0.0404);
+    static constexpr Real C_COEFF = Real(2.988);
     
     // Wind speed limits [mph]
-    constexpr Real WIND_MIN_MPH = Real(0.0);
-    constexpr Real WIND_MAX_MPH = Real(30.0);
+    static constexpr Real WIND_MIN_MPH = Real(0.0);
+    static constexpr Real WIND_MAX_MPH = Real(30.0);
     
     // Moisture limits [%]
-    constexpr Real FM_MIN_PCT = Real(1.0);
-    constexpr Real FM_MAX_PCT = Real(50.0);
+    static constexpr Real FM_MIN_PCT = Real(1.0);
+    static constexpr Real FM_MAX_PCT = Real(50.0);
     
     // Slope limits [%]
-    constexpr Real SLOPE_MIN_PCT = Real(0.0);
-    constexpr Real SLOPE_MAX_PCT = Real(100.0);
+    static constexpr Real SLOPE_MIN_PCT = Real(0.0);
+    static constexpr Real SLOPE_MAX_PCT = Real(100.0);
     
     // Unit conversion
-    constexpr Real MPS_TO_MPH = Real(2.23694);  // m/s to mph
+    static constexpr Real MPS_TO_MPH = Real(2.23694);  // m/s to mph
 }
 
 // ============================================================================
