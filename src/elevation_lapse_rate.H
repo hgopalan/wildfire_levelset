@@ -177,8 +177,10 @@ Real compute_barometric_pressure(Real elevation,
                     (LapseRateConst::R_GAS * L);
     
     // Pressure calculation
+    // Minimum threshold prevents numerical issues in power calculation (stratospheric limit)
+    constexpr Real min_temp_ratio = Real(0.01);
     Real temp_ratio = Real(1.0) - (L * elevation) / T_0;
-    Real pressure = P_sea_level * std::pow(amrex::max(Real(0.01), temp_ratio), exponent);
+    Real pressure = P_sea_level * std::pow(amrex::max(min_temp_ratio, temp_ratio), exponent);
     
     return pressure;
 }
