@@ -155,4 +155,16 @@ using namespace amrex;
 #include "fuel_boundary_smoothing.H"
 #include "fire_acceleration.H"
 
+// ---- Project headers: Easy-to-implement operational fire danger indices ----
+#include "kbdi_index.H"
+#include "haines_index.H"
+#include "backing_fire_ros.H"
+
+// ---- Project headers: Phase 1 & Phase 2 operational features ----
+#include "grass_curing_model.H"
+#include "diurnal_weather.H"
+#include "elevation_lapse_rate.H"
+#include "nfdrs_spread_component.H"
+#include "chandler_burning_index.H"
+
 #endif // WILDFIRE_INCLUDES_H

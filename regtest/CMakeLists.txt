@@ -219,6 +219,8 @@ add_regression_test(scott_reinhardt_full_ti_ci diagnostics/scott_reinhardt_full_
 add_regression_test(fl_exceedance              diagnostics/fl_exceedance)
 add_regression_test(farsite_fsa_pst            diagnostics/farsite_fsa_pst)
 add_regression_test(conditional_weather_bi     diagnostics/conditional_weather_bi)
+add_regression_test(kbdi_haines_indices        diagnostics/kbdi_haines_indices)
+add_regression_test(phase1_phase2_features     diagnostics/phase1_phase2_features)
 
 # ===========================================================================
 # misc/ – EB, MTT, benchmarks, LANDFIRE
@@ -346,7 +348,8 @@ message(STATUS "                    polygon_ignition, polyline_ignition, kml_per
 message(STATUS "  wind/           : time_dependent_wind, turb_wind, wind_dir_schedule,")
 message(STATUS "                    waf_andrews, waf_behaviorplus, periodic_gust_factor")
 message(STATUS "  diagnostics/    : scott_reinhardt_indices, scott_reinhardt_full_ti_ci,")
-message(STATUS "                    fl_exceedance, farsite_fsa_pst, conditional_weather_bi")
+message(STATUS "                    fl_exceedance, farsite_fsa_pst, conditional_weather_bi,")
+message(STATUS "                    kbdi_haines_indices, phase1_phase2_features")
 message(STATUS "  misc/           : sphere_2d, eb_implicit, mtt_propagation,")
 message(STATUS "                    bulk_fuel_consumption, smoke_plume_rise,")
 message(STATUS "                    reentry_spotting, timing_benchmark,")
