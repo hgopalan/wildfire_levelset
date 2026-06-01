@@ -49,7 +49,7 @@ Real weno3_reconstruct(Real fm1, Real f0, Real fp1)
 // flat Cartesian plane.  The default values slope_x = slope_y = 0 reproduce
 // the original flat-terrain behaviour and are used by reinitialization.
 // ================================================================
-static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real godunov_norm_grad_phi(const Array4<Real const>& phi,
                            int i, int j, int k,
                            const GpuArray<Real,AMREX_SPACEDIM>& dx,
@@ -78,7 +78,7 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // ----------------------------------------------------------------
     constexpr Real phi_bound = WildfireConst::PHI_BOUND;
 
-    auto is_bad = [&] AMREX_GPU_DEVICE (Real v) -> bool {
+    auto is_bad = [=] AMREX_GPU_DEVICE (Real v) -> bool {
         return !std::isfinite(v) || amrex::Math::abs(v) > phi_bound;
     };
 
