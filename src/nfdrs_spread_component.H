@@ -148,6 +148,7 @@ Real compute_nfdrs_spread_component(Real wind_speed_mps,
     return amrex::max(Real(0.0), amrex::min(SC, Real(99.0)));
 }
 
+
 // ============================================================================
 // compute_nfdrs_fuel_model_factor
 //
