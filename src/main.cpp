@@ -225,7 +225,6 @@ int main(int argc, char* argv[])
     const BalbiComputed*&                 d_balbi_table_ptr=ftd.d_balbi_table_ptr;
     int&                                  balbi_table_size= ftd.balbi_table_size;
     BalbiComputed&                        bc_global_default=ftd.bc_global_default;
-    CruzCrownComputed&                    ccc_global      = ftd.ccc_global;
     const CruzCrownComputed*&             ccc_ptr         = ftd.ccc_ptr;
 
     // ---------------- Time-varying fuel moisture schedule ------------------
