@@ -67,30 +67,7 @@
 
 using namespace amrex;
 
-// ============================================================================
-// NFDRS Spread Component Constants
-// ============================================================================
-namespace NFDRSSCConst {
-    // SC calibration constants (Deeming et al. 1977)
-    static constexpr Real A_COEFF = Real(0.792);
-    static constexpr Real B_COEFF = Real(0.0404);
-    static constexpr Real C_COEFF = Real(2.988);
-    
-    // Wind speed limits [mph]
-    static constexpr Real WIND_MIN_MPH = Real(0.0);
-    static constexpr Real WIND_MAX_MPH = Real(30.0);
-    
-    // Moisture limits [%]
-    static constexpr Real FM_MIN_PCT = Real(1.0);
-    static constexpr Real FM_MAX_PCT = Real(50.0);
-    
-    // Slope limits [%]
-    static constexpr Real SLOPE_MIN_PCT = Real(0.0);
-    static constexpr Real SLOPE_MAX_PCT = Real(100.0);
-    
-    // Unit conversion
-    static constexpr Real MPS_TO_MPH = Real(2.23694);  // m/s to mph
-}
+
 
 // ============================================================================
 // compute_nfdrs_spread_component
@@ -120,39 +97,57 @@ Real compute_nfdrs_spread_component(Real wind_speed_mps,
                                      Real fuel_moisture_1hr_pct,
                                      Real fuel_model_factor = Real(1.0))
 {
+// Local constexpr constants (safe for device code)
+   Real A_COEFF = Real(0.792);
+   Real B_COEFF = Real(0.0404);
+   Real C_COEFF = Real(2.988);
+
+   Real WIND_MIN_MPH = Real(0.0);
+   Real WIND_MAX_MPH = Real(30.0);
+
+   Real FM_MIN_PCT = Real(1.0);
+   Real FM_MAX_PCT = Real(50.0);
+
+   Real SLOPE_MIN_PCT = Real(0.0);
+   Real SLOPE_MAX_PCT = Real(100.0);
+
+   Real MPS_TO_MPH = Real(2.23694);
+
     // Convert wind speed to mph
-    Real U_mph = wind_speed_mps * NFDRSSCConst::MPS_TO_MPH;
-    U_mph = amrex::max(NFDRSSCConst::WIND_MIN_MPH,
-                       amrex::min(U_mph, NFDRSSCConst::WIND_MAX_MPH));
-    
+    Real U_mph = wind_speed_mps * MPS_TO_MPH;
+    U_mph = amrex::max(WIND_MIN_MPH,
+                       amrex::min(U_mph, WIND_MAX_MPH));
+
     // Convert slope to percent
     Real S_pct = slope_fraction * Real(100.0);
-    S_pct = amrex::max(NFDRSSCConst::SLOPE_MIN_PCT,
-                       amrex::min(S_pct, NFDRSSCConst::SLOPE_MAX_PCT));
-    
+    S_pct = amrex::max(SLOPE_MIN_PCT,
+                       amrex::min(S_pct, SLOPE_MAX_PCT));
+
     // Clamp fuel moisture to valid range
-    Real FM = amrex::max(NFDRSSCConst::FM_MIN_PCT,
-                         amrex::min(fuel_moisture_1hr_pct, NFDRSSCConst::FM_MAX_PCT));
-    
+    Real FM = amrex::max(FM_MIN_PCT,
+                         amrex::min(fuel_moisture_1hr_pct, FM_MAX_PCT));
+
     // NFDRS SC formulation (Deeming et al. 1977)
     // SC = base × wind_factor × slope_factor × moisture_factor
-    
+
     Real base = Real(10.0) * fuel_model_factor;  // Base SC for reference conditions
-    
+
     // Wind effect (increases SC linearly with wind)
-    Real wind_factor = Real(1.0) + NFDRSSCConst::B_COEFF * U_mph;
-    
+    Real wind_factor = Real(1.0) + B_COEFF * U_mph;
+
     // Slope effect (increases SC linearly with slope)
-    Real slope_factor = Real(1.0) + NFDRSSCConst::A_COEFF * S_pct / Real(100.0);
-    
+    Real slope_factor = Real(1.0) + A_COEFF * S_pct / Real(100.0);
+
     // Moisture damping (exponential decrease with moisture)
-    Real moisture_factor = std::exp(-NFDRSSCConst::C_COEFF * FM / Real(100.0));
-    
+    Real moisture_factor = std::exp(-C_COEFF * FM / Real(100.0));
+
     // Compute SC
     Real SC = base * wind_factor * slope_factor * moisture_factor;
-    
+
     // Clamp to reasonable range [0, 99]
     return amrex::max(Real(0.0), amrex::min(SC, Real(99.0)));
+}
+
 }
 
 // ============================================================================
