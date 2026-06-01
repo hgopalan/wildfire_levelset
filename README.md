@@ -71,13 +71,13 @@ fire.finalize()
 
 **Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) *(new)* • Scott & Reinhardt Crown Fire Surface Area (CFSA) *(new)* • Backing fire ROS empirical ratios *(new)*
 
-**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) *(new)* • Dynamic moisture of extinction (M_x) *(new)* • Duff moisture with smoldering combustion *(new)* • Fine fuel moisture time-lag differential equations *(new)*
+**Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) • Dynamic moisture of extinction (M_x) • Duff moisture with smoldering combustion • Fine fuel moisture time-lag differential equations • Grass curing model *(new)*
 
-**Fire Danger Indices**: Keetch-Byram Drought Index (KBDI) *(new)* • Haines Index atmospheric stability *(new)* • McArthur FFDI • Canadian FWI System • NFDRS components
+**Fire Danger Indices**: Keetch-Byram Drought Index (KBDI) • Haines Index atmospheric stability • McArthur FFDI • Canadian FWI System • NFDRS Spread Component (SC) *(new)* • Chandler Burning Index (CBI) *(new)*
 
 **Spotting**: Albini trajectory model • Ember cascade • Ember accumulation with probabilistic ignition
 
-**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor *(new)* • Multi-station interpolation • Multi-layer canopy wind profile *(new)*
+**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor • Multi-station interpolation • Multi-layer canopy wind profile • Diurnal weather cycles *(new)* • Elevation temperature lapse rate *(new)*
 
 **Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
 

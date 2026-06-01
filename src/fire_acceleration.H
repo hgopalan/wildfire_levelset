@@ -185,7 +185,7 @@ inline void apply_fire_acceleration_temporal(MultiFab&       R_mf,
 
         const Real dt_loc  = dt;
         const Real A_loc   = A_per_sec;
-        const Real eps     = Real(1.0e-6);
+        // const Real eps     = Real(1.0e-6);  // unused
         const int  enable_wind_lag = params.enable_wind_lag;
         const Real tau_wind = params.tau_wind;
 

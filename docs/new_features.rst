@@ -2090,3 +2090,330 @@ All features follow the established codebase conventions:
 * No external dependencies beyond AMReX
 * Minimal computational overhead
 * Well-documented with references
+
+
+Phase 1 & Phase 2 Operational Enhancements (2026)
+==================================================
+
+Five additional operational fire behavior and fire danger features have been 
+implemented to enhance multi-day simulations and operational fire management support.
+
+Grass Curing Model
+------------------
+
+**Header**: ``src/grass_curing_model.H``
+
+Grass curing percentage models affect fuel availability and moisture in grassland
+and savanna fuel types. Curing describes the fraction of herbaceous fuel that is
+dead (cured) versus live (green).
+
+**Model Options:**
+
+1. **Seasonal Model** (Luke & McArthur 1978):
+
+   .. math::
+
+      C(t) = C_{\text{mean}} + C_{\text{amp}} \times \cos\left(\frac{2\pi(d - d_0)}{365}\right)
+
+   where :math:`d` is day of year, :math:`d_0` is peak green day (default: day 15).
+
+2. **Moisture-Dependent Model** (Cheney & Sullivan 2008):
+
+   .. math::
+
+      C = 100 \times \left(1 - \exp\left(-k \times \frac{\text{KBDI}}{200}\right)\right)
+
+   Curing increases exponentially with drought severity.
+
+3. **Growing Degree Day Model**:
+
+   .. math::
+
+      C = 100 \times \min\left(1, \frac{\text{GDD}_{\text{accum}}}{\text{GDD}_{\text{threshold}}}\right)
+
+   Curing increases linearly with accumulated heat units.
+
+**Functions:**
+
+* ``compute_seasonal_curing()`` - Sinusoidal annual cycle
+* ``compute_moisture_dependent_curing()`` - KBDI-driven curing
+* ``compute_gdd_curing()`` - Phenology-based curing
+* ``apply_curing_to_fuel_load()`` - Partition herbaceous fuel between dead/live
+
+**Interpretation:**
+
+.. list-table::
+   :header-rows: 1
+
+   * - Curing %
+     - Description
+     - Fire Danger
+   * - 0-30%
+     - Predominantly green grass
+     - Low (limited fire spread)
+   * - 30-70%
+     - Mixed green/cured
+     - Moderate
+   * - 70-90%
+     - Mostly cured
+     - High (rapid grass fire spread)
+   * - 90-100%
+     - Fully cured/dry
+     - Very High to Extreme
+
+
+Diurnal Weather Cycles
+-----------------------
+
+**Header**: ``src/diurnal_weather.H``
+
+Implements daily (diurnal) variation of temperature, relative humidity, and wind
+speed for realistic multi-day fire simulations.
+
+**Temperature:**
+
+.. math::
+
+   T(t) = T_{\text{mean}} + T_{\text{amp}} \times \sin\left(\frac{2\pi(t - t_{\text{min}})}{24}\right)
+
+where :math:`t_{\text{min}}` is time of minimum temperature (default: 6:00 AM).
+
+**Relative Humidity (anti-phase with temperature):**
+
+.. math::
+
+   \text{RH}(t) = \text{RH}_{\text{mean}} - \text{RH}_{\text{amp}} \times \sin\left(\frac{2\pi(t - t_{\text{max}})}{24}\right)
+
+**Wind Speed:**
+
+.. math::
+
+   U(t) = U_{\text{mean}} \times \left[1 + \alpha \times \sin\left(\frac{2\pi(t - 6)}{24}\right)\right]
+
+where :math:`\alpha` is amplitude factor (default: 0.4 for ±40% variation).
+
+**Functions:**
+
+* ``compute_diurnal_temperature()`` - Temperature at given hour
+* ``compute_diurnal_rh()`` - Relative humidity at given hour
+* ``compute_diurnal_wind_speed()`` - Wind speed scaling factor
+* ``apply_diurnal_weather()`` - Update all fields
+
+**Typical Diurnal Pattern:**
+
+.. list-table::
+   :header-rows: 1
+
+   * - Time
+     - Temperature
+     - RH
+     - Wind Speed
+     - Fire Activity
+   * - 06:00 (sunrise)
+     - Minimum
+     - Maximum
+     - Minimum
+     - Low spread, potential burnout
+   * - 15:00 (afternoon)
+     - Maximum
+     - Minimum
+     - Maximum
+     - Peak fire activity
+   * - 21:00 (evening)
+     - Decreasing
+     - Increasing
+     - Decreasing
+     - Moderating fire behavior
+
+
+Elevation Temperature Lapse Rate
+---------------------------------
+
+**Header**: ``src/elevation_lapse_rate.H``
+
+Applies elevation-based temperature and pressure corrections for mountainous terrain.
+
+**Temperature Lapse:**
+
+.. math::
+
+   T(z) = T_{\text{ref}} - \Gamma \times (z - z_{\text{ref}})
+
+where :math:`\Gamma` is environmental lapse rate (default: 0.0065 °C/m = 6.5 °C/km,
+standard atmosphere).
+
+**Relative Humidity Lapse:**
+
+.. math::
+
+   \text{RH}(z) = \text{RH}_{\text{ref}} \times \exp(k \times \Delta z)
+
+where :math:`k \approx 0.0001` m⁻¹ (empirical coefficient).
+
+**Barometric Pressure:**
+
+.. math::
+
+   P(z) = P_0 \times \left(1 - \frac{L \times z}{T_0}\right)^{\frac{gM}{RL}}
+
+Standard atmosphere barometric formula.
+
+**Functions:**
+
+* ``apply_temperature_lapse()`` - Temperature correction for elevation
+* ``apply_rh_lapse()`` - RH correction for elevation
+* ``compute_barometric_pressure()`` - Pressure at elevation
+* ``apply_elevation_lapse_fields()`` - Update temperature and RH fields
+* ``compute_air_density_correction()`` - Density ratio for combustion
+
+**Effects:**
+
+For every 1000 m elevation gain:
+* Temperature decreases ~6.5 °C
+* RH increases ~10-15%
+* Air density decreases ~12%
+* Fuel moisture typically increases
+
+
+NFDRS Spread Component (SC)
+----------------------------
+
+**Header**: ``src/nfdrs_spread_component.H``
+
+Implements the U.S. National Fire Danger Rating System Spread Component, a
+numerical rating of fire spread potential.
+
+**Formulation (Deeming et al. 1977):**
+
+.. math::
+
+   \text{SC} = a \times (1 + b \times U) \times (1 + c \times S) \times \exp(-d \times \text{FM}/100)
+
+where:
+* :math:`U` - wind speed [mph]
+* :math:`S` - slope [%]
+* :math:`FM` - 1-hour dead fuel moisture [%]
+* :math:`a,b,c,d` - fuel model coefficients
+
+**Functions:**
+
+* ``compute_nfdrs_spread_component()`` - SC from weather and fuel
+* ``compute_nfdrs_fuel_model_factor()`` - Fuel-specific adjustment
+* ``compute_nfdrs_sc_field()`` - SC for entire domain
+* ``compute_nfdrs_burning_index()`` - BI = (SC × ERC) / 10
+
+**Interpretation:**
+
+.. list-table::
+   :header-rows: 1
+
+   * - SC Value
+     - Spread Potential
+     - Management Implication
+   * - 0-10
+     - Low
+     - Limited fire spread
+   * - 10-20
+     - Moderate
+     - Normal fire behavior
+   * - 20-40
+     - High
+     - Aggressive initial attack needed
+   * - 40-60
+     - Very High
+     - Difficult control, rapid spread
+   * - 60+
+     - Extreme
+     - Potential for large fire growth
+
+**Relationship to Other NFDRS Components:**
+
+* **Burning Index (BI)** = SC × ERC / 10
+* **Fire Load Index (FLI)** = BI × manning level / 100
+* Used in dispatch planning and resource allocation
+
+
+Chandler Burning Index (CBI)
+-----------------------------
+
+**Header**: ``src/chandler_burning_index.H``
+
+Chandler Burning Index is a fire danger rating used by the U.S. National Weather
+Service for fire weather forecasts and Red Flag Warning criteria.
+
+**Formulation (Chandler et al. 1983):**
+
+.. math::
+
+   \text{CBI} = \left[(110 - 1.373 \times \text{RH}) - 0.54 \times (10.20 - T_F)\right] \times (1 + 0.0345 \times U_{\text{mph}})
+
+where:
+* :math:`T_F` - temperature [°F]
+* :math:`\text{RH}` - relative humidity [%]
+* :math:`U_{\text{mph}}` - wind speed [mph]
+
+**Functions:**
+
+* ``compute_chandler_burning_index()`` - CBI from T, RH, wind
+* ``get_cbi_danger_class()`` - Fire danger classification (0-4)
+* ``compute_fosberg_fire_weather_index()`` - Related FFWI index
+* ``compute_cbi_field()`` - CBI for entire domain
+* ``compute_cbi_scalar()`` - Single-point CBI calculation
+
+**Fire Weather Thresholds:**
+
+.. list-table::
+   :header-rows: 1
+
+   * - CBI Value
+     - Danger Class
+     - Fire Weather Action
+   * - 0-50
+     - Low
+     - Routine operations
+   * - 50-75
+     - Moderate
+     - Increased awareness
+   * - 75-90
+     - High
+     - Fire Weather Watch
+   * - 90-97.5
+     - Very High
+     - Red Flag Warning
+   * - 97.5+
+     - Extreme
+     - Extreme Red Flag Warning
+
+**Operational Use:**
+
+* Fire weather forecasts and watches/warnings
+* Public fire danger communication
+* Burn ban decision support
+* Often paired with KBDI for comprehensive fire danger assessment
+
+
+Summary of Phase 1 & Phase 2 Additions
+---------------------------------------
+
+Five new features enhance operational fire management capabilities:
+
+1. **Grass Curing Model** - Seasonal/drought-driven curing for grassland fuels
+2. **Diurnal Weather Cycles** - Realistic daily temperature/RH/wind variation
+3. **Elevation Lapse Rate** - Topographic corrections for mountainous terrain
+4. **NFDRS Spread Component** - U.S. national fire danger spread rating
+5. **Chandler Burning Index** - Fire weather index for watches/warnings
+
+**Key Benefits:**
+
+* **Multi-day Simulations:** Diurnal cycles enable realistic extended fire predictions
+* **Terrain Adaptation:** Elevation lapse improves mountain fire accuracy
+* **Operational Compatibility:** NFDRS SC and CBI match national fire danger systems
+* **Grassland Fires:** Curing models improve grass and savanna fire predictions
+
+All features are:
+
+* GPU-compatible (``AMREX_GPU_HOST_DEVICE`` macros)
+* Header-only implementation
+* Peer-reviewed literature-based
+* Minimal computational overhead
+* Backward compatible (optional features)

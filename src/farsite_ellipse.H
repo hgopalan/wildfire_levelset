@@ -666,6 +666,7 @@ inline void compute_farsite_spread(MultiFab &phi, const MultiFab &vel,
         const int kk = static_cast<int>((zn - prob_lo[2]) / gdx[2]);
 #else
         const int kk = 0;
+        (void)kk; // Unused in 2D
 #endif
         const int ii = static_cast<int>((xn - prob_lo[0]) / gdx[0]);
         const int jj = static_cast<int>((yn - prob_lo[1]) / gdx[1]);

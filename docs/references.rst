@@ -249,6 +249,57 @@ Canadian FBP System
    Natural Resources Canada, Canadian Forest Service, Northern Forestry Centre, 
    Information Report NOR-X-417.
 
+Grass Curing & Phenology
+--------------------------------------------------------------------------------
+
+.. [LukeMcArthur1978] Luke, R.H. & McArthur, A.G. (1978). "Bushfires in Australia."
+   Australian Government Publishing Service, Canberra.
+
+.. [CheneySullivan2008] Cheney, N.P. & Sullivan, A.L. (2008). "Grassfires: Fuel, 
+   Weather and Fire Behaviour." CSIRO Publishing, Melbourne.
+
+Diurnal Weather & Meteorology
+--------------------------------------------------------------------------------
+
+.. [Lawson1996] Lawson, B.D., Frandsen, W.H., Hawkes, B.C., & Dalrymple, G.N. (1996).
+   "Probability of sustained ignition as a function of nature of the ignition source."
+   International Journal of Wildland Fire, 6(1):29-36.
+
+.. [Simard1968] Simard, A.J. (1968). "The moisture content of forest fuels: A review
+   of the basic concepts." Forestry Branch, Department of Forestry and Rural
+   Development, Publication 1288.
+
+Atmospheric Lapse Rates
+--------------------------------------------------------------------------------
+
+.. [Wallace2006] Wallace, J.M. & Hobbs, P.V. (2006). "Atmospheric Science: An 
+   Introductory Survey." 2nd edition, Academic Press.
+
+NFDRS Fire Danger Indices
+--------------------------------------------------------------------------------
+
+.. [Deeming1977] Deeming, J.E., Burgan, R.E., & Cohen, J.D. (1977). "The National
+   Fire-Danger Rating System—1978." USDA Forest Service General Technical Report
+   INT-39.
+
+.. [Bradshaw1984] Bradshaw, L.S., Deeming, J.E., Burgan, R.E., & Cohen, J.D. (1984).
+   "The 1978 National Fire-Danger Rating System: Technical documentation."
+   USDA Forest Service General Technical Report INT-169.
+
+Chandler Burning Index
+--------------------------------------------------------------------------------
+
+.. [Chandler1983] Chandler, C., Cheney, P., Thomas, P., Trabaud, L., & Williams, D.
+   (1983). "Fire in Forestry, Volume I: Forest Fire Behavior and Effects."
+   John Wiley & Sons, New York.
+
+.. [Schroeder1970] Schroeder, M.J. & Buck, C.C. (1970). "Fire Weather: A Guide for
+   Application of Meteorological Information to Forest Fire Control Operations."
+   USDA Forest Service Agriculture Handbook 360.
+
+.. [Fosberg1978] Fosberg, M.A. (1978). "Weather in wildland fire management: the
+   fire weather index." Proceedings Conference Sierra Nevada Meteorology, pp. 1-4.
+
 Solar Radiation & Shading
 ================================================================================
 

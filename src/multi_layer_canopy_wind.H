@@ -110,7 +110,7 @@ Real compute_canopy_wind_attenuation_coefficient(Real LAI)
     
     // Massman (1997) empirical relationship
     constexpr Real beta  = Real(2.5);
-    constexpr Real gamma = Real(0.5);
+    // constexpr Real gamma = Real(0.5);  // unused (optimized below)
     
     const Real alpha = beta * std::sqrt(LAI);  // Optimized: gamma = 0.5
     

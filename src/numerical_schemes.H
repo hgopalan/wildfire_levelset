@@ -78,8 +78,8 @@ Real godunov_norm_grad_phi(const Array4<Real const>& phi,
     // ----------------------------------------------------------------
     constexpr Real phi_bound = WildfireConst::PHI_BOUND;
 
-    auto is_bad = [&](Real v) -> bool {
-        return !std::isfinite(v) || std::abs(v) > phi_bound;
+    auto is_bad = [&] AMREX_GPU_DEVICE (Real v) -> bool {
+        return !amrex::isfinite(v) || amrex::Math::abs(v) > phi_bound;
     };
 
     bool fallback =

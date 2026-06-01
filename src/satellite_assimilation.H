@@ -173,7 +173,7 @@ inline void lonlat_to_utm(double lon_deg, double lat_deg,
     const double lat  = lat_deg  * deg2rad;
 
     const double e2   = 2.0*f - f*f;                        // eccentricity squared
-    const double ep2  = e2 / (1.0 - e2);                    // e'²
+    // const double ep2  = e2 / (1.0 - e2);                    // e'² (unused)
     const double n    = f / (2.0 - f);                      // third flattening
     const double A    = a / (1.0 + n) * (1.0 + n*n/4.0 + n*n*n*n/64.0);
 

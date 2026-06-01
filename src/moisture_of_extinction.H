@@ -123,7 +123,7 @@ Real compute_moisture_of_extinction(Real sigma_fuel)
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Real compute_M_x_rothermel(Real sigma_fuel,
                           Real S_T,
-                          Real sigma_ref)
+                          [[maybe_unused]] Real sigma_ref)
 {
     // Rothermel (1972) original empirical relationship
     // M_x ≈ 0.30 + 0.10 × ln(σ/1000)  [approximate]
