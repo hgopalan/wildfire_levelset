@@ -65,9 +65,9 @@ The following tests were in the original random pool but excluded from the fail-
 - `misc/bulk_fuel_consumption` (3D simulation)
 
 ### Excluded due to special data requirements:
-- `ignition/fire_perimeter_output` (requires validation script)
-- `wind/turb_wind` (requires wind field generation)
-- Tests with `.csv`, `.lcp`, or other external data files
+- Tests requiring Python-generated data files
+- Tests needing external downloads
+- Tests with complex data preprocessing
 
 ### Tests needing further validation:
 - `surface_spread/farsite_gaussian_sigma`
@@ -88,7 +88,7 @@ To add a test to the fail-safe suite, it must meet ALL criteria:
 
 1. ✅ **No Python setup required**: Test must run with just `inputs.i`
 2. ✅ **Fast execution**: Complete in < 60 seconds on ubuntu-latest
-3. ✅ **Minimal data files**: Only `.csv` files that ship with the test (no downloads)
+3. ✅ **Minimal data files**: May include simple `.csv` files that ship with the test, but no external downloads or complex data generation
 4. ✅ **Stable results**: Consistent plotfile output for fcompare
 5. ✅ **No NaN/Inf**: Header files never contain NaN or Inf values
 6. ✅ **Compatible with base branch**: Works with both PR and main branch builds
