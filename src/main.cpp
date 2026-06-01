@@ -1638,11 +1638,10 @@ int main(int argc, char* argv[])
               auto       rhr = f.residual_heat_release_mf.array(mfi);
               // Use default decay time constant (1 hour for medium fuels)
               const Real tau_decay = Real(3600.0);  // 1 hour in seconds
-              const Real cur_time_c = cur_time;
-              ParallelFor(bx, [at, fi, rhr, tau_decay, cur_time_c] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+              ParallelFor(bx, [at, fi, rhr, tau_decay, cur_time] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                   const Real t_arrive = at(i, j, k);
                   if (t_arrive >= Real(0.0)) {
-                      const Real elapsed = cur_time_c - t_arrive;
+                      const Real elapsed = cur_time - t_arrive;
                       const Real I_base = fi(i, j, k) * Real(0.1);  // Base smoldering intensity 10% of flaming
                       rhr(i, j, k) = I_base * std::exp(-elapsed / tau_decay);
                   } else {
