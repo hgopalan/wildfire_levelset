@@ -442,7 +442,7 @@ jobs:
                   return False, "TIMEOUT"
 
           def last_plt(work_dir):
-              plts = sorted(work_dir.glob("plt_*"))
+              plts = sorted(work_dir.glob("plt[0-9]*"))
               return plts[-1] if plts else None
 
           def check_header(plt_dir):
