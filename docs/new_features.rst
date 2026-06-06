@@ -1287,19 +1287,17 @@ Viney, N.R. (1991). *A review of fine fuel moisture modelling.* International
 Journal of Wildland Fire, 1(4), 215-234.
 
 
-Integration of 10 Wildfire Features
-====================================
+Integrated Fire Behavior Features
+==================================
 
-This section describes the integration of 10 new wildfire fire behavior features into the main AMReX-based level-set wildfire simulation framework. All features have been successfully integrated into the core simulation engine with GPU support.
+This section describes advanced fire behavior features integrated into the AMReX-based level-set wildfire framework with GPU support.
 
-Feature 1: Fuel Continuity Factor
-----------------------------------
+Fuel Continuity Factor
+----------------------
 
-**Status:** ✅ Complete (already in RothermelParams)
+**Header**: ``src/rothermel_model.H``
 
-**Header**: ``src/rothermel.H``
-
-**Description:** Accounts for patchy or discontinuous fuel beds by applying a multiplicative factor (0-1) to computed ROS.
+Accounts for patchy or discontinuous fuel beds by applying a multiplicative factor (0-1) to computed rate of spread (ROS).
 
 **Input Parameters:**
 
@@ -1313,40 +1311,38 @@ Feature 1: Fuel Continuity Factor
      - 1.0
      - Fuel continuity factor: 1.0 = continuous, 0.5 = 50% coverage, 0.0 = gaps
 
-**References**: Finney, M.A. (2006). FlamMap capabilities. USDA Forest Service RMRS-P-41.
+**References**: Finney, M.A. (2006). *FlamMap capabilities.* USDA Forest Service RMRS-P-41.
 
 
-Feature 2: NFDRS Fire Danger Class
------------------------------------
-
-**Status:** ✅ Complete
+NFDRS Fire Danger Class
+-----------------------
 
 **Header**: ``src/fire_intensity_class.H``
 
-**Description:** Classifies fireline intensity into 5 operational fire danger categories (Low/Moderate/High/Very High/Extreme) following NFDRS conventions.
+Classifies fireline intensity into 5 operational fire danger categories (Low/Moderate/High/Very High/Extreme) following National Fire Danger Rating System (NFDRS) conventions.
 
 **Implementation:**
-- Automatically computed from fireline intensity
-- Output in plotfile as ``nfdrs_danger_class``
+
+* Automatically computed from fireline intensity
+* Output in plotfile as ``nfdrs_danger_class``
 
 **Danger Classes:**
-- 1 = Low (< 100 kW/m)
-- 2 = Moderate (100-500 kW/m)
-- 3 = High (500-2000 kW/m)
-- 4 = Very High (2000-5000 kW/m)
-- 5 = Extreme (> 5000 kW/m)
 
-**References**: Deeming, J.E., et al. (1977). NFDRS-1978. USDA GTR INT-39.
+* 1 = Low (< 100 kW/m)
+* 2 = Moderate (100-500 kW/m)
+* 3 = High (500-2000 kW/m)
+* 4 = Very High (2000-5000 kW/m)
+* 5 = Extreme (> 5000 kW/m)
+
+**References**: Deeming, J.E., et al. (1977). *National Fire Danger Rating System - 1978.* USDA GTR INT-39.
 
 
-Feature 3: Crown Fraction Burned (CFB) Diagnostic
---------------------------------------------------
-
-**Status:** ✅ Complete
+Crown Fraction Burned (CFB) Diagnostic
+--------------------------------------
 
 **Header**: ``src/crown_initiation.H``
 
-**Description:** Diagnostic metric distinguishing passive vs active crown fire based on fire intensity.
+Diagnostic metric distinguishing passive vs active crown fire based on fire intensity.
 
 **Input Parameters:**
 
@@ -1361,19 +1357,18 @@ Feature 3: Crown Fraction Burned (CFB) Diagnostic
      - Set to 1 to enable CFB diagnostic
 
 **Output Variables:**
-- ``crown_fraction_burned`` - CFB ratio (0-1)
 
-**References**: Scott, J.H. & Reinhardt, E.D. (2001). USDA RMRS-RP-29.
+* ``crown_fraction_burned`` - CFB ratio (0-1)
+
+**References**: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing canopy fire behavior in a wildland fire info system.* USDA RMRS-RP-29.
 
 
-Feature 4: Effective Wind Speed
---------------------------------
-
-**Status:** ✅ Complete
+Effective Wind Speed
+--------------------
 
 **Header**: ``src/effective_wind_speed.H``
 
-**Description:** Combines ambient wind and slope effects into a single scalar effective wind speed via vector addition.
+Combines ambient wind and slope effects into a single scalar effective wind speed via vector addition.
 
 **Formula:**
 
@@ -1394,19 +1389,18 @@ Feature 4: Effective Wind Speed
      - Set to 1 to enable effective wind speed calculation
 
 **Output Variables:**
-- ``effective_wind_speed`` - Combined wind speed [m/s]
+
+* ``effective_wind_speed`` - Combined wind speed [m/s]
 
 **Requirements:** Terrain slopes must be available (landscape file)
 
-**References**: Rothermel, R.C. (1983). GTR INT-143.
+**References**: Rothermel, R.C. (1983). *How to predict the spread and intensity of forest and range fires.* GTR INT-143.
 
 
-Feature 5: Thomas Flame Length Model
--------------------------------------
+Thomas Flame Length Model
+-------------------------
 
-**Status:** ✅ Complete
-
-**Description:** Alternative flame length formula :math:`L = 0.0266 \times I^{0.667}` (vs default Byram: :math:`L = 0.0775 \times I^{0.46}`)
+Alternative flame length formula :math:`L = 0.0266 \times I^{0.667}` (vs default Byram: :math:`L = 0.0775 \times I^{0.46}`)
 
 **Input Parameters:**
 
@@ -1421,20 +1415,19 @@ Feature 5: Thomas Flame Length Model
      - Flame length model: ``"byram"`` or ``"thomas"``
 
 **Selection:**
-- ``"byram"`` - Default Byram (1959) formula
-- ``"thomas"`` - Thomas (1963) formula
 
-**References**: Thomas, P.H. (1963). Combustion Symposium, 9(1):844-859.
+* ``"byram"`` - Default Byram (1959) formula
+* ``"thomas"`` - Thomas (1963) formula
+
+**References**: Thomas, P.H. (1963). *Size of flames from natural fires.* Ninth Symposium (International) on Combustion, 9(1):844-859.
 
 
-Feature 6: Fuel Boundary Smoothing
------------------------------------
-
-**Status:** ✅ Complete
+Fuel Boundary Smoothing
+-----------------------
 
 **Header**: ``src/fuel_boundary_smoothing.H``
 
-**Description:** Distance-weighted ROS blending at fuel boundaries to eliminate unrealistic discontinuities.
+Distance-weighted ROS blending at fuel boundaries to eliminate unrealistic discontinuities.
 
 **Input Parameters:**
 
@@ -1453,17 +1446,15 @@ Feature 6: Fuel Boundary Smoothing
 
 **Requirements:** Landscape file with fuel model data must be present
 
-**References**: Finney, M.A. (1998, 2006). USDA RMRS-RP-4, RMRS-P-41.
+**References**: Finney, M.A. (1998, 2006). *FARSITE: Fire Area Simulator.* USDA RMRS-RP-4, RMRS-P-41.
 
 
-Feature 7: CSIRO Grassfire Acceleration
-----------------------------------------
-
-**Status:** ✅ Complete
+CSIRO Grassfire Acceleration
+----------------------------
 
 **Header**: ``src/fire_acceleration.H``
 
-**Description:** Models non-equilibrium fire growth during initial spread phase using exponential acceleration function.
+Models non-equilibrium fire growth during initial spread phase using exponential acceleration function.
 
 **Input Parameters:**
 
@@ -1487,15 +1478,13 @@ Feature 7: CSIRO Grassfire Acceleration
    \text{acceleration\_factor} &= 1 - \exp(-dt / t_{\text{accel}}) \\
    R_{\text{accelerated}} &= R \times (1 + \text{acceleration\_factor})
 
-**References**: Cheney, N.P. & Gould, J.S. (1995). Int. J. Wildland Fire, 5(4):237-247.
+**References**: Cheney, N.P. & Gould, J.S. (1995). *Fire growth in grassland fuels.* International Journal of Wildland Fire, 5(4):237-247.
 
 
-Feature 8: Burnout Time Separation
------------------------------------
+Burnout Time Separation
+-----------------------
 
-**Status:** ✅ Complete
-
-**Description:** Splits total residence time into flaming and smoldering phase durations by fuel type.
+Splits total residence time into flaming and smoldering phase durations by fuel type.
 
 **Input Parameters:**
 
@@ -1522,20 +1511,19 @@ Feature 8: Burnout Time Separation
      - Duff: 10% flaming
 
 **Output Variables:**
-- ``burnout_flaming_time`` - Flaming phase duration [seconds]
-- ``burnout_smoldering_time`` - Smoldering phase duration [seconds]
 
-**References**: Anderson, H.E. (1969). USDA Research Paper INT-69. Frandsen, W.H. (1997). Can. J. Forest Res., 27(9):1471-1477.
+* ``burnout_flaming_time`` - Flaming phase duration [seconds]
+* ``burnout_smoldering_time`` - Smoldering phase duration [seconds]
+
+**References**: Anderson, H.E. (1969). *Sustained burning of pale forest fuels.* USDA Research Paper INT-69. Frandsen, W.H. (1997). *Ignition probability of organic soils.* Canadian Journal of Forest Research, 27(9):1471-1477.
 
 
-Feature 9: Simard Moisture Model
----------------------------------
-
-**Status:** ✅ Complete
+Simard Moisture Model
+---------------------
 
 **Header**: ``src/simard_moisture.H``
 
-**Description:** Exponential time-lag moisture update based on equilibrium moisture approach with size-dependent time constants.
+Exponential time-lag moisture update based on equilibrium moisture approach with size-dependent time constants.
 
 **Input Parameters:**
 
@@ -1564,17 +1552,15 @@ Feature 9: Simard Moisture Model
 
    M(t+dt) = M_{\text{eq}} + (M(t) - M_{\text{eq}}) \times \exp(-dt/\tau)
 
-**References**: Simard, A.J. (1968). Forestry Branch Info. Rep. FF-X-14.
+**References**: Simard, A.J. (1968). *The moisture content of forest fuels - I.* Forestry Branch Info. Rep. FF-X-14.
 
 
-Feature 10: Post-Frontal Smoldering
-------------------------------------
-
-**Status:** ✅ Complete
+Post-Frontal Smoldering
+-----------------------
 
 **Header**: ``src/duff_moisture_smoldering.H``
 
-**Description:** Tracks residual combustion after flame front passage with exponential decay for smoke/air quality applications.
+Tracks residual combustion after flame front passage with exponential decay for smoke/air quality applications.
 
 **Input Parameters:**
 
@@ -1601,10 +1587,11 @@ Feature 10: Post-Frontal Smoldering
      - Duff decay = 6 hours
 
 **Output Variables:**
-- ``time_since_burn`` - Elapsed time since cell burned [seconds]
-- ``residual_heat_release`` - Residual smoldering intensity [kW/m²]
 
-**References**: Frandsen, W.H. (1997). Can. J. Forest Res., 27(9):1471-1477. Urbanski, S.P. (2014). Forest Ecol. Mgmt., 317:1-8.
+* ``time_since_burn`` - Elapsed time since cell burned [seconds]
+* ``residual_heat_release`` - Residual smoldering intensity [kW/m²]
+
+**References**: Frandsen, W.H. (1997). *Ignition probability of organic soils.* Canadian Journal of Forest Research, 27(9):1471-1477. Urbanski, S.P. (2014). *Wildland fire emissions, carbon, and climate: Emission factors.* Forest Ecology and Management, 317:1-8.
 
 
 Integration Architecture
@@ -1612,31 +1599,35 @@ Integration Architecture
 
 **Files Modified/Created:**
 
-1. **parse_inputs.H/cpp** - Added parameter structures for all 10 features
+1. **parse_inputs.H/cpp** - Added parameter structures for all features
 2. **multifab_setup.H** - Added MultiFab fields for diagnostic output:
-   - ``crown_fraction_burned_mf``
-   - ``effective_wind_speed_mf``
-   - ``burnout_phases_mf``
-   - ``residual_heat_release_mf``
-   - ``time_since_burn_mf``
+
+   * ``crown_fraction_burned_mf``
+   * ``effective_wind_speed_mf``
+   * ``burnout_phases_mf``
+   * ``residual_heat_release_mf``
+   * ``time_since_burn_mf``
+
 3. **plot_results.H** - Added new diagnostic variables to plotfile output
 4. **main.cpp** - Integrated feature calls into main simulation loop
 5. **wildfire_includes.H** - Added includes for feature header files
 
 **New Header Files:**
-- ``effective_wind_speed.H`` - Feature 4 computation
-- ``fire_intensity_class.H`` - Feature 2 NFDRS classification
-- ``crown_initiation.H`` - Feature 3 CFB computation
-- ``fuel_boundary_smoothing.H`` - Feature 6 boundary smoothing
-- ``fire_acceleration.H`` - Feature 7 CSIRO acceleration
-- ``simard_moisture.H`` - Feature 9 moisture model
-- ``duff_moisture_smoldering.H`` - Feature 10 post-frontal tracking
+
+* ``effective_wind_speed.H`` - Effective wind speed computation
+* ``fire_intensity_class.H`` - NFDRS danger classification
+* ``crown_initiation.H`` - CFB computation
+* ``fuel_boundary_smoothing.H`` - Boundary smoothing
+* ``fire_acceleration.H`` - CSIRO acceleration
+* ``simard_moisture.H`` - Simard moisture model
+* ``duff_moisture_smoldering.H`` - Post-frontal tracking
 
 **Performance Notes:**
-- **GPU Acceleration:** All features use AMREX_GPU_HOST_DEVICE macros for GPU compatibility
-- **Computational Cost:** Features are only computed when explicitly enabled
-- **Memory Overhead:** Additional MultiFabs for diagnostics add ~50 MB per feature for 512³ domain
-- **Physics-Based:** All formulas based on peer-reviewed wildfire literature
+
+* **GPU Acceleration:** All features use AMREX_GPU_HOST_DEVICE macros for GPU compatibility
+* **Computational Cost:** Features are only computed when explicitly enabled
+* **Memory Overhead:** Additional MultiFabs for diagnostics add ~50 MB per feature for 512³ domain
+* **Physics-Based:** All formulas based on peer-reviewed wildfire literature
 
 Easy-to-Implement Operational Fire Danger Indices (2026)
 =========================================================
