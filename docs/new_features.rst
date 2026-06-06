@@ -1281,10 +1281,10 @@ Higher temperature accelerates drying by reducing effective time lag.
 
 **Test**: ``regtest/moisture/fuel_moisture_timelag_de/``
 
-**References**: Nelson, R.M. (2000). *Prediction of diurnal change in 10-h fuel
-stick moisture content.* Canadian Journal of Forest Research, 30, 1071-1087.
-Viney, N.R. (1991). *A review of fine fuel moisture modelling.* International
-Journal of Wildland Fire, 1(4), 215-234.
+**References**:
+
+* Nelson, R.M. (2000). *Prediction of diurnal change in 10-h fuel stick moisture content.* Canadian Journal of Forest Research, 30, 1071-1087.
+* Viney, N.R. (1991). *A review of fine fuel moisture modelling.* International Journal of Wildland Fire, 1(4), 215-234.
 
 
 Integrated Fire Behavior Features
@@ -1311,7 +1311,7 @@ Accounts for patchy or discontinuous fuel beds by applying a multiplicative fact
      - 1.0
      - Fuel continuity factor: 1.0 = continuous, 0.5 = 50% coverage, 0.0 = gaps
 
-**References**: Finney, M.A. (2006). *FlamMap capabilities.* USDA Forest Service RMRS-P-41.
+**References**: Finney, M.A. (2006). *An overview of FlamMap fire modeling capabilities.* USDA Forest Service, Rocky Mountain Research Station, RMRS-P-41, 213-220.
 
 
 NFDRS Fire Danger Class
@@ -1360,7 +1360,7 @@ Diagnostic metric distinguishing passive vs active crown fire based on fire inte
 
 * ``crown_fraction_burned`` - CFB ratio (0-1)
 
-**References**: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing canopy fire behavior in a wildland fire info system.* USDA RMRS-RP-29.
+**References**: Scott, J.H. & Reinhardt, E.D. (2001). *Assessing canopy fire behavior in a wildland fire information system.* USDA RMRS-RP-29.
 
 
 Effective Wind Speed
@@ -1515,7 +1515,10 @@ Splits total residence time into flaming and smoldering phase durations by fuel 
 * ``burnout_flaming_time`` - Flaming phase duration [seconds]
 * ``burnout_smoldering_time`` - Smoldering phase duration [seconds]
 
-**References**: Anderson, H.E. (1969). *Sustained burning of pale forest fuels.* USDA Research Paper INT-69. Frandsen, W.H. (1997). *Ignition probability of organic soils.* Canadian Journal of Forest Research, 27(9):1471-1477.
+**References**:
+
+* Anderson, H.E. (1969). *Sustained burning of piled coarse forest fuels.* USDA Research Paper INT-69.
+* Frandsen, W.H. (1997). *Ignition probability of organic soils.* Canadian Journal of Forest Research, 27(9):1471-1477.
 
 
 Simard Moisture Model
