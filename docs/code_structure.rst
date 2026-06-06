@@ -443,17 +443,17 @@ Run specific test::
     ctest -R basic_levelset
 
 
-Integration of 10 Wildfire Features
-------------------------------------
+Integrated Fire Behavior Features Architecture
+----------------------------------------------
 
-The following sections describe the architecture and integration details for the 10 wildfire features that have been added to the simulation framework.
+The following sections describe the architecture and integration details for advanced fire behavior features integrated into the simulation framework.
 
 Files Modified
 ^^^^^^^^^^^^^^
 
-The following core files were modified to integrate the 10 features:
+The following core files were modified to integrate these features:
 
-1. **parse_inputs.H/cpp** - Added parameter structures for all 10 features
+1. **parse_inputs.H/cpp** - Added parameter structures for all features
 2. **multifab_setup.H** - Added MultiFab fields for diagnostic output:
    
    * ``crown_fraction_burned_mf``
@@ -469,20 +469,20 @@ The following core files were modified to integrate the 10 features:
 New Header Files
 ^^^^^^^^^^^^^^^^
 
-The following header files were added to implement the 10 features:
+The following header files implement these features:
 
-* ``effective_wind_speed.H`` - Feature 4: Effective wind speed computation
-* ``fire_intensity_class.H`` - Feature 2: NFDRS classification
-* ``crown_initiation.H`` - Feature 3: CFB computation (already existed)
-* ``fuel_boundary_smoothing.H`` - Feature 6: Boundary smoothing
-* ``fire_acceleration.H`` - Feature 7: CSIRO acceleration
-* ``simard_moisture.H`` - Feature 9: Simard moisture model
-* ``duff_moisture_smoldering.H`` - Feature 10: Post-frontal tracking
+* ``effective_wind_speed.H`` - Effective wind speed computation
+* ``fire_intensity_class.H`` - NFDRS danger classification
+* ``crown_initiation.H`` - CFB computation
+* ``fuel_boundary_smoothing.H`` - Boundary smoothing
+* ``fire_acceleration.H`` - CSIRO acceleration
+* ``simard_moisture.H`` - Simard moisture model
+* ``duff_moisture_smoldering.H`` - Post-frontal tracking
 
 GPU Compatibility
 ^^^^^^^^^^^^^^^^^
 
-All 10 features use ``AMREX_GPU_HOST_DEVICE`` macros to ensure compatibility with GPU acceleration. This allows the features to run on both CPU and GPU backends without code changes.
+The integrated features utilize ``AMREX_GPU_HOST_DEVICE`` macros to ensure full compatibility with GPU acceleration. This allows these features to run seamlessly on both CPU and GPU backends.
 
 Performance Characteristics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -494,8 +494,8 @@ Performance Characteristics
 Future Integration Opportunities
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-1. **Moisture Feedback:** Feature 9 (Simard) can be integrated with spatial moisture fields
-2. **Crown Fire Coupling:** Features 3 and 7 can enhance crown fire initiation modeling
-3. **Air Quality:** Feature 10 output can drive smoke/emissions calculations
-4. **Operational Integration:** Feature 2 (NFDRS) can trigger resource responses
-5. **Ensemble Studies:** Features enable probabilistic fire behavior analysis
+1. **Moisture Feedback:** Simard moisture model can be integrated with spatial moisture fields
+2. **Crown Fire Coupling:** Crown fraction burned and fire acceleration can enhance crown fire initiation modeling
+3. **Air Quality:** Post-frontal smoldering outputs can drive smoke and emissions calculations
+4. **Operational Integration:** NFDRS danger classification can trigger resource responses
+5. **Ensemble Studies:** These features enable robust, probabilistic fire behavior analysis
