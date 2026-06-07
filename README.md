@@ -67,19 +67,19 @@ fire.finalize()
 
 ## Core Capabilities
 
-**Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger) • Two-fuel model blending (linear, harmonic, maximum, Finney-style ROS)
+**Fire Spread Models**: Rothermel (1972) with Anderson 13 & Scott-Burgan 40 fuel databases • FARSITE elliptical expansion • Alternative models (Balbi, Cheney-Gould, Cruz, Canadian FBP, Lautenberger) • Two-fuel model blending (linear, harmonic, maximum, Finney-style ROS) • FBP Model Coupling with Dynamic FWI (fine fuel moisture and buildup index effects)
 
 **Fire Behavior**: Crown fire initiation & spread • Wind-terrain-fuel interactions • Radiation preheating with slope-dependent flame tilt • Byram convective number • Flame tilt angle • Packing ratio diagnostics (β/β_opt) • Flame front depth • McArthur FFDI • Fire acceleration (Anderson temporal & size-based) • Scott & Reinhardt Crown Fire Surface Area (CFSA) for 3-D canopy structure • Backing fire ROS empirical ratios
 
 **Fuel Moisture**: Time-varying schedules (FMD/FMC) • Diurnal cycles • Precipitation wetting • McArthur temperature/RH scaling • Enhanced phenology models (sinusoidal & growing degree day) • Canadian FWI System (FFMC/DMC/DC/BUI/FWI) • Dynamic moisture of extinction (M_x) • Duff moisture with smoldering combustion • Fine fuel moisture time-lag differential equations • Grass curing model
 
-**Fire Danger Indices**: Keetch-Byram Drought Index (KBDI) • Haines Index atmospheric stability • McArthur FFDI • Canadian FWI System • NFDRS Spread Component (SC) • Chandler Burning Index (CBI)
+**Fire Danger Indices**: Keetch-Byram Drought Index (KBDI) • Haines Index atmospheric stability • McArthur FFDI • Canadian FWI System • NFDRS Spread Component (SC) • Chandler Burning Index (CBI) • Fosberg Fire Weather Index (FFWI) with spatial EMC/eta mapping • Sharples Fire Weather Index (SFWI) • Fuel Moisture Index (FMI)
 
 **Spotting**: Albini trajectory model • Ember cascade • Ember accumulation tracking with decay & probabilistic ignition
 
 **Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor • Multi-station interpolation • Multi-layer canopy wind profile (exponential/logarithmic vertical distribution) • Diurnal weather cycles • Elevation temperature lapse rate • Canyon eruptive acceleration model (dynamically coupled front orientation and terrain-slope induced draft velocity)
 
-**Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
+**Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations • Extended Emissions Scaling (CO₂, CO, PM₂.₅, CH₄, N₂O)
 
 See [full documentation](https://hgopalan.github.io/wildfire_levelset/) for complete feature list, model equations, and parameters.
 

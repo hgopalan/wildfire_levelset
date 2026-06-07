@@ -936,17 +936,30 @@ void parse_inputs(InputParameters& p)
     if (p.fire_ecology.p_ignition_floor < 0.0 || p.fire_ecology.p_ignition_floor > 1.0)
         amrex::Abort("fire_ecology.p_ignition_floor must be in [0, 1]");
 
-    // -------- Fire emissions (CO2, CO, PM2.5) --------
+    // -------- Fire emissions (CO2, CO, PM2.5, CH4, N2O) --------
     // Emission factors from Seiler & Crutzen (1980) / WRF-Fire defaults.
     p.emissions.EF_CO2              = 1.570;  pp.query("emissions.EF_CO2",              p.emissions.EF_CO2);
     p.emissions.EF_CO               = 0.102;  pp.query("emissions.EF_CO",               p.emissions.EF_CO);
     p.emissions.EF_PM25             = 0.0162; pp.query("emissions.EF_PM25",             p.emissions.EF_PM25);
+    p.emissions.EF_CH4              = 0.0056;  pp.query("emissions.EF_CH4",              p.emissions.EF_CH4);
+    p.emissions.EF_N2O              = 0.00015; pp.query("emissions.EF_N2O",              p.emissions.EF_N2O);
     p.emissions.default_consumed_frac = 0.7;  pp.query("emissions.default_consumed_frac", p.emissions.default_consumed_frac);
     if (p.emissions.EF_CO2  < 0.0) amrex::Abort("emissions.EF_CO2 must be >= 0");
     if (p.emissions.EF_CO   < 0.0) amrex::Abort("emissions.EF_CO must be >= 0");
     if (p.emissions.EF_PM25 < 0.0) amrex::Abort("emissions.EF_PM25 must be >= 0");
+    if (p.emissions.EF_CH4  < 0.0) amrex::Abort("emissions.EF_CH4 must be >= 0");
+    if (p.emissions.EF_N2O  < 0.0) amrex::Abort("emissions.EF_N2O must be >= 0");
     if (p.emissions.default_consumed_frac < 0.0 || p.emissions.default_consumed_frac > 1.0)
         amrex::Abort("emissions.default_consumed_frac must be in [0,1]");
+
+    // -------- Canadian Forest Fire Weather Index (FWI) --------
+    p.canadian_fwi.enable   = 0;     pp.query("canadian_fwi.enable",   p.canadian_fwi.enable);
+    p.canadian_fwi.FFMC_init = 85.0;  pp.query("canadian_fwi.FFMC_init", p.canadian_fwi.FFMC_init);
+    p.canadian_fwi.DMC_init  = 6.0;   pp.query("canadian_fwi.DMC_init",  p.canadian_fwi.DMC_init);
+    p.canadian_fwi.DC_init   = 15.0;  pp.query("canadian_fwi.DC_init",   p.canadian_fwi.DC_init);
+
+    // -------- Fosberg Fire Weather Index (FFWI) --------
+    p.ffwi.enable           = 0;     pp.query("ffwi.enable",           p.ffwi.enable);
 
     // -------- FARSITE barrier polygon / firebreak files --------
     // Accept a space-separated list: barrier_files = file1.csv file2.csv

@@ -269,4 +269,38 @@ inline Real compute_cbi_scalar(Real temperature_C,
     return CBI;
 }
 
+// ============================================================================
+// compute_sharples_fire_weather_index
+//
+// Computes the Sharples Fire Weather Index (SFWI), an Australian fuel-agnostic
+// index designed to capture rapid fire spread potential.
+//
+// W_kmh = wind_speed_ms * 3.6
+// SFWI = W_kmh / RH_pct
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_sharples_fire_weather_index(Real RH_pct, Real wind_speed_ms)
+{
+    // Convert m/s to km/h (1 m/s = 3.6 km/h)
+    Real W_kmh = wind_speed_ms * Real(3.6);
+    
+    // Clamp RH to valid range [1.0, 100.0] to avoid division by zero
+    Real RH_safe = amrex::max(Real(1.0), amrex::min(RH_pct, Real(100.0)));
+    
+    return W_kmh / RH_safe;
+}
+
+// ============================================================================
+// compute_fuel_moisture_index
+//
+// Computes the Fuel Moisture Index (FMI), a highly simplified dryness metric.
+//
+// FMI = 10 - 0.25 * (T - RH)
+// ============================================================================
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+Real compute_fuel_moisture_index(Real temperature_C, Real RH_pct)
+{
+    return Real(10.0) - Real(0.25) * (temperature_C - RH_pct);
+}
+
 #endif // CHANDLER_BURNING_INDEX_H

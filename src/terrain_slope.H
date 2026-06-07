@@ -38,6 +38,9 @@ inline void compute_slopes_from_terrain(MultiFab& slopes,
         // Skip empty lines and comments
         if (line.empty() || line[0] == '#') continue;
         
+        // Replace commas with spaces to handle CSV format
+        std::replace(line.begin(), line.end(), ',', ' ');
+        
         std::istringstream iss(line);
         Real x, y, z;
         if (iss >> x >> y >> z) {
@@ -138,6 +141,10 @@ inline void compute_elevation_from_terrain(MultiFab& elevation,
     std::string line;
     while (std::getline(infile, line)) {
         if (line.empty() || line[0] == '#') continue;
+        
+        // Replace commas with spaces to handle CSV format
+        std::replace(line.begin(), line.end(), ',', ' ');
+        
         std::istringstream iss(line);
         Real x, y, z;
         if (iss >> x >> y >> z) {

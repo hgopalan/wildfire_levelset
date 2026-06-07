@@ -543,4 +543,79 @@ inline void compute_fwi_moisture_codes(
     }
 }
 
+// ============================================================================
+// Spatially-varying FWI update dynamically at each timestep
+//
+// Parameters:
+//   fwi_mf         - input/output: FWI System codes MultiFab (6 components)
+//   temperature_mf - temperature field [°C]
+//   humidity_mf    - relative humidity field [%]
+//   vel            - wind velocity field [m/s]
+//   rain_rate_mm_hr- current rainfall rate [mm/hr]
+//   dt_seconds     - timestep [seconds]
+//   month          - calendar month [1-12]
+// ============================================================================
+inline void update_fwi_field(
+    MultiFab& fwi_mf,
+    const MultiFab& temperature_mf,
+    const MultiFab& humidity_mf,
+    const MultiFab& vel,
+    Real rain_rate_mm_hr,
+    Real dt_seconds,
+    int month)
+{
+    const Real dt_frac = dt_seconds / Real(86400.0);
+    const Real rain = rain_rate_mm_hr * Real(24.0);
+    const Real ms_to_kmh = Real(3.6);
+
+    for (MFIter mfi(fwi_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto fwi_arr = fwi_mf.array(mfi);
+        auto const T_arr = temperature_mf.const_array(mfi);
+        auto const RH_arr = humidity_mf.const_array(mfi);
+        auto const vel_arr = vel.const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            // Retrieve previous FWI state
+            FWIState state_prev;
+            state_prev.FFMC = fwi_arr(i, j, k, 0);
+            state_prev.DMC  = fwi_arr(i, j, k, 1);
+            state_prev.DC   = fwi_arr(i, j, k, 2);
+            state_prev.ISI  = fwi_arr(i, j, k, 3);
+            state_prev.BUI  = fwi_arr(i, j, k, 4);
+            state_prev.FWI  = fwi_arr(i, j, k, 5);
+
+            const Real T = T_arr(i, j, k);
+            const Real RH = RH_arr(i, j, k);
+
+            // Wind speed in km/h
+            const Real ux = vel_arr(i, j, k, 0);
+            const Real uy = vel_arr(i, j, k, 1);
+            const Real wind_speed_ms = std::sqrt(ux*ux + uy*uy);
+            const Real W = wind_speed_ms * ms_to_kmh;
+
+            // Compute daily target state
+            FWIState target = update_fwi_system(state_prev, T, RH, W, rain, month);
+
+            // Fractionally update moisture codes
+            const Real ffmc_new = state_prev.FFMC + (target.FFMC - state_prev.FFMC) * dt_frac;
+            const Real dmc_new  = state_prev.DMC  + (target.DMC  - state_prev.DMC)  * dt_frac;
+            const Real dc_new   = state_prev.DC   + (target.DC   - state_prev.DC)   * dt_frac;
+
+            // Recompute diagnostic indices based on updated codes
+            const Real isi_new = compute_isi(ffmc_new, W);
+            const Real bui_new = compute_bui(dmc_new, dc_new);
+            const Real fwi_new = compute_fwi(isi_new, bui_new);
+
+            // Write back to MultiFab
+            fwi_arr(i, j, k, 0) = ffmc_new;
+            fwi_arr(i, j, k, 1) = dmc_new;
+            fwi_arr(i, j, k, 2) = dc_new;
+            fwi_arr(i, j, k, 3) = isi_new;
+            fwi_arr(i, j, k, 4) = bui_new;
+            fwi_arr(i, j, k, 5) = fwi_new;
+        });
+    }
+}
+
 #endif // CANADIAN_FWI_H

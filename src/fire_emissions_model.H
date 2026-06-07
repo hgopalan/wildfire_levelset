@@ -50,7 +50,7 @@
 using namespace amrex;
 
 // Number of components in the emissions MultiFab
-constexpr int EMISSIONS_NCOMP = 3;
+constexpr int EMISSIONS_NCOMP = 5;
 
 // ============================================================================
 // compute_fire_emissions
@@ -82,6 +82,8 @@ inline void compute_fire_emissions(
     const Real EF_CO2  = Real(ep.EF_CO2);
     const Real EF_CO   = Real(ep.EF_CO);
     const Real EF_PM25 = Real(ep.EF_PM25);
+    const Real EF_CH4  = Real(ep.EF_CH4);
+    const Real EF_N2O  = Real(ep.EF_N2O);
     const Real def_fc  = Real(ep.default_consumed_frac);
     const Real Wf      = W_fuel;
 
@@ -111,6 +113,8 @@ inline void compute_fire_emissions(
             em(i, j, k, 0) = burned_load * EF_CO2;
             em(i, j, k, 1) = burned_load * EF_CO;
             em(i, j, k, 2) = burned_load * EF_PM25;
+            em(i, j, k, 3) = burned_load * EF_CH4;
+            em(i, j, k, 4) = burned_load * EF_N2O;
         });
     }
 }

@@ -816,6 +816,7 @@ inline void write_fire_stats_header(const std::string& filename)
     out << "step,time_s,burned_area_ha,perimeter_km,"
            "active_front_cells,head_ros_ms,max_flame_length_m,"
            "total_co2_kg_m2,total_co_kg_m2,total_pm25_kg_m2,"
+           "total_ch4_kg_m2,total_n2o_kg_m2,"
            "growth_rate_ha_min,major_axis_m,minor_axis_m\n";
     out.close();
 }
@@ -966,7 +967,7 @@ inline void append_fire_stats(const MultiFab& phi,
     // near the live fire front).
     amrex::Long n_burned = 0, n_active = 0;
     Real perim_m = Real(0.0);
-    Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0;
+    Real sum_co2 = 0, sum_co = 0, sum_pm25 = 0, sum_ch4 = 0, sum_n2o = 0;
     Real head_ros = Real(0.0);  // maximum ROS in perimeter cells [m/s]
     Real max_fl = Real(0.0);     // maximum flame length [m]
 
@@ -1030,6 +1031,8 @@ inline void append_fire_stats(const MultiFab& phi,
                 sum_co2  += em(i, j, k, 0);
                 sum_co   += em(i, j, k, 1);
                 sum_pm25 += em(i, j, k, 2);
+                sum_ch4  += em(i, j, k, 3);
+                sum_n2o  += em(i, j, k, 4);
             });
         }
     }
@@ -1047,6 +1050,8 @@ inline void append_fire_stats(const MultiFab& phi,
         ParallelDescriptor::ReduceRealSum(sum_co2);
         ParallelDescriptor::ReduceRealSum(sum_co);
         ParallelDescriptor::ReduceRealSum(sum_pm25);
+        ParallelDescriptor::ReduceRealSum(sum_ch4);
+        ParallelDescriptor::ReduceRealSum(sum_n2o);
     }
 
     Real burned_ha    = static_cast<Real>(n_burned) * cell_area / Real(1.0e4);
@@ -1056,6 +1061,8 @@ inline void append_fire_stats(const MultiFab& phi,
     Real mean_co2  = (total_cells > 0) ? sum_co2  / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_co   = (total_cells > 0) ? sum_co   / static_cast<Real>(total_cells) : Real(0.0);
     Real mean_pm25 = (total_cells > 0) ? sum_pm25 / static_cast<Real>(total_cells) : Real(0.0);
+    Real mean_ch4  = (total_cells > 0) ? sum_ch4  / static_cast<Real>(total_cells) : Real(0.0);
+    Real mean_n2o  = (total_cells > 0) ? sum_n2o  / static_cast<Real>(total_cells) : Real(0.0);
     
     // Calculate fire ellipse major/minor axes from area and perimeter
     Real area_m2 = burned_ha * Real(1.0e4);  // convert ha to m²
@@ -1088,6 +1095,8 @@ inline void append_fire_stats(const MultiFab& phi,
         << mean_co2   << ","
         << mean_co    << ","
         << mean_pm25  << ","
+        << mean_ch4   << ","
+        << mean_n2o   << ","
         << growth_rate_ha_min << ","
         << major_axis_m << ","
         << minor_axis_m << "\n";

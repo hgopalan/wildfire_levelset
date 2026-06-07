@@ -426,7 +426,7 @@ int main(int argc, char* argv[])
                    inputs.fire_spread_model == "fbp_s1"  ||
                    inputs.fire_spread_model == "fbp_s2"  ||
                    inputs.fire_spread_model == "fbp_s3") {
-            compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
+            compute_fbp_R(R_mf, vel_for_model, inputs.fbp, &f.fwi_mf, inputs.canadian_fwi.enable);
         } else if (inputs.fire_spread_model == "lautenberger") {
             compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
                                     terrain_slopes.get());
@@ -470,7 +470,7 @@ int main(int argc, char* argv[])
                    inputs.fire_spread_model == "fbp_s1"  ||
                    inputs.fire_spread_model == "fbp_s2"  ||
                    inputs.fire_spread_model == "fbp_s3") {
-            compute_fbp_R(R_mf, vel_for_mtt, inputs.fbp);
+            compute_fbp_R(R_mf, vel_for_mtt, inputs.fbp, &f.fwi_mf, inputs.canadian_fwi.enable);
         } else if (inputs.fire_spread_model == "lautenberger") {
             compute_lautenberger_R(R_mf, vel_for_mtt, inputs.rothermel, inputs.lautenberger,
                                     terrain_slopes.get());
@@ -515,7 +515,7 @@ int main(int argc, char* argv[])
                  inputs.fire_spread_model == "fbp_s1"  ||
                  inputs.fire_spread_model == "fbp_s2"  ||
                  inputs.fire_spread_model == "fbp_s3") {
-          compute_fbp_R(R_mf, vel_for_farsite_init, inputs.fbp);
+          compute_fbp_R(R_mf, vel_for_farsite_init, inputs.fbp, &f.fwi_mf, inputs.canadian_fwi.enable);
       } else if (inputs.fire_spread_model == "lautenberger") {
           compute_lautenberger_R(R_mf, vel_for_farsite_init, inputs.rothermel, inputs.lautenberger,
                                   terrain_slopes.get());
@@ -958,6 +958,38 @@ int main(int argc, char* argv[])
                       inputs.live_fuel_seasonal.M_lw_winter));
       }
 
+      // ---- Canadian FWI System codes dynamic update ----
+      if (inputs.canadian_fwi.enable == 1) {
+          float rain_rate = 0.0f;
+          if (inputs.diurnal_moisture.enable == 1 && precip_state.initialized) {
+              rain_rate = static_cast<float>(inputs.precip_rain_rate_mm_hr);
+              if (wtr_active && !wtr_data.empty()) {
+                  rain_rate = static_cast<float>(wtr_data.get_precip_at_time(static_cast<double>(time)));
+              } else if (!precip_schedule.empty()) {
+                  double t_d = static_cast<double>(time);
+                  if (t_d <= precip_schedule.front().first) {
+                      rain_rate = static_cast<float>(precip_schedule.front().second);
+                  } else if (t_d >= precip_schedule.back().first) {
+                      rain_rate = static_cast<float>(precip_schedule.back().second);
+                  } else {
+                      auto it = std::upper_bound(precip_schedule.begin(), precip_schedule.end(),
+                                                 t_d,
+                                                 [](double t, const std::pair<double,double>& r){
+                                                     return t < r.first; });
+                      auto prev = std::prev(it);
+                      const double alpha = (t_d - prev->first) / (it->first - prev->first);
+                      rain_rate = static_cast<float>(prev->second +
+                                                      alpha * (it->second - prev->second));
+                  }
+              }
+          }
+          int current_month = inputs.sim_start_month > 0 ? inputs.sim_start_month : inputs.solar_radiation.month;
+          if (current_month <= 0) current_month = 7; // Fallback to July if unset or 0
+
+          update_fwi_field(f.fwi_mf, temperature_mf, humidity_mf, vel,
+                           static_cast<Real>(rain_rate), static_cast<Real>(dt_step), current_month);
+      }
+
       // ---- Elevation lapse-rate T/RH correction for per-cell solar EMC ----
       // Apply lapse-rate T/RH adjustment to spatial_moisture_mf before
       // the solar EMC pass.  This pass is inline: for each cell read elevation
@@ -1067,7 +1099,7 @@ int main(int argc, char* argv[])
                  inputs.fire_spread_model == "fbp_s1"  ||
                  inputs.fire_spread_model == "fbp_s2"  ||
                  inputs.fire_spread_model == "fbp_s3") {
-          compute_fbp_R(R_mf, vel_for_model, inputs.fbp);
+          compute_fbp_R(R_mf, vel_for_model, inputs.fbp, &f.fwi_mf, inputs.canadian_fwi.enable);
       } else if (inputs.fire_spread_model == "lautenberger") {
           compute_lautenberger_R(R_mf, vel_for_model, inputs.rothermel, inputs.lautenberger,
                                   terrain_slopes.get());
