@@ -680,7 +680,7 @@ purpose.  Detailed descriptions and examples follow in the subsections below.
      -
    * - ``wind_terrain.model``
      - "none"
-     - Terrain wind model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, ``windninja_ridge_canyon``
+     - Terrain wind model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, ``windninja_ridge_canyon``, ``farsite_wind``, ``canyon_eruptive``
    * - ``wind_terrain.k_canyon``
      - 1.0
      - Canyon wind amplification coefficient (``canyon_wind`` model)
@@ -1952,8 +1952,10 @@ Wind-Terrain Feedback Model Parameters
     speed-up based on wind-slope alignment (see below)
   - ``farsite_wind`` – Option 8: FARSITE empirical wind stream simulation
     using terrain curvature; modifies both speed and direction (see below)
+  - ``canyon_eruptive`` – Option 9: Viegas' (2004) canyon eruptive acceleration model
+    by dynamically coupling front orientation to a local terrain-slope induced draft velocity field
 
-  Example: ``wind_terrain.model = farsite_wind``
+  Example: ``wind_terrain.model = canyon_eruptive``
 
 **wind_terrain.k_canyon** (default: 1.0)
   Terrain channeling coefficient for Option 4 (``canyon_wind``). Must be > 0.
