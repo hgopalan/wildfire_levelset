@@ -76,7 +76,7 @@ inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
 //
 // Fills vel_eff with a terrain-modified copy of the ambient wind field vel.
 // Called for Options 3 (viegas_wind), 4 (canyon_wind), 5 (viegas_neto),
-// 6 (pimont), 7 (windninja_ridge_canyon), and 8 (farsite_wind).
+// 6 (pimont), 7 (windninja_ridge_canyon), 8 (farsite_wind), and 9 (canyon_eruptive).
 // For "none" and "viegas_ros" this function should not be called.
 //
 // Parameters:
@@ -88,13 +88,15 @@ inline bool wind_terrain_modifies_velocity(const InputParameters& inputs)
 //   geom           – grid geometry (required for farsite_wind curvature calc)
 //   inputs         – full input parameter set (uses wind_terrain, viegas, and
 //                    rothermel sub-structs)
+//   phi_mf         – optional levelset field (MultiFab) for front orientation
 // ============================================================================
 inline void apply_wind_terrain_velocity(
     MultiFab&              vel_eff,
     const MultiFab&        vel,
     const MultiFab*        terrain_slopes,
     const Geometry&        geom,
-    const InputParameters& inputs)
+    const InputParameters& inputs,
+    const MultiFab*        phi_mf = nullptr)
 {
     const std::string& model = inputs.wind_terrain.model;
 
@@ -135,16 +137,18 @@ inline void apply_wind_terrain_velocity(
     const Real v_b        = std::sqrt(std::max(g_SI * delta_m * T_ratio, Real(0.0)));
 
     const bool has_slope  = (terrain_slopes != nullptr);
+    const bool has_phi    = (phi_mf != nullptr);
 
     // Enumerate model so GPU lambda captures an int (no std::string on device)
     // 3 = viegas_wind, 4 = canyon_wind, 5 = viegas_neto, 6 = pimont, 
-    // 7 = windninja_ridge_canyon, 8 = farsite_wind
+    // 7 = windninja_ridge_canyon, 8 = farsite_wind, 9 = canyon_eruptive
     int model_id = 0;
     if      (model == "viegas_wind")            model_id = 3;
     else if (model == "canyon_wind")            model_id = 4;
     else if (model == "viegas_neto")            model_id = 5;
     else if (model == "pimont")                 model_id = 6;
     else if (model == "windninja_ridge_canyon") model_id = 7;
+    else if (model == "canyon_eruptive")        model_id = 9;
     // Note: farsite_wind (model_id 8) handled separately above
 
     // WindNinja ridge/canyon coefficients (Option 7)
@@ -166,6 +170,9 @@ inline void apply_wind_terrain_velocity(
 
         Array4<const Real> sl;
         if (has_slope) sl = terrain_slopes->const_array(mfi);
+
+        Array4<const Real> phi_arr;
+        if (has_phi) phi_arr = phi_mf->const_array(mfi);
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             // ----------------------------------------------------------------
@@ -276,6 +283,39 @@ inline void apply_wind_terrain_velocity(
                         uy_eff = uy * factor;
                     }
                 }
+            } else if (model_id == 9) {
+                // Option 9 – canyon_eruptive: Viegas' (2004) canyon eruptive acceleration model
+                // by dynamically coupling front orientation to a local terrain-slope induced draft velocity field.
+                //   U_ind = v_b * tan_phi, directed upslope.
+                //   We couple this to the fire front normal: n = grad(phi) / |grad(phi)|
+                //   alignment = dot(n, uphill_unit).
+                //   The coupling factor is f_couple = max(0.0, alignment).
+                //   Effective draft is: U_coupled = f_couple * U_ind * uphill_unit
+                if (tan_phi > WT_SLOPE_EPS) {
+                    const Real inv_slope = Real(1.0) / tan_phi;
+                    const Real uphill_x  = sx * inv_slope;
+                    const Real uphill_y  = sy * inv_slope;
+                    
+                    Real f_couple = Real(1.0); // default to full draft if front info is unavailable
+                    if (has_phi) {
+                        // Compute grad(phi) = (gpx, gpy) using centered differences, fallback at boundary
+                        const Real gpx = phi_arr(amrex::min(i+1, bx.bigEnd(0)), j, k)
+                                       - phi_arr(amrex::max(i-1, bx.smallEnd(0)), j, k);
+                        const Real gpy = phi_arr(i, amrex::min(j+1, bx.bigEnd(1)), k)
+                                       - phi_arr(i, amrex::max(j-1, bx.smallEnd(1)), k);
+                        const Real gp_mag = std::sqrt(gpx * gpx + gpy * gpy);
+                        if (gp_mag > Real(1.0e-8)) {
+                            const Real nx = gpx / gp_mag;
+                            const Real ny = gpy / gp_mag;
+                            const Real alignment = nx * uphill_x + ny * uphill_y;
+                            f_couple = std::max(Real(0.0), alignment);
+                        }
+                    }
+                    
+                    const Real U_ind = v_b * tan_phi;
+                    ux_eff = ux + f_couple * U_ind * uphill_x;
+                    uy_eff = uy + f_couple * U_ind * uphill_y;
+                }
             }
 
             // ----------------------------------------------------------------
@@ -292,7 +332,7 @@ inline void apply_wind_terrain_velocity(
 // apply_wind_terrain_effective_velocity
 //
 // Convenience wrapper: when the selected wind-terrain model modifies velocity
-// (Options 3-8), calls apply_wind_terrain_velocity to fill vel_eff with the
+// (Options 3-9), calls apply_wind_terrain_velocity to fill vel_eff with the
 // terrain-corrected wind.  Otherwise, copies the ambient vel into vel_eff so
 // that downstream code can always read from vel_eff uniformly.
 // ============================================================================
@@ -301,10 +341,11 @@ inline void apply_wind_terrain_effective_velocity(
     const MultiFab&        vel,
     const MultiFab*        terrain_slopes,
     const Geometry&        geom,
-    const InputParameters& inputs)
+    const InputParameters& inputs,
+    const MultiFab*        phi_mf = nullptr)
 {
     if (wind_terrain_modifies_velocity(inputs)) {
-        apply_wind_terrain_velocity(vel_eff, vel, terrain_slopes, geom, inputs);
+        apply_wind_terrain_velocity(vel_eff, vel, terrain_slopes, geom, inputs, phi_mf);
     } else {
         MultiFab::Copy(vel_eff, vel, 0, 0, 3, 0);
     }
