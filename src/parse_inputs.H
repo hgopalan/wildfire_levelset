@@ -395,8 +395,11 @@ struct InputParameters {
     //  "farsite_wind"          (Option 8) – FARSITE empirical wind stream simulation using
     //                                       terrain curvature to identify ridges/valleys and
     //                                       modify both wind speed and direction
+    //  "canyon_eruptive"       (Option 9) – Viegas' (2004) canyon eruptive model: dynamically
+    //                                       couples front orientation to a local terrain-slope
+    //                                       induced draft velocity field
     //
-    // For "viegas_ros", "viegas_wind", and "viegas_neto" the Viegas diagnostic
+    // For "viegas_ros", "viegas_wind", "viegas_neto", and "canyon_eruptive" the Viegas diagnostic
     // model is automatically enabled (viegas.enable is set to 1).
     // Buoyancy velocity parameters (T_a, T_f, delta) are shared with the
     // ViegasParams and RothermelParams structs respectively.
