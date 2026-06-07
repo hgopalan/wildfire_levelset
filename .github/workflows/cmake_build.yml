@@ -503,16 +503,17 @@ jobs:
                                   parts = line.strip().split()
                                   # Variable comparison lines have exactly 3 columns:
                                   # [variable_name, absolute_error, relative_error]
-                                  # where absolute_error and relative_error are floats.
-                                  if len(parts) == 3:
+                                  # where absolute_error and relative_error are float values.
+                                  # Other 3-column lines (like 'level = 0') are filtered out
+                                  # by checking parts[1] != '=' and by catching ValueError
+                                  # during float conversions.
+                                  if len(parts) == 3 and parts[1] != "=":
                                       try:
                                           abs_err = float(parts[1])
                                           rel_err = float(parts[2])
-                                          # Ensure parts[0] is a variable name and not metadata like "level = 0"
-                                          if parts[1] != "=":
-                                              if abs_err > 0.0 or rel_err > 0.0:
-                                                  has_real_diff = True
-                                                  break
+                                          if abs_err > 0.0 or rel_err > 0.0:
+                                              has_real_diff = True
+                                              break
                                       except ValueError:
                                           pass
                           if has_real_diff:
