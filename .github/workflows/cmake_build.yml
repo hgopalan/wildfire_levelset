@@ -495,23 +495,24 @@ jobs:
                           else:
                               for line in stdout.splitlines():
                                   # If NaNs are present in only one of the runs (asymmetric), it is a real difference.
-                                  # "NaN present in A" / "NaN present in B" will not match "NaN present in both A and B"
-                                  # because of the word "both", allowing symmetric NaNs to safely pass.
-                                  if "NaN present in A" in line or "NaN present in B" in line:
+                                  # We verify that "both" is not in the line to avoid false matching "NaN present in both A and B".
+                                  if ("NaN present in A" in line or "NaN present in B" in line) and "both" not in line:
                                       has_real_diff = True
                                       break
                                   if "variable not present" in line:
                                       has_real_diff = True
                                       break
                                   parts = line.strip().split()
-                                  # Variable comparison lines have exactly 3 columns:
+                                  # AMReX fcompare output format for variable comparison lines has exactly 3 columns:
                                   # [variable_name, absolute_error, relative_error]
+                                  # e.g., "velx                     0.0                     0.0"
                                   # Non-numeric lines (like headers, separators, or metadata 'level = 0')
                                   # are safely filtered out by catching ValueError during float conversion.
                                   if len(parts) == 3:
                                       try:
                                           abs_err = float(parts[1])
                                           rel_err = float(parts[2])
+                                          # Exact regression testing: any non-zero error is an exact difference.
                                           if abs_err > 0.0 or rel_err > 0.0:
                                               has_real_diff = True
                                               break
