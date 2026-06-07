@@ -691,10 +691,11 @@ void parse_inputs(InputParameters& p)
         p.wind_terrain.model != "viegas_neto"            &&
         p.wind_terrain.model != "pimont"                 &&
         p.wind_terrain.model != "windninja_ridge_canyon" &&
-        p.wind_terrain.model != "farsite_wind") {
+        p.wind_terrain.model != "farsite_wind"           &&
+        p.wind_terrain.model != "canyon_eruptive") {
         amrex::Abort("wind_terrain.model must be one of: "
                      "none, viegas_ros, viegas_wind, canyon_wind, viegas_neto, pimont, "
-                     "windninja_ridge_canyon, farsite_wind");
+                     "windninja_ridge_canyon, farsite_wind, canyon_eruptive");
     }
 
     // Validate model-specific parameters
@@ -726,7 +727,8 @@ void parse_inputs(InputParameters& p)
     // Auto-enable Viegas diagnostics for Viegas-based wind-terrain models
     if (p.wind_terrain.model == "viegas_ros"  ||
         p.wind_terrain.model == "viegas_wind" ||
-        p.wind_terrain.model == "viegas_neto") {
+        p.wind_terrain.model == "viegas_neto" ||
+        p.wind_terrain.model == "canyon_eruptive") {
         p.viegas.enable = 1;
     }
 
@@ -782,6 +784,10 @@ void parse_inputs(InputParameters& p)
         Print() << "  Valley channeling:   k_valley = " << p.wind_terrain.k_valley << "\n";
         Print() << "  Direction deflection: k_deflection = " << p.wind_terrain.k_deflection << "\n";
         Print() << "  Min curvature threshold: " << p.wind_terrain.min_curvature << "\n";
+    } else if (p.wind_terrain.model == "canyon_eruptive") {
+        Print() << "Wind-terrain model: canyon_eruptive (Option 9 – Viegas' (2004) canyon eruptive acceleration model)\n";
+        Print() << "  Draft velocity field coupled to level-set front orientation, using v_b = "
+                << "sqrt(g * delta * (T_f - T_a) / T_a)\n";
     }
 
     // -------- Heat flux MultiFab parameters --------

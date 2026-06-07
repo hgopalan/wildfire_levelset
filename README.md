@@ -77,7 +77,7 @@ fire.finalize()
 
 **Spotting**: Albini trajectory model • Ember cascade • Ember accumulation tracking with decay & probabilistic ignition
 
-**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor • Multi-station interpolation • Multi-layer canopy wind profile (exponential/logarithmic vertical distribution) • Diurnal weather cycles • Elevation temperature lapse rate
+**Weather & Terrain**: FARSITE LCP terrain support • Turbulent wind models • Periodic gust factor • Multi-station interpolation • Multi-layer canopy wind profile (exponential/logarithmic vertical distribution) • Diurnal weather cycles • Elevation temperature lapse rate • Canyon eruptive acceleration model (dynamically coupled front orientation and terrain-slope induced draft velocity)
 
 **Technical**: GPU acceleration (CUDA/HIP/SYCL) • MPI parallelism • Python API for coupled simulations
 

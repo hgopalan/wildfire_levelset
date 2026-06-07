@@ -3446,8 +3446,11 @@ Options Summary
    * - 6
      - ``pimont``
      - Scale ambient wind by :math:`\exp(k_\text{pimont}\tan\varphi)` everywhere (Pimont et al. 2009)
+   * - 9
+     - ``canyon_eruptive``
+     - Viegas' (2004) canyon eruptive acceleration model by dynamically coupling front orientation to a local terrain-slope induced draft velocity field
 
-Selecting ``viegas_ros``, ``viegas_wind``, or ``viegas_neto`` automatically enables
+Selecting ``viegas_ros``, ``viegas_wind``, ``viegas_neto``, or ``canyon_eruptive`` automatically enables
 the Viegas (2004) diagnostic model (``viegas.enable = 1``).  Terrain slopes must be
 provided (via ``rothermel.terrain_file`` or ``rothermel.landscape_file``) for any
 slope-dependent option to have an effect.
@@ -3496,6 +3499,16 @@ Option 5 applies it everywhere.
    \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient}
    \,\exp\!\bigl(k_\text{pimont}\tan\varphi\bigr)
 
+**Option 9 — Canyon eruptive acceleration model** (Viegas 2004):
+
+Couples the fire front orientation vector :math:`\hat{\mathbf{n}} = \nabla\phi / |\nabla\phi|` to the terrain-slope induced draft velocity field:
+
+.. math::
+
+   \mathbf{U}_\text{eff} = \mathbf{U}_\text{ambient} + \max(0, \hat{\mathbf{n}} \cdot \hat{\mathbf{u}}_\text{uphill})\,v_b\,\tan\varphi\,\hat{\mathbf{u}}_\text{uphill}
+
+where :math:`\hat{\mathbf{u}}_\text{uphill} = \nabla z / |\nabla z|` is the uphill unit vector, and :math:`v_b` is the buoyancy velocity scale.
+
 Configuration via Parmparse (``wind_terrain.*``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3508,7 +3521,7 @@ Configuration via Parmparse (``wind_terrain.*``)
      - Description
    * - ``wind_terrain.model``
      - ``none``
-     - Model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, or ``windninja_ridge_canyon``
+     - Model: ``none``, ``viegas_ros``, ``viegas_wind``, ``canyon_wind``, ``viegas_neto``, ``pimont``, ``windninja_ridge_canyon``, ``farsite_wind``, or ``canyon_eruptive``
    * - ``wind_terrain.k_canyon``
      - 1.0
      - Terrain channeling coefficient for ``canyon_wind`` (Option 4)

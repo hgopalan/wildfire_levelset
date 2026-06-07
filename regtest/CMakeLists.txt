@@ -142,6 +142,7 @@ add_regression_test(windninja_ridge_canyon      terrain/windninja_ridge_canyon)
 add_regression_test(farsite_wind                terrain/farsite_wind)
 add_regression_test(terrain_gradient_correction terrain/terrain_gradient_correction)
 add_regression_test(slope_flame_tilt_radiation  terrain/slope_flame_tilt_radiation)
+add_regression_test(canyon_eruptive             terrain/canyon_eruptive)
 if(Python3_FOUND)
     add_python_setup_regression_test(solar_horizon_shading
                                      terrain/solar_horizon_shading
