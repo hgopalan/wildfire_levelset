@@ -189,6 +189,18 @@ struct WildfireFields {
     // -1 = not yet burned; >= 0 = seconds since arrival
     MultiFab time_since_burn_mf;
 
+    // ---- Canadian FWI System codes (6 components: FFMC, DMC, DC, ISI, BUI, FWI) ----
+    MultiFab fwi_mf;
+
+    // ---- Fosberg Fire Weather Index components (3 components: FFWI, EMC, eta) ----
+    MultiFab ffwi_mf;
+
+    // ---- Sharples Fire Weather Index (1 component) ----
+    MultiFab sfwi_mf;
+
+    // ---- Fuel Moisture Index (1 component) ----
+    MultiFab fmi_mf;
+
     // ---- Terrain slopes helper (2 comps: slope_x, slope_y) ----
     // nullptr when no terrain or landscape file is configured.
     std::unique_ptr<MultiFab> terrain_slopes;
@@ -286,6 +298,11 @@ struct WildfireFields {
         // Feature 10: Residual heat release and time tracking
         , residual_heat_release_mf(ba, dm, 1,             0)
         , time_since_burn_mf   (ba, dm, 1,                 0)
+        // Canadian FWI, Fosberg, Sharples, and FMI
+        , fwi_mf               (ba, dm, 6,                 0)
+        , ffwi_mf              (ba, dm, 3,                 0)
+        , sfwi_mf              (ba, dm, 1,                 0)
+        , fmi_mf               (ba, dm, 1,                 0)
         // terrain_slopes starts as nullptr
         , terrain_slopes       (nullptr)
         // accel_state_mf starts as nullptr; allocated if use_temporal = 1
@@ -356,6 +373,17 @@ struct WildfireFields {
         // Feature 10: Residual heat release and time tracking
         residual_heat_release_mf.setVal(Real(0.0));
         time_since_burn_mf.setVal(Real(-1.0));  // -1 = not yet burned
+
+        // Canadian FWI System codes initialization
+        fwi_mf.setVal(Real(inputs.canadian_fwi.FFMC_init), 0, 1, 0); // FFMC
+        fwi_mf.setVal(Real(inputs.canadian_fwi.DMC_init),  1, 1, 0); // DMC
+        fwi_mf.setVal(Real(inputs.canadian_fwi.DC_init),   2, 1, 0); // DC
+        fwi_mf.setVal(Real(0.0), 3, 3, 0); // ISI, BUI, FWI default 0
+
+        // FFWI, SFWI, and FMI initialization
+        ffwi_mf.setVal(Real(0.0));
+        sfwi_mf.setVal(Real(0.0));
+        fmi_mf.setVal(Real(0.0));
     }
 };
 

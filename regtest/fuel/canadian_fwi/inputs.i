@@ -16,7 +16,20 @@ stop_time            = 180.0
 levelset.cfl         = 0.3
 
 # Fire spread model
-fire_spread_model    = rothermel
+fire_spread_model    = fbp_s1
+
+# Enable dynamic Canadian FWI coupled with FBP
+canadian_fwi.enable  = 1
+canadian_fwi.FFMC_init = 85.0
+canadian_fwi.DMC_init  = 6.0
+canadian_fwi.DC_init   = 15.0
+
+# Diurnal weather settings to drive FWI codes dynamically
+diurnal_moisture.enable = 1
+diurnal_moisture.T_min = 15.0
+diurnal_moisture.T_max = 25.0
+diurnal_moisture.RH_min = 30.0
+diurnal_moisture.RH_max = 80.0
 
 # Simple ignition
 ignition.enable      = 1

@@ -34,6 +34,7 @@
 #include "packing_ratio.H"
 #include "flame_front_depth.H"
 #include "mcarthur_ffdi.H"
+#include "chandler_burning_index.H"
 #include <unordered_map>
 // ============================================================================
 // write_wildfire_plotfile
@@ -116,6 +117,8 @@ inline void write_wildfire_plotfile(
     MultiFab& burnout_phases_mf = f.burnout_phases_mf;
     MultiFab& residual_heat_release_mf = f.residual_heat_release_mf;
     MultiFab& time_since_burn_mf = f.time_since_burn_mf;
+    MultiFab& temperature_mf        = f.temperature_mf;
+    MultiFab& humidity_mf           = f.humidity_mf;
 
     const bool has_landscape = !inputs.rothermel.landscape_file.empty();
 
@@ -197,6 +200,41 @@ inline void write_wildfire_plotfile(
                                    default_temp_C, default_RH_pct, wind_ms,
                                    default_drought);
 
+    // Compute spatially-varying FFWI, SFWI, and FMI diagnostics
+    for (MFIter mfi(f.ffwi_mf); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto ffwi_arr = f.ffwi_mf.array(mfi);
+        auto sfwi_arr = f.sfwi_mf.array(mfi);
+        auto fmi_arr  = f.fmi_mf.array(mfi);
+        auto const T_arr = temperature_mf.const_array(mfi);
+        auto const RH_arr = humidity_mf.const_array(mfi);
+        auto const vel_arr = vel.const_array(mfi);
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            const Real T = T_arr(i, j, k);
+            const Real RH = RH_arr(i, j, k);
+            const Real ux = vel_arr(i, j, k, 0);
+            const Real uy = vel_arr(i, j, k, 1);
+            const Real wind_speed_ms = std::sqrt(ux*ux + uy*uy);
+
+            ffwi_arr(i, j, k, 0) = compute_fosberg_fire_weather_index(T, RH, wind_speed_ms);
+            
+            // Equilibrium moisture content
+            Real RH_pct = amrex::max(Real(1.0), amrex::min(RH, Real(100.0)));
+            Real EMC = Real(0.03229) + Real(0.281073) * RH_pct - Real(0.000578) * RH_pct * T;
+            EMC = amrex::max(Real(1.0), amrex::min(EMC * Real(100.0), Real(50.0)));
+            Real eta = Real(1.0) - Real(2.0) * (EMC / Real(30.0)) 
+                       + Real(1.5) * std::pow(EMC / Real(30.0), 2.0) 
+                       - Real(0.5) * std::pow(EMC / Real(30.0), 3.0);
+            eta = amrex::max(Real(0.0), eta);
+            ffwi_arr(i, j, k, 1) = EMC;
+            ffwi_arr(i, j, k, 2) = eta;
+
+            sfwi_arr(i, j, k) = compute_sharples_fire_weather_index(RH, wind_speed_ms);
+            fmi_arr(i, j, k)  = compute_fuel_moisture_index(T, RH);
+        });
+    }
+
     // ---- Build output variable name list ----
     Vector<std::string> names = {"phi", "velx", "vely"
 #if (AMREX_SPACEDIM == 3)
@@ -216,7 +254,7 @@ inline void write_wildfire_plotfile(
         "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
         "torching_ratio", "crowning_ratio", "energy_release_component",
         "nfdrs_spread_component", "nfdrs_burning_index",
-        "co2_emissions", "co_emissions", "pm25_emissions",
+        "co2_emissions", "co_emissions", "pm25_emissions", "ch4_emissions", "n2o_emissions",
         "arrival_time", "heat_per_unit_area", "vorticity_z",
         "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
         "reaction_intensity", "residual_fuel", "shade_fraction",
@@ -229,6 +267,9 @@ inline void write_wildfire_plotfile(
         "ros_at_arrival",
         "ember_cascade_flux", "ember_cascade_ignition",
         "fl_exceedance",
+        "canadian_fwi_ffmc", "canadian_fwi_dmc", "canadian_fwi_dc", "canadian_fwi_isi", "canadian_fwi_bui", "canadian_fwi_fwi",
+        "ffwi", "ffwi_emc", "ffwi_eta",
+        "sfwi", "fmi",
         // New Feature 3-10 diagnostics
         "crown_fraction_burned", "effective_wind_speed",
         "burnout_flaming_time", "burnout_smoldering_time",
@@ -250,7 +291,7 @@ inline void write_wildfire_plotfile(
         "scorch_height", "prob_ignition", "tree_mortality", "crown_activity",
         "torching_ratio", "crowning_ratio", "energy_release_component",
         "nfdrs_spread_component", "nfdrs_burning_index",
-        "co2_emissions", "co_emissions", "pm25_emissions",
+        "co2_emissions", "co_emissions", "pm25_emissions", "ch4_emissions", "n2o_emissions",
         "arrival_time", "heat_per_unit_area", "vorticity_z",
         "cbh", "cbd", "canopy_cover", "canopy_height", "burnout_time",
         "reaction_intensity", "residual_fuel", "shade_fraction",
@@ -263,6 +304,9 @@ inline void write_wildfire_plotfile(
         "ros_at_arrival",
         "ember_cascade_flux", "ember_cascade_ignition",
         "fl_exceedance",
+        "canadian_fwi_ffmc", "canadian_fwi_dmc", "canadian_fwi_dc", "canadian_fwi_isi", "canadian_fwi_bui", "canadian_fwi_fwi",
+        "ffwi", "ffwi_emc", "ffwi_eta",
+        "sfwi", "fmi",
         // New Feature 3-10 diagnostics
         "crown_fraction_burned", "effective_wind_speed",
         "burnout_flaming_time", "burnout_smoldering_time",
@@ -313,6 +357,7 @@ inline void write_wildfire_plotfile(
                     + 1                             // ros_at_arrival (1)
                     + 2                             // ember_cascade (flux + ignition flag)
                     + 1                             // fl_exceedance (1)
+                    + 6 + 3 + 1 + 1                 // Canadian FWI(6), FFWI(3), SFWI(1), FMI(1)
                     + 1 + 1 + 2 + 1 + 1;            // new Features: cfb(1), eff_wind(1), burnout_phases(2), residual_heat(1), time_since_burn(1)
     MultiFab plotmf(ba, dm, ncomp, 0);
 
@@ -363,6 +408,11 @@ inline void write_wildfire_plotfile(
     MultiFab::Copy(plotmf, ros_at_arrival_mf,     0, c, 1,           0); c += 1;
     MultiFab::Copy(plotmf, ember_cascade_mf,      0, c, 2,           0); c += 2;
     MultiFab::Copy(plotmf, fl_exceedance_mf,      0, c, 1,           0); c += 1;
+    // FWI, Fosberg, Sharples, and FMI
+    MultiFab::Copy(plotmf, f.fwi_mf,               0, c, 6,           0); c += 6;
+    MultiFab::Copy(plotmf, f.ffwi_mf,              0, c, 3,           0); c += 3;
+    MultiFab::Copy(plotmf, f.sfwi_mf,              0, c, 1,           0); c += 1;
+    MultiFab::Copy(plotmf, f.fmi_mf,               0, c, 1,           0); c += 1;
     // New Feature diagnostics
     MultiFab::Copy(plotmf, crown_fraction_burned_mf, 0, c, 1,        0); c += 1;
     MultiFab::Copy(plotmf, effective_wind_speed_mf,  0, c, 1,        0); c += 1;

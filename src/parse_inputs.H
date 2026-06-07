@@ -456,15 +456,30 @@ struct InputParameters {
         amrex::Real p_ignition_floor;// minimum P_i used as a floor when scaling ROS (default: 0.05)
     } fire_ecology;
 
-    // Fire emissions (CO₂, CO, PM₂.₅) computed from fuel consumption
+    // Fire emissions (CO₂, CO, PM₂.₅, CH₄, N₂O) computed from fuel consumption
     // Follows WRF-Fire / QUIC-Fire emission factor convention.
     struct EmissionsParams {
         amrex::Real EF_CO2;              // CO₂ emission factor [kg CO₂/kg fuel] (default: 1.57)
         amrex::Real EF_CO;               // CO  emission factor [kg CO /kg fuel] (default: 0.102)
         amrex::Real EF_PM25;             // PM₂.₅ emission factor [kg PM₂.₅/kg fuel] (default: 0.0162)
+        amrex::Real EF_CH4;              // CH₄ emission factor [kg CH₄/kg fuel] (default: 0.0056)
+        amrex::Real EF_N2O;              // N₂O emission factor [kg N₂O/kg fuel] (default: 0.00015)
         amrex::Real default_consumed_frac; // default consumption fraction for burned cells without
                                            // bulk fuel model (default: 0.7)
     } emissions;
+
+    // Canadian Forest Fire Weather Index (FWI) parameters
+    struct CanadianFWIParams {
+        int enable;                      // 1 to enable FWI system (default: 0)
+        amrex::Real FFMC_init;           // initial FFMC value (default: 85.0)
+        amrex::Real DMC_init;            // initial DMC value (default: 6.0)
+        amrex::Real DC_init;             // initial DC value (default: 15.0)
+    } canadian_fwi;
+
+    // Fosberg Fire Weather Index (FFWI) parameters
+    struct FFWIParams {
+        int enable;                      // 1 to enable FFWI calculation (default: 0)
+    } ffwi;
 
     // Skip level set evolution option
     // Kept for backward compatibility; prefer propagation_method = "farsite" instead.
