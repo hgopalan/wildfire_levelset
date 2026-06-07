@@ -506,9 +506,9 @@ jobs:
                                   parts = line.strip().split()
                                   # Variable comparison lines have exactly 3 columns:
                                   # [variable_name, absolute_error, relative_error]
-                                  # Non-numeric lines (like headers or metadata 'level = 0') are safely 
-                                  # filtered out because float conversion of non-numeric strings raises a ValueError.
-                                  if len(parts) == 3 and parts[1] != "=":
+                                  # Non-numeric lines (like headers, separators, or metadata 'level = 0')
+                                  # are safely filtered out by catching ValueError during float conversion.
+                                  if len(parts) == 3:
                                       try:
                                           abs_err = float(parts[1])
                                           rel_err = float(parts[2])
