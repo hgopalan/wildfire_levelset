@@ -494,6 +494,9 @@ jobs:
                               has_real_diff = True
                           else:
                               for line in stdout.splitlines():
+                                  # If NaNs are present in only one of the runs (asymmetric), it is a real difference.
+                                  # "NaN present in A" / "NaN present in B" will not match "NaN present in both A and B"
+                                  # because of the word "both", allowing symmetric NaNs to safely pass.
                                   if "NaN present in A" in line or "NaN present in B" in line:
                                       has_real_diff = True
                                       break
@@ -503,10 +506,8 @@ jobs:
                                   parts = line.strip().split()
                                   # Variable comparison lines have exactly 3 columns:
                                   # [variable_name, absolute_error, relative_error]
-                                  # where absolute_error and relative_error are float values.
-                                  # Other 3-column lines (like 'level = 0') are filtered out
-                                  # by checking parts[1] != '=' and by catching ValueError
-                                  # during float conversions.
+                                  # Non-numeric lines (like headers or metadata 'level = 0') are safely 
+                                  # filtered out because float conversion of non-numeric strings raises a ValueError.
                                   if len(parts) == 3 and parts[1] != "=":
                                       try:
                                           abs_err = float(parts[1])
