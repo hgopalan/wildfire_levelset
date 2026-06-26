@@ -1,0 +1,1 @@
+../coupled_wind_fire/inputs.i

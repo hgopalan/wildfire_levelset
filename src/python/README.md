@@ -366,22 +366,81 @@ Dictionary with keys:
 
 ## Examples
 
-### Complete Examples Provided
+## Complete Examples Provided
 
 1. **`test_fire_solver_api.py`** - Comprehensive test suite for the fire solver API
    ```bash
    PYTHONPATH=build/python python3 src/python/test_fire_solver_api.py
    ```
 
-2. **`coupled_wind_fire_example.py`** - Demonstration of coupled wind-fire simulation
+2. **`coupled_wind_fire_example.py`** - One-way wind-fire coupling demonstration
    ```bash
    PYTHONPATH=build/python python3 src/python/coupled_wind_fire_example.py inputs.i
    ```
 
-3. **`wildfire_solver.py`** - High-level Python class (can be run standalone)
+3. **`two_way_coupling_example.py`** - Two-way wind-fire coupling (MVP)
+   ```bash
+   PYTHONPATH=build/python python3 src/python/two_way_coupling_example.py inputs.i
+   ```
+   
+   See `regtest/python_api/two_way_coupling_mvp/README.md` for full documentation.
+
+4. **`wildfire_solver.py`** - High-level Python class (can be run standalone)
    ```bash
    PYTHONPATH=build/python python3 src/python/wildfire_solver.py inputs.i
    ```
+
+### Two-Way Coupling (NEW in v0.3.0)
+
+The MVP includes a complete framework for two-way fire-wind coupling:
+
+**Key files:**
+- `surface_flux_extractor.py` - Extract heat fluxes from fire state
+- `wind_solver_interface.py` - Abstract wind solver interface + synthetic implementation
+- `two_way_coupling_example.py` - Complete coupled simulation controller
+
+**Workflow:**
+```python
+from two_way_coupling_example import TwoWayCoupledSimulation
+
+# Initialize coupled simulation
+sim = TwoWayCoupledSimulation("fire_inputs.i")
+sim.coupling_enabled = True        # Enable heat feedback
+sim.heat_scaling = 1.0             # 1.0 = full feedback
+
+# Run for 20 timesteps
+sim.run(num_steps=20, plot_interval=5)
+
+# Print diagnostics
+sim.print_summary()
+sim.finalize()
+```
+
+**Coupled loop:**
+1. Fire extracts surface heat fluxes (intensity → W/m²)
+2. Wind solver receives heat source and recomputes 3D wind with buoyancy forcing
+3. New wind is fed back into fire solver
+4. Both advance one timestep
+5. Repeat
+
+**Example: Compare 1-way vs 2-way coupling**
+```python
+# Run without heat feedback
+sim1 = TwoWayCoupledSimulation(inputs)
+sim1.coupling_enabled = False
+sim1.run(num_steps=20)
+
+# Run with heat feedback
+sim2 = TwoWayCoupledSimulation(inputs)
+sim2.coupling_enabled = True
+sim2.run(num_steps=20)
+
+# Compare fire spread
+print(f"1-way burned: {sim1.diagnostics['burned_area'][-1]:.0f} m²")
+print(f"2-way burned: {sim2.diagnostics['burned_area'][-1]:.0f} m²")
+```
+
+See `regtest/python_api/two_way_coupling_mvp/` for complete examples and regression tests.
 
 ### Running Examples
 
@@ -516,9 +575,18 @@ Once pyWindSolver (massconsistent_amr Python bindings) is available:
 - ✅ High-level WildfireSolver class
 - ✅ Coupled simulation example
 
+### Completed (v0.3.0) - Two-Way Coupling MVP
+- ✅ Surface flux extraction (intensity → heat flux)
+- ✅ Abstract wind solver interface
+- ✅ Synthetic wind solver with heat response
+- ✅ Two-way coupled simulation framework
+- ✅ Regression tests for MVP
+
 ### Planned
 - ⬜ Direct pyAMReX MultiFab support (zero-copy)
-- ⬜ Fire → wind coupling (heat release feedback)
+- ⬜ Real massconsistent_amr integration
+- ⬜ Spatial interpolation (non-aligned grids)
+- ⬜ Sub-cycling framework (different timesteps)
 - ⬜ Advanced diagnostics (burn probability, isochrones)
 - ⬜ Parallel execution (MPI support)
 - ⬜ GPU acceleration via Python
