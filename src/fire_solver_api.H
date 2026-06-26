@@ -19,8 +19,31 @@
 #include "wildfire_includes.H"
 #include "parse_inputs.H"
 #include "multifab_setup.H"
+#include "fmc_schedule.H"
+#include "herb_moisture_schedule.H"
+#include "wind_dir_schedule.H"
+#include "multi_wtr_weather.H"
+#include "satellite_assimilation.H"
+#include "ignition_schedule.H"
+#include "cruz_crown_model.H"
 #include <memory>
 #include <string>
+
+// ============================================================================
+// Forward declarations and placeholder types for Python bindings
+// ============================================================================
+
+// Placeholder for fuel depletion tracking state
+struct FuelDepletionTracker {
+    // Placeholder implementation to allow compilation with pybind11 bindings
+    // When fuel depletion is implemented, this will contain residual fuel state
+};
+
+// Placeholder for ignition schedule state
+struct IgnitionScheduleState {
+    // Placeholder implementation to allow compilation with pybind11 bindings
+    // When integrated with scheduler, this will track firing status
+};
 
 // ============================================================================
 // FireSolverState
@@ -84,20 +107,17 @@ struct FireSolverState {
     BalbiComputed* d_balbi_table_ptr = nullptr;
     BalbiComputed bc_global_default;
     
-    // FMD schedule
-    std::vector<FmdEntry> fmd_sched;
-    
     // FMC schedule
-    std::vector<FmcEntry> fmc_sched;
+    std::vector<FMCRecord> fmc_sched;
     
     // Herb moisture schedule
-    std::vector<HerbMoistureEntry> herb_sched;
+    std::vector<HerbMoistureRecord> herb_sched;
     
     // Wind direction schedule
-    std::vector<WindDirEntry> wind_dir_sched;
+    std::vector<WindDirRecord> wind_dir_sched;
     
     // Multi-station weather
-    MultiWTRState multi_wtr;
+    MultiWtrWeather multi_wtr;
     bool multi_wtr_active = false;
     
     // Barrier cells
