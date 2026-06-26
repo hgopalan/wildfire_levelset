@@ -991,3 +991,5 @@ See Also
 * :ref:`usage` - Input parameters
 * :ref:`tools` - Python analysis tools
 * `massconsistent_amr <https://github.com/hgopalan/massconsistent_amr>`_ - Wind solver with Python bindings
+* :doc:`wind_fire_coupling` - Detailed wind-fire coupling interface documentation
+* :doc:`coupling_implementation_summary` - Technical implementation details of two-way coupling

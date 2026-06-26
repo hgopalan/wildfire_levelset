@@ -335,6 +335,179 @@ class WildfireSolver:
         print(f"✓ Simulation complete at t={self.time:.2f} s ({self.step_num} steps)\n")
         return self.get_state()
     
+    def get_burned_area(self):
+        """
+        Calculate the total burned area from the current fire state.
+        
+        Returns:
+            float: Total burned area in m² (cells where phi <= 0)
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        phi = state['phi']
+        burned_cells = np.sum(phi <= 0.0)
+        return burned_cells * self.dx * self.dy
+    
+    def get_fire_perimeter(self):
+        """
+        Estimate the fire perimeter from the level set field.
+        
+        Uses a simple marching squares approach to estimate the perimeter
+        where phi crosses zero (the fire front).
+        
+        Returns:
+            float: Estimated fire perimeter in meters
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        phi = state['phi']
+        
+        # Count zero crossings (phi changes sign across cell edges)
+        perimeter = 0.0
+        
+        # Count horizontal crossings
+        for j in range(self.ny):
+            for i in range(self.nx - 1):
+                if phi[j, i] * phi[j, i+1] < 0:  # Sign change
+                    perimeter += self.dy
+        
+        # Count vertical crossings
+        for j in range(self.ny - 1):
+            for i in range(self.nx):
+                if phi[j, i] * phi[j+1, i] < 0:  # Sign change
+                    perimeter += self.dx
+        
+        return perimeter
+    
+    def compute_heat_release(self, state=None):
+        """
+        Compute heat release information from fire state.
+        
+        Uses Byram intensity and rate of spread to estimate convective heat release.
+        The total heat release rate is: Intensity * Perimeter
+        
+        The convective heat release per unit area (kW/m²) can be estimated from
+        the flame length and intensity.
+        
+        Parameters:
+            state (dict, optional): Fire state dictionary. If None, calls get_state().
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'total_heat_release': Total convective heat release (kW)
+                - 'heat_release_rate': Heat release rate per unit perimeter (kW/m)
+                - 'mean_intensity': Mean fire intensity (kW/m)
+                - 'max_intensity': Maximum fire intensity (kW/m)
+                - 'max_ros': Maximum rate of spread (m/s)
+                - 'perimeter': Estimated fire perimeter (m)
+                - 'burned_area': Total burned area (m²)
+                - 'surface_flux': Surface heat flux array (ny, nx) in kW/m²
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        if state is None:
+            state = self.get_state()
+        
+        # Extract key fields
+        phi = state['phi']
+        intensity = state['intensity']  # Byram intensity in kW/m
+        ros = state['ros']  # Rate of spread in m/s
+        flame_length = state['flame_length']  # Flame length in m
+        
+        # Calculate metrics
+        perimeter = self.get_fire_perimeter()
+        burned_area = self.get_burned_area()
+        
+        mean_intensity = intensity[intensity > 0].mean() if np.any(intensity > 0) else 0.0
+        max_intensity = intensity.max()
+        max_ros = ros.max()
+        
+        # Total heat release = intensity × perimeter (kW)
+        # This assumes intensity is defined per unit fireline length
+        total_heat_release = mean_intensity * perimeter if perimeter > 0 else 0.0
+        
+        # Heat release rate (total / perimeter) - should approximate mean intensity
+        heat_release_rate = mean_intensity
+        
+        # Compute surface heat flux array (kW/m²)
+        # Surface flux = intensity / flame_length (simplified model)
+        # We also weight by whether cell is burning (phi is transitioning)
+        surface_flux = np.zeros_like(phi)
+        
+        for j in range(self.ny):
+            for i in range(self.nx):
+                # Only compute flux near the fire front (where phi ~ 0)
+                # and in recently burned cells
+                if phi[j, i] < 100.0 and phi[j, i] > -100.0:  # Near fire front
+                    if flame_length[j, i] > 0.1:
+                        # Heat flux = intensity / flame length
+                        surface_flux[j, i] = intensity[j, i] / flame_length[j, i]
+                    else:
+                        surface_flux[j, i] = intensity[j, i] * 10.0  # Default scaling
+        
+        return {
+            'total_heat_release': total_heat_release,
+            'heat_release_rate': heat_release_rate,
+            'mean_intensity': mean_intensity,
+            'max_intensity': max_intensity,
+            'max_ros': max_ros,
+            'perimeter': perimeter,
+            'burned_area': burned_area,
+            'surface_flux': surface_flux
+        }
+    
+    def get_surface_fluxes(self):
+        """
+        Get surface heat flux array for coupling with wind solver.
+        
+        Returns the heat flux field at the surface (2D array) computed from
+        the current fire state. This array can be passed to the wind solver
+        to account for heating effects on atmospheric dynamics.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'heat_flux': Surface heat flux array (ny, nx) in kW/m²
+                - 'flux_units': Unit description
+                - 'grid_info': Dict with 'nx', 'ny', 'dx', 'dy' grid information
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        heat_data = self.compute_heat_release(state)
+        
+        return {
+            'heat_flux': heat_data['surface_flux'],
+            'flux_units': 'kW/m²',
+            'grid_info': {
+                'nx': self.nx,
+                'ny': self.ny,
+                'dx': self.dx,
+                'dy': self.dy,
+                'xmin': self.xmin,
+                'xmax': self.xmax,
+                'ymin': self.ymin,
+                'ymax': self.ymax
+            }
+        }
+    
     def finalize(self):
         """
         Clean up and finalize the solver.

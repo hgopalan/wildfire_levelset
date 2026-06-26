@@ -159,6 +159,50 @@ def visualize_coupled_simulation(states, wind_states, output_file="coupled_simul
     plt.close()
 
 
+def demonstrate_two_way_coupling_concept():
+    """
+    Demonstrate the two-way coupling pattern from the problem statement.
+    
+    This shows the conceptual design for bidirectional coupling:
+    
+    while fire.time < final_time:
+        # Wind → Fire
+        wind.solve(fire.time)
+        u_3d, v_3d, w_3d = wind.get_velocity_arrays()
+        fire.update_wind_3d(u_3d, v_3d, w_3d, wind.nz, wind.zmin, wind.zmax)
+
+        # Advance fire
+        fire.step()
+
+        # Fire → Wind (future feature)
+        state = fire.get_state()
+        heat_release = compute_heat_release(state)
+        wind.add_heat_source(heat_release)  # Affects next wind solve
+    """
+    print("\n" + "="*70)
+    print("Two-Way Wind-Fire Coupling Pattern")
+    print("="*70)
+    print("\nConceptual design for bidirectional coupling:")
+    print()
+    print("  while fire.time < final_time:")
+    print("      # Wind → Fire (already implemented)")
+    print("      wind.solve(fire.time)")
+    print("      u_3d, v_3d, w_3d = wind.get_velocity_arrays()")
+    print("      fire.update_wind_3d(u_3d, v_3d, w_3d, wind.nz, wind.zmin, wind.zmax)")
+    print()
+    print("      # Advance fire")
+    print("      fire.step()")
+    print()
+    print("      # Fire → Wind (now available via compute_heat_release)")
+    print("      state = fire.get_state()")
+    print("      heat_release = fire.compute_heat_release(state)")
+    print("      # surface_fluxes = fire.get_surface_fluxes()")
+    print("      # wind.add_heat_source(heat_release)  # Future: when wind solver supports it")
+    print()
+    print("="*70)
+    print()
+
+
 def main():
     """Run coupled wind-fire simulation example."""
     
@@ -174,6 +218,9 @@ def main():
     print("=" * 70)
     print("Coupled Wind-Fire Simulation Example")
     print("=" * 70)
+    
+    # Show the two-way coupling concept
+    demonstrate_two_way_coupling_concept()
     print()
     print("This demonstrates the workflow for coupling an external wind solver")
     print("(e.g., massconsistent_amr) with wildfire_levelset:")
@@ -232,11 +279,16 @@ def main():
         u_2d = state['u_wind']
         v_2d = state['v_wind']
         
+        # Step 4: Extract heat release (Fire → Wind coupling)
+        # This is now available for passing to wind solver
+        heat_data = fire.compute_heat_release(state)
+        surface_flux = fire.get_surface_fluxes()
+        
         # Store for visualization
         states.append(state)
         wind_states.append({'u': u_2d, 'v': v_2d})
         
-        # Print progress
+        # Print progress with heat release information
         phi = state['phi']
         burned_area = np.sum(phi <= 0.0) * fire.dx * fire.dy
         wind_speed = np.sqrt(u_2d**2 + v_2d**2).mean()
@@ -244,7 +296,8 @@ def main():
         print(f"  Step {step+1:3d}: t={current_time:7.2f} s, "
               f"dt={result['dt']:6.3f} s, "
               f"burned={burned_area:8.1f} m², "
-              f"wind={wind_speed:5.2f} m/s")
+              f"wind={wind_speed:5.2f} m/s, "
+              f"heat={heat_data['total_heat_release']:8.0f} kW")
         
         # Write plotfile every 5 steps
         if (step + 1) % 5 == 0:
@@ -282,12 +335,21 @@ def main():
     else:
         mean_arrival_time = 0.0
     
+    # Get final heat release data
+    final_heat = fire.compute_heat_release(final_state)
+    
     print(f"Final time: {final_state['time']:.2f} s ({final_state['step']} steps)")
     print(f"Total burned area: {total_burned:.1f} m² ({burned_fraction:.1f}% of domain)")
     print(f"Mean arrival time: {mean_arrival_time:.1f} s")
     print(f"Max ROS: {final_state['ros'].max():.3f} m/s")
     print(f"Max intensity: {final_state['intensity'].max():.1f} kW/m")
     print(f"Max flame length: {final_state['flame_length'].max():.2f} m")
+    print()
+    print("Heat Release Summary:")
+    print(f"  Fire perimeter: {final_heat['perimeter']:.1f} m")
+    print(f"  Mean intensity: {final_heat['mean_intensity']:.1f} kW/m")
+    print(f"  Total heat release: {final_heat['total_heat_release']:.0f} kW")
+    print(f"  Max surface flux: {final_heat['surface_flux'].max():.1f} kW/m²")
     print()
     
     # Finalize solver
@@ -297,9 +359,19 @@ def main():
     print("✓ Coupled simulation complete!")
     print("=" * 70)
     print()
+    print("Heat Release Coupling Implementation Status:")
+    print("  ✓ Fire → Wind: compute_heat_release() and get_surface_fluxes() available")
+    print("  ✓ Surface flux array ready for wind solver coupling")
+    print("  ⧐ Wind → Fire: update_wind_3d() already supports 3D wind input")
+    print()
+    print("Integration with massconsistent_amr:")
+    print("  1. Use CoupledWindFireSolver class for full workflow")
+    print("  2. Wind solver needs add_heat_source() method for fire feedback")
+    print("  3. Surface fluxes from fire.get_surface_fluxes()['heat_flux']")
+    print()
     print("Next steps:")
-    print("  1. Replace synthetic wind with actual massconsistent_amr solver")
-    print("  2. Implement two-way coupling (fire → heat → wind)")
+    print("  1. Implement wind.add_heat_source() in massconsistent_amr")
+    print("  2. Use CoupledWindFireSolver for two-way coupling")
     print("  3. Add time-varying fuel moisture from atmospheric model")
     print()
     
