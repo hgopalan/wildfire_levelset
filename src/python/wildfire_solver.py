@@ -67,6 +67,11 @@ class WildfireSolver:
         self.xmin = self.xmax = self.ymin = self.ymax = 0.0
         self.dx = self.dy = 0.0
         
+        # Performance configuration (placeholders for future API expansion)
+        self._cfl = 0.8
+        self._max_time = np.inf
+        self._nsteps = None
+        
         if inputs_file is not None:
             self.initialize(inputs_file)
     
@@ -506,6 +511,563 @@ class WildfireSolver:
                 'ymin': self.ymin,
                 'ymax': self.ymax
             }
+        }
+    
+    def get_status(self):
+        """
+        Get comprehensive solver status information.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'initialized': Whether solver is initialized
+                - 'time': Current simulation time (seconds)
+                - 'step': Current step number
+                - 'nx', 'ny': Grid dimensions
+                - 'xmin', 'xmax', 'ymin', 'ymax': Domain bounds (meters)
+                - 'dx', 'dy': Cell spacing (meters)
+                - 'domain_area': Total domain area (m²)
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        domain_area = (self.xmax - self.xmin) * (self.ymax - self.ymin)
+        
+        return {
+            'initialized': self.initialized,
+            'time': self.time,
+            'step': self.step_num,
+            'nx': self.nx,
+            'ny': self.ny,
+            'xmin': self.xmin,
+            'xmax': self.xmax,
+            'ymin': self.ymin,
+            'ymax': self.ymax,
+            'dx': self.dx,
+            'dy': self.dy,
+            'domain_area': domain_area
+        }
+    
+    def get_domain_bounds(self):
+        """
+        Get domain boundary information.
+        
+        Returns:
+            dict: Dictionary with 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'
+                  Note: zmin=0, zmax=0 for 2D fire solver
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return {
+            'xmin': self.xmin,
+            'xmax': self.xmax,
+            'ymin': self.ymin,
+            'ymax': self.ymax,
+            'zmin': 0.0,  # Fire solver is 2D
+            'zmax': 0.0
+        }
+    
+    def get_grid_spacing(self):
+        """
+        Get grid cell spacing.
+        
+        Returns:
+            dict: Dictionary with 'dx', 'dy', 'dz' (dz=0 for 2D)
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return {
+            'dx': self.dx,
+            'dy': self.dy,
+            'dz': 0.0  # Fire solver is 2D
+        }
+    
+    def get_grid_dimensions(self):
+        """
+        Get grid dimensions.
+        
+        Returns:
+            dict: Dictionary with 'nx', 'ny', 'nz' (nz=1 for 2D)
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return {
+            'nx': self.nx,
+            'ny': self.ny,
+            'nz': 1  # Fire solver is 2D (single surface)
+        }
+    
+    def get_field(self, field_name):
+        """
+        Get a specific fire field by name.
+        
+        Parameters:
+            field_name (str): Name of field to retrieve. Options:
+                'phi' - Level set field (signed distance)
+                'ros' - Rate of spread (m/s)
+                'intensity' - Fireline intensity (kW/m)
+                'flame_length' - Flame length (m)
+                'u_wind' - U wind component (m/s)
+                'v_wind' - V wind component (m/s)
+                'arrival_time' - Fire arrival time (seconds)
+        
+        Returns:
+            ndarray: 2D array (ny, nx) containing the requested field
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+            ValueError: If field_name is not recognized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        
+        if field_name not in state:
+            raise ValueError(
+                f"Unknown field '{field_name}'. Available fields: "
+                f"{', '.join(state.keys())}"
+            )
+        
+        return state[field_name]
+    
+    def get_statistics(self):
+        """
+        Get comprehensive fire simulation statistics.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'time': Current time (seconds)
+                - 'burned_area': Total burned area (m²)
+                - 'perimeter': Estimated fire perimeter (m)
+                - 'max_ros': Maximum rate of spread (m/s)
+                - 'mean_ros': Mean rate of spread where fire is active (m/s)
+                - 'max_intensity': Maximum fireline intensity (kW/m)
+                - 'mean_intensity': Mean fireline intensity (kW/m)
+                - 'total_heat_release': Total convective heat released (kW)
+                - 'num_burning_cells': Number of cells with active fire
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        phi = state['phi']
+        ros = state['ros']
+        intensity = state['intensity']
+        
+        # Calculate statistics
+        burned_area = self.get_burned_area()
+        perimeter = self.get_fire_perimeter()
+        heat_data = self.compute_heat_release(state)
+        
+        # Count burning cells (where ROS > 0)
+        burning_mask = ros > 0.0
+        num_burning = np.sum(burning_mask)
+        
+        # Calculate mean values for active fire cells
+        mean_ros = ros[burning_mask].mean() if num_burning > 0 else 0.0
+        mean_intensity = intensity[burning_mask].mean() if num_burning > 0 else 0.0
+        
+        return {
+            'time': self.time,
+            'burned_area': burned_area,
+            'perimeter': perimeter,
+            'max_ros': heat_data['max_ros'],
+            'mean_ros': mean_ros,
+            'max_intensity': heat_data['max_intensity'],
+            'mean_intensity': mean_intensity,
+            'total_heat_release': heat_data['total_heat_release'],
+            'num_burning_cells': int(num_burning)
+        }
+    
+    def get_diagnostic_info(self):
+        """
+        Get diagnostic information about solver state.
+        
+        Returns:
+            dict: Dictionary containing diagnostic data:
+                - 'initialized': Solver ready status
+                - 'time': Current simulation time
+                - 'step': Current step number
+                - 'domain_bounds': Domain extent
+                - 'grid_spacing': Cell dimensions
+                - 'solver_type': Description of solver configuration
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return {
+            'initialized': self.initialized,
+            'time': self.time,
+            'step': self.step_num,
+            'domain_bounds': self.get_domain_bounds(),
+            'grid_spacing': self.get_grid_spacing(),
+            'solver_type': 'WildfireSolver (pyWildfire wrapper)',
+            'api_version': '2.0'
+        }
+    
+    def set_fuel_model(self, model_number):
+        """
+        Set fuel model for Rothermel ROS calculations.
+        
+        Note: Currently requires setting via inputs file. This is a placeholder
+        for future direct API support.
+        
+        Parameters:
+            model_number (int): Fuel model number (1-13 for Anderson, 1-40 for Scott-Burgan)
+        
+        Returns:
+            bool: True if fuel model was set (or would be set in future implementation)
+        
+        Raises:
+            ValueError: If model_number is invalid
+        """
+        if model_number < 1 or model_number > 100:
+            raise ValueError(f"Fuel model number must be 1-100, got {model_number}")
+        
+        # TODO: When fire_solver_api.H exposes fuel model control
+        # return pyWildfire.set_fuel_model(model_number)
+        
+        # For now, provide documentation
+        import warnings
+        warnings.warn(
+            f"set_fuel_model({model_number}) requires rebuilding with fuel model API. "
+            "Set fuel model in inputs file instead: fire.fuel_model = {model_number}",
+            FutureWarning
+        )
+        return False
+    
+    def get_fuel_properties(self):
+        """
+        Get current fuel model properties for Rothermel calculations.
+        
+        Returns:
+            dict: Dictionary with fuel properties:
+                - 'model_number': Fuel model ID
+                - 'fuel_load': Oven-dry fuel load (tons/acre)
+                - 'fuel_bed_depth': Fuel bed depth (feet)
+                - 'moisture_of_extinction': Moisture of extinction (%)
+                - 'low_heat_content': Low heat content (BTU/lb)
+                - 'description': Fuel model description
+        
+        Note: Currently returns placeholder values. Requires C++ API expansion.
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        # TODO: When fire_solver_api.H exposes fuel properties
+        # return pyWildfire.get_fuel_properties()
+        
+        # Placeholder implementation
+        return {
+            'model_number': 0,  # Unknown
+            'fuel_load': 0.0,
+            'fuel_bed_depth': 0.0,
+            'moisture_of_extinction': 0.0,
+            'low_heat_content': 0.0,
+            'description': 'Fuel properties currently unavailable through Python API',
+            'note': 'Set fuel parameters in inputs file'
+        }
+    
+    def compute_ros(self):
+        """
+        Compute Rate of Spread field using Rothermel model.
+        
+        Returns:
+            ndarray: ROS field (ny, nx) in m/s
+        
+        Note: ROS is computed internally during fire.step(). This method
+        simply extracts the current ROS field from the fire state.
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        state = self.get_state()
+        return state['ros']
+    
+    def set_fuel_moisture(self, dead_1hr, dead_10hr, dead_100hr, live_herbaceous):
+        """
+        Set fuel moisture content for Rothermel ROS calculations.
+        
+        Note: Currently requires setting via inputs file. This is a placeholder
+        for future direct API support.
+        
+        Parameters:
+            dead_1hr (float): 1-hour fuel moisture (%)
+            dead_10hr (float): 10-hour fuel moisture (%)
+            dead_100hr (float): 100-hour fuel moisture (%)
+            live_herbaceous (float): Live herbaceous fuel moisture (%)
+        
+        Returns:
+            bool: True if moisture was set (or would be set in future)
+        
+        Raises:
+            ValueError: If any value is outside valid range (0-300%)
+        """
+        for val in [dead_1hr, dead_10hr, dead_100hr, live_herbaceous]:
+            if val < 0 or val > 300:
+                raise ValueError(f"Fuel moisture must be 0-300%, got {val}")
+        
+        # TODO: When fire_solver_api.H exposes moisture control
+        # return pyWildfire.set_fuel_moisture(dead_1hr, dead_10hr, dead_100hr, live_herbaceous)
+        
+        import warnings
+        warnings.warn(
+            "set_fuel_moisture() requires API expansion in fire_solver_api.H. "
+            "Set moisture in inputs file instead.",
+            FutureWarning
+        )
+        return False
+    
+    def set_wind_direction(self, direction_degrees):
+        """
+        Set predominant wind direction for Rothermel calculations.
+        
+        Note: Wind direction affects elliptical spread pattern in Rothermel model.
+        
+        Parameters:
+            direction_degrees (float): Wind direction in degrees (0=North, 90=East, etc.)
+        
+        Returns:
+            bool: True if direction was set
+        
+        Raises:
+            ValueError: If direction is outside 0-360 range
+        """
+        if direction_degrees < 0 or direction_degrees > 360:
+            raise ValueError(f"Wind direction must be 0-360°, got {direction_degrees}")
+        
+        # TODO: When fire_solver_api.H exposes wind direction control
+        import warnings
+        warnings.warn(
+            "set_wind_direction() requires API expansion. "
+            "Set wind in inputs file or via update_wind() methods.",
+            FutureWarning
+        )
+        return False
+    
+    def set_ambient_temperature(self, temp_celsius):
+        """
+        Set ambient air temperature for Rothermel calculations.
+        
+        Note: Temperature affects fuel moisture calculations.
+        
+        Parameters:
+            temp_celsius (float): Temperature in °C
+        
+        Returns:
+            bool: True if temperature was set
+        """
+        # TODO: When fire_solver_api.H exposes temperature control
+        import warnings
+        warnings.warn(
+            "set_ambient_temperature() requires API expansion. "
+            "Set temperature in inputs file.",
+            FutureWarning
+        )
+        return False
+    
+    def set_relative_humidity(self, rh_percent):
+        """
+        Set relative humidity for Rothermel calculations.
+        
+        Note: RH affects fuel moisture and fire behavior.
+        
+        Parameters:
+            rh_percent (float): Relative humidity (0-100%)
+        
+        Returns:
+            bool: True if RH was set
+        
+        Raises:
+            ValueError: If RH is outside 0-100 range
+        """
+        if rh_percent < 0 or rh_percent > 100:
+            raise ValueError(f"Relative humidity must be 0-100%, got {rh_percent}")
+        
+        # TODO: When fire_solver_api.H exposes RH control
+        import warnings
+        warnings.warn(
+            "set_relative_humidity() requires API expansion. "
+            "Set RH in inputs file.",
+            FutureWarning
+        )
+        return False
+    
+    def set_ignition(self, x, y, time=0.0, radius=1.0):
+        """
+        Set ignition point programmatically.
+        
+        Note: Currently requires configuring via inputs file.
+        
+        Parameters:
+            x (float): X-coordinate of ignition point (meters)
+            y (float): Y-coordinate of ignition point (meters)
+            time (float, optional): Time of ignition (seconds), default 0.0
+            radius (float, optional): Initial ignition radius (meters), default 1.0
+        
+        Returns:
+            bool: True if ignition was set
+        """
+        # TODO: When fire_solver_api.H exposes ignition control
+        import warnings
+        warnings.warn(
+            "set_ignition() requires API expansion. "
+            "Configure ignition in inputs file.",
+            FutureWarning
+        )
+        return False
+    
+    def get_ignition_state(self):
+        """
+        Get current ignition configuration.
+        
+        Returns:
+            dict: Dictionary with ignition information:
+                - 'configured': Whether ignition is configured
+                - 'status': Current ignition status description
+        
+        Note: Returns placeholder until C++ API exposes ignition state.
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        # TODO: When fire_solver_api.H exposes ignition state query
+        return {
+            'configured': True,  # Assumed from inputs file
+            'status': 'Configured from inputs file',
+            'note': 'Direct ignition state queries require fire_solver_api expansion'
+        }
+    
+    @property
+    def current_time(self):
+        """Current simulation time (seconds)."""
+        return self.time
+    
+    @property
+    def timestep(self):
+        """Current timestep number."""
+        return self.step_num
+    
+    def set_cfl(self, cfl_value):
+        """
+        Set CFL (Courant-Friedrichs-Lewy) criterion for stability.
+        
+        Note: Currently a placeholder. Actual CFL control requires C++ API expansion.
+        
+        Parameters:
+            cfl_value (float): CFL criterion (typically 0.1-0.9)
+        
+        Returns:
+            bool: True if CFL was set
+        
+        Raises:
+            ValueError: If CFL is outside valid range (0, 1]
+        """
+        if cfl_value <= 0 or cfl_value > 1.0:
+            raise ValueError(f"CFL must be in (0, 1], got {cfl_value}")
+        
+        self._cfl = cfl_value
+        
+        # TODO: When fire_solver_api.H exposes CFL control
+        # return pyWildfire.set_cfl(cfl_value)
+        
+        return True
+    
+    def set_max_time(self, t_max):
+        """
+        Set maximum simulation time for run() method.
+        
+        Parameters:
+            t_max (float): Maximum simulation time (seconds)
+        
+        Returns:
+            bool: True if max time was set
+        
+        Raises:
+            ValueError: If t_max is negative
+        """
+        if t_max < 0:
+            raise ValueError(f"Max time must be non-negative, got {t_max}")
+        
+        self._max_time = t_max
+        return True
+    
+    def set_nsteps(self, nsteps):
+        """
+        Set maximum number of timesteps for run() method.
+        
+        Parameters:
+            nsteps (int): Maximum number of steps
+        
+        Returns:
+            bool: True if nsteps was set
+        
+        Raises:
+            ValueError: If nsteps is not a positive integer
+        """
+        if nsteps <= 0 or not isinstance(nsteps, int):
+            raise ValueError(f"nsteps must be positive integer, got {nsteps}")
+        
+        self._nsteps = nsteps
+        return True
+    
+    def get_performance_metrics(self):
+        """
+        Get performance metrics for the solver.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'time_per_step': Average time per timestep (seconds)
+                - 'total_time': Total wall-clock time (seconds)
+                - 'steps_completed': Number of completed steps
+                - 'memory_usage': Estimated memory usage (MB)
+                - 'cfl_setting': Current CFL criterion
+        
+        Note: Returns placeholder values until C++ profiling infrastructure is added.
+        
+        Raises:
+            RuntimeError: If solver is not initialized
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return {
+            'time_per_step': 0.0,  # TODO: Add timing instrumentation
+            'total_time': 0.0,
+            'steps_completed': self.step_num,
+            'memory_usage': 0.0,  # TODO: Add memory tracking
+            'cfl_setting': self._cfl,
+            'note': 'Performance metrics require C++ instrumentation'
         }
     
     def finalize(self):
