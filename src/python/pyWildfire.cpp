@@ -580,6 +580,464 @@ PYBIND11_MODULE(pyWildfire, m) {
             True if solver is initialized and ready to use
         )pbdoc");
 
+    // ========================================================================
+    // PHASE 1: Core Configuration & Properties (7 functions)
+    // ========================================================================
+    
+    m.def("get_config", &fire_solver_get_config,
+          R"pbdoc(
+        Get comprehensive solver configuration.
+        
+        Returns
+        -------
+        dict
+            Configuration with keys: nx, ny, xmin, xmax, ymin, ymax, dx, dy, time, step, dt
+        )pbdoc");
+    
+    m.def("get_vertical_domain", 
+        [](){ 
+            double zmin, zmax;
+            fire_solver_get_vertical_domain(zmin, zmax);
+            return py::dict("zmin"_a=zmin, "zmax"_a=zmax);
+        },
+        R"pbdoc(
+        Get vertical domain bounds.
+        
+        Returns
+        -------
+        dict
+            Dict with 'zmin' and 'zmax' in meters
+        )pbdoc");
+    
+    m.def("get_rothermel_properties", &fire_solver_get_rothermel_properties,
+          R"pbdoc(
+        Get Rothermel fuel model properties.
+        
+        Returns
+        -------
+        dict
+            Fuel model properties for all size classes and moisture
+        )pbdoc");
+    
+    m.def("get_wind_ros_relationship", &fire_solver_get_wind_ros_relationship,
+          R"pbdoc(
+        Get wind-ROS interaction parameters.
+        
+        Returns
+        -------
+        dict
+            B-coefficient and other Rothermel wind parameters
+        )pbdoc");
+    
+    m.def("get_spread_parameters", &fire_solver_get_spread_parameters,
+          R"pbdoc(
+        Get spread model parameters.
+        
+        Returns
+        -------
+        dict
+            Parameters for Richards/Balbi model if enabled
+        )pbdoc");
+    
+    m.def("update_rothermel_fuel_load",
+        [](py::array_t<double> dead_load, py::array_t<double> live_load){
+            auto dead_info = dead_load.request();
+            auto live_info = live_load.request();
+            const double* dead_ptr = static_cast<const double*>(dead_info.ptr);
+            const double* live_ptr = static_cast<const double*>(live_info.ptr);
+            std::vector<double> dead_vec(dead_ptr, dead_ptr + dead_info.size);
+            std::vector<double> live_vec(live_ptr, live_ptr + live_info.size);
+            return fire_solver_update_rothermel_fuel_load(dead_vec, live_vec);
+        },
+        py::arg("dead_load"), py::arg("live_load"),
+        R"pbdoc(
+        Update Rothermel fuel loads.
+        
+        Parameters
+        ----------
+        dead_load : ndarray
+            Dead fuel loads (tons/acre)
+        live_load : ndarray
+            Live fuel loads (tons/acre)
+        
+        Returns
+        -------
+        bool
+            True if update succeeded
+        )pbdoc");
+    
+    m.def("validate_domain_compatibility",
+        &fire_solver_validate_domain_compatibility,
+        py::arg("wind_nx"), py::arg("wind_ny"),
+        py::arg("wind_xmin"), py::arg("wind_xmax"),
+        py::arg("wind_ymin"), py::arg("wind_ymax"),
+        R"pbdoc(
+        Validate compatibility between fire and wind domains.
+        
+        Parameters
+        ----------
+        wind_nx, wind_ny : int
+            Wind grid dimensions
+        wind_xmin, wind_xmax, wind_ymin, wind_ymax : float
+            Wind domain bounds
+        
+        Returns
+        -------
+        dict
+            Compatibility flags
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 2: Terrain & Spatial Features (4 functions)
+    // ========================================================================
+    
+    m.def("update_terrain",
+        [](py::array_t<double> elevation, 
+           py::array_t<double> slope,
+           py::array_t<double> aspect,
+           int nx, int ny){
+            auto elev_info = elevation.request();
+            auto slope_info = slope.request();
+            auto aspect_info = aspect.request();
+            const double* elev_ptr = static_cast<const double*>(elev_info.ptr);
+            const double* slope_ptr = static_cast<const double*>(slope_info.ptr);
+            const double* aspect_ptr = static_cast<const double*>(aspect_info.ptr);
+            return fire_solver_update_terrain(elev_ptr, slope_ptr, aspect_ptr, nx, ny);
+        },
+        py::arg("elevation"), py::arg("slope"), py::arg("aspect"), 
+        py::arg("nx"), py::arg("ny"),
+        R"pbdoc(
+        Update terrain data (elevation, slope, aspect).
+        
+        Parameters
+        ----------
+        elevation : ndarray
+            Elevation map (m)
+        slope : ndarray
+            Slope (degrees)
+        aspect : ndarray
+            Aspect (degrees)
+        nx, ny : int
+            Grid dimensions
+        
+        Returns
+        -------
+        bool
+            True if update succeeded
+        )pbdoc");
+    
+    m.def("get_terrain_info", &fire_solver_get_terrain_info,
+          R"pbdoc(
+        Get terrain information fields.
+        
+        Returns
+        -------
+        dict
+            Dict with elevation, slope, aspect arrays
+        )pbdoc");
+    
+    m.def("get_ros_at_location",
+        &fire_solver_get_ros_at_location,
+        py::arg("x"), py::arg("y"),
+        R"pbdoc(
+        Query ROS at a specific location.
+        
+        Parameters
+        ----------
+        x, y : float
+            Location coordinates (meters)
+        
+        Returns
+        -------
+        float
+            ROS at location (m/s)
+        )pbdoc");
+    
+    m.def("interpolate_field",
+        &fire_solver_interpolate_field,
+        py::arg("field_name"), py::arg("x"), py::arg("y"),
+        R"pbdoc(
+        Interpolate any field to a specific location.
+        
+        Parameters
+        ----------
+        field_name : str
+            Field to interpolate ('phi', 'ros', 'intensity', etc.)
+        x, y : float
+            Location coordinates (meters)
+        
+        Returns
+        -------
+        float
+            Field value at location
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 3 & 4: Fire State Fields (8 functions)
+    // ========================================================================
+    
+    m.def("get_ros_x", &fire_solver_get_ros_x,
+          R"pbdoc(Get ROS x-component field as numpy array)pbdoc");
+    
+    m.def("get_ros_y", &fire_solver_get_ros_y,
+          R"pbdoc(Get ROS y-component field as numpy array)pbdoc");
+    
+    m.def("get_ros_wind", &fire_solver_get_ros_wind,
+          R"pbdoc(Get wind-driven ROS component as numpy array)pbdoc");
+    
+    m.def("get_ros_slope", &fire_solver_get_ros_slope,
+          R"pbdoc(Get slope-driven ROS component as numpy array)pbdoc");
+    
+    m.def("get_residence_time", &fire_solver_get_residence_time,
+          R"pbdoc(Get fuel residence time field as numpy array)pbdoc");
+    
+    m.def("get_fuel_consumption", &fire_solver_get_fuel_consumption,
+          R"pbdoc(Get fuel consumption field as numpy array)pbdoc");
+    
+    m.def("get_front_curvature", &fire_solver_get_front_curvature,
+          R"pbdoc(Get fire front curvature field as numpy array)pbdoc");
+    
+    m.def("get_spread_direction", &fire_solver_get_spread_direction,
+          R"pbdoc(Get primary spread direction field as numpy array (radians))pbdoc");
+
+    // ========================================================================
+    // PHASE 5: Advanced Ignition & Control (5 functions)
+    // ========================================================================
+    
+    m.def("set_ignition_region",
+        &fire_solver_set_ignition_region,
+        py::arg("xmin"), py::arg("xmax"), py::arg("ymin"), py::arg("ymax"), py::arg("time"),
+        R"pbdoc(
+        Set rectangular ignition region.
+        
+        Parameters
+        ----------
+        xmin, xmax, ymin, ymax : float
+            Region bounds (meters)
+        time : float
+            Ignition time (seconds)
+        
+        Returns
+        -------
+        bool
+            True if ignition was set
+        )pbdoc");
+    
+    m.def("set_ignition_from_array",
+        [](py::array_t<double> phi_init){
+            auto info = phi_init.request();
+            const double* ptr = static_cast<const double*>(info.ptr);
+            return fire_solver_set_ignition_from_array(ptr);
+        },
+        py::arg("phi_init"),
+        R"pbdoc(
+        Set custom ignition pattern from level-set array.
+        
+        Parameters
+        ----------
+        phi_init : ndarray
+            Initial level-set field
+        
+        Returns
+        -------
+        bool
+            True if ignition was set
+        )pbdoc");
+    
+    m.def("set_spread_model",
+        &fire_solver_set_spread_model,
+        py::arg("model_name"),
+        R"pbdoc(
+        Set propagation method.
+        
+        Parameters
+        ----------
+        model_name : str
+            'levelset', 'richards', or 'hybrid'
+        
+        Returns
+        -------
+        bool
+            True if model was set
+        )pbdoc");
+    
+    m.def("step_with_subcycles",
+        &fire_solver_step_with_subcycles,
+        py::arg("target_dt"), py::arg("max_subcycles"),
+        R"pbdoc(
+        Advance with subcycling control.
+        
+        Parameters
+        ----------
+        target_dt : float
+            Target timestep (seconds)
+        max_subcycles : int
+            Maximum number of subcycles
+        
+        Returns
+        -------
+        float
+            Actual timestep used
+        )pbdoc");
+    
+    m.def("get_timestep_recommendation", &fire_solver_get_timestep_recommendation,
+          R"pbdoc(
+        Get recommended next timestep.
+        
+        Returns
+        -------
+        float
+            Recommended timestep (seconds)
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 6: Surface Fluxes & Emissions (2 functions)
+    // ========================================================================
+    
+    m.def("get_all_surface_fluxes", &fire_solver_get_all_surface_fluxes,
+          R"pbdoc(
+        Get all surface flux components.
+        
+        Returns
+        -------
+        dict
+            Dict with heat_flux, sensible_heat, latent_heat, radiation, 
+            momentum_flux, co2_flux, pm25_flux, smoke_height arrays
+        )pbdoc");
+    
+    m.def("get_emission_factors", &fire_solver_get_emission_factors,
+          R"pbdoc(
+        Get emission factors for species (per unit fuel consumed).
+        
+        Returns
+        -------
+        dict
+            Dict with co2, co, ch4, pm25, nox, so2 factors
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 7: Advanced I/O & Checkpointing (3 functions)
+    // ========================================================================
+    
+    m.def("write_checkpoint",
+        &fire_solver_write_checkpoint,
+        py::arg("filename"),
+        R"pbdoc(
+        Write checkpoint to file.
+        
+        Parameters
+        ----------
+        filename : str
+            Checkpoint file path
+        
+        Returns
+        -------
+        bool
+            True if write succeeded
+        )pbdoc");
+    
+    m.def("read_checkpoint",
+        &fire_solver_read_checkpoint,
+        py::arg("filename"),
+        R"pbdoc(
+        Read checkpoint from file.
+        
+        Parameters
+        ----------
+        filename : str
+            Checkpoint file path
+        
+        Returns
+        -------
+        bool
+            True if read succeeded
+        )pbdoc");
+    
+    m.def("get_checkpoint_data", &fire_solver_get_checkpoint_data,
+          R"pbdoc(
+        Get checkpoint-compatible data dictionary.
+        
+        Returns
+        -------
+        dict
+            Dict with all fields needed to restart
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 8: Atmosphere Coupling & Diagnostics (3 functions)
+    // ========================================================================
+    
+    m.def("set_fire_atmosphere_feedback_enabled",
+        &fire_solver_set_fire_atmosphere_feedback_enabled,
+        py::arg("enabled"),
+        R"pbdoc(
+        Enable/disable fire-atmosphere feedback.
+        
+        Parameters
+        ----------
+        enabled : bool
+            True to enable feedback
+        )pbdoc");
+    
+    m.def("get_buoyancy_driven_winds", &fire_solver_get_buoyancy_driven_winds,
+          R"pbdoc(
+        Get induced wind from fire plume.
+        
+        Returns
+        -------
+        dict
+            Dict with u_induced, v_induced, w_induced fields
+        )pbdoc");
+    
+    m.def("get_coupling_statistics", &fire_solver_get_coupling_statistics,
+          R"pbdoc(
+        Get fire-atmosphere coupling statistics.
+        
+        Returns
+        -------
+        dict
+            Dict with total_heat_release, max_flame_height, wind_speed_at_fire, etc.
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 9: GPU & Performance (2 functions)
+    // ========================================================================
+    
+    m.def("set_accelerated_ros_computation",
+        &fire_solver_set_accelerated_ros_computation,
+        py::arg("enabled"),
+        R"pbdoc(
+        Enable/disable GPU acceleration for ROS computation.
+        
+        Parameters
+        ----------
+        enabled : bool
+            True to enable GPU acceleration
+        )pbdoc");
+    
+    m.def("profile_ros_calculation", &fire_solver_profile_ros_calculation,
+          R"pbdoc(
+        Profile ROS calculation bottlenecks.
+        
+        Returns
+        -------
+        dict
+            Dict with timing breakdown (milliseconds)
+        )pbdoc");
+
+    // ========================================================================
+    // PHASE 10: Enhanced Diagnostics (1 function)
+    // ========================================================================
+    
+    m.def("get_wind_at_surface", &fire_solver_get_wind_at_surface,
+          R"pbdoc(
+        Get wind at surface with derived fields.
+        
+        Returns
+        -------
+        dict
+            Dict with u, v, w, wind_speed, wind_direction arrays
+        )pbdoc");
+
     // Add version information
-    m.attr("__version__") = "0.2.0";
-}
+    m.attr("__version__") = "0.3.0";

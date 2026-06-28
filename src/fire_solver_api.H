@@ -223,4 +223,149 @@ void fire_solver_finalize();
 // Check if solver is initialized
 bool fire_solver_is_initialized();
 
+// ============================================================================
+// Phase 1: Core Configuration & Properties Functions
+// ============================================================================
+
+// Get comprehensive solver configuration dictionary
+std::map<std::string, double> fire_solver_get_config();
+
+// Get vertical domain bounds (zmin, zmax)
+void fire_solver_get_vertical_domain(double& zmin, double& zmax);
+
+// Get Rothermel fuel model properties as dictionary
+std::map<std::string, double> fire_solver_get_rothermel_properties();
+
+// Get wind-ROS relationship parameters (B-coefficient, etc.)
+std::map<std::string, double> fire_solver_get_wind_ros_relationship();
+
+// Get spread model parameters (for Richards model, etc.)
+std::map<std::string, double> fire_solver_get_spread_parameters();
+
+// Update Rothermel fuel load (dead and live fuel)
+bool fire_solver_update_rothermel_fuel_load(
+    const std::vector<double>& dead_load,
+    const std::vector<double>& live_load);
+
+// Validate domain compatibility with wind domain
+std::map<std::string, bool> fire_solver_validate_domain_compatibility(
+    int wind_nx, int wind_ny,
+    double wind_xmin, double wind_xmax,
+    double wind_ymin, double wind_ymax);
+
+// ============================================================================
+// Phase 2: Terrain & Spatial Features Functions
+// ============================================================================
+
+// Update terrain data (elevation, slope, aspect)
+bool fire_solver_update_terrain(
+    const double* elevation,
+    const double* slope,
+    const double* aspect,
+    int nx, int ny);
+
+// Get terrain information as dictionary
+std::map<std::string, std::vector<double>> fire_solver_get_terrain_info();
+
+// Query ROS at a specific location (x, y)
+double fire_solver_get_ros_at_location(double x, double y);
+
+// Interpolate a field to a specific location
+double fire_solver_interpolate_field(
+    const std::string& field_name,
+    double x, double y);
+
+// ============================================================================
+// Phase 3 & 4: Enhanced Fire State Fields
+// ============================================================================
+
+// Extract ROS component fields
+std::vector<double> fire_solver_get_ros_x();
+std::vector<double> fire_solver_get_ros_y();
+std::vector<double> fire_solver_get_ros_wind();
+std::vector<double> fire_solver_get_ros_slope();
+
+// Extract fire property fields
+std::vector<double> fire_solver_get_residence_time();
+std::vector<double> fire_solver_get_fuel_consumption();
+std::vector<double> fire_solver_get_front_curvature();
+std::vector<double> fire_solver_get_spread_direction();
+
+// ============================================================================
+// Phase 5: Advanced Ignition & Control Functions
+// ============================================================================
+
+// Set rectangular ignition region
+bool fire_solver_set_ignition_region(
+    double xmin, double xmax,
+    double ymin, double ymax,
+    double time);
+
+// Set ignition from array
+bool fire_solver_set_ignition_from_array(const double* phi_init);
+
+// Set spread model ('levelset', 'richards', 'hybrid')
+bool fire_solver_set_spread_model(const std::string& model_name);
+
+// Step with subcycles
+double fire_solver_step_with_subcycles(
+    double target_dt,
+    int max_subcycles);
+
+// Get timestep recommendation
+double fire_solver_get_timestep_recommendation();
+
+// ============================================================================
+// Phase 6: Surface Fluxes & Emissions Functions
+// ============================================================================
+
+// Get complete surface fluxes with all components
+std::map<std::string, std::vector<double>> fire_solver_get_all_surface_fluxes();
+
+// Get emission factors for species
+std::map<std::string, double> fire_solver_get_emission_factors();
+
+// ============================================================================
+// Phase 7: Advanced I/O & Checkpointing Functions
+// ============================================================================
+
+// Write checkpoint to file
+bool fire_solver_write_checkpoint(const std::string& filename);
+
+// Read checkpoint from file
+bool fire_solver_read_checkpoint(const std::string& filename);
+
+// Get checkpoint-compatible data dictionary
+std::map<std::string, std::vector<double>> fire_solver_get_checkpoint_data();
+
+// ============================================================================
+// Phase 8: Atmosphere Coupling & Diagnostics Functions
+// ============================================================================
+
+// Enable/disable fire-atmosphere feedback
+void fire_solver_set_fire_atmosphere_feedback_enabled(bool enabled);
+
+// Get induced wind from fire (buoyancy-driven)
+std::map<std::string, std::vector<double>> fire_solver_get_buoyancy_driven_winds();
+
+// Get coupling statistics
+std::map<std::string, double> fire_solver_get_coupling_statistics();
+
+// ============================================================================
+// Phase 9: GPU & Performance Functions
+// ============================================================================
+
+// Enable/disable GPU acceleration for ROS computation
+void fire_solver_set_accelerated_ros_computation(bool enabled);
+
+// Profile ROS calculation bottlenecks
+std::map<std::string, double> fire_solver_profile_ros_calculation();
+
+// ============================================================================
+// Phase 10: Enhanced Error Handling & Diagnostics
+// ============================================================================
+
+// Get wind at surface (enhanced version with computed fields)
+std::map<std::string, std::vector<double>> fire_solver_get_wind_at_surface();
+
 #endif // FIRE_SOLVER_API_H
