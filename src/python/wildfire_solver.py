@@ -1070,6 +1070,524 @@ class WildfireSolver:
             'note': 'Performance metrics require C++ instrumentation'
         }
     
+    # ========================================================================
+    # PHASE 1: Core Configuration & Properties Methods
+    # ========================================================================
+    
+    def get_config(self):
+        """
+        Get comprehensive solver configuration.
+        
+        Returns:
+            dict: Configuration with keys: nx, ny, xmin, xmax, ymin, ymax, dx, dy, time, step, dt
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_config()
+    
+    def get_vertical_domain(self):
+        """
+        Get vertical domain bounds.
+        
+        Returns:
+            dict: Dict with 'zmin' and 'zmax' in meters
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_vertical_domain()
+    
+    def get_rothermel_properties(self):
+        """
+        Get Rothermel fuel model properties.
+        
+        Returns:
+            dict: Fuel model properties for all size classes and moisture
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_rothermel_properties()
+    
+    def get_wind_ros_relationship(self):
+        """
+        Get wind-ROS interaction parameters.
+        
+        Returns:
+            dict: B-coefficient and other Rothermel wind parameters
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_wind_ros_relationship()
+    
+    def get_spread_parameters(self):
+        """
+        Get spread model parameters.
+        
+        Returns:
+            dict: Parameters for Richards/Balbi model if enabled
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_spread_parameters()
+    
+    def update_rothermel_fuel_load(self, dead_load, live_load):
+        """
+        Update Rothermel fuel loads.
+        
+        Parameters:
+            dead_load (array-like): Dead fuel loads (tons/acre)
+            live_load (array-like): Live fuel loads (tons/acre)
+        
+        Returns:
+            bool: True if update succeeded
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        dead_load = np.asarray(dead_load, dtype=np.float64)
+        live_load = np.asarray(live_load, dtype=np.float64)
+        return pyWildfire.update_rothermel_fuel_load(dead_load, live_load)
+    
+    def validate_domain_compatibility(self, wind_nx, wind_ny, 
+                                      wind_xmin, wind_xmax, 
+                                      wind_ymin, wind_ymax):
+        """
+        Validate compatibility between fire and wind domains.
+        
+        Parameters:
+            wind_nx, wind_ny (int): Wind grid dimensions
+            wind_xmin, wind_xmax, wind_ymin, wind_ymax (float): Wind domain bounds
+        
+        Returns:
+            dict: Compatibility flags
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.validate_domain_compatibility(
+            wind_nx, wind_ny, wind_xmin, wind_xmax, wind_ymin, wind_ymax)
+    
+    # ========================================================================
+    # PHASE 2: Terrain & Spatial Features Methods
+    # ========================================================================
+    
+    def update_terrain(self, elevation, slope, aspect):
+        """
+        Update terrain data (elevation, slope, aspect).
+        
+        Parameters:
+            elevation (ndarray): Elevation map (m), shape (ny, nx)
+            slope (ndarray): Slope (degrees), shape (ny, nx)
+            aspect (ndarray): Aspect (degrees), shape (ny, nx)
+        
+        Returns:
+            bool: True if update succeeded
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        elevation = np.asarray(elevation, dtype=np.float64)
+        slope = np.asarray(slope, dtype=np.float64)
+        aspect = np.asarray(aspect, dtype=np.float64)
+        
+        if elevation.shape != (self.ny, self.nx):
+            raise ValueError(f"elevation shape {elevation.shape} doesn't match ({self.ny}, {self.nx})")
+        if slope.shape != (self.ny, self.nx):
+            raise ValueError(f"slope shape {slope.shape} doesn't match ({self.ny}, {self.nx})")
+        if aspect.shape != (self.ny, self.nx):
+            raise ValueError(f"aspect shape {aspect.shape} doesn't match ({self.ny}, {self.nx})")
+        
+        return pyWildfire.update_terrain(elevation, slope, aspect, self.nx, self.ny)
+    
+    def get_terrain_info(self):
+        """
+        Get terrain information fields.
+        
+        Returns:
+            dict: Dict with elevation, slope, aspect arrays
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_terrain_info()
+    
+    def get_ros_at_location(self, x, y):
+        """
+        Query ROS at a specific location.
+        
+        Parameters:
+            x, y (float): Location coordinates (meters)
+        
+        Returns:
+            float: ROS at location (m/s)
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_ros_at_location(x, y)
+    
+    def interpolate_field(self, field_name, x, y):
+        """
+        Interpolate any field to a specific location.
+        
+        Parameters:
+            field_name (str): Field to interpolate ('phi', 'ros', 'intensity', etc.)
+            x, y (float): Location coordinates (meters)
+        
+        Returns:
+            float: Field value at location
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.interpolate_field(field_name, x, y)
+    
+    # ========================================================================
+    # PHASE 3 & 4: Fire State Fields Methods
+    # ========================================================================
+    
+    def get_ros_x(self):
+        """Get ROS x-component field as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_ros_x()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_ros_y(self):
+        """Get ROS y-component field as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_ros_y()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_ros_wind(self):
+        """Get wind-driven ROS component as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_ros_wind()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_ros_slope(self):
+        """Get slope-driven ROS component as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_ros_slope()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_residence_time(self):
+        """Get fuel residence time field as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_residence_time()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_fuel_consumption(self):
+        """Get fuel consumption field as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_fuel_consumption()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_front_curvature(self):
+        """Get fire front curvature field as numpy array."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_front_curvature()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    def get_spread_direction(self):
+        """Get primary spread direction field as numpy array (radians)."""
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        data = pyWildfire.get_spread_direction()
+        return np.reshape(data, (self.ny, self.nx), order='F')
+    
+    # ========================================================================
+    # PHASE 5: Advanced Ignition & Control Methods
+    # ========================================================================
+    
+    def set_ignition_region(self, xmin, xmax, ymin, ymax, time=0.0):
+        """
+        Set rectangular ignition region.
+        
+        Parameters:
+            xmin, xmax, ymin, ymax (float): Region bounds (meters)
+            time (float): Ignition time (seconds)
+        
+        Returns:
+            bool: True if ignition was set
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.set_ignition_region(xmin, xmax, ymin, ymax, time)
+    
+    def set_ignition_from_array(self, phi_init):
+        """
+        Set custom ignition pattern from level-set array.
+        
+        Parameters:
+            phi_init (ndarray): Initial level-set field, shape (ny, nx)
+        
+        Returns:
+            bool: True if ignition was set
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        phi_init = np.asarray(phi_init, dtype=np.float64)
+        if phi_init.shape != (self.ny, self.nx):
+            raise ValueError(f"phi_init shape {phi_init.shape} doesn't match ({self.ny}, {self.nx})")
+        
+        return pyWildfire.set_ignition_from_array(phi_init)
+    
+    def set_spread_model(self, model_name):
+        """
+        Set propagation method.
+        
+        Parameters:
+            model_name (str): 'levelset', 'richards', or 'hybrid'
+        
+        Returns:
+            bool: True if model was set
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        valid_models = ['levelset', 'richards', 'hybrid']
+        if model_name not in valid_models:
+            raise ValueError(f"Invalid model '{model_name}'. Must be one of {valid_models}")
+        
+        return pyWildfire.set_spread_model(model_name)
+    
+    def step_with_subcycles(self, target_dt, max_subcycles=10):
+        """
+        Advance with subcycling control.
+        
+        Parameters:
+            target_dt (float): Target timestep (seconds)
+            max_subcycles (int): Maximum number of subcycles
+        
+        Returns:
+            float: Actual timestep used
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.step_with_subcycles(target_dt, max_subcycles)
+    
+    def get_timestep_recommendation(self):
+        """
+        Get recommended next timestep.
+        
+        Returns:
+            float: Recommended timestep (seconds)
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_timestep_recommendation()
+    
+    # ========================================================================
+    # PHASE 6: Surface Fluxes & Emissions Methods
+    # ========================================================================
+    
+    def get_all_surface_fluxes(self):
+        """
+        Get all surface flux components.
+        
+        Returns:
+            dict: Dict with all flux fields as numpy arrays
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        flux_dict = pyWildfire.get_all_surface_fluxes()
+        
+        # Reshape all arrays from 1D to 2D
+        result = {}
+        for key, value in flux_dict.items():
+            if isinstance(value, list) and len(value) == self.nx * self.ny:
+                result[key] = np.reshape(value, (self.ny, self.nx), order='F')
+            else:
+                result[key] = value
+        
+        return result
+    
+    def get_emission_factors(self):
+        """
+        Get emission factors for species (per unit fuel consumed).
+        
+        Returns:
+            dict: Dict with co2, co, ch4, pm25, nox, so2 factors
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_emission_factors()
+    
+    # ========================================================================
+    # PHASE 7: Advanced I/O & Checkpointing Methods
+    # ========================================================================
+    
+    def write_checkpoint(self, filename):
+        """
+        Write checkpoint to file.
+        
+        Parameters:
+            filename (str): Checkpoint file path
+        
+        Returns:
+            bool: True if write succeeded
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.write_checkpoint(filename)
+    
+    def read_checkpoint(self, filename):
+        """
+        Read checkpoint from file.
+        
+        Parameters:
+            filename (str): Checkpoint file path
+        
+        Returns:
+            bool: True if read succeeded
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.read_checkpoint(filename)
+    
+    def get_checkpoint_data(self):
+        """
+        Get checkpoint-compatible data dictionary.
+        
+        Returns:
+            dict: Dict with all fields needed to restart
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_checkpoint_data()
+    
+    # ========================================================================
+    # PHASE 8: Atmosphere Coupling & Diagnostics Methods
+    # ========================================================================
+    
+    def set_fire_atmosphere_feedback_enabled(self, enabled):
+        """
+        Enable/disable fire-atmosphere feedback.
+        
+        Parameters:
+            enabled (bool): True to enable feedback
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        pyWildfire.set_fire_atmosphere_feedback_enabled(enabled)
+    
+    def get_buoyancy_driven_winds(self):
+        """
+        Get induced wind from fire plume.
+        
+        Returns:
+            dict: Dict with u_induced, v_induced, w_induced arrays
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        wind_dict = pyWildfire.get_buoyancy_driven_winds()
+        
+        # Reshape all arrays from 1D to 2D
+        result = {}
+        for key, value in wind_dict.items():
+            if isinstance(value, list) and len(value) == self.nx * self.ny:
+                result[key] = np.reshape(value, (self.ny, self.nx), order='F')
+            else:
+                result[key] = value
+        
+        return result
+    
+    def get_coupling_statistics(self):
+        """
+        Get fire-atmosphere coupling statistics.
+        
+        Returns:
+            dict: Dict with total_heat_release, max_flame_height, wind_speed_at_fire, etc.
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.get_coupling_statistics()
+    
+    # ========================================================================
+    # PHASE 9: GPU & Performance Methods
+    # ========================================================================
+    
+    def set_accelerated_ros_computation(self, enabled):
+        """
+        Enable/disable GPU acceleration for ROS computation.
+        
+        Parameters:
+            enabled (bool): True to enable GPU acceleration
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        pyWildfire.set_accelerated_ros_computation(enabled)
+    
+    def profile_ros_calculation(self):
+        """
+        Profile ROS calculation bottlenecks.
+        
+        Returns:
+            dict: Dict with timing breakdown (milliseconds)
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        return pyWildfire.profile_ros_calculation()
+    
+    # ========================================================================
+    # PHASE 10: Enhanced Diagnostics Methods
+    # ========================================================================
+    
+    def get_wind_at_surface(self):
+        """
+        Get wind at surface with derived fields.
+        
+        Returns:
+            dict: Dict with u, v, w, wind_speed, wind_direction arrays
+        """
+        if not self.initialized:
+            raise RuntimeError("Solver not initialized. Call initialize() first.")
+        
+        wind_dict = pyWildfire.get_wind_at_surface()
+        
+        # Reshape all arrays from 1D to 2D
+        result = {}
+        for key, value in wind_dict.items():
+            if isinstance(value, list) and len(value) == self.nx * self.ny:
+                result[key] = np.reshape(value, (self.ny, self.nx), order='F')
+            else:
+                result[key] = value
+        
+        return result
+    
     def finalize(self):
         """
         Clean up and finalize the solver.
