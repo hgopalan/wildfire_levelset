@@ -103,6 +103,9 @@ struct RothermelParams {
     // When no terrain data is present, falls back to scalar additive.
     // Reference: Finney (1998) FARSITE; Rothermel (1983) GTR INT-143.
     int         use_slope_wind_vectors; // 1 = FARSITE vectorial mode (default: 0)
+    // --- 3D Wind coupling three-step approach ---
+    int         use_coupled_wind_3step;   // 1 to enable three-step 3D wind coupling (default: 1)
+    std::string coupled_wind_feedback_dir; // "upstream" or "inward" (default: "upstream")
 };
 
 struct InputParameters {

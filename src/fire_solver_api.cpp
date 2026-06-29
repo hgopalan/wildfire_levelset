@@ -514,7 +514,120 @@ bool fire_solver_update_wind_3d(
         
         g_fire_solver_state->albini_plt_wind = std::move(pwd);
         
-        return fire_solver_update_wind(nx, ny, g_fire_solver_state->albini_plt_wind.u2d.data(), g_fire_solver_state->albini_plt_wind.v2d.data());
+        bool success_update = fire_solver_update_wind(nx, ny, g_fire_solver_state->albini_plt_wind.u2d.data(), g_fire_solver_state->albini_plt_wind.v2d.data());
+        if (!success_update) {
+            return false;
+        }
+
+        // Apply Tier 2 (WAF) and Tier 3 (Heat Flux Feedback) if enabled
+        if (g_fire_solver_state->inputs->rothermel.use_coupled_wind_3step) {
+            MultiFab& vel = g_fire_solver_state->fields->vel;
+            const MultiFab& fuel_model_mf = g_fire_solver_state->fields->fuel_model_mf;
+            const MultiFab& fireline_intensity_mf = g_fire_solver_state->fields->fireline_intensity_mf;
+            const MultiFab& flame_length_mf = g_fire_solver_state->fields->flame_length_mf;
+            const MultiFab& phi_mf = g_fire_solver_state->fields->phi;
+
+            // Physical parameters
+            const double g_const = 9.81;
+            const double ref_height = g_fire_solver_state->inputs->heat_flux.ref_height;
+            const double rho = g_fire_solver_state->inputs->heat_flux.rho_air;
+            const double Cp = g_fire_solver_state->inputs->heat_flux.Cp_air;
+            const double T_a = g_fire_solver_state->inputs->heat_flux.T_a;
+            const double denom = rho * Cp * T_a;
+
+            const std::string& feedback_dir = g_fire_solver_state->inputs->rothermel.coupled_wind_feedback_dir;
+
+            for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+                const Box& bx = mfi.validbox();
+                auto vel_arr = vel.array(mfi);
+                auto const fm_arr = fuel_model_mf.const_array(mfi);
+                auto const fi_arr = fireline_intensity_mf.const_array(mfi);
+                auto const fl_arr = flame_length_mf.const_array(mfi);
+                auto const phi_arr = phi_mf.const_array(mfi);
+
+                int k = 0;
+                for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+                    for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                        if (i >= 0 && i < nx && j >= 0 && j < ny) {
+                            double u_2d = vel_arr(i, j, k, 0);
+                            double v_2d = vel_arr(i, j, k, 1);
+
+                            // ---- Tier 2: WAF ----
+                            double h = g_fire_solver_state->inputs->rothermel.delta; // default global fuel bed depth in ft
+                            double waf = 1.0;
+                            
+                            // Check if spatial fuel is active and we have fuel database loaded
+                            bool found_in_table = false;
+                            if (!g_fire_solver_state->inputs->rothermel.landscape_file.empty() && 
+                                g_fire_solver_state->fuel_table_size > 0) {
+                                int code = static_cast<int>(fm_arr(i, j, k));
+                                if (code >= 0 && code < g_fire_solver_state->fuel_table_size) {
+                                    waf = g_fire_solver_state->h_fuel_table[code].waf;
+                                    found_in_table = true;
+                                }
+                            }
+                            
+                            if (!found_in_table) {
+                                // compute WAF from h (Andrews 2018 Eq 2.1: WAF = 1.83 / ln((20 + 0.36*h) / (0.13*h)), where h is fuel depth in feet)
+                                if (h < 0.01) {
+                                    waf = 0.4;
+                                } else {
+                                    double log_arg = (20.0 + 0.36 * h) / (0.13 * h);
+                                    if (log_arg <= 1.0) {
+                                        waf = 0.4;
+                                    } else {
+                                        waf = 1.83 / std::log(log_arg);
+                                        waf = std::max(0.1, std::min(waf, 1.0));
+                                    }
+                                }
+                            }
+
+                            u_2d *= waf;
+                            v_2d *= waf;
+
+                            // ---- Tier 3: Heat Flux Feedback ----
+                            double I_B = fi_arr(i, j, k);
+                            double flame_length = fl_arr(i, j, k);
+                            if (I_B > 0.0 && flame_length > 1.0e-5 && denom > 0.0) {
+                                // (I_B [kW/m] * 1000.0 [W/kW]) / flame_length [m] -> heat_flux [W/m^2]
+                                double heat_flux = (I_B * 1000.0) / flame_length;
+                                double w_up = std::sqrt(g_const * heat_flux * ref_height / denom);
+
+                                if (w_up > 0.0) {
+                                    if (feedback_dir == "inward") {
+                                        // anti-parallel to grad(phi)
+                                        double dx_idx = (std::min(i+1, bx.bigEnd(0)) - std::max(i-1, bx.smallEnd(0)));
+                                        double dy_idx = (std::min(j+1, bx.bigEnd(1)) - std::max(j-1, bx.smallEnd(1)));
+                                        double gpx = dx_idx > 0.0 ? (phi_arr(std::min(i+1, bx.bigEnd(0)), j, k) - phi_arr(std::max(i-1, bx.smallEnd(0)), j, k)) / dx_idx : 0.0;
+                                        double gpy = dy_idx > 0.0 ? (phi_arr(i, std::min(j+1, bx.bigEnd(1)), k) - phi_arr(i, std::max(j-1, bx.smallEnd(1)), k)) / dy_idx : 0.0;
+                                        double gp_mag = std::sqrt(gpx * gpx + gpy * gpy);
+                                        if (gp_mag > 1.0e-8) {
+                                            u_2d -= w_up * (gpx / gp_mag);
+                                            v_2d -= w_up * (gpy / gp_mag);
+                                        }
+                                    } else {
+                                        // Default "upstream": anti-parallel to wind
+                                        double wind_spd = std::sqrt(u_2d * u_2d + v_2d * v_2d);
+                                        if (wind_spd > 1.0e-8) {
+                                            double ix = -u_2d / wind_spd;
+                                            double iy = -v_2d / wind_spd;
+                                            u_2d += w_up * ix;
+                                            v_2d += w_up * iy;
+                                        }
+                                    }
+                                }
+                            }
+
+                            vel_arr(i, j, k, 0) = u_2d;
+                            vel_arr(i, j, k, 1) = v_2d;
+                        }
+                    }
+                }
+            }
+            amrex::Print() << "Applied 3-step wind coupling: Tier 1 (Averaging), Tier 2 (WAF), Tier 3 (Feedback: " << feedback_dir << ")\n";
+        }
+        
+        return true;
     } catch (...) {
         return false;
     }
