@@ -439,71 +439,207 @@ Tests failed: 0
 ✓ ALL TESTS PASSED
 ```
 
-## Integration with massconsistent_amr
+## Wind-Fire Coupling
 
-The primary use case for these bindings is to enable direct data transfer from
-massconsistent_amr (3D mass-consistent wind solver) to wildfire_levelset without
-writing intermediate plotfiles to disk.
+The Python API enables flexible coupling with external wind solvers, supporting both
+one-way and two-way coupling modes. This section describes the coupling capabilities
+and how to use them.
 
-### Current Workflow (File-Based)
+### Coupling Modules
+
+Two modules are available for wind-fire coupling:
+
+1. **`levelset_coupling.py`** - High-level module for dedicated wind-fire coupling
+   - Recommended for most users
+   - Mirrors the design from massconsistent_amr
+   - Handles all coupling workflows automatically
+   - See `example_two_way_coupling.py` for usage
+
+2. **`coupled_solver.py`** - Lower-level coupling framework
+   - Provides building blocks for custom coupling workflows
+   - More flexible for advanced use cases
+
+### Coupling Modes
+
+#### 1. One-Way Coupling (wind → fire)
+
+Wind field is computed independently; fire responds to wind but does NOT affect wind.
+
+**Use cases:**
+- Pre-computed wind fields from weather models
+- Coupling with atmospheric simulators
+- Scenarios where fire-induced wind effects are negligible
+- Faster simulations
+
+**Workflow:**
+```python
+from wildfire_solver import WildfireSolver
+import numpy as np
+
+fire = WildfireSolver("fire_inputs.i")
+
+for step in range(num_steps):
+    # 1. Get wind field (external source, e.g., massconsistent_amr)
+    u_3d, v_3d, w_3d = wind_solver.get_velocity()  # shape: (nz, ny, nx)
+    
+    # 2. Update fire with wind
+    fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin, zmax)
+    
+    # 3. Advance fire
+    fire.step()
+
+fire.finalize()
+```
+
+**Example:**
+```bash
+PYTHONPATH=build/python python3 src/python/example_one_way_coupling.py \
+    regtest/surface_spread/farsite_ellipse/inputs.i
+```
+
+#### 2. Two-Way Coupling (wind ↔ fire)
+
+Wind field is computed WITH fire heating effects; fire heating is extracted
+and fed back to wind solver for fire-induced wind changes.
+
+**Use cases:**
+- Fire-atmosphere interaction research
+- Understanding fire-induced updrafts and flow deflection
+- Scenarios where fire creates significant atmospheric changes
+- Detailed fire behavior studies
+
+**Workflow:**
+```python
+from levelset_coupling import CoupledWindFireSimulation
+
+# Initialize with two-way coupling
+coupled = CoupledWindFireSimulation(
+    wind_inputs="wind_inputs.i",
+    fire_inputs="fire_inputs.i",
+    coupling_mode='two_way'
+)
+
+# Run simulation
+results = coupled.run(
+    final_time=3600.0,      # 1 hour
+    plot_interval=600.0,    # Write plots every 10 minutes
+    callback=lambda step, result: print(f"Step {step}: Heat={result.get('fire_state', {}).get('phi', 0).sum()}")
+)
+
+coupled.finalize()
+```
+
+**Detailed workflow:**
+```
+Loop:
+  1. Solve wind field with fire heat source from previous step
+  2. Extract 3D wind velocity
+  3. Update fire with wind field
+  4. Advance fire simulation
+  5. Extract heat release from fire
+  6. Add heat to wind solver (for next iteration)
+  Repeat
+```
+
+**Example:**
+```bash
+# Requires massconsistent_amr to be available
+PYTHONPATH=build/python:$MASSCONSISTENT_PYTHONPATH python3 \
+    src/python/example_two_way_coupling.py wind_inputs.i fire_inputs.i
+```
+
+### Heat Flux Extraction for Two-Way Coupling
+
+The fire solver provides methods to extract surface heat flux:
+
+```python
+from wildfire_solver import WildfireSolver
+
+fire = WildfireSolver("fire_inputs.i")
+
+# ... simulate for a while ...
+
+# Extract surface heat flux
+heat_data = fire.get_surface_fluxes()
+heat_flux = heat_data['heat_flux']  # shape: (ny, nx), units: kW/m²
+
+# Or compute from state
+state = fire.get_state()
+heat_release = fire.compute_heat_release(state)
+surface_flux = heat_release['surface_flux']  # kW/m²
+
+# Pass to wind solver
+grid_info = {
+    'xmin': fire.xmin,
+    'xmax': fire.xmax,
+    'ymin': fire.ymin,
+    'ymax': fire.ymax,
+    'dx': fire.dx,
+    'dy': fire.dy
+}
+wind_solver.add_heat_source(heat_flux, grid_info)
+```
+
+### Integration with massconsistent_amr
+
+The primary use case is coupling with massconsistent_amr (3D mass-consistent wind solver).
+
+#### Current Workflow (File-Based)
 ```
 massconsistent_amr → plotfile (disk) → plt_wind_reader.H → wildfire_levelset
 ```
 
-### New Workflow (Memory-Based via Python)
+#### New Workflow (Memory-Based via Python)
 ```
-massconsistent_amr → pyAMReX MultiFab → pyWildfire → wildfire_levelset
+massconsistent_amr ↔ pyWindSolver ↔ levelset_coupling ↔ pyWildfire ↔ wildfire_levelset
 ```
 
-### Coupled Simulation Pattern
+#### Example: Integration with massconsistent_amr
 
 ```python
-from wildfire_solver import WildfireSolver
-# When pyWindSolver is available:
-# from pyWindSolver import WindSolver
+from levelset_coupling import CoupledWindFireSimulation
 
-# Initialize both solvers
-fire = WildfireSolver("fire_inputs.i")
-# wind = WindSolver("wind_inputs.txt")  # Future
+# Use levelset_coupling module which automatically handles both solvers
+coupled = CoupledWindFireSimulation(
+    wind_inputs="amr_inputs.i",
+    fire_inputs="fire_inputs.i",
+    coupling_mode='two_way'  # Enable two-way coupling
+)
 
-# Coupled time loop
-final_time = 3600.0  # 1 hour
-while fire.time < final_time:
-    # 1. Solve wind field for current time
-    # wind.solve(fire.time)
-    # u_3d, v_3d, w_3d = wind.get_velocity_arrays()
-    
-    # For now, use synthetic wind
-    u_3d = generate_wind(fire.time)  # Your function
-    
-    # 2. Pass wind to fire solver
-    fire.update_wind_3d(u_3d, v_3d, w_3d, nz, zmin, zmax)
-    
-    # 3. Advance fire simulation
-    fire.step()
-    
-    # 4. Optionally: extract heat release for wind solver feedback
-    # state = fire.get_state()
-    # heat_release = compute_heat_release(state)
-    # wind.add_heat_source(heat_release)
+# Run coupled simulation
+results = coupled.run(final_time=3600.0)
+
+# Access results
+print(f"Final fire time: {results['final_time']:.1f} s")
+print(f"Final fire state: {results['fire_state']}")
 ```
 
-### Benefits
+### Benefits of Python-Based Coupling
 
-- **Eliminates disk I/O overhead** - No intermediate plotfiles
-- **Faster data transfer** - Zero-copy when possible with pyAMReX
-- **Enables coupled simulations** - Single Python script controls both
-- **Flexible coupling strategies** - One-way, two-way, sub-cycling
-- **Easier workflow integration** - Python-based analysis and visualization
+- **Eliminates disk I/O overhead** - No intermediate plotfiles needed
+- **Faster data transfer** - Direct memory access via numpy arrays
+- **Enables coupled simulations** - Single Python script controls both solvers
+- **Flexible coupling strategies** - One-way, two-way, sub-cycling, ensemble
+- **Easier workflow integration** - Python-based analysis, visualization, ML
+- **Interoperability** - Works with massconsistent_amr and other solvers
 
-### Future Enhancements
+### Coupling Examples
 
-Once pyWindSolver (massconsistent_amr Python bindings) is available:
+Three complete examples are provided:
 
-1. **True two-way coupling** - Fire heat → atmospheric buoyancy → wind
-2. **Sub-cycling** - Different timesteps for wind and fire
-3. **Adaptive mesh refinement** - Refine both grids near fire front
-4. **Ensemble simulations** - Run multiple coupled scenarios in parallel
+1. **`example_one_way_coupling.py`** - One-way wind→fire coupling
+   - Uses synthetic wind or external wind solver
+   - Simpler, faster
+   - Run: `python3 example_one_way_coupling.py fire_inputs.i`
+
+2. **`example_two_way_coupling.py`** - Two-way wind↔fire coupling
+   - Requires wind solver support for `add_heat_source()`
+   - More realistic fire-atmosphere interaction
+   - Run: `python3 example_two_way_coupling.py wind_inputs.i fire_inputs.i`
+
+3. **`coupled_wind_fire_example.py`** - Advanced coupling patterns
+   - Demonstrates sub-cycling, callbacks, diagnostics
+   - Run: `python3 coupled_wind_fire_example.py fire_inputs.i wind_inputs.i`
 
 ## Roadmap
 
@@ -515,13 +651,18 @@ Once pyWindSolver (massconsistent_amr Python bindings) is available:
 - ✅ Plotfile writing
 - ✅ High-level WildfireSolver class
 - ✅ Coupled simulation example
+- ✅ Heat flux extraction (for two-way coupling)
+- ✅ levelset_coupling module for dedicated wind-fire coupling
+- ✅ One-way coupling (wind → fire)
+- ✅ Two-way coupling framework (wind ↔ fire with heat feedback)
+- ✅ Comprehensive coupling examples
 
 ### Planned
 - ⬜ Direct pyAMReX MultiFab support (zero-copy)
-- ⬜ Fire → wind coupling (heat release feedback)
 - ⬜ Advanced diagnostics (burn probability, isochrones)
 - ⬜ Parallel execution (MPI support)
 - ⬜ GPU acceleration via Python
+- ⬜ Sub-cycling (different timesteps for wind and fire)
 
 ## Troubleshooting
 
