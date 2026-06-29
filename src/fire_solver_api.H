@@ -100,6 +100,11 @@ struct FireSolverState {
     int fuel_table_size = 0;
     RothermelComputed* d_fuel_table_ptr = nullptr;
     
+    // Burnout time table
+    amrex::Gpu::DeviceVector<FuelResidenceTime> d_tau_table;
+    const FuelResidenceTime* d_tau_table_ptr = nullptr;
+    int tau_table_size = 0;
+    
     // Balbi lookup table
     std::vector<BalbiComputed> h_balbi_table;
     amrex::Gpu::DeviceVector<BalbiComputed> d_balbi_table;
