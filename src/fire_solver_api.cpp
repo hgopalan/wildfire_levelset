@@ -27,6 +27,39 @@ static bool ensure_amrex_initialized() {
 }
 
 // ============================================================================
+// Helper function to copy MultiFab to contiguous vector in row-major order
+// ============================================================================
+static std::vector<double> copy_multifab_to_vector(const amrex::MultiFab& mf, int comp = 0) {
+    std::vector<double> result;
+    if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
+        return result;
+    }
+    
+    int nx = g_fire_solver_state->inputs->n_cell_x;
+    int ny = g_fire_solver_state->inputs->n_cell_y;
+    result.resize(nx * ny, 0.0);
+    
+    // Ensure any pending GPU kernels have completed
+    amrex::Gpu::streamSynchronize();
+    
+    for (amrex::MFIter mfi(mf); mfi.isValid(); ++mfi) {
+        const amrex::Box& bx = mfi.validbox();
+        auto const mf_arr = mf.const_array(mfi);
+        
+        int k = 0; // 2D slice
+        for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+            for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                if (i >= 0 && i < nx && j >= 0 && j < ny) {
+                    result[j * nx + i] = mf_arr(i, j, k, comp);
+                }
+            }
+        }
+    }
+    
+    return result;
+}
+
+// ============================================================================
 // fire_solver_initialize
 // ============================================================================
 bool fire_solver_initialize(const std::string& inputs_file) {
@@ -40,6 +73,11 @@ bool fire_solver_initialize(const std::string& inputs_file) {
     try {
         g_fire_solver_state = std::make_unique<FireSolverState>();
         FireSolverState& state = *g_fire_solver_state;
+        
+        // Add inputs file to ParmParse database
+        if (!inputs_file.empty()) {
+            ParmParse::addfile(inputs_file);
+        }
         
         // Parse inputs
         state.inputs = std::make_unique<InputParameters>();
@@ -63,8 +101,151 @@ bool fire_solver_initialize(const std::string& inputs_file) {
         // Create fields
         state.fields = std::make_unique<WildfireFields>(*state.ba, *state.dm, *state.inputs);
         
+        // Setup terrain and landscape fields
+        setup_terrain(state.fields->terrain_slopes,
+                      state.fields->elevation_mf,
+                      state.fields->slope_mf,
+                      state.fields->aspect_mf,
+                      state.fields->fuel_model_mf,
+                      state.fields->cbh_mf,
+                      state.fields->cbd_mf,
+                      state.fields->cc_mf,
+                      state.fields->canopy_height_mf,
+                      state.has_spatial_crown,
+                      state.fields->spatial_moisture_mf,
+                      state.has_spatial_moisture,
+                      *state.ba, *state.dm, *state.geom, *state.inputs);
+                      
+        // Initialize fuel tables
+        FuelTableData ftd = setup_fuel_tables(*state.inputs, state.fields->fuel_model_mf);
+        state.d_fuel_table = std::move(ftd.d_fuel_table);
+        state.fuel_table_size = ftd.fuel_table_size;
+        state.d_fuel_table_ptr = state.d_fuel_table.data();
+        
+        state.d_tau_table = std::move(ftd.d_tau_table);
+        state.tau_table_size = ftd.tau_table_size;
+        state.d_tau_table_ptr = state.d_tau_table.data();
+        
+        state.d_balbi_table = std::move(ftd.d_balbi_table);
+        state.balbi_table_size = ftd.balbi_table_size;
+        state.d_balbi_table_ptr = state.d_balbi_table.data();
+        state.bc_global_default = ftd.bc_global_default;
+        state.ccc_global = ftd.ccc_global;
+        
+        // Propagation flags
+        state.use_levelset = (state.inputs->propagation_method == "levelset");
+        state.use_mtt      = (state.inputs->propagation_method == "mtt");
+        state.use_farsite  = (state.inputs->propagation_method == "farsite");
+        
+        // Initialize phi and arrival_time_mf
+        init_phi_source(state.fields->phi, state.fields->arrival_time_mf, *state.geom, *state.inputs,
+                        state.use_farsite, state.step, state.time);
+                        
+        // Initialize velocity field
+        if (!state.inputs->velocity_file.empty()) {
+            if (state.inputs->use_time_dependent_wind == 1) {
+                update_time_dependent_velocity(state.fields->vel, *state.geom, state.inputs->velocity_file, 0.0, state.inputs->wind_time_spacing,
+                                               state.wind_x_data1, state.wind_y_data1, state.wind_u_data1, state.wind_v_data1,
+                                               state.wind_x_data2, state.wind_y_data2, state.wind_u_data2, state.wind_v_data2,
+                                               state.current_wind_field_index, state.next_wind_field_index);
+            } else {
+                init_velocity_from_file(state.fields->vel, *state.geom, state.inputs->velocity_file);
+            }
+        } else {
+            init_velocity_constant(state.fields->vel, *state.geom, state.inputs->ux, state.inputs->uy, state.inputs->uz);
+        }
+        
+        // Setup turbulent wind if active
+        state.turb_wind_active = (state.inputs->turb_wind.model != "none");
+        if (state.turb_wind_active) {
+            state.vel_base = std::make_unique<MultiFab>(*state.ba, *state.dm, 3, 1);
+            MultiFab::Copy(*state.vel_base, state.fields->vel, 0, 0, 3, 1);
+            init_turb_wind_state(state.turb_state, state.inputs->turb_wind);
+            if (state.inputs->turb_wind.model == "ou_process" && state.inputs->turb_wind.L_c > amrex::Real(0.0)) {
+                state.ou_state_mf = std::make_unique<MultiFab>(*state.ba, *state.dm, 2, 0);
+                state.ou_state_mf->setVal(amrex::Real(0.0));
+            }
+        }
+        
+        // Setup heat flux if active
+        state.heat_flux_active = (state.inputs->heat_flux.enable_upward == 1 ||
+                                  state.inputs->heat_flux.enable_induced == 1);
+        if (state.heat_flux_active) {
+            if (!state.inputs->heat_flux.heat_flux_file.empty()) {
+                init_heat_flux_from_file(state.fields->heat_flux_mf, *state.geom,
+                                         state.inputs->heat_flux.heat_flux_file);
+            } else {
+                init_heat_flux_from_value(state.fields->heat_flux_mf,
+                                          state.inputs->heat_flux.heat_flux_value);
+            }
+        }
+        state.wind_terrain_modifies_vel = wind_terrain_modifies_velocity(*state.inputs);
+        state.use_balbi_for_viegas = (state.inputs->fire_spread_model == "balbi");
+        
+        // Compute initial ROS and fire behavior
+        {
+            MultiFab& R_mf = state.fields->R_mf;
+            MultiFab& vel = state.fields->vel;
+            MultiFab& vel_effective = state.fields->vel_effective;
+            MultiFab& phi = state.fields->phi;
+            MultiFab& fireline_intensity_mf = state.fields->fireline_intensity_mf;
+            MultiFab& flame_length_mf = state.fields->flame_length_mf;
+            MultiFab& ecology_mf = state.fields->ecology_mf;
+            MultiFab& heat_flux_mf = state.fields->heat_flux_mf;
+            
+            apply_wind_terrain_effective_velocity(vel_effective, vel, state.fields->terrain_slopes.get(), *state.geom, *state.inputs, &phi);
+            if (state.heat_flux_active) {
+                apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, state.inputs->heat_flux);
+            }
+            
+            const MultiFab& vel_for_model = (state.wind_terrain_modifies_vel || state.heat_flux_active)
+                                            ? vel_effective : vel;
+            
+            if (state.inputs->fire_spread_model == "balbi") {
+                compute_balbi_R(R_mf, vel_for_model, *state.geom, state.inputs->rothermel, state.inputs->balbi,
+                                state.fields->terrain_slopes.get(),
+                                !state.inputs->rothermel.landscape_file.empty() ? &state.fields->fuel_model_mf : nullptr,
+                                state.d_balbi_table_ptr, state.balbi_table_size,
+                                state.heat_flux_active ? &heat_flux_mf : nullptr,
+                                state.heat_flux_active ? &state.inputs->heat_flux : nullptr);
+            } else if (state.inputs->fire_spread_model == "cheney_gould") {
+                compute_cheney_gould_R(R_mf, vel_for_model, state.inputs->cheney_gould);
+            } else if (state.inputs->fire_spread_model == "cruz_crown") {
+                compute_cruz_crown_R(R_mf, vel_for_model, state.inputs->cruz_crown);
+            } else if (state.inputs->fire_spread_model == "fbp_o1a" ||
+                       state.inputs->fire_spread_model == "fbp_o1b" ||
+                       state.inputs->fire_spread_model == "fbp_s1"  ||
+                       state.inputs->fire_spread_model == "fbp_s2"  ||
+                       state.inputs->fire_spread_model == "fbp_s3") {
+                compute_fbp_R(R_mf, vel_for_model, state.inputs->fbp, &state.fields->fwi_mf, state.inputs->canadian_fwi.enable);
+            } else if (state.inputs->fire_spread_model == "lautenberger") {
+                compute_lautenberger_R(R_mf, vel_for_model, state.inputs->rothermel, state.inputs->lautenberger,
+                                        state.fields->terrain_slopes.get());
+            } else {
+                compute_rothermel_R(R_mf, vel_for_model, *state.geom, state.inputs->rothermel,
+                                     state.fields->terrain_slopes.get(),
+                                     !state.inputs->rothermel.landscape_file.empty() ? &state.fields->fuel_model_mf : nullptr,
+                                     state.d_fuel_table_ptr, state.fuel_table_size,
+                                     state.has_spatial_crown ? &state.fields->cc_mf : nullptr,
+                                     state.has_spatial_crown ? &state.fields->canopy_height_mf : nullptr,
+                                     0,
+                                     30.0, 0.1);
+            }
+            
+            compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, state.inputs->rothermel);
+            compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
+                                 state.inputs->rothermel, state.inputs->fire_ecology, state.inputs->crown);
+            apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, state.inputs->fire_ecology);
+            
+            if (state.use_levelset || state.use_mtt) {
+                state.dt = compute_dt(R_mf, *state.geom, state.inputs->cfl);
+            } else if (state.use_farsite) {
+                state.dt = state.inputs->farsite.dt;
+            }
+        }
+        
         state.initialized = true;
-        amrex::Print() << "Fire solver initialized successfully (stub implementation)\n";
+        amrex::Print() << "Fire solver initialized successfully\n";
         
         return true;
         
@@ -89,11 +270,133 @@ Real fire_solver_advance() {
     
     try {
         const Real dt_step = state.dt;
+        
+        // Extrapolate boundaries for phi
+        fill_boundary_extrap(state.fields->phi, *state.geom);
+        
+        // Update time-dependent wind if active and from file
+        if (!state.inputs->velocity_file.empty() && state.inputs->use_time_dependent_wind == 1) {
+            MultiFab& wind_target = state.turb_wind_active ? *state.vel_base : state.fields->vel;
+            update_time_dependent_velocity(wind_target, *state.geom, state.inputs->velocity_file, state.time, state.inputs->wind_time_spacing,
+                                           state.wind_x_data1, state.wind_y_data1, state.wind_u_data1, state.wind_v_data1,
+                                           state.wind_x_data2, state.wind_y_data2, state.wind_u_data2, state.wind_v_data2,
+                                           state.current_wind_field_index, state.next_wind_field_index);
+        }
+        
+        // Apply turbulent wind perturbation
+        if (state.turb_wind_active) {
+            apply_turb_wind(state.fields->vel, *state.vel_base, state.ou_state_mf.get(), state.turb_state,
+                            dt_step, state.inputs->turb_wind, *state.geom);
+        }
+        
+        // Re-compute rate of spread
+        MultiFab& R_mf = state.fields->R_mf;
+        MultiFab& vel = state.fields->vel;
+        MultiFab& vel_effective = state.fields->vel_effective;
+        MultiFab& phi = state.fields->phi;
+        MultiFab& fireline_intensity_mf = state.fields->fireline_intensity_mf;
+        MultiFab& flame_length_mf = state.fields->flame_length_mf;
+        MultiFab& ecology_mf = state.fields->ecology_mf;
+        MultiFab& heat_flux_mf = state.fields->heat_flux_mf;
+        
+        apply_wind_terrain_effective_velocity(vel_effective, vel, state.fields->terrain_slopes.get(), *state.geom, *state.inputs, &phi);
+        if (state.heat_flux_active) {
+            apply_heatflux_wind(vel_effective, vel, heat_flux_mf, &phi, state.inputs->heat_flux);
+        }
+        
+        const MultiFab& vel_for_model = (state.wind_terrain_modifies_vel || state.heat_flux_active)
+                                        ? vel_effective : vel;
+        
+        if (state.inputs->fire_spread_model == "balbi") {
+            compute_balbi_R(R_mf, vel_for_model, *state.geom, state.inputs->rothermel, state.inputs->balbi,
+                            state.fields->terrain_slopes.get(),
+                            !state.inputs->rothermel.landscape_file.empty() ? &state.fields->fuel_model_mf : nullptr,
+                            state.d_balbi_table_ptr, state.balbi_table_size,
+                            state.heat_flux_active ? &heat_flux_mf : nullptr,
+                            state.heat_flux_active ? &state.inputs->heat_flux : nullptr);
+        } else if (state.inputs->fire_spread_model == "cheney_gould") {
+            compute_cheney_gould_R(R_mf, vel_for_model, state.inputs->cheney_gould);
+        } else if (state.inputs->fire_spread_model == "cruz_crown") {
+            compute_cruz_crown_R(R_mf, vel_for_model, state.inputs->cruz_crown);
+        } else if (state.inputs->fire_spread_model == "fbp_o1a" ||
+                   state.inputs->fire_spread_model == "fbp_o1b" ||
+                   state.inputs->fire_spread_model == "fbp_s1"  ||
+                   state.inputs->fire_spread_model == "fbp_s2"  ||
+                   state.inputs->fire_spread_model == "fbp_s3") {
+            compute_fbp_R(R_mf, vel_for_model, state.inputs->fbp, &state.fields->fwi_mf, state.inputs->canadian_fwi.enable);
+        } else if (state.inputs->fire_spread_model == "lautenberger") {
+            compute_lautenberger_R(R_mf, vel_for_model, state.inputs->rothermel, state.inputs->lautenberger,
+                                    state.fields->terrain_slopes.get());
+        } else {
+            compute_rothermel_R(R_mf, vel_for_model, *state.geom, state.inputs->rothermel,
+                                 state.fields->terrain_slopes.get(),
+                                 !state.inputs->rothermel.landscape_file.empty() ? &state.fields->fuel_model_mf : nullptr,
+                                 state.d_fuel_table_ptr, state.fuel_table_size,
+                                 state.has_spatial_crown ? &state.fields->cc_mf : nullptr,
+                                 state.has_spatial_crown ? &state.fields->canopy_height_mf : nullptr,
+                                 0,
+                                 30.0, 0.1);
+        }
+        
+        compute_fire_behavior(fireline_intensity_mf, flame_length_mf, R_mf, state.inputs->rothermel);
+        compute_fire_ecology(ecology_mf, fireline_intensity_mf, R_mf,
+                             state.inputs->rothermel, state.inputs->fire_ecology, state.inputs->crown);
+        apply_ecology_p_ignition_feedback(R_mf, ecology_mf, phi, state.inputs->fire_ecology);
+        
+        // Propagation/Advection step
+        if (state.use_levelset) {
+            const bool use_precomp_R_for_advection =
+                (state.wind_terrain_modifies_vel ||
+                 state.heat_flux_active                              ||
+                 state.inputs->wind_terrain.model == "viegas_ros"    ||
+                 state.inputs->fire_spread_model  == "balbi"         ||
+                 state.inputs->fire_spread_model  == "cheney_gould"  ||
+                 state.inputs->fire_spread_model  == "cruz_crown"    ||
+                 state.inputs->fire_spread_model  == "fbp_o1a"       ||
+                 state.inputs->fire_spread_model  == "fbp_o1b"       ||
+                 state.inputs->fire_spread_model  == "fbp_s1"        ||
+                 state.inputs->fire_spread_model  == "fbp_s2"        ||
+                 state.inputs->fire_spread_model  == "fbp_s3"        ||
+                 state.inputs->fire_spread_model  == "lautenberger");
+                 
+            advect_levelset_weno5z_rk3(phi, vel, *state.geom, dt_step, state.inputs->rothermel,
+                                       state.fields->terrain_slopes.get(),
+                                       use_precomp_R_for_advection ? &R_mf : nullptr);
+            state.dt = compute_dt(R_mf, *state.geom, state.inputs->cfl);
+        } else if (state.use_mtt) {
+            apply_mtt_phi_update(phi, state.fields->arrival_time_mf, state.time + dt_step);
+            fill_boundary_extrap(phi, *state.geom);
+        } else if (state.use_farsite) {
+            const CruzCrownComputed* ccc_ptr = (state.inputs->crown.use_cruz_crown == 1) ? &state.ccc_global : nullptr;
+            compute_farsite_spread(phi, vel_for_model, state.fields->farsite_spread, *state.geom, dt_step,
+                                   state.inputs->rothermel, state.inputs->farsite, state.inputs->crown,
+                                   R_mf, state.fields->terrain_slopes.get(), &state.fields->fuel_consumption_mf,
+                                   &state.fields->crown_fire_fraction_mf,
+                                   state.has_spatial_crown ? &state.fields->cc_mf : nullptr,
+                                   state.has_spatial_crown ? &state.fields->canopy_height_mf : nullptr,
+                                   ccc_ptr);
+        }
+        
+        // Update arrival time
+        {
+            const Real cur_time = state.time + dt_step;
+            for (MFIter mfi(phi); mfi.isValid(); ++mfi) {
+                const Box& bx = mfi.validbox();
+                auto const p   = phi.const_array(mfi);
+                auto at_arr = state.fields->arrival_time_mf.array(mfi);
+                ParallelFor(bx, [p, at_arr, cur_time] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                    if (p(i, j, k) < 0.0 && at_arr(i, j, k) < 0.0) {
+                        at_arr(i, j, k) = cur_time;
+                    }
+                });
+            }
+        }
+        
         state.time += dt_step;
         
         amrex::Print() << "Step " << state.step << ": Time = " << state.time
-                       << ", dt = " << dt_step << " (stub)\n";
-        
+                       << ", dt = " << dt_step << "\n";
+                       
         return dt_step;
         
     } catch (const std::exception& e) {
@@ -156,8 +459,24 @@ bool fire_solver_update_wind(
     }
     
     try {
-        // Stub: just store the wind data
-        amrex::Print() << "Wind updated: " << nx << " x " << ny << " (stub)\n";
+        MultiFab& vel = g_fire_solver_state->fields->vel;
+        
+        for (MFIter mfi(vel); mfi.isValid(); ++mfi) {
+            const Box& bx = mfi.validbox();
+            auto vel_arr = vel.array(mfi);
+            
+            int k = 0;
+            for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+                for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                    if (i >= 0 && i < nx && j >= 0 && j < ny) {
+                        vel_arr(i, j, k, 0) = u_data[j * nx + i];
+                        vel_arr(i, j, k, 1) = v_data[j * nx + i];
+                    }
+                }
+            }
+        }
+        
+        amrex::Print() << "Wind updated: " << nx << " x " << ny << "\n";
         return true;
     } catch (...) {
         return false;
@@ -181,9 +500,21 @@ bool fire_solver_update_wind_3d(
     }
     
     try {
-        // Stub: just store the 3D wind data
-        amrex::Print() << "3D Wind updated: " << nx << " x " << ny << " x " << nz << " (stub)\n";
-        return true;
+        PltWindData pwd;
+        bool success = load_plt_wind_from_arrays(
+            nx, ny, nz,
+            xmin, xmax, ymin, ymax, zmin, zmax,
+            u_data, v_data, w_data,
+            pwd
+        );
+        
+        if (!success) {
+            return false;
+        }
+        
+        g_fire_solver_state->albini_plt_wind = std::move(pwd);
+        
+        return fire_solver_update_wind(nx, ny, g_fire_solver_state->albini_plt_wind.u2d.data(), g_fire_solver_state->albini_plt_wind.v2d.data());
     } catch (...) {
         return false;
     }
@@ -193,95 +524,40 @@ bool fire_solver_update_wind_3d(
 // fire_solver_get_phi
 // ============================================================================
 std::vector<double> fire_solver_get_phi() {
-    std::vector<double> result;
-    
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
-        return result;
+        return std::vector<double>();
     }
-    
-    try {
-        const MultiFab& phi = g_fire_solver_state->fields->phi;
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        result.resize(nx * ny);
-        
-        // Copy phi data from MultiFab to vector (stub: just fill with zeros)
-        std::fill(result.begin(), result.end(), 1.0);
-        
-        return result;
-    } catch (...) {
-        return result;
-    }
+    return copy_multifab_to_vector(g_fire_solver_state->fields->phi);
 }
 
 // ============================================================================
 // fire_solver_get_ros
 // ============================================================================
 std::vector<double> fire_solver_get_ros() {
-    std::vector<double> result;
-    
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
-        return result;
+        return std::vector<double>();
     }
-    
-    try {
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        result.resize(nx * ny);
-        std::fill(result.begin(), result.end(), 0.0);
-        
-        return result;
-    } catch (...) {
-        return result;
-    }
+    return copy_multifab_to_vector(g_fire_solver_state->fields->R_mf);
 }
 
 // ============================================================================
 // fire_solver_get_intensity
 // ============================================================================
 std::vector<double> fire_solver_get_intensity() {
-    std::vector<double> result;
-    
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
-        return result;
+        return std::vector<double>();
     }
-    
-    try {
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        result.resize(nx * ny);
-        std::fill(result.begin(), result.end(), 0.0);
-        
-        return result;
-    } catch (...) {
-        return result;
-    }
+    return copy_multifab_to_vector(g_fire_solver_state->fields->fireline_intensity_mf);
 }
 
 // ============================================================================
 // fire_solver_get_flame_length
 // ============================================================================
 std::vector<double> fire_solver_get_flame_length() {
-    std::vector<double> result;
-    
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
-        return result;
+        return std::vector<double>();
     }
-    
-    try {
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        result.resize(nx * ny);
-        std::fill(result.begin(), result.end(), 0.0);
-        
-        return result;
-    } catch (...) {
-        return result;
-    }
+    return copy_multifab_to_vector(g_fire_solver_state->fields->flame_length_mf);
 }
 
 // ============================================================================
@@ -291,42 +567,18 @@ void fire_solver_get_wind(std::vector<double>& u_data, std::vector<double>& v_da
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
         return;
     }
-    
-    try {
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        u_data.resize(nx * ny);
-        v_data.resize(nx * ny);
-        
-        std::fill(u_data.begin(), u_data.end(), 0.0);
-        std::fill(v_data.begin(), v_data.end(), 0.0);
-    } catch (...) {
-        // Silent failure
-    }
+    u_data = copy_multifab_to_vector(g_fire_solver_state->fields->vel, 0);
+    v_data = copy_multifab_to_vector(g_fire_solver_state->fields->vel, 1);
 }
 
 // ============================================================================
 // fire_solver_get_arrival_time
 // ============================================================================
 std::vector<double> fire_solver_get_arrival_time() {
-    std::vector<double> result;
-    
     if (!g_fire_solver_state || !g_fire_solver_state->initialized) {
-        return result;
+        return std::vector<double>();
     }
-    
-    try {
-        int nx = g_fire_solver_state->inputs->n_cell_x;
-        int ny = g_fire_solver_state->inputs->n_cell_y;
-        
-        result.resize(nx * ny);
-        std::fill(result.begin(), result.end(), -1.0);
-        
-        return result;
-    } catch (...) {
-        return result;
-    }
+    return copy_multifab_to_vector(g_fire_solver_state->fields->arrival_time_mf);
 }
 
 // ============================================================================
@@ -338,7 +590,30 @@ bool fire_solver_write_plotfile(const std::string& plotfile_name) {
     }
     
     try {
-        amrex::Print() << "Writing plotfile: " << plotfile_name << " (stub)\n";
+        FireSolverState& state = *g_fire_solver_state;
+        FuelTableData ftd;
+        ftd.d_fuel_table_ptr = state.d_fuel_table_ptr;
+        ftd.fuel_table_size = state.fuel_table_size;
+        ftd.d_tau_table_ptr = state.d_tau_table_ptr;
+        ftd.tau_table_size = state.tau_table_size;
+        ftd.d_balbi_table_ptr = state.d_balbi_table_ptr;
+        ftd.balbi_table_size = state.balbi_table_size;
+        ftd.bc_global_default = state.bc_global_default;
+        ftd.ccc_global = state.ccc_global;
+        ftd.ccc_ptr = (state.inputs->crown.use_cruz_crown == 1) ? &state.ccc_global : nullptr;
+        
+        write_wildfire_plotfile(*state.fields, *state.ba, *state.dm, *state.geom, *state.inputs,
+                                state.step, state.time, ftd,
+                                /*write_stats=*/false, /*is_final=*/false);
+                                
+        // Rename generated pltXXXX folder to plotfile_name
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "plt%04d", state.step);
+        std::string default_name(buf);
+        if (plotfile_name != default_name) {
+            std::rename(default_name.c_str(), plotfile_name.c_str());
+        }
+        
         return true;
     } catch (...) {
         return false;

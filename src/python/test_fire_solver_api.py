@@ -45,20 +45,21 @@ n_cell_x = 32
 n_cell_y = 32
 max_grid = 16
 
-plo_x = 0.0
-plo_y = 0.0
-phi_x = 1000.0
-phi_y = 1000.0
+prob_lo_x = 0.0
+prob_lo_y = 0.0
+prob_hi_x = 1000.0
+prob_hi_y = 1000.0
 
 # Constant wind
-ux = 5.0
-uy = 0.0
+u_x = 5.0
+u_y = 0.0
 
 # Simple circular ignition
-ignition.type = circle
-ignition.x0 = 500.0
-ignition.y0 = 500.0
-ignition.radius = 50.0
+source_type = sphere
+center_x = 500.0
+center_y = 500.0
+center_z = 0.0
+sphere_radius = 50.0
 
 # CFL and time control
 cfl = 0.5
@@ -114,18 +115,19 @@ n_cell_x = 16
 n_cell_y = 16
 max_grid = 16
 
-plo_x = 0.0
-plo_y = 0.0
-phi_x = 500.0
-phi_y = 500.0
+prob_lo_x = 0.0
+prob_lo_y = 0.0
+prob_hi_x = 500.0
+prob_hi_y = 500.0
 
-ux = 3.0
-uy = 0.5
+u_x = 3.0
+u_y = 0.5
 
-ignition.type = circle
-ignition.x0 = 250.0
-ignition.y0 = 250.0
-ignition.radius = 30.0
+source_type = sphere
+center_x = 250.0
+center_y = 250.0
+center_z = 0.0
+sphere_radius = 30.0
 
 cfl = 0.5
 nsteps = 5
@@ -223,16 +225,17 @@ def test_wind_update():
 n_cell_x = 16
 n_cell_y = 16
 max_grid = 16
-plo_x = 0.0
-plo_y = 0.0
-phi_x = 500.0
-phi_y = 500.0
-ux = 1.0
-uy = 0.0
-ignition.type = circle
-ignition.x0 = 250.0
-ignition.y0 = 250.0
-ignition.radius = 30.0
+prob_lo_x = 0.0
+prob_lo_y = 0.0
+prob_hi_x = 500.0
+prob_hi_y = 500.0
+u_x = 1.0
+u_y = 0.0
+source_type = sphere
+center_x = 250.0
+center_y = 250.0
+center_z = 0.0
+sphere_radius = 30.0
 cfl = 0.5
 propagation_method = levelset
 """
@@ -304,16 +307,17 @@ def test_wildfire_solver_class():
 n_cell_x = 20
 n_cell_y = 20
 max_grid = 16
-plo_x = 0.0
-plo_y = 0.0
-phi_x = 600.0
-phi_y = 600.0
-ux = 4.0
-uy = 1.0
-ignition.type = circle
-ignition.x0 = 300.0
-ignition.y0 = 300.0
-ignition.radius = 40.0
+prob_lo_x = 0.0
+prob_lo_y = 0.0
+prob_hi_x = 600.0
+prob_hi_y = 600.0
+u_x = 4.0
+u_y = 1.0
+source_type = sphere
+center_x = 300.0
+center_y = 300.0
+center_z = 0.0
+sphere_radius = 40.0
 cfl = 0.5
 propagation_method = levelset
 """

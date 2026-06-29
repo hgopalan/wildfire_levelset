@@ -26,6 +26,7 @@
 #include "fire_solver_api.H"
 
 namespace py = pybind11;
+using namespace pybind11::literals;
 
 // Wrapper function to load wind data from numpy arrays
 // Returns a dictionary with the populated PltWindData fields
@@ -1041,3 +1042,4 @@ PYBIND11_MODULE(pyWildfire, m) {
 
     // Add version information
     m.attr("__version__") = "0.3.0";
+}

@@ -261,9 +261,9 @@ if(Python3_FOUND AND LEVELSET_BUILD_PYTHON_BINDINGS)
             file(COPY "${_df}" DESTINATION ${TEST_WORK_DIR})
         endforeach()
         
-        # Set PYTHONPATH to include the build/python directory
+        # Set PYTHONPATH to include the build/python and src/python directory
         set(PYTHON_PATH_CMD ${CMAKE_COMMAND} -E env 
-            "PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH}")
+            "PYTHONPATH=${CMAKE_BINARY_DIR}/python:${CMAKE_SOURCE_DIR}/src/python:$ENV{PYTHONPATH}")
         
         add_test(NAME ${TEST_NAME}
                  COMMAND ${PYTHON_PATH_CMD}

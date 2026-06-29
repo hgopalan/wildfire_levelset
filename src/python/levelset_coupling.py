@@ -408,12 +408,12 @@ class CoupledWindFireSimulation:
                     if self.coupling_mode == 'one_way':
                         print(f"Step {step_count:4d}: t={self.fire_time:8.1f}s  "
                               f"Wind{wind_status}  "
-                              f"Burned={np.sum(state['phi'] <= 0):.0f} cells")
+                              f"Burned={np.sum(state['phi'] < 0.0):.0f} cells")
                     else:
                         print(f"Step {step_count:4d}: t={self.fire_time:8.1f}s  "
                               f"Wind{wind_status}  "
                               f"Heat{heat_status}  "
-                              f"Burned={np.sum(state['phi'] <= 0):.0f} cells")
+                              f"Burned={np.sum(state['phi'] < 0.0):.0f} cells")
                 
                 # Call user callback if provided
                 if callback is not None:
@@ -429,9 +429,30 @@ class CoupledWindFireSimulation:
         print(f"  Total steps: {self.step_count}")
         
         return {
+            'success': True,
             'final_time': self.fire_time,
             'final_step': self.step_count,
             'fire_state': state
+        }
+    
+    def get_status(self) -> Dict:
+        """
+        Get comprehensive status of the coupled simulation.
+        
+        Returns:
+            dict: Status keys:
+                - 'fire_time': current fire simulation time
+                - 'wind_time': current wind simulation time
+                - 'coupled_steps': total number of coupled steps run
+                - 'coupling_mode': 'one_way' or 'two_way'
+                - 'domain_compatible': whether domains are compatible
+        """
+        return {
+            'fire_time': self.fire_time,
+            'wind_time': self.wind_time,
+            'coupled_steps': self.step_count,
+            'coupling_mode': self.coupling_mode,
+            'domain_compatible': self.domain_compatible
         }
     
     def finalize(self):
