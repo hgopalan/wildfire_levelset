@@ -164,13 +164,25 @@ class CoupledWindFireSolver:
         fire_bounds = (self.fire.xmin, self.fire.xmax, self.fire.ymin, self.fire.ymax)
         wind_bounds = (self.wind.xmin, self.wind.xmax, self.wind.ymin, self.wind.ymax)
         
-        if any(abs(a - b) > tol for a, b in zip(fire_bounds, wind_bounds)):
+        bounds_match = all(abs(a - b) <= tol for a, b in zip(fire_bounds, wind_bounds))
+        spacing_match = (
+            abs(self.wind.dx - self.fire.dx) <= tol and
+            abs(self.wind.dy - self.fire.dy) <= tol
+        )
+        
+        if not bounds_match:
             print("⚠️  Warning: Fire and wind domain bounds don't match")
             print(f"  Fire: X=[{self.fire.xmin:.1f}, {self.fire.xmax:.1f}], "
                   f"Y=[{self.fire.ymin:.1f}, {self.fire.ymax:.1f}]")
             print(f"  Wind: X=[{self.wind.xmin:.1f}, {self.wind.xmax:.1f}], "
                   f"Y=[{self.wind.ymin:.1f}, {self.wind.ymax:.1f}]")
-        else:
+        
+        if not spacing_match:
+            print("⚠️  Warning: Wind and fire grid spacing don't match")
+            print(f"  Wind: dx={self.wind.dx:.2f}, dy={self.wind.dy:.2f}")
+            print(f"  Fire: dx={self.fire.dx:.2f}, dy={self.fire.dy:.2f}")
+        
+        if bounds_match and spacing_match:
             print("✓ Fire and wind domains are compatible")
     
     def step(self, update_wind=True):
@@ -479,7 +491,56 @@ class CoupledWindFireSolver:
             except Exception as e:
                 print(f"⚠️  Warning: Wind solver finalization failed: {e}")
         
-        print("Coupled solver finalized")
+        print("✓ Coupled solver finalized")
+    
+    def get_solver_status(self):
+        """
+        Get comprehensive status information for both solvers.
+        
+        Returns:
+            dict: Status information containing:
+                - 'fire': Fire solver status
+                - 'wind': Wind solver status (if available)
+                - 'coupling_mode': Current coupling mode
+                - 'step_count': Total steps executed
+                - 'fire_time': Current fire simulation time
+        """
+        status = {
+            'coupling_mode': self.coupling_mode,
+            'step_count': self.step_count,
+            'fire_time': self.fire_time,
+            'wind_time': self.wind_time if self.wind is not None else None
+        }
+        
+        if self.fire is not None:
+            try:
+                fire_status = self.fire.get_status()
+                status['fire'] = fire_status
+            except Exception as e:
+                status['fire'] = {'error': str(e)}
+        
+        if self.wind is not None:
+            try:
+                wind_status = {
+                    'nx': self.wind.nx,
+                    'ny': self.wind.ny,
+                    'nz': self.wind.nz,
+                    'iters': self.wind.iters,
+                    'residual': self.wind.residual,
+                    'domain': {
+                        'xmin': self.wind.xmin,
+                        'xmax': self.wind.xmax,
+                        'ymin': self.wind.ymin,
+                        'ymax': self.wind.ymax,
+                        'zmin': self.wind.zmin,
+                        'zmax': self.wind.zmax
+                    }
+                }
+                status['wind'] = wind_status
+            except Exception as e:
+                status['wind'] = {'error': str(e)}
+        
+        return status
     
     def __del__(self):
         """Destructor: finalize solvers if still active."""
