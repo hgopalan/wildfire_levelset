@@ -187,6 +187,19 @@ void parse_inputs(InputParameters& p)
                    "R = R₀(1 + |φ_w·wind_hat + φ_s·slope_hat|)\n";
     }
 
+    // --- 3D Wind coupling three-step approach ---
+    p.rothermel.use_coupled_wind_3step = 1;
+    pp.query("rothermel.use_coupled_wind_3step", p.rothermel.use_coupled_wind_3step);
+    p.rothermel.coupled_wind_feedback_dir = "upstream";
+    pp.query("rothermel.coupled_wind_feedback_dir", p.rothermel.coupled_wind_feedback_dir);
+    if (p.rothermel.use_coupled_wind_3step == 1) {
+        if (p.rothermel.coupled_wind_feedback_dir != "upstream" && p.rothermel.coupled_wind_feedback_dir != "inward") {
+            amrex::Abort("rothermel.coupled_wind_feedback_dir must be 'upstream' or 'inward'");
+        }
+        Print() << "3D coupled wind 3-step approach enabled: "
+                << "feedback_dir=" << p.rothermel.coupled_wind_feedback_dir << "\n";
+    }
+
     // Per-class fuel load overrides (take precedence over fuel model database)
     pp.query("rothermel.w_d1",    p.rothermel.w_d1);
     pp.query("rothermel.sigma_d1", p.rothermel.sigma_d1);

@@ -27,7 +27,7 @@ from pathlib import Path
 
 # Add paths for imports
 test_dir = Path(__file__).parent.absolute()
-repo_root = test_dir.parents[3]
+repo_root = test_dir.parents[2]
 src_python = repo_root / "src" / "python"
 regtest = repo_root / "regtest"
 
@@ -257,7 +257,7 @@ def test_coupled_timestepping():
         for i in range(3):
             result = coupler.step()
             assert result['success']
-            assert result['coupled_step'] > initial_step
+            assert coupler.coupled_step > initial_step
             assert coupler.fire.time > initial_time
         
         print(f"✓ Took 3 coupled steps")
