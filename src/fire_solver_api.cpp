@@ -37,7 +37,7 @@ static std::vector<double> copy_multifab_to_vector(const amrex::MultiFab& mf, in
     
     int nx = g_fire_solver_state->inputs->n_cell_x;
     int ny = g_fire_solver_state->inputs->n_cell_y;
-    result.resize(nx * ny, 0.0);
+    result.resize(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny), 0.0);
     
     // Ensure any pending GPU kernels have completed
     amrex::Gpu::streamSynchronize();
