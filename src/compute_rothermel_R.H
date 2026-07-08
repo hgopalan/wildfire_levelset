@@ -245,6 +245,8 @@ inline void compute_rothermel_R(MultiFab& R_mf,
                 Real slope_x = s(i,j,k,0);
                 Real slope_y = s(i,j,k,1);
                 Real tan_phi_sq = slope_x * slope_x + slope_y * slope_y;
+                // Cap tan²(φ) at 32.0 (tan²(80°)) to prevent unbounded slope factor
+                tan_phi_sq = amrex::min(tan_phi_sq, Real(32.0));
                 phi_s = std::max(PHI_S_COEFFICIENT * std::pow(cell_beta, BETA_EXPONENT) * tan_phi_sq, Real(0.0));
             } else {
                 // Use constant phi_s from RothermelComputed
