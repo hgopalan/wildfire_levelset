@@ -264,7 +264,6 @@ inline void compute_albini_spotting(
     }
     amrex::Gpu::streamSynchronize();  // wait for device→host copies
 
-    const Real phi_thresh = Real(0.1);
     const auto dx        = geom.CellSize();
     const Real* prob_lo  = geom.ProbLo();
     const Real* prob_hi  = geom.ProbHi();
@@ -474,8 +473,9 @@ inline void compute_albini_spotting(
 
         for (int j = lo.y; j <= hi.y; ++j) {
             for (int i = lo.x; i <= hi.x; ++i) {
-                if (p(i, j, 0) > phi_thresh) {
-                    continue; // not near fire front
+                // Require strictly burning cells (phi < 0.0)
+                if (p(i, j, 0) >= Real(0.0)) {
+                    continue; // not in burning region
                 }
                 Real R_sim = r(i, j, 0); // ROS in simulation units (m/s)
                 if (R_sim <= Real(0.0)) {
@@ -781,11 +781,22 @@ inline void compute_albini_spotting(
                     Real d  = std::sqrt((cx - sp.x) * (cx - sp.x) +
                                         (cy - sp.y) * (cy - sp.y));
                     if (d < asp.spot_radius) {
-                        p(i, j, 0) = amrex::min(p(i, j, 0), d - asp.spot_radius);
+                        // Normalize SDF by spot_radius to match [-1, 1] convention
+                        amrex::Real sdf_val = (d - asp.spot_radius) / asp.spot_radius;
+                        p(i, j, 0) = amrex::min(p(i, j, 0), sdf_val);
                     }
                 }
             }
         }
+    }
+
+    // ---- Clamp phi to [-1, 1] after stamping ----
+    for (MFIter mfi(phi_h); mfi.isValid(); ++mfi) {
+        const Box& bx = mfi.validbox();
+        auto p = phi_h.array(mfi);
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            p(i, j, k) = amrex::max(amrex::Real(-1.0), amrex::min(p(i, j, k), amrex::Real(1.0)));
+        });
     }
 
     // ---- Update albini_data diagnostics ----
